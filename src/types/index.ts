@@ -9,6 +9,14 @@ export interface Bankroll {
   methods: Method[];
 }
 
+export interface MethodOperation {
+  methodId: string;
+  operationType?: 'Back' | 'Lay';
+  entryOdds?: number;
+  exitOdds?: number;
+  result?: 'Green' | 'Red';
+}
+
 export interface Game {
   id: string;
   date: string;
@@ -16,10 +24,6 @@ export interface Game {
   league: string;
   homeTeam: string;
   awayTeam: string;
-  methods: string[];
+  methodOperations: MethodOperation[];
   notes?: string;
-  operationType?: 'Back' | 'Lay';
-  entryOdds?: number;
-  exitOdds?: number;
-  result?: 'Green' | 'Red';
 }
