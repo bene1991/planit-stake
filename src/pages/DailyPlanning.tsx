@@ -17,6 +17,7 @@ export default function DailyPlanning() {
 
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split("T")[0],
+    time: "",
     league: "",
     homeTeam: "",
     awayTeam: "",
@@ -25,7 +26,7 @@ export default function DailyPlanning() {
   });
 
   const handleSubmit = () => {
-    if (!formData.league || !formData.homeTeam || !formData.awayTeam) {
+    if (!formData.league || !formData.homeTeam || !formData.awayTeam || !formData.time) {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
@@ -37,6 +38,7 @@ export default function DailyPlanning() {
     addGame(formData);
     setFormData({
       date: new Date().toISOString().split("T")[0],
+      time: "",
       league: "",
       homeTeam: "",
       awayTeam: "",
@@ -56,7 +58,11 @@ export default function DailyPlanning() {
     }));
   };
 
-  const sortedGames = [...games].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sortedGames = [...games].sort((a, b) => {
+    const dateTimeA = new Date(`${a.date}T${a.time}`).getTime();
+    const dateTimeB = new Date(`${b.date}T${b.time}`).getTime();
+    return dateTimeA - dateTimeB;
+  });
 
   return (
     <div className="space-y-6">
@@ -80,7 +86,7 @@ export default function DailyPlanning() {
         <Card className="p-6 shadow-card">
           <h2 className="mb-4 text-xl font-bold">Adicionar Jogo</h2>
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <Label htmlFor="date">Data</Label>
                 <Input
@@ -88,6 +94,15 @@ export default function DailyPlanning() {
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="time">Horário</Label>
+                <Input
+                  id="time"
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
                 />
               </div>
               <div>
@@ -190,6 +205,9 @@ export default function DailyPlanning() {
                       <div className="flex items-center gap-2">
                         <span className="rounded bg-muted px-2 py-1 text-xs font-medium">
                           {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")}
+                        </span>
+                        <span className="rounded bg-muted px-2 py-1 text-xs font-medium">
+                          {game.time}
                         </span>
                         <span className="rounded bg-secondary/10 px-2 py-1 text-xs font-medium text-secondary">
                           {game.league}

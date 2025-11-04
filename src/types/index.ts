@@ -12,6 +12,7 @@ export interface Bankroll {
 export interface Game {
   id: string;
   date: string;
+  time: string;
   league: string;
   homeTeam: string;
   awayTeam: string;
