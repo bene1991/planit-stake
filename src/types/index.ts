@@ -18,4 +18,8 @@ export interface Game {
   awayTeam: string;
   methods: string[];
   notes?: string;
+  operationType?: 'Back' | 'Lay';
+  entryOdds?: number;
+  exitOdds?: number;
+  result?: 'Green' | 'Red';
 }
