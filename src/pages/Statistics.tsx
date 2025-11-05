@@ -1,8 +1,6 @@
-import { useState, useCallback } from 'react';
 import { useSupabaseGames } from '@/hooks/useSupabaseGames';
 import { useSupabaseBankroll } from '@/hooks/useSupabaseBankroll';
 import { useStatistics } from '@/hooks/useStatistics';
-import { FilterBar, FilterOptions } from '@/components/FilterBar';
 import { GreenVsRedChart } from '@/components/Charts/GreenVsRedChart';
 import { LeagueStatsChart } from '@/components/Charts/LeagueStatsChart';
 import { TeamStatsTable } from '@/components/Charts/TeamStatsTable';
@@ -13,90 +11,22 @@ import { Card } from '@/components/ui/card';
 import { BarChart3, Download, RefreshCw } from 'lucide-react';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
 import { toast } from 'sonner';
-import { Game } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Statistics() {
   const { user } = useAuth();
   const { games, loading: gamesLoading, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
-  const [filteredGames, setFilteredGames] = useState<Game[]>([]);
 
   const handleRefresh = async () => {
     await refreshGames();
     toast.success('Dados atualizados!');
   };
 
-  const applyFilters = useCallback((filters: FilterOptions) => {
-    let result = [...games];
-
-    // Filtro de busca por texto
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      result = result.filter(
-        (g) =>
-          g.homeTeam.toLowerCase().includes(searchLower) ||
-          g.awayTeam.toLowerCase().includes(searchLower) ||
-          g.league.toLowerCase().includes(searchLower) ||
-          g.notes?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Filtro de data
-    if (filters.dateFrom) {
-      result = result.filter((g) => new Date(g.date) >= filters.dateFrom!);
-    }
-    if (filters.dateTo) {
-      result = result.filter((g) => new Date(g.date) <= filters.dateTo!);
-    }
-
-    // Filtro de ligas
-    if (filters.leagues.length > 0) {
-      result = result.filter((g) => filters.leagues.includes(g.league));
-    }
-
-    // Filtro de métodos
-    if (filters.methods.length > 0) {
-      result = result.filter((g) =>
-        g.methodOperations.some((op) => filters.methods.includes(op.methodId))
-      );
-    }
-
-    // Filtro de resultado
-    if (filters.result !== 'all') {
-      if (filters.result === 'pending') {
-        result = result.filter((g) =>
-          g.methodOperations.some((op) => !op.result)
-        );
-      } else if (filters.result === 'green') {
-        result = result.filter((g) =>
-          g.methodOperations.some((op) => op.result === 'Green')
-        );
-      } else if (filters.result === 'red') {
-        result = result.filter((g) =>
-          g.methodOperations.some((op) => op.result === 'Red')
-        );
-      }
-    }
-
-    // Filtro de status
-    if (filters.status !== 'all') {
-      const statusMap: Record<string, string> = {
-        'not-started': 'Not Started',
-        'live': 'Live',
-        'finished': 'Finished',
-      };
-      result = result.filter((g) => g.status === statusMap[filters.status]);
-    }
-
-    setFilteredGames(result);
-  }, [games]);
-
-  const statistics = useStatistics(filteredGames.length > 0 ? filteredGames : games, bankroll.methods);
+  const statistics = useStatistics(games, bankroll.methods);
 
   const handleExport = () => {
-    const gamesToExport = filteredGames.length > 0 ? filteredGames : games;
-    exportGamesToCSV(gamesToExport, bankroll.methods);
+    exportGamesToCSV(games, bankroll.methods);
     toast.success('Dados exportados com sucesso!');
   };
 
@@ -112,13 +42,15 @@ export default function Statistics() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary">
-            <BarChart3 className="h-6 w-6 text-secondary-foreground" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-lg">
+            <BarChart3 className="h-7 w-7 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold">Estatísticas</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Estatísticas
+            </h1>
             <p className="text-muted-foreground">
-              Análise detalhada de performance • {games.length} jogos • {user?.email}
+              Análise detalhada de performance • {games.length} jogos
             </p>
           </div>
         </div>
@@ -134,28 +66,35 @@ export default function Statistics() {
         </div>
       </div>
 
-      <FilterBar 
-        games={games} 
-        methods={bankroll.methods} 
-        onFilterChange={applyFilters}
-      />
 
       {/* Cards de resumo */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card className="p-4 shadow-card">
-          <p className="text-sm text-muted-foreground">Total de Operações</p>
+        <Card className="p-5 shadow-card bg-gradient-to-br from-muted/60 to-muted/30 transition-all hover:scale-105">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">📊</span>
+            <p className="text-sm text-muted-foreground">Total de Operações</p>
+          </div>
           <p className="text-3xl font-bold">{statistics.overallStats.total}</p>
         </Card>
-        <Card className="p-4 shadow-card bg-green-500/10">
-          <p className="text-sm text-muted-foreground">Greens</p>
+        <Card className="p-5 shadow-card bg-gradient-to-br from-green-500/15 to-green-500/5 transition-all hover:scale-105">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">✅</span>
+            <p className="text-sm text-muted-foreground">Greens</p>
+          </div>
           <p className="text-3xl font-bold text-green-600">{statistics.overallStats.greens}</p>
         </Card>
-        <Card className="p-4 shadow-card bg-red-500/10">
-          <p className="text-sm text-muted-foreground">Reds</p>
+        <Card className="p-5 shadow-card bg-gradient-to-br from-red-500/15 to-red-500/5 transition-all hover:scale-105">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">❌</span>
+            <p className="text-sm text-muted-foreground">Reds</p>
+          </div>
           <p className="text-3xl font-bold text-red-600">{statistics.overallStats.reds}</p>
         </Card>
-        <Card className="p-4 shadow-card bg-primary/10">
-          <p className="text-sm text-muted-foreground">Win Rate</p>
+        <Card className="p-5 shadow-card bg-gradient-to-br from-primary/15 to-primary/5 transition-all hover:scale-105">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xl">🎯</span>
+            <p className="text-sm text-muted-foreground">Win Rate</p>
+          </div>
           <p className="text-3xl font-bold text-primary">{statistics.overallStats.winRate}%</p>
         </Card>
       </div>

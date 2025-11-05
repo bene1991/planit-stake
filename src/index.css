@@ -106,4 +106,8 @@ All colors MUST be HSL.
   .shadow-hover {
     box-shadow: var(--shadow-hover);
   }
+
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
 }

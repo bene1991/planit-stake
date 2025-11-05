@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Edit, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, Edit, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -92,46 +92,47 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
   return (
     <Card className={cn(
-      "p-6 shadow-card transition-all",
-      isLive && "border-2 border-red-500 bg-red-500/5"
+      "overflow-hidden shadow-card transition-all hover:shadow-hover animate-fade-in",
+      "bg-gradient-to-br from-card to-card/50",
+      isLive && "border-2 border-red-500 shadow-red-500/20"
     )}>
-      <div className="space-y-4">
-        {/* Cabeçalho do jogo */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-muted px-2 py-1 text-xs font-medium">
-                {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")}
-              </span>
-              <span className="rounded bg-muted px-2 py-1 text-xs font-medium">{game.time}</span>
-              <span className="rounded bg-secondary/10 px-2 py-1 text-xs font-medium text-secondary">
-                {game.league}
-              </span>
+      {/* Header do Card */}
+      <div className="relative bg-gradient-to-r from-muted/30 to-muted/10 px-6 py-4 border-b">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-xl font-bold text-foreground">{game.league}</h3>
               {isLive && (
                 <Badge variant="destructive" className="animate-pulse">
                   🔴 AO VIVO
                 </Badge>
               )}
             </div>
-            <div className="text-base font-bold sm:text-lg">
-              {game.homeTeam} <span className="text-muted-foreground">vs</span> {game.awayTeam}
-            </div>
-            {game.notes && <p className="text-sm text-muted-foreground">{game.notes}</p>}
+            <p className="text-sm text-muted-foreground">
+              {game.homeTeam} ⚽ {game.awayTeam} • {game.time} • {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")}
+            </p>
           </div>
-          <div className="flex gap-2 sm:flex-col">
+          <div className="flex gap-1.5">
             {!isFinalized && (
-              <Button variant="outline" size="icon" onClick={() => onEdit(game)}>
-                <Edit className="h-4 w-4" />
+              <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-8 w-8 p-0">
+                <Edit className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button variant="destructive" size="icon" onClick={() => onDelete(game.id)}>
-              <Trash2 className="h-4 w-4" />
+            <Button variant="ghost" size="sm" onClick={() => onDelete(game.id)} className="h-8 w-8 p-0 text-destructive hover:text-destructive">
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
+      </div>
 
-        {/* Lista de métodos */}
-        <div className="space-y-3">
+      {/* Corpo do Card */}
+      <div className="p-6">
+        {game.notes && (
+          <p className="text-sm text-muted-foreground mb-4 pb-4 border-b">{game.notes}</p>
+        )}
+
+        {/* Lista de métodos - Design simples e limpo */}
+        <div className="space-y-2">
           {game.methodOperations.map((operation) => {
             const isEditing = editingMethod === operation.methodId;
             const methodName = getMethodName(operation.methodId);
@@ -139,119 +140,130 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
             return (
               <div
                 key={operation.methodId}
-                className="rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50"
+                className="group relative"
               >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-                        {methodName}
-                      </span>
-                      {operation.result && (
-                        <span
-                          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${
-                            operation.result === "Green"
-                              ? "bg-green-500/20 text-green-600"
-                              : "bg-red-500/20 text-red-600"
-                          }`}
-                        >
-                          {operation.result === "Green" ? (
-                            <TrendingUp className="h-3 w-3" />
-                          ) : (
-                            <TrendingDown className="h-3 w-3" />
-                          )}
-                          {operation.result}
-                        </span>
-                      )}
-                    </div>
-                    {!operation.result && !isFinalized && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => startEditMethod(operation)}
-                      >
-                        Registrar Resultado
-                      </Button>
+                {/* Linha do método - layout horizontal limpo */}
+                <div className={cn(
+                  "flex items-center gap-3 py-3 px-4 rounded-lg transition-all",
+                  "border-l-4",
+                  operation.result === "Green" && "border-l-green-500 bg-green-500/5",
+                  operation.result === "Red" && "border-l-red-500 bg-red-500/5",
+                  !operation.result && "border-l-muted bg-muted/20"
+                )}>
+                  {/* Ícone de resultado */}
+                  <div className="flex-shrink-0">
+                    {operation.result === "Green" && (
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    )}
+                    {operation.result === "Red" && (
+                      <XCircle className="h-5 w-5 text-red-600" />
+                    )}
+                    {!operation.result && (
+                      <Clock className="h-5 w-5 text-muted-foreground" />
                     )}
                   </div>
 
-                  {operation.operationType && operation.entryOdds && operation.exitOdds && (
-                    <div className="text-sm text-muted-foreground">
-                      {operation.operationType}: {operation.entryOdds.toFixed(2)} →{" "}
-                      {operation.exitOdds.toFixed(2)}
+                  {/* Nome do método */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm">{methodName}</span>
+                      {operation.operationType && operation.entryOdds && operation.exitOdds && (
+                        <span className="text-xs text-muted-foreground">
+                          {operation.operationType}: {operation.entryOdds.toFixed(2)} → {operation.exitOdds.toFixed(2)}
+                        </span>
+                      )}
+                      {operation.result && (
+                        <Badge 
+                          variant={operation.result === "Green" ? "default" : "destructive"}
+                          className="text-xs"
+                        >
+                          {operation.result}
+                        </Badge>
+                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {isEditing && (
-                  <div className="space-y-3 border-t pt-3">
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div>
-                          <Label className="text-xs sm:text-sm">Tipo de Operação</Label>
-                          <Select
-                            value={methodForm.operationType}
-                            onValueChange={(value: "Back" | "Lay") =>
-                              setMethodForm({ ...methodForm, operationType: value })
-                            }
-                          >
-                            <SelectTrigger className="h-9">
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Back">Back</SelectItem>
-                              <SelectItem value="Lay">Lay</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label className="text-xs sm:text-sm">Odd de Entrada</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={methodForm.entryOdds}
-                            onChange={(e) =>
-                              setMethodForm({ ...methodForm, entryOdds: e.target.value })
-                            }
-                            placeholder="Ex: 2.50"
-                            className="h-9"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs sm:text-sm">Odd de Saída</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={methodForm.exitOdds}
-                            onChange={(e) =>
-                              setMethodForm({ ...methodForm, exitOdds: e.target.value })
-                            }
-                            placeholder="Ex: 2.30"
-                            className="h-9"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button 
-                          size="sm" 
-                          onClick={() => handleSaveMethod(operation.methodId)}
-                          className="w-full sm:w-auto"
-                        >
-                          Salvar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setEditingMethod(null);
-                            setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
-                          }}
-                          className="w-full sm:w-auto"
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
+                  {/* Botão registrar resultado */}
+                  {!operation.result && !isFinalized && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => startEditMethod(operation)}
+                      className="ml-auto"
+                    >
+                      Registrar
+                    </Button>
                   )}
                 </div>
+
+                {/* Formulário de edição inline */}
+                {isEditing && (
+                  <div className="mt-3 p-4 bg-muted/30 rounded-lg border space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <Label className="text-xs">Tipo de Operação</Label>
+                        <Select
+                          value={methodForm.operationType}
+                          onValueChange={(value: "Back" | "Lay") =>
+                            setMethodForm({ ...methodForm, operationType: value })
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Selecione" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Back">Back</SelectItem>
+                            <SelectItem value="Lay">Lay</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Odd de Entrada</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={methodForm.entryOdds}
+                          onChange={(e) =>
+                            setMethodForm({ ...methodForm, entryOdds: e.target.value })
+                          }
+                          placeholder="Ex: 2.50"
+                          className="h-9"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Odd de Saída</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={methodForm.exitOdds}
+                          onChange={(e) =>
+                            setMethodForm({ ...methodForm, exitOdds: e.target.value })
+                          }
+                          placeholder="Ex: 2.30"
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleSaveMethod(operation.methodId)}
+                      >
+                        Salvar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditingMethod(null);
+                          setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

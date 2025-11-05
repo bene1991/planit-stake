@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { updateGameStatuses } from "@/utils/gameStatus";
@@ -6,11 +6,10 @@ import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-import { Calendar, Plus, Download } from "lucide-react";
+import { Calendar, Plus, Download, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { GameCard } from "@/components/GameCard";
 import { GameForm } from "@/components/GameForm";
-import { FilterBar, FilterOptions } from "@/components/FilterBar";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 
@@ -19,7 +18,6 @@ export default function DailyPlanning() {
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const [showForm, setShowForm] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
-  const [filteredGames, setFilteredGames] = useState<Game[]>([]);
 
   // Auto-update game statuses every 5 minutes
   useEffect(() => {
@@ -72,80 +70,17 @@ export default function DailyPlanning() {
     toast.success("Jogo removido");
   };
 
-  const applyFilters = useCallback((filters: FilterOptions) => {
-    let result = [...games];
-
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      result = result.filter(
-        (g) =>
-          g.homeTeam.toLowerCase().includes(searchLower) ||
-          g.awayTeam.toLowerCase().includes(searchLower) ||
-          g.league.toLowerCase().includes(searchLower) ||
-          g.notes?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    if (filters.dateFrom) {
-      result = result.filter((g) => new Date(g.date) >= filters.dateFrom!);
-    }
-    if (filters.dateTo) {
-      result = result.filter((g) => new Date(g.date) <= filters.dateTo!);
-    }
-
-    if (filters.leagues.length > 0) {
-      result = result.filter((g) => filters.leagues.includes(g.league));
-    }
-
-    if (filters.methods.length > 0) {
-      result = result.filter((g) =>
-        g.methodOperations.some((op) => filters.methods.includes(op.methodId))
-      );
-    }
-
-    if (filters.result !== 'all') {
-      if (filters.result === 'pending') {
-        result = result.filter((g) =>
-          g.methodOperations.some((op) => !op.result)
-        );
-      } else if (filters.result === 'green') {
-        result = result.filter((g) =>
-          g.methodOperations.some((op) => op.result === 'Green')
-        );
-      } else if (filters.result === 'red') {
-        result = result.filter((g) =>
-          g.methodOperations.some((op) => op.result === 'Red')
-        );
-      }
-    }
-
-    if (filters.status !== 'all') {
-      const statusMap: Record<string, string> = {
-        'not-started': 'Not Started',
-        'live': 'Live',
-        'finished': 'Finished',
-      };
-      result = result.filter((g) => g.status === statusMap[filters.status]);
-    }
-
-    setFilteredGames(result);
-  }, [games]);
-
   const handleExport = () => {
-    const gamesToExport = filteredGames.length > 0 ? filteredGames : games;
-    exportGamesToCSV(gamesToExport, bankroll.methods);
+    exportGamesToCSV(games, bankroll.methods);
     toast.success('Dados exportados com sucesso!');
   };
 
-  // Usar jogos filtrados se houver filtros aplicados
-  const displayGames = filteredGames.length > 0 ? filteredGames : games;
-
   // Separar jogos em planejados e finalizados
-  const plannedGames = displayGames.filter((game) =>
+  const plannedGames = games.filter((game) =>
     game.methodOperations.some((op) => !op.result)
   );
 
-  const finalizedGames = displayGames.filter((game) =>
+  const finalizedGames = games.filter((game) =>
     game.methodOperations.length > 0 && game.methodOperations.every((op) => op.result)
   );
 
@@ -197,11 +132,13 @@ export default function DailyPlanning() {
       
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary">
-            <Calendar className="h-6 w-6 text-secondary-foreground" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-lg">
+            <Calendar className="h-7 w-7 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold">Planejamento Diário</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Planejamento Diário
+            </h1>
             <p className="text-muted-foreground">Organize e acompanhe suas operações</p>
           </div>
         </div>
@@ -231,31 +168,38 @@ export default function DailyPlanning() {
         />
       )}
 
-      <FilterBar 
-        games={games} 
-        methods={bankroll.methods} 
-        onFilterChange={applyFilters}
-      />
 
       {totalOperations > 0 && (
-        <Card className="p-6 shadow-card">
+        <Card className="p-6 shadow-card bg-gradient-to-br from-card to-card/50">
           <h2 className="mb-4 text-xl font-bold">Estatísticas</h2>
           <div className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-lg bg-muted/50 p-4">
-              <p className="text-sm text-muted-foreground">Total de Operações</p>
-              <p className="text-2xl font-bold">{totalOperations}</p>
+            <div className="rounded-xl bg-gradient-to-br from-muted/60 to-muted/30 p-5 transition-all hover:scale-105">
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Total de Operações</p>
+              </div>
+              <p className="text-3xl font-bold">{totalOperations}</p>
             </div>
-            <div className="rounded-lg bg-green-500/10 p-4">
-              <p className="text-sm text-muted-foreground">Greens</p>
-              <p className="text-2xl font-bold text-green-600">{greenOperations}</p>
+            <div className="rounded-xl bg-gradient-to-br from-green-500/15 to-green-500/5 p-5 transition-all hover:scale-105">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">✅</span>
+                <p className="text-sm text-muted-foreground">Greens</p>
+              </div>
+              <p className="text-3xl font-bold text-green-600">{greenOperations}</p>
             </div>
-            <div className="rounded-lg bg-red-500/10 p-4">
-              <p className="text-sm text-muted-foreground">Reds</p>
-              <p className="text-2xl font-bold text-red-600">{redOperations}</p>
+            <div className="rounded-xl bg-gradient-to-br from-red-500/15 to-red-500/5 p-5 transition-all hover:scale-105">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">❌</span>
+                <p className="text-sm text-muted-foreground">Reds</p>
+              </div>
+              <p className="text-3xl font-bold text-red-600">{redOperations}</p>
             </div>
-            <div className="rounded-lg bg-primary/10 p-4">
-              <p className="text-sm text-muted-foreground">Win Rate</p>
-              <p className="text-2xl font-bold text-primary">{winRate}%</p>
+            <div className="rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 p-5 transition-all hover:scale-105">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">🎯</span>
+                <p className="text-sm text-muted-foreground">Win Rate</p>
+              </div>
+              <p className="text-3xl font-bold text-primary">{winRate}%</p>
             </div>
           </div>
 
@@ -295,8 +239,8 @@ export default function DailyPlanning() {
         <TabsContent value="planning" className="space-y-4 mt-6">
           {sortedPlanned.length === 0 ? (
             <Card className="p-12 text-center shadow-card">
-              <Calendar className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="text-lg text-muted-foreground">Nenhum jogo planejado ainda</p>
+              <div className="text-6xl mb-4">📅</div>
+              <p className="text-xl font-semibold mb-2">Nenhum jogo planejado ainda</p>
               <p className="text-sm text-muted-foreground">
                 Adicione jogos para organizar suas operações do dia
               </p>
@@ -320,8 +264,8 @@ export default function DailyPlanning() {
         <TabsContent value="finalized" className="space-y-4 mt-6">
           {sortedFinalized.length === 0 ? (
             <Card className="p-12 text-center shadow-card">
-              <Calendar className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="text-lg text-muted-foreground">Nenhum jogo finalizado ainda</p>
+              <div className="text-6xl mb-4">✅</div>
+              <p className="text-xl font-semibold mb-2">Nenhum jogo finalizado ainda</p>
               <p className="text-sm text-muted-foreground">
                 Jogos com todos os métodos finalizados aparecerão aqui
               </p>
