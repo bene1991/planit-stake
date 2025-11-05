@@ -6,7 +6,20 @@ import { Game } from "@/hooks/useSupabaseGames";
 export const getMinutesUntilGameStart = (game: Game): number => {
   const now = new Date();
   const gameStart = new Date(`${game.date}T${game.time}`);
-  return Math.floor((gameStart.getTime() - now.getTime()) / (1000 * 60));
+  const minutesUntil = Math.floor((gameStart.getTime() - now.getTime()) / (1000 * 60));
+  
+  console.log(`📅 [${game.homeTeam} vs ${game.awayTeam}]`, {
+    now: now.toISOString(),
+    gameDate: game.date,
+    gameTime: game.time,
+    gameStart: gameStart.toISOString(),
+    minutesUntil,
+    gameStartTimestamp: gameStart.getTime(),
+    nowTimestamp: now.getTime(),
+    diff: gameStart.getTime() - now.getTime()
+  });
+  
+  return minutesUntil;
 };
 
 /**
