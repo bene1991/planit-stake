@@ -1,4 +1,4 @@
-// Service to fetch team logos from TheSportsDB API
+// Team logo service - fetches logos from TheSportsDB API
 const CACHE_KEY = 'team-logos-cache';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
 
