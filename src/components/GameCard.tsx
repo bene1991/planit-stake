@@ -95,55 +95,55 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
       isLive && "border-l-4 border-l-red-600"
     )}>
       {/* Header compacto */}
-      <div className="px-6 py-4 border-b bg-muted/20">
-        <div className="flex items-start justify-between gap-4">
+      <div className="px-4 py-3 border-b bg-muted/20">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-0.5">
               <p className="text-xs uppercase text-muted-foreground font-medium">{game.league}</p>
               {isLive && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
                   LIVE
                 </span>
               )}
             </div>
-            <h3 className="text-base font-semibold text-foreground mb-1">
+            <h3 className="text-sm font-semibold text-foreground mb-0.5">
               {game.homeTeam} vs {game.awayTeam}
             </h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")} • {game.time}
             </p>
           </div>
           <div className="flex gap-1 flex-shrink-0">
             {!isFinalized && (
-              <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-8 w-8 p-0">
-                <Edit className="h-4 w-4" />
+              <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-7 w-7 p-0">
+                <Edit className="h-3.5 w-3.5" />
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => onDelete(game.id)} className="h-8 w-8 p-0 text-destructive hover:text-destructive">
-              <Trash2 className="h-4 w-4" />
+            <Button variant="ghost" size="sm" onClick={() => onDelete(game.id)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </div>
 
       {/* Corpo */}
-      <div className="p-6">
+      <div className="px-4 py-3">
         {game.notes && (
-          <p className="text-sm text-muted-foreground mb-4 pb-4 border-b">{game.notes}</p>
+          <p className="text-sm text-muted-foreground mb-3 pb-3 border-b">{game.notes}</p>
         )}
 
-        {/* Métodos em layout tabular */}
-        <div className="space-y-3">
+        {/* Métodos em layout compacto */}
+        <div className="space-y-2">
           {game.methodOperations.map((operation) => {
             const isEditing = editingMethod === operation.methodId;
             const methodName = getMethodName(operation.methodId);
 
             return (
-              <div key={operation.methodId} className="space-y-3">
+              <div key={operation.methodId} className="space-y-2">
                 {/* Linha do método */}
-                <div className="flex items-center justify-between gap-4 py-2">
-                  <div className="flex-1">
+                <div className="flex items-center justify-between gap-3 py-1.5">
+                  <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm mb-0.5">{methodName}</p>
                     {operation.operationType && operation.entryOdds && operation.exitOdds && (
                       <p className="text-xs text-muted-foreground">
@@ -151,16 +151,16 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     {operation.result === "Green" && (
                       <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
-                        <Check className="h-4 w-4" />
+                        <Check className="h-3.5 w-3.5" />
                         GREEN
                       </span>
                     )}
                     {operation.result === "Red" && (
                       <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
                         RED
                       </span>
                     )}
@@ -172,6 +172,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                             variant="outline"
                             size="sm"
                             onClick={() => startEditMethod(operation)}
+                            className="h-7 text-xs"
                           >
                             Registrar
                           </Button>
@@ -183,8 +184,8 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
                 {/* Form inline */}
                 {isEditing && (
-                  <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="p-3 bg-muted/30 rounded-lg border space-y-2.5">
+                    <div className="grid gap-2.5 sm:grid-cols-3">
                       <div>
                         <Label className="text-xs">Tipo de Operação</Label>
                         <Select
@@ -193,7 +194,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                             setMethodForm({ ...methodForm, operationType: value })
                           }
                         >
-                          <SelectTrigger className="h-9">
+                          <SelectTrigger className="h-8">
                             <SelectValue placeholder="Selecione" />
                           </SelectTrigger>
                           <SelectContent>
@@ -212,7 +213,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                             setMethodForm({ ...methodForm, entryOdds: e.target.value })
                           }
                           placeholder="Ex: 2.50"
-                          className="h-9"
+                          className="h-8"
                         />
                       </div>
                       <div>
@@ -225,7 +226,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                             setMethodForm({ ...methodForm, exitOdds: e.target.value })
                           }
                           placeholder="Ex: 2.30"
-                          className="h-9"
+                          className="h-8"
                         />
                       </div>
                     </div>
@@ -233,6 +234,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                       <Button 
                         size="sm" 
                         onClick={() => handleSaveMethod(operation.methodId)}
+                        className="h-7 text-xs"
                       >
                         Salvar
                       </Button>
@@ -243,6 +245,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                           setEditingMethod(null);
                           setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
                         }}
+                        className="h-7 text-xs"
                       >
                         Cancelar
                       </Button>
