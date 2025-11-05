@@ -149,7 +149,15 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
 
       // 1. Check game proximity alerts (15min, 5min)
       if (preferences.gameProximity) {
+        console.log('🎮 Total games to check:', games.length);
         games.forEach(game => {
+          console.log(`📋 Game: ${formatGameName(game)}`, {
+            status: game.status,
+            date: game.date,
+            time: game.time,
+            willCheck: game.status === 'Not Started'
+          });
+          
           if (game.status !== 'Not Started') return;
           
           const minutesUntil = getMinutesUntilGameStart(game);

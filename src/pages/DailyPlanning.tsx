@@ -162,58 +162,6 @@ export default function DailyPlanning() {
         />
       )}
 
-
-      {totalOperations > 0 && (
-        <div>
-          <h2 className="mb-4 text-lg font-semibold">Estatísticas</h2>
-          <div className="grid gap-4 md:grid-cols-4 mb-6">
-            <StatCard
-              label="Total de Operações"
-              value={totalOperations}
-              icon={<TrendingUp className="h-5 w-5" />}
-            />
-            <StatCard
-              label="Greens"
-              value={greenOperations}
-              icon={<CheckCircle className="h-5 w-5 text-green-600" />}
-              className="text-green-600"
-            />
-            <StatCard
-              label="Reds"
-              value={redOperations}
-              icon={<XCircle className="h-5 w-5 text-red-600" />}
-              className="text-red-600"
-            />
-            <StatCard
-              label="Win Rate"
-              value={`${winRate}%`}
-              icon={<Target className="h-5 w-5" />}
-            />
-          </div>
-
-          {methodStats.some((m) => m.total > 0) && (
-            <div className="mt-6 p-6 border rounded-lg">
-              <h3 className="mb-3 text-base font-semibold">Win Rate por Método</h3>
-              <div className="grid gap-3 md:grid-cols-2">
-                {methodStats
-                  .filter((m) => m.total > 0)
-                  .map((stat) => (
-                    <div key={stat.name} className="rounded-lg border bg-card p-4">
-                      <p className="mb-2 font-medium text-sm">{stat.name}</p>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {stat.total} op. • {stat.greens}G / {stat.reds}R
-                        </span>
-                        <span className="font-bold text-primary">{stat.winRate}%</span>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       <Tabs defaultValue="planning" className="w-full">
         <TabsList className="border-b w-full justify-start rounded-none bg-transparent p-0">
           <TabsTrigger 
