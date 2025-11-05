@@ -97,9 +97,9 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
     )}>
       <div className="space-y-4">
         {/* Cabeçalho do jogo */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1 space-y-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="rounded bg-muted px-2 py-1 text-xs font-medium">
                 {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")}
               </span>
@@ -113,12 +113,12 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                 </Badge>
               )}
             </div>
-            <div className="text-lg font-bold">
+            <div className="text-base font-bold sm:text-lg">
               {game.homeTeam} <span className="text-muted-foreground">vs</span> {game.awayTeam}
             </div>
             {game.notes && <p className="text-sm text-muted-foreground">{game.notes}</p>}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 sm:flex-col">
             {!isFinalized && (
               <Button variant="outline" size="icon" onClick={() => onEdit(game)}>
                 <Edit className="h-4 w-4" />
@@ -183,17 +183,17 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                   )}
 
                   {isEditing && (
-                    <div className="space-y-3 border-t pt-3">
-                      <div className="grid gap-3 md:grid-cols-3">
+                  <div className="space-y-3 border-t pt-3">
+                      <div className="grid gap-3 sm:grid-cols-3">
                         <div>
-                          <Label>Tipo de Operação</Label>
+                          <Label className="text-xs sm:text-sm">Tipo de Operação</Label>
                           <Select
                             value={methodForm.operationType}
                             onValueChange={(value: "Back" | "Lay") =>
                               setMethodForm({ ...methodForm, operationType: value })
                             }
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className="h-9">
                               <SelectValue placeholder="Selecione" />
                             </SelectTrigger>
                             <SelectContent>
@@ -203,7 +203,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                           </Select>
                         </div>
                         <div>
-                          <Label>Odd de Entrada</Label>
+                          <Label className="text-xs sm:text-sm">Odd de Entrada</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -212,10 +212,11 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                               setMethodForm({ ...methodForm, entryOdds: e.target.value })
                             }
                             placeholder="Ex: 2.50"
+                            className="h-9"
                           />
                         </div>
                         <div>
-                          <Label>Odd de Saída</Label>
+                          <Label className="text-xs sm:text-sm">Odd de Saída</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -224,11 +225,16 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                               setMethodForm({ ...methodForm, exitOdds: e.target.value })
                             }
                             placeholder="Ex: 2.30"
+                            className="h-9"
                           />
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => handleSaveMethod(operation.methodId)}>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleSaveMethod(operation.methodId)}
+                          className="w-full sm:w-auto"
+                        >
                           Salvar
                         </Button>
                         <Button
@@ -238,6 +244,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                             setEditingMethod(null);
                             setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
                           }}
+                          className="w-full sm:w-auto"
                         >
                           Cancelar
                         </Button>

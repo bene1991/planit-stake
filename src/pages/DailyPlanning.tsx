@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { updateGameStatuses } from "@/utils/gameStatus";
@@ -6,10 +6,12 @@ import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-import { Calendar, Plus } from "lucide-react";
+import { Calendar, Plus, Download } from "lucide-react";
 import { toast } from "sonner";
 import { GameCard } from "@/components/GameCard";
 import { GameForm } from "@/components/GameForm";
+import { FilterBar, FilterOptions } from "@/components/FilterBar";
+import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 
 export default function DailyPlanning() {
@@ -17,6 +19,7 @@ export default function DailyPlanning() {
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const [showForm, setShowForm] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
+  const [filteredGames, setFilteredGames] = useState<Game[]>([]);
 
   // Auto-update game statuses every 5 minutes
   useEffect(() => {
@@ -69,12 +72,80 @@ export default function DailyPlanning() {
     toast.success("Jogo removido");
   };
 
+  const applyFilters = useCallback((filters: FilterOptions) => {
+    let result = [...games];
+
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      result = result.filter(
+        (g) =>
+          g.homeTeam.toLowerCase().includes(searchLower) ||
+          g.awayTeam.toLowerCase().includes(searchLower) ||
+          g.league.toLowerCase().includes(searchLower) ||
+          g.notes?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (filters.dateFrom) {
+      result = result.filter((g) => new Date(g.date) >= filters.dateFrom!);
+    }
+    if (filters.dateTo) {
+      result = result.filter((g) => new Date(g.date) <= filters.dateTo!);
+    }
+
+    if (filters.leagues.length > 0) {
+      result = result.filter((g) => filters.leagues.includes(g.league));
+    }
+
+    if (filters.methods.length > 0) {
+      result = result.filter((g) =>
+        g.methodOperations.some((op) => filters.methods.includes(op.methodId))
+      );
+    }
+
+    if (filters.result !== 'all') {
+      if (filters.result === 'pending') {
+        result = result.filter((g) =>
+          g.methodOperations.some((op) => !op.result)
+        );
+      } else if (filters.result === 'green') {
+        result = result.filter((g) =>
+          g.methodOperations.some((op) => op.result === 'Green')
+        );
+      } else if (filters.result === 'red') {
+        result = result.filter((g) =>
+          g.methodOperations.some((op) => op.result === 'Red')
+        );
+      }
+    }
+
+    if (filters.status !== 'all') {
+      const statusMap: Record<string, string> = {
+        'not-started': 'Not Started',
+        'live': 'Live',
+        'finished': 'Finished',
+      };
+      result = result.filter((g) => g.status === statusMap[filters.status]);
+    }
+
+    setFilteredGames(result);
+  }, [games]);
+
+  const handleExport = () => {
+    const gamesToExport = filteredGames.length > 0 ? filteredGames : games;
+    exportGamesToCSV(gamesToExport, bankroll.methods);
+    toast.success('Dados exportados com sucesso!');
+  };
+
+  // Usar jogos filtrados se houver filtros aplicados
+  const displayGames = filteredGames.length > 0 ? filteredGames : games;
+
   // Separar jogos em planejados e finalizados
-  const plannedGames = games.filter((game) =>
+  const plannedGames = displayGames.filter((game) =>
     game.methodOperations.some((op) => !op.result)
   );
 
-  const finalizedGames = games.filter((game) =>
+  const finalizedGames = displayGames.filter((game) =>
     game.methodOperations.length > 0 && game.methodOperations.every((op) => op.result)
   );
 
@@ -135,12 +206,18 @@ export default function DailyPlanning() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">Exportar CSV</span>
+          </Button>
           <Button variant="outline" onClick={updateStatuses}>
-            Atualizar status dos jogos
+            <span className="hidden sm:inline">Atualizar status</span>
+            <span className="sm:hidden">Atualizar</span>
           </Button>
           <Button onClick={() => setShowForm(!showForm)}>
             <Plus className="mr-2 h-4 w-4" />
-            Novo Jogo
+            <span className="hidden sm:inline">Novo Jogo</span>
+            <span className="sm:hidden">Novo</span>
           </Button>
         </div>
       </div>
@@ -153,6 +230,12 @@ export default function DailyPlanning() {
           onCancel={handleCancelEdit}
         />
       )}
+
+      <FilterBar 
+        games={games} 
+        methods={bankroll.methods} 
+        onFilterChange={applyFilters}
+      />
 
       {totalOperations > 0 && (
         <Card className="p-6 shadow-card">
