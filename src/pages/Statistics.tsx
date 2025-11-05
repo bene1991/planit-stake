@@ -10,15 +10,22 @@ import { MethodComparisonChart } from '@/components/Charts/MethodComparisonChart
 import { ResultsTimelineChart } from '@/components/Charts/ResultsTimelineChart';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { BarChart3, Download } from 'lucide-react';
+import { BarChart3, Download, RefreshCw } from 'lucide-react';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
 import { toast } from 'sonner';
 import { Game } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Statistics() {
-  const { games, loading: gamesLoading } = useSupabaseGames();
+  const { user } = useAuth();
+  const { games, loading: gamesLoading, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const [filteredGames, setFilteredGames] = useState<Game[]>([]);
+
+  const handleRefresh = async () => {
+    await refreshGames();
+    toast.success('Dados atualizados!');
+  };
 
   const applyFilters = useCallback((filters: FilterOptions) => {
     let result = [...games];
@@ -110,13 +117,21 @@ export default function Statistics() {
           </div>
           <div>
             <h1 className="text-3xl font-bold">Estatísticas</h1>
-            <p className="text-muted-foreground">Análise detalhada de performance</p>
+            <p className="text-muted-foreground">
+              Análise detalhada de performance • {games.length} jogos • {user?.email}
+            </p>
           </div>
         </div>
-        <Button onClick={handleExport}>
-          <Download className="mr-2 h-4 w-4" />
-          Exportar CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Atualizar
+          </Button>
+          <Button onClick={handleExport}>
+            <Download className="mr-2 h-4 w-4" />
+            Exportar CSV
+          </Button>
+        </div>
       </div>
 
       <FilterBar 
