@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Edit, Check, X } from "lucide-react";
+import { Trash2, Edit, Check, X, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface GameCardProps {
   game: Game;
@@ -21,7 +22,7 @@ interface GameCardProps {
 
 export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalized }: GameCardProps) {
   const [editingMethod, setEditingMethod] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [methodForm, setMethodForm] = useState({
     operationType: "" as "Back" | "Lay" | "",
     entryOdds: "",
@@ -88,91 +89,262 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
   };
 
   const isLive = game.status === 'Live';
+  const hasMultipleMethods = game.methodOperations.length > 1;
+
+  // Resumo rápido dos métodos
+  const greenCount = game.methodOperations.filter(op => op.result === 'Green').length;
+  const redCount = game.methodOperations.filter(op => op.result === 'Red').length;
+  const pendingCount = game.methodOperations.filter(op => !op.result).length;
 
   return (
     <Card className={cn(
-      "overflow-hidden shadow-sm border border-border transition-shadow hover:shadow-md",
+      "overflow-hidden shadow-sm border transition-all hover:shadow-md",
       isLive && "border-l-4 border-l-red-600"
     )}>
-      {/* Header compacto */}
-      <div className="px-4 py-3 border-b bg-muted/20">
-        <div className="flex items-start justify-between gap-3">
+      {/* Header super compacto */}
+      <div className="px-3 py-2 border-b bg-muted/10">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-xs uppercase text-muted-foreground font-medium">{game.league}</p>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <p className="text-[10px] uppercase text-muted-foreground font-medium truncate">{game.league}</p>
               {isLive && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-600">
+                  <span className="inline-block h-1 w-1 rounded-full bg-red-600 animate-pulse" />
                   LIVE
                 </span>
               )}
             </div>
-            <h3 className="text-sm font-semibold text-foreground mb-0.5">
+            <h3 className="text-xs font-semibold text-foreground leading-tight mb-0.5">
               {game.homeTeam} vs {game.awayTeam}
             </h3>
-            <p className="text-xs text-muted-foreground">
-              {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")} • {game.time}
-            </p>
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span>{new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}</span>
+              <span>•</span>
+              <span>{game.time}</span>
+              {hasMultipleMethods && (
+                <>
+                  <span>•</span>
+                  <span className="font-medium">{game.methodOperations.length} métodos</span>
+                </>
+              )}
+            </div>
           </div>
-          <div className="flex gap-1 flex-shrink-0">
+          <div className="flex gap-0.5 flex-shrink-0">
             {!isFinalized && (
-              <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-7 w-7 p-0">
-                <Edit className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-6 w-6 p-0">
+                <Edit className="h-3 w-3" />
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => onDelete(game.id)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-              <Trash2 className="h-3.5 w-3.5" />
+            <Button variant="ghost" size="sm" onClick={() => onDelete(game.id)} className="h-6 w-6 p-0 text-destructive hover:text-destructive">
+              <Trash2 className="h-3 w-3" />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Corpo */}
-      <div className="px-4 py-3">
+      {/* Corpo com collapsible para múltiplos métodos */}
+      <div className="px-3 py-2">
         {game.notes && (
-          <p className="text-sm text-muted-foreground mb-3 pb-3 border-b">{game.notes}</p>
+          <p className="text-[11px] text-muted-foreground mb-2 pb-2 border-b line-clamp-2">{game.notes}</p>
         )}
 
-        {/* Métodos em layout compacto */}
-        <div className="space-y-2">
-          {game.methodOperations.map((operation) => {
+        {hasMultipleMethods ? (
+          <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+            {/* Resumo compacto quando fechado */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-2">
+                  {greenCount > 0 && (
+                    <span className="text-green-600 font-medium flex items-center gap-0.5">
+                      <Check className="h-3 w-3" />
+                      {greenCount}
+                    </span>
+                  )}
+                  {redCount > 0 && (
+                    <span className="text-red-600 font-medium flex items-center gap-0.5">
+                      <X className="h-3 w-3" />
+                      {redCount}
+                    </span>
+                  )}
+                  {pendingCount > 0 && (
+                    <span className="text-muted-foreground font-medium">
+                      {pendingCount} pendente{pendingCount > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-5 px-2 text-[10px]">
+                    {isOpen ? (
+                      <>
+                        Ocultar <ChevronUp className="ml-1 h-3 w-3" />
+                      </>
+                    ) : (
+                      <>
+                        Ver detalhes <ChevronDown className="ml-1 h-3 w-3" />
+                      </>
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+
+              {/* Lista expandida */}
+              <CollapsibleContent className="space-y-1.5 pt-1">
+                {game.methodOperations.map((operation) => {
+                  const isEditing = editingMethod === operation.methodId;
+                  const methodName = getMethodName(operation.methodId);
+
+                  return (
+                    <div key={operation.methodId} className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 py-1 border-b border-dashed">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-[11px] truncate">{methodName}</p>
+                          {operation.operationType && operation.entryOdds && operation.exitOdds && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {operation.operationType}: {operation.entryOdds.toFixed(2)} → {operation.exitOdds.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {operation.result === "Green" && (
+                            <span className="text-[10px] font-semibold text-green-600 flex items-center gap-0.5">
+                              <Check className="h-3 w-3" />
+                              GREEN
+                            </span>
+                          )}
+                          {operation.result === "Red" && (
+                            <span className="text-[10px] font-semibold text-red-600 flex items-center gap-0.5">
+                              <X className="h-3 w-3" />
+                              RED
+                            </span>
+                          )}
+                          {!operation.result && !isFinalized && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startEditMethod(operation)}
+                              className="h-5 text-[10px] px-2"
+                            >
+                              Registrar
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Form inline */}
+                      {isEditing && (
+                        <div className="p-2 bg-muted/30 rounded border space-y-2">
+                          <div className="grid gap-2 grid-cols-3">
+                            <div>
+                              <Label className="text-[10px]">Tipo</Label>
+                              <Select
+                                value={methodForm.operationType}
+                                onValueChange={(value: "Back" | "Lay") =>
+                                  setMethodForm({ ...methodForm, operationType: value })
+                                }
+                              >
+                                <SelectTrigger className="h-7 text-[11px]">
+                                  <SelectValue placeholder="Tipo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Back">Back</SelectItem>
+                                  <SelectItem value="Lay">Lay</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-[10px]">Entrada</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={methodForm.entryOdds}
+                                onChange={(e) =>
+                                  setMethodForm({ ...methodForm, entryOdds: e.target.value })
+                                }
+                                placeholder="2.50"
+                                className="h-7 text-[11px]"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[10px]">Saída</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={methodForm.exitOdds}
+                                onChange={(e) =>
+                                  setMethodForm({ ...methodForm, exitOdds: e.target.value })
+                                }
+                                placeholder="2.30"
+                                className="h-7 text-[11px]"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleSaveMethod(operation.methodId)}
+                              className="h-6 text-[10px] px-2"
+                            >
+                              Salvar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingMethod(null);
+                                setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
+                              }}
+                              className="h-6 text-[10px] px-2"
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        ) : (
+          // Método único - layout normal
+          game.methodOperations.map((operation) => {
             const isEditing = editingMethod === operation.methodId;
             const methodName = getMethodName(operation.methodId);
 
             return (
-              <div key={operation.methodId} className="space-y-2">
-                {/* Linha do método */}
-                <div className="flex items-center justify-between gap-3 py-1.5">
+              <div key={operation.methodId} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm mb-0.5">{methodName}</p>
+                    <p className="font-semibold text-[11px] mb-0.5">{methodName}</p>
                     {operation.operationType && operation.entryOdds && operation.exitOdds && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[10px] text-muted-foreground">
                         {operation.operationType}: {operation.entryOdds.toFixed(2)} → {operation.exitOdds.toFixed(2)}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {operation.result === "Green" && (
-                      <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
-                        <Check className="h-3.5 w-3.5" />
+                      <span className="text-[10px] font-semibold text-green-600 flex items-center gap-0.5">
+                        <Check className="h-3 w-3" />
                         GREEN
                       </span>
                     )}
                     {operation.result === "Red" && (
-                      <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
-                        <X className="h-3.5 w-3.5" />
+                      <span className="text-[10px] font-semibold text-red-600 flex items-center gap-0.5">
+                        <X className="h-3 w-3" />
                         RED
                       </span>
                     )}
                     {!operation.result && (
                       <>
-                        <span className="text-xs font-medium text-muted-foreground">PENDENTE</span>
+                        <span className="text-[10px] font-medium text-muted-foreground">PENDENTE</span>
                         {!isFinalized && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => startEditMethod(operation)}
-                            className="h-7 text-xs"
+                            className="h-6 text-[10px] px-2"
                           >
                             Registrar
                           </Button>
@@ -184,18 +356,18 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
                 {/* Form inline */}
                 {isEditing && (
-                  <div className="p-3 bg-muted/30 rounded-lg border space-y-2.5">
-                    <div className="grid gap-2.5 sm:grid-cols-3">
+                  <div className="p-2 bg-muted/30 rounded border space-y-2">
+                    <div className="grid gap-2 grid-cols-3">
                       <div>
-                        <Label className="text-xs">Tipo de Operação</Label>
+                        <Label className="text-[10px]">Tipo</Label>
                         <Select
                           value={methodForm.operationType}
                           onValueChange={(value: "Back" | "Lay") =>
                             setMethodForm({ ...methodForm, operationType: value })
                           }
                         >
-                          <SelectTrigger className="h-8">
-                            <SelectValue placeholder="Selecione" />
+                          <SelectTrigger className="h-7 text-[11px]">
+                            <SelectValue placeholder="Tipo" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Back">Back</SelectItem>
@@ -204,7 +376,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                         </Select>
                       </div>
                       <div>
-                        <Label className="text-xs">Odd de Entrada</Label>
+                        <Label className="text-[10px]">Entrada</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -212,12 +384,12 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                           onChange={(e) =>
                             setMethodForm({ ...methodForm, entryOdds: e.target.value })
                           }
-                          placeholder="Ex: 2.50"
-                          className="h-8"
+                          placeholder="2.50"
+                          className="h-7 text-[11px]"
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Odd de Saída</Label>
+                        <Label className="text-[10px]">Saída</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -225,16 +397,16 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                           onChange={(e) =>
                             setMethodForm({ ...methodForm, exitOdds: e.target.value })
                           }
-                          placeholder="Ex: 2.30"
-                          className="h-8"
+                          placeholder="2.30"
+                          className="h-7 text-[11px]"
                         />
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <Button 
                         size="sm" 
                         onClick={() => handleSaveMethod(operation.methodId)}
-                        className="h-7 text-xs"
+                        className="h-6 text-[10px] px-2"
                       >
                         Salvar
                       </Button>
@@ -245,7 +417,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                           setEditingMethod(null);
                           setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
                         }}
-                        className="h-7 text-xs"
+                        className="h-6 text-[10px] px-2"
                       >
                         Cancelar
                       </Button>
@@ -254,8 +426,8 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                 )}
               </div>
             );
-          })}
-        </div>
+          })
+        )}
       </div>
     </Card>
   );
