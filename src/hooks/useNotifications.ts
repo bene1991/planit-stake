@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 
 export interface NotificationPreferences {
   enabled: boolean;
+  nativeEnabled: boolean;      // Native browser notifications
   gameProximity: boolean;      // 15min, 5min alerts
   gameLive: boolean;           // Game started
   gameFinished: boolean;       // Game ended
@@ -25,6 +26,7 @@ const STATE_KEY = 'vt-notification-state';
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   enabled: true,
+  nativeEnabled: false,
   gameProximity: true,
   gameLive: true,
   gameFinished: true,
@@ -109,10 +111,29 @@ export const useNotifications = () => {
     }));
   };
 
+  const requestNativePermission = async (): Promise<boolean> => {
+    if (!('Notification' in window)) {
+      console.warn('Este navegador não suporta notificações nativas');
+      return false;
+    }
+
+    if (Notification.permission === 'granted') {
+      return true;
+    }
+
+    if (Notification.permission === 'denied') {
+      return false;
+    }
+
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  };
+
   return {
     preferences,
     updatePreferences,
     canShowNotification,
     markAsShown,
+    requestNativePermission,
   };
 };

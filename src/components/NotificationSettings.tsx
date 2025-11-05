@@ -1,12 +1,32 @@
-import { Bell } from 'lucide-react';
+import { Bell, MonitorSmartphone } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useNotifications } from '@/hooks/useNotifications';
+import { toast } from 'sonner';
 
 export const NotificationSettings = () => {
-  const { preferences, updatePreferences } = useNotifications();
+  const { preferences, updatePreferences, requestNativePermission } = useNotifications();
+
+  const handleNativeToggle = async (checked: boolean) => {
+    if (checked) {
+      if (!('Notification' in window)) {
+        toast.error('Seu navegador não suporta notificações nativas');
+        return;
+      }
+
+      const granted = await requestNativePermission();
+      if (granted) {
+        updatePreferences({ nativeEnabled: true });
+        toast.success('Notificações nativas ativadas! Você será alertado mesmo com a aba minimizada.');
+      } else {
+        toast.error('Permissão negada. Ative nas configurações do navegador.');
+      }
+    } else {
+      updatePreferences({ nativeEnabled: false });
+    }
+  };
 
   return (
     <Card>
@@ -34,6 +54,29 @@ export const NotificationSettings = () => {
             id="enabled"
             checked={preferences.enabled}
             onCheckedChange={(checked) => updatePreferences({ enabled: checked })}
+          />
+        </div>
+
+        <Separator />
+
+        {/* Native notifications */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <MonitorSmartphone className="h-5 w-5 text-muted-foreground" />
+            <div className="space-y-0.5">
+              <Label htmlFor="native-enabled" className="cursor-pointer font-medium">
+                Notificações nativas do navegador
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Receba alertas mesmo com a aba minimizada ou em segundo plano
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="native-enabled"
+            checked={preferences.nativeEnabled}
+            onCheckedChange={handleNativeToggle}
+            disabled={!preferences.enabled}
           />
         </div>
 
