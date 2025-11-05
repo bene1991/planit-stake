@@ -155,13 +155,13 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                     {operation.result === "Green" && (
                       <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
                         <Check className="h-4 w-4" />
-                        GANHOU
+                        GREEN
                       </span>
                     )}
                     {operation.result === "Red" && (
                       <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
                         <X className="h-4 w-4" />
-                        PERDEU
+                        RED
                       </span>
                     )}
                     {!operation.result && (
