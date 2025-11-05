@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLogo } from "@/contexts/LogoContext";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { VTLogo } from "@/components/VTLogo";
@@ -9,6 +10,7 @@ import { VTLogo } from "@/components/VTLogo";
 export const Sidebar = () => {
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { variant } = useLogo();
 
   const navItems = [
     { path: "/bankroll", label: "Gestão de Banca", icon: TrendingUp },
@@ -21,7 +23,7 @@ export const Sidebar = () => {
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex h-16 items-center gap-3 border-b px-6">
-          <VTLogo variant="chart" className="h-10 w-10" />
+          <VTLogo variant={variant} className="h-10 w-10" />
           <div>
             <h1 className="text-base font-bold text-foreground">Vini Trader</h1>
             <p className="text-xs text-muted-foreground">Sistema de Gestão</p>

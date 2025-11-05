@@ -1,18 +1,29 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLogo } from '@/contexts/LogoContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { User, KeyRound } from 'lucide-react';
+import { User, KeyRound, Palette } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { VTLogo } from '@/components/VTLogo';
+import { LogoVariant } from '@/hooks/useLogoVariant';
 
 export default function Account() {
   const { user } = useAuth();
+  const { variant, setVariant } = useLogo();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const logoVariants: { value: LogoVariant; label: string; description: string }[] = [
+    { value: 'chart', label: 'Gráfico Ascendente', description: 'Logo com linha de tendência' },
+    { value: 'candlestick', label: 'Candlesticks', description: 'Logo com padrão de velas' },
+    { value: 'minimal', label: 'Minimalista', description: 'Design circular clean' },
+  ];
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +79,32 @@ export default function Account() {
               <span>{user?.email}</span>
             </div>
           </div>
+        </div>
+
+        <div className="border-t pt-6 mb-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Palette className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-bold">Estilo da Logo</h2>
+          </div>
+
+          <RadioGroup value={variant} onValueChange={(value) => setVariant(value as LogoVariant)}>
+            <div className="grid gap-4">
+              {logoVariants.map((option) => (
+                <Label
+                  key={option.value}
+                  htmlFor={option.value}
+                  className="flex items-center gap-4 p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                >
+                  <RadioGroupItem value={option.value} id={option.value} />
+                  <VTLogo variant={option.value} className="h-12 w-12" />
+                  <div className="flex-1">
+                    <p className="font-medium">{option.label}</p>
+                    <p className="text-sm text-muted-foreground">{option.description}</p>
+                  </div>
+                </Label>
+              ))}
+            </div>
+          </RadioGroup>
         </div>
 
         <div className="border-t pt-6">
