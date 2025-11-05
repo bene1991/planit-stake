@@ -1,0 +1,36 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="faviconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#10b981" />
+      <stop offset="100%" stopColor="#059669" />
+    </linearGradient>
+  </defs>
+  
+  <rect x="0" y="0" width="120" height="120" rx="24" fill="url(#faviconGrad)"/>
+  
+  <path 
+    d="M 20 80 L 35 65 L 50 70 L 65 50 L 80 55 L 100 30" 
+    stroke="rgba(255,255,255,0.2)" 
+    strokeWidth="3" 
+    fill="none"
+    strokeLinecap="round"
+  />
+  
+  <text 
+    x="60" 
+    y="75" 
+    fontSize="48" 
+    fontWeight="900" 
+    fill="white" 
+    textAnchor="middle"
+    fontFamily="Inter, sans-serif"
+  >VT</text>
+  
+  <path 
+    d="M 95 35 L 100 30 L 105 35" 
+    stroke="white" 
+    strokeWidth="2.5" 
+    fill="none"
+    strokeLinecap="round"
+  />
+</svg>
