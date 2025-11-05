@@ -155,18 +155,18 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                     {operation.result === "Green" && (
                       <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
                         <Check className="h-4 w-4" />
-                        WON
+                        GANHOU
                       </span>
                     )}
                     {operation.result === "Red" && (
                       <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
                         <X className="h-4 w-4" />
-                        LOST
+                        PERDEU
                       </span>
                     )}
                     {!operation.result && (
                       <>
-                        <span className="text-xs font-medium text-muted-foreground">PENDING</span>
+                        <span className="text-xs font-medium text-muted-foreground">PENDENTE</span>
                         {!isFinalized && (
                           <Button
                             variant="outline"
