@@ -38,15 +38,27 @@ export const useSupabaseBankroll = () => {
       .from('bankroll')
       .select('*')
       .eq('owner_id', user.id)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error loading bankroll:', error);
+      setLoading(false);
       return;
     }
 
-    if (data) {
-      setBankroll((prev) => ({ ...prev, total: Number(data.total) }));
+    if (data && data.length > 0) {
+      // Use o registro mais recente
+      const latestBankroll = data[0];
+      setBankroll((prev) => ({ ...prev, total: Number(latestBankroll.total) }));
+      
+      // Deletar duplicados se existirem
+      if (data.length > 1) {
+        const duplicateIds = data.slice(1).map(b => b.id);
+        await supabase
+          .from('bankroll')
+          .delete()
+          .in('id', duplicateIds);
+      }
     } else {
       // Create default bankroll
       const { error: insertError } = await supabase
@@ -86,10 +98,21 @@ export const useSupabaseBankroll = () => {
   const updateTotal = async (total: number) => {
     if (!user) return;
 
+    // Buscar o registro mais recente
+    const { data: bankrollData } = await supabase
+      .from('bankroll')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!bankrollData) return;
+
     const { error } = await supabase
       .from('bankroll')
       .update({ total })
-      .eq('owner_id', user.id);
+      .eq('id', bankrollData.id);
 
     if (error) {
       toast.error('Erro ao atualizar banca');
