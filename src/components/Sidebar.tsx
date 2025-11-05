@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { VTLogo } from "@/components/VTLogo";
 
-export const Sidebar = () => {
+interface SidebarProps {
+  onItemClick?: () => void;
+}
+
+export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
   const location = useLocation();
   const { user, signOut } = useAuth();
   const { variant } = useLogo();
@@ -18,11 +22,15 @@ export const Sidebar = () => {
     { path: "/statistics", label: "Estatísticas", icon: BarChart3 },
   ];
 
+  const handleNavClick = () => {
+    onItemClick?.();
+  };
+
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-52 border-r bg-card shadow-sm">
+    <aside className="h-full w-full bg-card shadow-sm">
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center gap-3 border-b px-6">
+        <div className="flex h-16 items-center gap-3 border-b px-4 sm:px-6">
           <VTLogo variant={variant} className="h-10 w-10" />
           <div>
             <h1 className="text-base font-bold text-foreground">Vini Trader</h1>
@@ -39,6 +47,7 @@ export const Sidebar = () => {
               <Link
                 key={item.path}
                 to={item.path}
+                onClick={handleNavClick}
                 className={cn(
                   "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                   isActive
@@ -65,7 +74,7 @@ export const Sidebar = () => {
           
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Link to="/account" className="flex-1">
+            <Link to="/account" className="flex-1" onClick={handleNavClick}>
               <Button variant="ghost" size="sm" className="w-full justify-start">
                 <UserIcon className="mr-2 h-4 w-4" />
                 Conta
@@ -73,7 +82,15 @@ export const Sidebar = () => {
             </Link>
           </div>
           
-          <Button variant="ghost" size="sm" onClick={signOut} className="w-full justify-start">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => {
+              signOut();
+              handleNavClick();
+            }} 
+            className="w-full justify-start"
+          >
             <LogOut className="mr-2 h-4 w-4" />
             Sair
           </Button>
