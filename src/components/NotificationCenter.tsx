@@ -11,6 +11,8 @@ import {
   getPendingOperationsCount,
   formatGameName,
 } from '@/utils/notificationHelpers';
+import { playNotificationSound, NotificationSoundType } from '@/utils/soundManager';
+import { supabase } from '@/integrations/supabase/client';
 
 interface NotificationCenterProps {
   children: React.ReactNode;
@@ -42,13 +44,44 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     }
   }, [preferences.nativeEnabled, requestNativePermission]);
 
-  // Show notification (toast or native)
+  // Send Telegram notification
+  const sendTelegramNotification = async (
+    title: string,
+    body: string,
+    type: NotificationSoundType
+  ) => {
+    if (!preferences.telegramEnabled) return;
+
+    try {
+      const { error } = await supabase.functions.invoke('send-telegram-notification', {
+        body: {
+          title,
+          message: body,
+          type,
+        },
+      });
+
+      if (error) {
+        console.error('Failed to send Telegram notification:', error);
+      }
+    } catch (error) {
+      console.error('Error invoking Telegram function:', error);
+    }
+  };
+
+  // Show notification (toast, native, sound, and telegram)
   const showNotification = (
     title: string,
     body: string,
     type: 'success' | 'warning' | 'error' | 'info' = 'info',
     action?: { label: string; onClick: () => void }
   ) => {
+    // Play sound
+    playNotificationSound(type, preferences.soundEnabled);
+
+    // Send to Telegram (async, non-blocking)
+    sendTelegramNotification(title, body, type);
+
     const useNative = preferences.nativeEnabled && !isPageVisible && 'Notification' in window && Notification.permission === 'granted';
 
     if (useNative) {

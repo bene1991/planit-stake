@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 export interface NotificationPreferences {
   enabled: boolean;
   nativeEnabled: boolean;      // Native browser notifications
+  telegramEnabled: boolean;    // Telegram notifications
+  soundEnabled: boolean;       // Sound notifications
   gameProximity: boolean;      // 15min, 5min alerts
   gameLive: boolean;           // Game started
   gameFinished: boolean;       // Game ended
@@ -27,6 +29,8 @@ const STATE_KEY = 'vt-notification-state';
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   enabled: true,
   nativeEnabled: false,
+  telegramEnabled: false,
+  soundEnabled: true,
   gameProximity: true,
   gameLive: true,
   gameFinished: true,

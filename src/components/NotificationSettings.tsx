@@ -1,10 +1,12 @@
-import { Bell, MonitorSmartphone } from 'lucide-react';
+import { Bell, MonitorSmartphone, Volume2, Send } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
+import { testSound } from '@/utils/soundManager';
 
 export const NotificationSettings = () => {
   const { preferences, updatePreferences, requestNativePermission } = useNotifications();
@@ -78,6 +80,94 @@ export const NotificationSettings = () => {
             onCheckedChange={handleNativeToggle}
             disabled={!preferences.enabled}
           />
+        </div>
+
+        <Separator />
+
+        {/* Telegram notifications */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Send className="h-5 w-5 text-muted-foreground" />
+            <div className="space-y-0.5">
+              <Label htmlFor="telegram-enabled" className="cursor-pointer font-medium">
+                Enviar para Telegram
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Receba todas as notificações também no seu Telegram
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="telegram-enabled"
+            checked={preferences.telegramEnabled}
+            onCheckedChange={(checked) => updatePreferences({ telegramEnabled: checked })}
+            disabled={!preferences.enabled}
+          />
+        </div>
+
+        <Separator />
+
+        {/* Sound notifications */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Volume2 className="h-5 w-5 text-muted-foreground" />
+              <div className="space-y-0.5">
+                <Label htmlFor="sound-enabled" className="cursor-pointer font-medium">
+                  Sons de notificação
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Reproduzir som ao receber notificações
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="sound-enabled"
+              checked={preferences.soundEnabled}
+              onCheckedChange={(checked) => updatePreferences({ soundEnabled: checked })}
+              disabled={!preferences.enabled}
+            />
+          </div>
+
+          {preferences.soundEnabled && (
+            <div className="ml-8 space-y-2">
+              <p className="text-xs text-muted-foreground mb-2">Testar sons:</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testSound('success')}
+                  className="text-xs"
+                >
+                  ✅ Sucesso
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testSound('warning')}
+                  className="text-xs"
+                >
+                  ⚠️ Aviso
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testSound('error')}
+                  className="text-xs"
+                >
+                  🚨 Erro
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testSound('info')}
+                  className="text-xs"
+                >
+                  ℹ️ Info
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         <Separator />
