@@ -135,7 +135,7 @@ export default function DailyPlanning() {
       {/* Header compacto */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
             Planejamento Diário
             {liveGames > 0 && (
               <Badge variant="destructive" className="animate-pulse">
@@ -213,7 +213,7 @@ export default function DailyPlanning() {
               description="Adicione jogos para começar a planejar suas operações"
             />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {sortedPlanned.map((game) => (
                 <div key={game.id} className="animate-in fade-in-50 duration-200">
                   <GameCard
@@ -237,7 +237,7 @@ export default function DailyPlanning() {
               description="Jogos com todos os métodos finalizados aparecerão aqui"
             />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {sortedFinalized.map((game) => (
                 <div key={game.id} className="animate-in fade-in-50 duration-200">
                   <GameCard
