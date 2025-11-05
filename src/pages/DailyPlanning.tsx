@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { updateGameStatuses } from "@/utils/gameStatus";
@@ -20,15 +20,6 @@ export default function DailyPlanning() {
   const [showForm, setShowForm] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
 
-  // Auto-update game statuses every 5 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      updateStatuses();
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => clearInterval(interval);
-  }, [games]);
-
   const updateStatuses = async () => {
     const updatedGames = updateGameStatuses(games);
     
@@ -41,8 +32,24 @@ export default function DailyPlanning() {
     }
     
     await refreshGames();
-    console.log('✅ Game statuses updated at', new Date().toISOString());
+    console.log('✅ Game statuses updated at (UTC-3)', new Date().toISOString());
   };
+
+  // Criar referência estável para updateStatuses
+  const updateStatusesRef = useRef(updateStatuses);
+
+  useEffect(() => {
+    updateStatusesRef.current = updateStatuses;
+  }, [games, updateGame, refreshGames]);
+
+  // Auto-update game statuses every 1 minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      updateStatusesRef.current();
+    }, 60 * 1000); // 1 minuto
+
+    return () => clearInterval(interval);
+  }, []); // Array vazio - interval nunca reseta
 
   const handleSubmit = (gameData: Omit<Game, "id">) => {
     if (editingGame) {

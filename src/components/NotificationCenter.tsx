@@ -13,6 +13,7 @@ import {
 } from '@/utils/notificationHelpers';
 import { playNotificationSound, NotificationSoundType } from '@/utils/soundManager';
 import { supabase } from '@/integrations/supabase/client';
+import { getNowInBrasilia } from '@/utils/timezone';
 
 interface NotificationCenterProps {
   children: React.ReactNode;
@@ -132,9 +133,10 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     if (!preferences.enabled) return;
 
     const checkNotifications = () => {
-      console.log('🔍 Checking notifications...', {
+      console.log('🔍 Checking notifications (UTC-3)...', {
         enabled: preferences.enabled,
         gamesCount: games.length,
+        currentTimeBrasilia: getNowInBrasilia().toISOString(),
         timestamp: new Date().toISOString(),
         preferences: {
           gameProximity: preferences.gameProximity,

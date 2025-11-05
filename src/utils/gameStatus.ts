@@ -1,3 +1,5 @@
+import { getNowInBrasilia } from './timezone';
+
 /**
  * Calculates the game status based on the start time
  * @param dateTime - Game start date/time in ISO format
@@ -6,8 +8,8 @@
 export function calculateGameStatus(dateTime: string): string {
   if (!dateTime) return 'Not Started';
 
-  const now = new Date();
-  const gameStart = new Date(dateTime);
+  const now = getNowInBrasilia(); // UTC-3
+  const gameStart = new Date(dateTime + '-03:00'); // Força UTC-3
   
   // Game end time is 2 hours and 10 minutes after start
   const gameEnd = new Date(gameStart.getTime() + (2 * 60 + 10) * 60 * 1000);

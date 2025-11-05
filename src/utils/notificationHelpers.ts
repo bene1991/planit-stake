@@ -1,15 +1,16 @@
 import { Game } from "@/hooks/useSupabaseGames";
+import { getNowInBrasilia, getGameDateTimeInBrasilia } from './timezone';
 
 /**
  * Calculate minutes until game starts
  */
 export const getMinutesUntilGameStart = (game: Game): number => {
-  const now = new Date();
-  const gameStart = new Date(`${game.date}T${game.time}`);
+  const now = getNowInBrasilia(); // UTC-3
+  const gameStart = getGameDateTimeInBrasilia(game.date, game.time); // UTC-3
   const minutesUntil = Math.floor((gameStart.getTime() - now.getTime()) / (1000 * 60));
   
-  console.log(`📅 [${game.homeTeam} vs ${game.awayTeam}]`, {
-    now: now.toISOString(),
+  console.log(`📅 [${game.homeTeam} vs ${game.awayTeam}] (UTC-3)`, {
+    nowBrasilia: now.toISOString(),
     gameDate: game.date,
     gameTime: game.time,
     gameStart: gameStart.toISOString(),
