@@ -5,9 +5,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Edit, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface GameCardProps {
   game: Game;
@@ -86,8 +88,13 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
     return methods.find((m) => m.id === methodId)?.name || "Método não encontrado";
   };
 
+  const isLive = game.status === 'Live';
+
   return (
-    <Card className="p-6 shadow-card transition-shadow hover:shadow-hover">
+    <Card className={cn(
+      "p-6 shadow-card transition-all",
+      isLive && "border-2 border-red-500 bg-red-500/5"
+    )}>
       <div className="space-y-4">
         {/* Cabeçalho do jogo */}
         <div className="flex items-start justify-between">
@@ -100,6 +107,11 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
               <span className="rounded bg-secondary/10 px-2 py-1 text-xs font-medium text-secondary">
                 {game.league}
               </span>
+              {isLive && (
+                <Badge variant="destructive" className="animate-pulse">
+                  🔴 AO VIVO
+                </Badge>
+              )}
             </div>
             <div className="text-lg font-bold">
               {game.homeTeam} <span className="text-muted-foreground">vs</span> {game.awayTeam}

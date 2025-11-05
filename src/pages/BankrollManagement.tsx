@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useBankroll } from "@/hooks/useBankroll";
+import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Trash2, Plus, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
 export default function BankrollManagement() {
-  const { bankroll, updateTotal, addMethod, updateMethod, deleteMethod } = useBankroll();
+  const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod } = useSupabaseBankroll();
   const [newMethodName, setNewMethodName] = useState("");
   const [newMethodPercentage, setNewMethodPercentage] = useState("");
 
@@ -44,6 +44,14 @@ export default function BankrollManagement() {
 
   const totalAllocated = bankroll.methods.reduce((sum, m) => sum + m.percentage, 0);
   const remainingPercentage = 100 - totalAllocated;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

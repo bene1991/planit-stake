@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { useGames } from "@/hooks/useGames";
-import { useBankroll } from "@/hooks/useBankroll";
+import { useState, useEffect } from "react";
+import { useSupabaseGames } from "@/hooks/useSupabaseGames";
+import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
+import { updateGameStatuses } from "@/utils/gameStatus";
+import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -11,10 +13,34 @@ import { GameForm } from "@/components/GameForm";
 import { Game } from "@/types";
 
 export default function DailyPlanning() {
-  const { games, addGame, updateGame, deleteGame } = useGames();
-  const { bankroll } = useBankroll();
+  const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
+  const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const [showForm, setShowForm] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
+
+  // Auto-update game statuses every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      updateStatuses();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
+  }, [games]);
+
+  const updateStatuses = async () => {
+    const updatedGames = updateGameStatuses(games);
+    
+    // Update games with changed statuses
+    for (const game of updatedGames) {
+      const originalGame = games.find(g => g.id === game.id);
+      if (originalGame && originalGame.status !== game.status) {
+        await updateGame(game.id, { status: game.status });
+      }
+    }
+    
+    await refreshGames();
+    toast.success('Status dos jogos atualizado!');
+  };
 
   const handleSubmit = (gameData: Omit<Game, "id">) => {
     if (editingGame) {
@@ -86,8 +112,18 @@ export default function DailyPlanning() {
     };
   });
 
+  if (gamesLoading || bankrollLoading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <DataMigration />
+      
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary">
@@ -98,10 +134,15 @@ export default function DailyPlanning() {
             <p className="text-muted-foreground">Organize e acompanhe suas operações</p>
           </div>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Jogo
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={updateStatuses}>
+            Atualizar status dos jogos
+          </Button>
+          <Button onClick={() => setShowForm(!showForm)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Jogo
+          </Button>
+        </div>
       </div>
 
       {showForm && (

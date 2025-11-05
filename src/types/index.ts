@@ -26,4 +26,5 @@ export interface Game {
   awayTeam: string;
   methodOperations: MethodOperation[];
   notes?: string;
+  status?: string;
 }
