@@ -24,7 +24,10 @@ export function useLiveStats(fixtureId?: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!fixtureId) return;
+    if (!fixtureId || fixtureId === 'mock-fixture-id') {
+      setStats(null);
+      return;
+    }
 
     const fetchStats = async () => {
       setLoading(true);

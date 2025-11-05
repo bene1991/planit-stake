@@ -30,6 +30,7 @@ export interface Game {
   methodOperations: MethodOperation[];
   notes?: string;
   status?: string;
+  api_fixture_id?: string;
 }
 
 export interface Estrategia {

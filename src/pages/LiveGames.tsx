@@ -17,6 +17,7 @@ import { PressureChart } from '@/components/LiveStats/PressureChart';
 import { StatsComparison } from '@/components/LiveStats/StatsComparison';
 import { EventTimeline } from '@/components/LiveStats/EventTimeline';
 import { useLiveStats } from '@/hooks/useLiveStats';
+import { FixtureLinker } from '@/components/LiveStats/FixtureLinker';
 
 export default function LiveGames() {
   const { games, loading, refreshGames } = useSupabaseGames();
@@ -52,7 +53,7 @@ export default function LiveGames() {
   };
 
   const selectedGame = liveGames.find(g => g.id === selectedGameId);
-  const { stats } = useLiveStats(selectedGame ? 'mock-fixture-id' : undefined);
+  const { stats } = useLiveStats(selectedGame?.api_fixture_id);
 
   if (loading) {
     return (
@@ -97,7 +98,20 @@ export default function LiveGames() {
                 <div className="space-y-4">
                   {/* Header */}
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">{game.league}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">{game.league}</span>
+                      <FixtureLinker
+                        gameId={game.id}
+                        gameDate={game.date}
+                        homeTeam={game.homeTeam}
+                        awayTeam={game.awayTeam}
+                        currentFixtureId={game.api_fixture_id}
+                        onLinked={() => {
+                          refreshGames();
+                          updateStatuses();
+                        }}
+                      />
+                    </div>
                     <Badge variant="default" className="bg-red-500 animate-pulse">
                       <span className="flex items-center gap-1.5">
                         <span className="h-1.5 w-1.5 rounded-full bg-white" />
