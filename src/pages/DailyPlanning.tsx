@@ -45,11 +45,15 @@ export default function DailyPlanning() {
     updateStatusesRef.current = updateStatuses;
   }, [games, updateGame, refreshGames]);
 
-  // Auto-update game statuses every 1 minute
+  // Auto-update game statuses every 30 seconds (mais frequente)
   useEffect(() => {
+    // Atualizar imediatamente ao carregar
+    updateStatusesRef.current();
+    
+    // Depois atualizar a cada 30 segundos
     const interval = setInterval(() => {
       updateStatusesRef.current();
-    }, 60 * 1000); // 1 minuto
+    }, 30 * 1000); // 30 segundos
 
     return () => clearInterval(interval);
   }, []); // Array vazio - interval nunca reseta
