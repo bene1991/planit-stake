@@ -18,6 +18,8 @@ export interface Game {
   league: string;
   homeTeam: string;
   awayTeam: string;
+  homeTeamLogo?: string;
+  awayTeamLogo?: string;
   methodOperations: MethodOperation[];
   notes?: string;
   status?: string;
@@ -72,6 +74,8 @@ export const useSupabaseGames = () => {
             league: game.league,
             homeTeam: game.home_team,
             awayTeam: game.away_team,
+            homeTeamLogo: game.home_team_logo || undefined,
+            awayTeamLogo: game.away_team_logo || undefined,
             notes: game.notes || undefined,
             status: game.status || 'Not Started',
             methodOperations,
@@ -96,6 +100,8 @@ export const useSupabaseGames = () => {
         league: game.league,
         home_team: game.homeTeam,
         away_team: game.awayTeam,
+        home_team_logo: game.homeTeamLogo,
+        away_team_logo: game.awayTeamLogo,
         notes: game.notes,
         status: game.status || 'Not Started',
       })
@@ -137,6 +143,8 @@ export const useSupabaseGames = () => {
     if (updates.league) gameUpdates.league = updates.league;
     if (updates.homeTeam) gameUpdates.home_team = updates.homeTeam;
     if (updates.awayTeam) gameUpdates.away_team = updates.awayTeam;
+    if (updates.homeTeamLogo !== undefined) gameUpdates.home_team_logo = updates.homeTeamLogo;
+    if (updates.awayTeamLogo !== undefined) gameUpdates.away_team_logo = updates.awayTeamLogo;
     if (updates.notes !== undefined) gameUpdates.notes = updates.notes;
     if (updates.status) gameUpdates.status = updates.status;
 

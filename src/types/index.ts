@@ -25,6 +25,8 @@ export interface Game {
   league: string;
   homeTeam: string;
   awayTeam: string;
+  homeTeamLogo?: string;
+  awayTeamLogo?: string;
   methodOperations: MethodOperation[];
   notes?: string;
   status?: string;

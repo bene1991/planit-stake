@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Edit, Check, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Trash2, Edit, Check, X, ChevronDown, ChevronUp, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -114,9 +115,27 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                 </span>
               )}
             </div>
-            <h3 className="text-xs font-semibold text-foreground leading-tight mb-0.5">
-              {game.homeTeam} vs {game.awayTeam}
-            </h3>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              {game.homeTeamLogo && (
+                <Avatar className="h-4 w-4">
+                  <AvatarImage src={game.homeTeamLogo} alt={game.homeTeam} />
+                  <AvatarFallback className="text-[8px]">
+                    <Shield className="h-2.5 w-2.5" />
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <h3 className="text-xs font-semibold text-foreground leading-tight flex-1 truncate">
+                {game.homeTeam} vs {game.awayTeam}
+              </h3>
+              {game.awayTeamLogo && (
+                <Avatar className="h-4 w-4">
+                  <AvatarImage src={game.awayTeamLogo} alt={game.awayTeam} />
+                  <AvatarFallback className="text-[8px]">
+                    <Shield className="h-2.5 w-2.5" />
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
               <span>{new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}</span>
               <span>•</span>

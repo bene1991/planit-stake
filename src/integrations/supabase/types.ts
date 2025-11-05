@@ -103,10 +103,12 @@ export type Database = {
       games: {
         Row: {
           away_team: string
+          away_team_logo: string | null
           created_at: string | null
           date: string
           date_time: string | null
           home_team: string
+          home_team_logo: string | null
           id: string
           league: string
           notes: string | null
@@ -117,10 +119,12 @@ export type Database = {
         }
         Insert: {
           away_team: string
+          away_team_logo?: string | null
           created_at?: string | null
           date: string
           date_time?: string | null
           home_team: string
+          home_team_logo?: string | null
           id?: string
           league: string
           notes?: string | null
@@ -131,10 +135,12 @@ export type Database = {
         }
         Update: {
           away_team?: string
+          away_team_logo?: string | null
           created_at?: string | null
           date?: string
           date_time?: string | null
           home_team?: string
+          home_team_logo?: string | null
           id?: string
           league?: string
           notes?: string | null
