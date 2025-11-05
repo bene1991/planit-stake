@@ -115,23 +115,23 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 mb-0.5">
+            <div className="flex items-center gap-2 mb-0.5">
               {game.homeTeamLogo && (
-                <Avatar className="h-4 w-4">
+                <Avatar className="h-6 w-6 flex-shrink-0">
                   <AvatarImage src={game.homeTeamLogo} alt={game.homeTeam} />
-                  <AvatarFallback className="text-[8px]">
-                    <Shield className="h-2.5 w-2.5" />
+                  <AvatarFallback className="text-[10px]">
+                    <Shield className="h-3 w-3" />
                   </AvatarFallback>
                 </Avatar>
               )}
-              <h3 className="text-xs font-semibold text-foreground leading-tight flex-1 truncate">
+              <h3 className="text-xs font-semibold text-foreground leading-tight">
                 {game.homeTeam} vs {game.awayTeam}
               </h3>
               {game.awayTeamLogo && (
-                <Avatar className="h-4 w-4">
+                <Avatar className="h-6 w-6 flex-shrink-0">
                   <AvatarImage src={game.awayTeamLogo} alt={game.awayTeam} />
-                  <AvatarFallback className="text-[8px]">
-                    <Shield className="h-2.5 w-2.5" />
+                  <AvatarFallback className="text-[10px]">
+                    <Shield className="h-3 w-3" />
                   </AvatarFallback>
                 </Avatar>
               )}
