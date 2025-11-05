@@ -7,14 +7,12 @@ import { TeamStatsTable } from '@/components/Charts/TeamStatsTable';
 import { MethodComparisonChart } from '@/components/Charts/MethodComparisonChart';
 import { ResultsTimelineChart } from '@/components/Charts/ResultsTimelineChart';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { BarChart3, Download, RefreshCw } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { TrendingUp, TrendingDown, Target, Download, RefreshCw } from 'lucide-react';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
 
 export default function Statistics() {
-  const { user } = useAuth();
   const { games, loading: gamesLoading, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
 
@@ -40,19 +38,12 @@ export default function Statistics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 shadow-lg">
-            <BarChart3 className="h-7 w-7 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Estatísticas
-            </h1>
-            <p className="text-muted-foreground">
-              Análise detalhada de performance • {games.length} jogos
-            </p>
-          </div>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Estatísticas</h1>
+          <p className="text-sm text-muted-foreground">
+            Análise de performance • {games.length} operações
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleRefresh}>
@@ -66,37 +57,28 @@ export default function Statistics() {
         </div>
       </div>
 
-
-      {/* Cards de resumo */}
+      {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card className="p-5 shadow-card bg-gradient-to-br from-muted/60 to-muted/30 transition-all hover:scale-105">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">📊</span>
-            <p className="text-sm text-muted-foreground">Total de Operações</p>
-          </div>
-          <p className="text-3xl font-bold">{statistics.overallStats.total}</p>
-        </Card>
-        <Card className="p-5 shadow-card bg-gradient-to-br from-green-500/15 to-green-500/5 transition-all hover:scale-105">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">✅</span>
-            <p className="text-sm text-muted-foreground">Greens</p>
-          </div>
-          <p className="text-3xl font-bold text-green-600">{statistics.overallStats.greens}</p>
-        </Card>
-        <Card className="p-5 shadow-card bg-gradient-to-br from-red-500/15 to-red-500/5 transition-all hover:scale-105">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">❌</span>
-            <p className="text-sm text-muted-foreground">Reds</p>
-          </div>
-          <p className="text-3xl font-bold text-red-600">{statistics.overallStats.reds}</p>
-        </Card>
-        <Card className="p-5 shadow-card bg-gradient-to-br from-primary/15 to-primary/5 transition-all hover:scale-105">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">🎯</span>
-            <p className="text-sm text-muted-foreground">Win Rate</p>
-          </div>
-          <p className="text-3xl font-bold text-primary">{statistics.overallStats.winRate}%</p>
-        </Card>
+        <StatCard
+          label="Total de Operações"
+          value={statistics.overallStats.total}
+          icon={<TrendingUp className="h-5 w-5" />}
+        />
+        <StatCard
+          label="Greens"
+          value={statistics.overallStats.greens}
+          className="text-green-600"
+        />
+        <StatCard
+          label="Reds"
+          value={statistics.overallStats.reds}
+          className="text-red-600"
+        />
+        <StatCard
+          label="Win Rate"
+          value={`${statistics.overallStats.winRate}%`}
+          icon={<Target className="h-5 w-5" />}
+        />
       </div>
 
       {/* Gráficos principais */}

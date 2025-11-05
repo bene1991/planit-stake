@@ -5,9 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Edit, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Trash2, Edit, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -92,113 +91,99 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
   return (
     <Card className={cn(
-      "overflow-hidden shadow-card transition-all hover:shadow-hover animate-fade-in",
-      "bg-gradient-to-br from-card to-card/50",
-      isLive && "border-2 border-red-500 shadow-red-500/20"
+      "overflow-hidden shadow-sm border border-border transition-shadow hover:shadow-md",
+      isLive && "border-l-4 border-l-red-600"
     )}>
-      {/* Header do Card */}
-      <div className="relative bg-gradient-to-r from-muted/30 to-muted/10 px-6 py-4 border-b">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-xl font-bold text-foreground">{game.league}</h3>
+      {/* Header compacto */}
+      <div className="px-6 py-4 border-b bg-muted/20">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs uppercase text-muted-foreground font-medium">{game.league}</p>
               {isLive && (
-                <Badge variant="destructive" className="animate-pulse">
-                  🔴 AO VIVO
-                </Badge>
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
+                  LIVE
+                </span>
               )}
             </div>
+            <h3 className="text-base font-semibold text-foreground mb-1">
+              {game.homeTeam} vs {game.awayTeam}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              {game.homeTeam} ⚽ {game.awayTeam} • {game.time} • {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")}
+              {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR")} • {game.time}
             </p>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1 flex-shrink-0">
             {!isFinalized && (
               <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-8 w-8 p-0">
-                <Edit className="h-3.5 w-3.5" />
+                <Edit className="h-4 w-4" />
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={() => onDelete(game.id)} className="h-8 w-8 p-0 text-destructive hover:text-destructive">
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Corpo do Card */}
+      {/* Corpo */}
       <div className="p-6">
         {game.notes && (
           <p className="text-sm text-muted-foreground mb-4 pb-4 border-b">{game.notes}</p>
         )}
 
-        {/* Lista de métodos - Design simples e limpo */}
-        <div className="space-y-2">
+        {/* Métodos em layout tabular */}
+        <div className="space-y-3">
           {game.methodOperations.map((operation) => {
             const isEditing = editingMethod === operation.methodId;
             const methodName = getMethodName(operation.methodId);
 
             return (
-              <div
-                key={operation.methodId}
-                className="group relative"
-              >
-                {/* Linha do método - layout horizontal limpo */}
-                <div className={cn(
-                  "flex items-center gap-3 py-3 px-4 rounded-lg transition-all",
-                  "border-l-4",
-                  operation.result === "Green" && "border-l-green-500 bg-green-500/5",
-                  operation.result === "Red" && "border-l-red-500 bg-red-500/5",
-                  !operation.result && "border-l-muted bg-muted/20"
-                )}>
-                  {/* Ícone de resultado */}
-                  <div className="flex-shrink-0">
+              <div key={operation.methodId} className="space-y-3">
+                {/* Linha do método */}
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm mb-0.5">{methodName}</p>
+                    {operation.operationType && operation.entryOdds && operation.exitOdds && (
+                      <p className="text-xs text-muted-foreground">
+                        {operation.operationType}: {operation.entryOdds.toFixed(2)} → {operation.exitOdds.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
                     {operation.result === "Green" && (
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <span className="text-xs font-semibold text-green-600 flex items-center gap-1">
+                        <Check className="h-4 w-4" />
+                        WON
+                      </span>
                     )}
                     {operation.result === "Red" && (
-                      <XCircle className="h-5 w-5 text-red-600" />
+                      <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                        <X className="h-4 w-4" />
+                        LOST
+                      </span>
                     )}
                     {!operation.result && (
-                      <Clock className="h-5 w-5 text-muted-foreground" />
+                      <>
+                        <span className="text-xs font-medium text-muted-foreground">PENDING</span>
+                        {!isFinalized && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditMethod(operation)}
+                          >
+                            Registrar
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
-
-                  {/* Nome do método */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-sm">{methodName}</span>
-                      {operation.operationType && operation.entryOdds && operation.exitOdds && (
-                        <span className="text-xs text-muted-foreground">
-                          {operation.operationType}: {operation.entryOdds.toFixed(2)} → {operation.exitOdds.toFixed(2)}
-                        </span>
-                      )}
-                      {operation.result && (
-                        <Badge 
-                          variant={operation.result === "Green" ? "default" : "destructive"}
-                          className="text-xs"
-                        >
-                          {operation.result}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Botão registrar resultado */}
-                  {!operation.result && !isFinalized && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startEditMethod(operation)}
-                      className="ml-auto"
-                    >
-                      Registrar
-                    </Button>
-                  )}
                 </div>
 
-                {/* Formulário de edição inline */}
+                {/* Form inline */}
                 {isEditing && (
-                  <div className="mt-3 p-4 bg-muted/30 rounded-lg border space-y-3">
+                  <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div>
                         <Label className="text-xs">Tipo de Operação</Label>
