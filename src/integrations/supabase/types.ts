@@ -14,7 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      bankroll: {
+        Row: {
+          created_at: string | null
+          id: string
+          owner_id: string
+          total: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          owner_id: string
+          total?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          owner_id?: string
+          total?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      games: {
+        Row: {
+          away_team: string
+          created_at: string | null
+          date: string
+          date_time: string | null
+          home_team: string
+          id: string
+          league: string
+          notes: string | null
+          owner_id: string
+          status: string | null
+          time: string
+          updated_at: string | null
+        }
+        Insert: {
+          away_team: string
+          created_at?: string | null
+          date: string
+          date_time?: string | null
+          home_team: string
+          id?: string
+          league: string
+          notes?: string | null
+          owner_id: string
+          status?: string | null
+          time: string
+          updated_at?: string | null
+        }
+        Update: {
+          away_team?: string
+          created_at?: string | null
+          date?: string
+          date_time?: string | null
+          home_team?: string
+          id?: string
+          league?: string
+          notes?: string | null
+          owner_id?: string
+          status?: string | null
+          time?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      method_operations: {
+        Row: {
+          created_at: string | null
+          entry_odds: number | null
+          exit_odds: number | null
+          game_id: string
+          id: string
+          method_id: string
+          operation_type: string | null
+          result: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          entry_odds?: number | null
+          exit_odds?: number | null
+          game_id: string
+          id?: string
+          method_id: string
+          operation_type?: string | null
+          result?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          entry_odds?: number | null
+          exit_odds?: number | null
+          game_id?: string
+          id?: string
+          method_id?: string
+          operation_type?: string | null
+          result?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "method_operations_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "method_operations_method_id_fkey"
+            columns: ["method_id"]
+            isOneToOne: false
+            referencedRelation: "methods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      methods: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          owner_id: string
+          percentage: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          percentage: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          percentage?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
