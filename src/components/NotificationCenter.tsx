@@ -51,20 +51,26 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     body: string,
     type: NotificationSoundType
   ) => {
-    console.log('🔔 Telegram notification attempt:', { 
-      title, 
-      type, 
-      enabled: preferences.telegramEnabled,
-      timestamp: new Date().toISOString()
-    });
+    if (import.meta.env.DEV) {
+      console.log('🔔 Telegram notification attempt:', { 
+        title, 
+        type, 
+        enabled: preferences.telegramEnabled,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     if (!preferences.telegramEnabled) {
-      console.log('⚠️ Telegram notifications disabled in preferences');
+      if (import.meta.env.DEV) {
+        console.log('⚠️ Telegram notifications disabled in preferences');
+      }
       return;
     }
 
     try {
-      console.log('📤 Invoking Telegram edge function...');
+      if (import.meta.env.DEV) {
+        console.log('📤 Invoking Telegram edge function...');
+      }
       const { data, error } = await supabase.functions.invoke('send-telegram-notification', {
         body: {
           title,
@@ -75,7 +81,7 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
 
       if (error) {
         console.error('❌ Telegram error:', error);
-      } else {
+      } else if (import.meta.env.DEV) {
         console.log('✅ Telegram sent successfully:', data);
       }
     } catch (error) {
@@ -151,27 +157,35 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
 
       // 1. Check game proximity alerts (15min, 5min)
       if (preferences.gameProximity) {
-        console.log('🎮 Total games to check:', games.length);
+        if (import.meta.env.DEV) {
+          console.log('🎮 Total games to check:', games.length);
+        }
         games.forEach(game => {
-          console.log(`📋 Game: ${formatGameName(game)}`, {
-            status: game.status,
-            date: game.date,
-            time: game.time,
-            willCheck: game.status === 'Not Started'
-          });
+          if (import.meta.env.DEV) {
+            console.log(`📋 Game: ${formatGameName(game)}`, {
+              status: game.status,
+              date: game.date,
+              time: game.time,
+              willCheck: game.status === 'Not Started'
+            });
+          }
           
           if (game.status !== 'Not Started') return;
           
           const minutesUntil = getMinutesUntilGameStart(game);
           const gameName = formatGameName(game);
           
-          console.log(`⏰ Game "${gameName}": ${minutesUntil.toFixed(1)} minutes until start, Status: ${game.status}`);
+          if (import.meta.env.DEV) {
+            console.log(`⏰ Game "${gameName}": ${minutesUntil.toFixed(1)} minutes until start, Status: ${game.status}`);
+          }
 
           // 15 minutes warning - expanded window (14-16 min)
           if (minutesUntil <= 16 && minutesUntil >= 14) {
             const notifId = `game-${game.id}-15min`;
             if (canShowNotification(notifId)) {
-              console.log(`📢 Triggering 15-min notification for ${gameName}`);
+              if (import.meta.env.DEV) {
+                console.log(`📢 Triggering 15-min notification for ${gameName}`);
+              }
               showNotification(
                 `⚠️ Jogo começa em 15 min: ${gameName}`,
                 'Prepare-se para o início',
@@ -186,7 +200,9 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
           if (minutesUntil <= 6 && minutesUntil >= 4) {
             const notifId = `game-${game.id}-5min`;
             if (canShowNotification(notifId)) {
-              console.log(`📢 Triggering 5-min notification for ${gameName}`);
+              if (import.meta.env.DEV) {
+                console.log(`📢 Triggering 5-min notification for ${gameName}`);
+              }
               showNotification(
                 `🔴 ATENÇÃO! Jogo começa em 5 min: ${gameName}`,
                 'Últimos minutos antes do início!',

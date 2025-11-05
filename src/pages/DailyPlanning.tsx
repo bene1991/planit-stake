@@ -32,7 +32,9 @@ export default function DailyPlanning() {
     }
     
     await refreshGames();
-    console.log('✅ Game statuses updated at (UTC-3)', new Date().toISOString());
+    if (import.meta.env.DEV) {
+      console.log('✅ Game statuses updated at (UTC-3)', new Date().toISOString());
+    }
   };
 
   // Criar referência estável para updateStatuses
