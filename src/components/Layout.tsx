@@ -9,7 +9,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
       </div>
 
       {/* Main Content */}
-      <main className="relative flex-1 overflow-auto lg:ml-64">
+      <main className="relative flex-1 overflow-auto lg:ml-52">
         {/* Subtle background pattern */}
         <div 
           className="absolute inset-0 pointer-events-none opacity-[0.02] dark:opacity-[0.03]"
