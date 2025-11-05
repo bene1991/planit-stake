@@ -7,6 +7,7 @@ export interface Method {
   id: string;
   name: string;
   percentage: number;
+  indice_confianca?: number;
 }
 
 export interface Bankroll {
@@ -90,8 +91,29 @@ export const useSupabaseBankroll = () => {
         id: m.id,
         name: m.name,
         percentage: Number(m.percentage),
+        indice_confianca: m.indice_confianca ? Number(m.indice_confianca) : 0,
       }));
       setBankroll((prev) => ({ ...prev, methods }));
+    }
+  };
+
+  const atualizarIndicesConfianca = async () => {
+    if (!user) return;
+
+    try {
+      // Chamar função do Supabase para atualizar índices
+      const { error } = await supabase.rpc('atualizar_indices_confianca', {
+        user_id_param: user.id
+      });
+
+      if (error) throw error;
+
+      // Recarregar métodos para pegar novos índices
+      await loadMethods();
+      toast.success('Índices de confiança atualizados!');
+    } catch (error) {
+      console.error('Error updating confidence indices:', error);
+      toast.error('Erro ao atualizar índices');
     }
   };
 
@@ -148,6 +170,7 @@ export const useSupabaseBankroll = () => {
         id: data.id,
         name: data.name,
         percentage: Number(data.percentage),
+        indice_confianca: data.indice_confianca ? Number(data.indice_confianca) : 0,
       };
       setBankroll((prev) => ({
         ...prev,
@@ -208,5 +231,6 @@ export const useSupabaseBankroll = () => {
     addMethod,
     updateMethod,
     deleteMethod,
+    atualizarIndicesConfianca,
   };
 };

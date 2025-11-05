@@ -38,6 +38,68 @@ export type Database = {
         }
         Relationships: []
       }
+      estrategias: {
+        Row: {
+          condicoes_entrada: string | null
+          created_at: string | null
+          descricao: string | null
+          id: string
+          metodo_id: string
+          nome: string
+          odd_maxima: number | null
+          odd_minima: number | null
+          owner_id: string
+          stake_tipo: string | null
+          stake_valor: number | null
+          tempo_minuto_final: number | null
+          tempo_minuto_inicial: number | null
+          tipo_operacao: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          condicoes_entrada?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          metodo_id: string
+          nome: string
+          odd_maxima?: number | null
+          odd_minima?: number | null
+          owner_id: string
+          stake_tipo?: string | null
+          stake_valor?: number | null
+          tempo_minuto_final?: number | null
+          tempo_minuto_inicial?: number | null
+          tipo_operacao?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          condicoes_entrada?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          metodo_id?: string
+          nome?: string
+          odd_maxima?: number | null
+          odd_minima?: number | null
+          owner_id?: string
+          stake_tipo?: string | null
+          stake_valor?: number | null
+          tempo_minuto_final?: number | null
+          tempo_minuto_inicial?: number | null
+          tipo_operacao?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estrategias_metodo_id_fkey"
+            columns: ["metodo_id"]
+            isOneToOne: false
+            referencedRelation: "methods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       games: {
         Row: {
           away_team: string
@@ -138,6 +200,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          indice_confianca: number | null
           name: string
           owner_id: string
           percentage: number
@@ -146,6 +209,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          indice_confianca?: number | null
           name: string
           owner_id: string
           percentage: number
@@ -154,6 +218,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          indice_confianca?: number | null
           name?: string
           owner_id?: string
           percentage?: number
@@ -161,12 +226,72 @@ export type Database = {
         }
         Relationships: []
       }
+      simulacoes: {
+        Row: {
+          comentarios: string | null
+          created_at: string | null
+          data: string | null
+          id: string
+          metodo_id: string
+          nome_sessao: string
+          odd_entrada: number | null
+          odd_saida: number | null
+          owner_id: string
+          resultado: string | null
+          tipo_operacao: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          comentarios?: string | null
+          created_at?: string | null
+          data?: string | null
+          id?: string
+          metodo_id: string
+          nome_sessao: string
+          odd_entrada?: number | null
+          odd_saida?: number | null
+          owner_id: string
+          resultado?: string | null
+          tipo_operacao?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          comentarios?: string | null
+          created_at?: string | null
+          data?: string | null
+          id?: string
+          metodo_id?: string
+          nome_sessao?: string
+          odd_entrada?: number | null
+          odd_saida?: number | null
+          owner_id?: string
+          resultado?: string | null
+          tipo_operacao?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulacoes_metodo_id_fkey"
+            columns: ["metodo_id"]
+            isOneToOne: false
+            referencedRelation: "methods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      atualizar_indices_confianca: {
+        Args: { user_id_param: string }
+        Returns: undefined
+      }
+      calcular_indice_confianca: {
+        Args: { metodo_id_param: string }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

@@ -13,6 +13,8 @@ import { Layout } from "./components/Layout";
 import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
 import Statistics from "./pages/Statistics";
+import Estrategias from "./pages/Estrategias";
+import Simulador from "./pages/Simulador";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -45,6 +47,22 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><Statistics /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estrategias"
+          element={
+            <ProtectedRoute>
+              <Layout><Estrategias /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/simulador"
+          element={
+            <ProtectedRoute>
+              <Layout><Simulador /></Layout>
             </ProtectedRoute>
           }
         />

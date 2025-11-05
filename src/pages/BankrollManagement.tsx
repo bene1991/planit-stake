@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, TrendingUp } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Plus, TrendingUp, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 export default function BankrollManagement() {
-  const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod } = useSupabaseBankroll();
+  const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca } = useSupabaseBankroll();
   const [newMethodName, setNewMethodName] = useState("");
   const [newMethodPercentage, setNewMethodPercentage] = useState("");
 
@@ -44,6 +45,20 @@ export default function BankrollManagement() {
 
   const totalAllocated = bankroll.methods.reduce((sum, m) => sum + m.percentage, 0);
   const remainingPercentage = 100 - totalAllocated;
+
+  const getConfiancaColor = (indice?: number) => {
+    if (!indice) return 'bg-gray-500';
+    if (indice >= 70) return 'bg-green-600';
+    if (indice >= 40) return 'bg-yellow-600';
+    return 'bg-red-600';
+  };
+
+  const getConfiancaLabel = (indice?: number) => {
+    if (!indice) return 'Sem dados';
+    if (indice >= 70) return 'Alta';
+    if (indice >= 40) return 'Média';
+    return 'Baixa';
+  };
 
   if (loading) {
     return (
@@ -89,61 +104,49 @@ export default function BankrollManagement() {
         </div>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card className="p-6 shadow-card">
-          <h2 className="mb-4 text-xl font-bold">Adicionar Método</h2>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="method-name">Nome do Método</Label>
-              <Input
-                id="method-name"
-                value={newMethodName}
-                onChange={(e) => setNewMethodName(e.target.value)}
-                placeholder="Ex: Under Limit, Lay 0x0"
-              />
-            </div>
-            <div>
-              <Label htmlFor="method-percentage">Porcentagem da Banca (%)</Label>
-              <Input
-                id="method-percentage"
-                type="number"
-                value={newMethodPercentage}
-                onChange={(e) => setNewMethodPercentage(e.target.value)}
-                placeholder="0"
-                min="0"
-                max="100"
-                step="0.1"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Disponível: {remainingPercentage.toFixed(1)}%
-              </p>
-            </div>
-            <Button onClick={handleAddMethod} className="w-full">
-              <Plus className="mr-2 h-4 w-4" />
-              Adicionar Método
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="p-6 shadow-card">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-bold">Distribuição</h2>
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Total Alocado</p>
-              <p className="text-2xl font-bold text-primary">{totalAllocated.toFixed(1)}%</p>
-            </div>
-          </div>
-          <div className="h-4 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${Math.min(totalAllocated, 100)}%` }}
+      <Card className="p-6 shadow-card">
+        <h2 className="mb-4 text-xl font-bold">Adicionar Método</h2>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="method-name">Nome do Método</Label>
+            <Input
+              id="method-name"
+              value={newMethodName}
+              onChange={(e) => setNewMethodName(e.target.value)}
+              placeholder="Ex: Under Limit, Lay 0x0"
             />
           </div>
-        </Card>
-      </div>
+          <div>
+            <Label htmlFor="method-percentage">Porcentagem da Banca (%)</Label>
+            <Input
+              id="method-percentage"
+              type="number"
+              value={newMethodPercentage}
+              onChange={(e) => setNewMethodPercentage(e.target.value)}
+              placeholder="0"
+              min="0"
+              max="100"
+              step="0.1"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Disponível: {remainingPercentage.toFixed(1)}%
+            </p>
+          </div>
+          <Button onClick={handleAddMethod} className="w-full">
+            <Plus className="mr-2 h-4 w-4" />
+            Adicionar Método
+          </Button>
+        </div>
+      </Card>
 
       <Card className="p-6 shadow-card">
-        <h2 className="mb-4 text-xl font-bold">Métodos Cadastrados</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold">Matriz de Confiança dos Métodos</h2>
+          <Button onClick={atualizarIndicesConfianca} variant="outline" size="sm">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Atualizar Confiança
+          </Button>
+        </div>
         {bankroll.methods.length === 0 ? (
           <p className="py-8 text-center text-muted-foreground">
             Nenhum método cadastrado. Adicione um método para começar.
@@ -152,13 +155,19 @@ export default function BankrollManagement() {
           <div className="space-y-3">
             {bankroll.methods.map((method) => {
               const amount = (bankroll.total * method.percentage) / 100;
+              const indice = method.indice_confianca || 0;
               return (
                 <div
                   key={method.id}
                   className="flex items-center justify-between rounded-lg border bg-gradient-card p-4 transition-shadow hover:shadow-hover"
                 >
                   <div className="flex-1">
-                    <p className="font-semibold">{method.name}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-semibold">{method.name}</p>
+                      <Badge className={getConfiancaColor(indice)}>
+                        Confiança: {indice.toFixed(0)}% - {getConfiancaLabel(indice)}
+                      </Badge>
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       {method.percentage}% • {formatCurrency(amount)}
                     </p>
