@@ -11,6 +11,7 @@ import { User, KeyRound, Palette } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { VTLogo } from '@/components/VTLogo';
 import { LogoVariant } from '@/hooks/useLogoVariant';
+import { NotificationSettings } from '@/components/NotificationSettings';
 
 export default function Account() {
   const { user } = useAuth();
@@ -144,6 +145,8 @@ export default function Account() {
           </form>
         </div>
       </Card>
+
+      <NotificationSettings />
     </div>
   );
 }

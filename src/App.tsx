@@ -7,6 +7,8 @@ import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LogoProvider } from "@/contexts/LogoContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { NotificationCenter } from "@/components/NotificationCenter";
+import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { Layout } from "./components/Layout";
 import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
@@ -14,6 +16,51 @@ import Statistics from "./pages/Statistics";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
+
+const AppContent = () => {
+  const { games } = useSupabaseGames();
+
+  return (
+    <NotificationCenter games={games}>
+      <Routes>
+        <Route path="/auth" element={<Auth />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Layout><DailyPlanning /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bankroll"
+          element={
+            <ProtectedRoute>
+              <Layout><BankrollManagement /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/statistics"
+          element={
+            <ProtectedRoute>
+              <Layout><Statistics /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <Layout><Account /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </NotificationCenter>
+  );
+};
 
 const queryClient = new QueryClient();
 
@@ -26,43 +73,7 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
             <LogoProvider>
-            <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Layout><DailyPlanning /></Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/bankroll"
-                element={
-                  <ProtectedRoute>
-                    <Layout><BankrollManagement /></Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/statistics"
-                element={
-                  <ProtectedRoute>
-                    <Layout><Statistics /></Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/account"
-                element={
-                  <ProtectedRoute>
-                    <Layout><Account /></Layout>
-                  </ProtectedRoute>
-                }
-              />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+              <AppContent />
             </LogoProvider>
           </AuthProvider>
         </BrowserRouter>
