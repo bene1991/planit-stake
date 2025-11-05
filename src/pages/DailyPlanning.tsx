@@ -41,7 +41,7 @@ export default function DailyPlanning() {
     }
     
     await refreshGames();
-    toast.success('Status dos jogos atualizado!');
+    console.log('✅ Game statuses updated at', new Date().toISOString());
   };
 
   const handleSubmit = (gameData: Omit<Game, "id">) => {

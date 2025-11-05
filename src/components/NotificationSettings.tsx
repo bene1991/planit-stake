@@ -6,7 +6,8 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
-import { testSound } from '@/utils/soundManager';
+import { testSound, NotificationSoundType } from '@/utils/soundManager';
+import { supabase } from '@/integrations/supabase/client';
 
 export const NotificationSettings = () => {
   const { preferences, updatePreferences, requestNativePermission } = useNotifications();
@@ -27,6 +28,39 @@ export const NotificationSettings = () => {
       }
     } else {
       updatePreferences({ nativeEnabled: false });
+    }
+  };
+
+  const testNotification = async (type: NotificationSoundType) => {
+    const messages = {
+      success: { title: '✅ Teste de Sucesso', body: 'Notificação de sucesso funcionando!' },
+      warning: { title: '⚠️ Teste de Aviso', body: 'Notificação de aviso funcionando!' },
+      error: { title: '🚨 Teste de Erro', body: 'Notificação de erro funcionando!' },
+      info: { title: 'ℹ️ Teste de Info', body: 'Notificação informativa funcionando!' }
+    };
+    
+    const msg = messages[type];
+    
+    // Test toast
+    toast[type](msg.title, { description: msg.body });
+    
+    // Test sound
+    testSound(type);
+    
+    // Test Telegram
+    if (preferences.telegramEnabled) {
+      try {
+        const { error } = await supabase.functions.invoke('send-telegram-notification', {
+          body: { title: msg.title, message: msg.body, type }
+        });
+        if (error) {
+          toast.error('Erro ao enviar para Telegram', { description: error.message });
+        } else {
+          toast.success('Mensagem enviada para Telegram!');
+        }
+      } catch (err) {
+        toast.error('Erro ao testar Telegram');
+      }
     }
   };
 
@@ -168,6 +202,30 @@ export const NotificationSettings = () => {
               </div>
             </div>
           )}
+        </div>
+
+        <Separator />
+
+        {/* Test complete notification system */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">Testar Sistema Completo</h3>
+          <p className="text-sm text-muted-foreground">
+            Teste o sistema completo (toast + som + telegram)
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" size="sm" onClick={() => testNotification('success')}>
+              ✅ Sucesso
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => testNotification('warning')}>
+              ⚠️ Aviso
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => testNotification('error')}>
+              🚨 Erro
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => testNotification('info')}>
+              ℹ️ Info
+            </Button>
+          </div>
         </div>
 
         <Separator />

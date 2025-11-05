@@ -50,10 +50,21 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     body: string,
     type: NotificationSoundType
   ) => {
-    if (!preferences.telegramEnabled) return;
+    console.log('🔔 Telegram notification attempt:', { 
+      title, 
+      type, 
+      enabled: preferences.telegramEnabled,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!preferences.telegramEnabled) {
+      console.log('⚠️ Telegram notifications disabled in preferences');
+      return;
+    }
 
     try {
-      const { error } = await supabase.functions.invoke('send-telegram-notification', {
+      console.log('📤 Invoking Telegram edge function...');
+      const { data, error } = await supabase.functions.invoke('send-telegram-notification', {
         body: {
           title,
           message: body,
@@ -62,10 +73,12 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
       });
 
       if (error) {
-        console.error('Failed to send Telegram notification:', error);
+        console.error('❌ Telegram error:', error);
+      } else {
+        console.log('✅ Telegram sent successfully:', data);
       }
     } catch (error) {
-      console.error('Error invoking Telegram function:', error);
+      console.error('💥 Telegram exception:', error);
     }
   };
 
@@ -119,6 +132,19 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     if (!preferences.enabled) return;
 
     const checkNotifications = () => {
+      console.log('🔍 Checking notifications...', {
+        enabled: preferences.enabled,
+        gamesCount: games.length,
+        timestamp: new Date().toISOString(),
+        preferences: {
+          gameProximity: preferences.gameProximity,
+          gameLive: preferences.gameLive,
+          gameFinished: preferences.gameFinished,
+          telegramEnabled: preferences.telegramEnabled,
+          soundEnabled: preferences.soundEnabled
+        }
+      });
+
       const previousGames = previousGamesRef.current;
 
       // 1. Check game proximity alerts (15min, 5min)
@@ -128,11 +154,14 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
           
           const minutesUntil = getMinutesUntilGameStart(game);
           const gameName = formatGameName(game);
+          
+          console.log(`⏰ Game "${gameName}": ${minutesUntil.toFixed(1)} minutes until start, Status: ${game.status}`);
 
-          // 15 minutes warning
-          if (minutesUntil <= 15 && minutesUntil > 13) {
+          // 15 minutes warning - expanded window (14-16 min)
+          if (minutesUntil <= 16 && minutesUntil >= 14) {
             const notifId = `game-${game.id}-15min`;
             if (canShowNotification(notifId)) {
+              console.log(`📢 Triggering 15-min notification for ${gameName}`);
               showNotification(
                 `⚠️ Jogo começa em 15 min: ${gameName}`,
                 'Prepare-se para o início',
@@ -143,10 +172,11 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
             }
           }
 
-          // 5 minutes critical alert
-          if (minutesUntil <= 5 && minutesUntil > 3) {
+          // 5 minutes critical alert - expanded window (4-6 min)
+          if (minutesUntil <= 6 && minutesUntil >= 4) {
             const notifId = `game-${game.id}-5min`;
             if (canShowNotification(notifId)) {
+              console.log(`📢 Triggering 5-min notification for ${gameName}`);
               showNotification(
                 `🔴 ATENÇÃO! Jogo começa em 5 min: ${gameName}`,
                 'Últimos minutos antes do início!',
@@ -314,8 +344,8 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     // Initial check
     checkNotifications();
 
-    // Check every minute
-    const interval = setInterval(checkNotifications, 60000);
+    // Check every 30 seconds for more precise timing
+    const interval = setInterval(checkNotifications, 30000);
 
     return () => clearInterval(interval);
   }, [games, preferences, canShowNotification, markAsShown, navigate, isPageVisible, showNotification]);
