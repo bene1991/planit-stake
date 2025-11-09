@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut, Radio } from "lucide-react";
+import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut, Radio, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLogo } from "@/contexts/LogoContext";
@@ -21,6 +21,7 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
     { path: "/", label: "Planejamento Diário", icon: Calendar },
     { path: "/live", label: "Jogos Ao Vivo", icon: Radio },
     { path: "/statistics", label: "Estatísticas", icon: BarChart3 },
+    { path: "/finished", label: "Jogos Finalizados", icon: CheckCircle },
   ];
 
   const handleNavClick = () => {

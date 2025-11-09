@@ -7,18 +7,23 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { User, KeyRound, Palette } from 'lucide-react';
+import { User, KeyRound, Palette, Link } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { VTLogo } from '@/components/VTLogo';
 import { LogoVariant } from '@/hooks/useLogoVariant';
 import { NotificationSettings } from '@/components/NotificationSettings';
+import { TelegramSettings } from '@/components/TelegramSettings';
+import { ApiKeyModal } from '@/components/ApiKeyModal';
+import { useSettings } from '@/hooks/useSettings';
 
 export default function Account() {
   const { user } = useAuth();
   const { variant, setVariant } = useLogo();
+  const { settings } = useSettings();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const logoVariants: { value: LogoVariant; label: string; description: string }[] = [
     { value: 'chart', label: 'Gráfico Ascendente', description: 'Logo com linha de tendência' },
@@ -80,6 +85,22 @@ export default function Account() {
               <span>{user?.email}</span>
             </div>
           </div>
+        </div>
+
+        <div className="border-t pt-6 mb-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Link className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-bold">API Football</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Conecte sua API Key para importar jogos e estatísticas ao vivo
+          </p>
+          <Button
+            onClick={() => setShowApiKeyModal(true)}
+            variant={settings?.api_key ? 'outline' : 'default'}
+          >
+            {settings?.api_key ? 'API vinculada (editar)' : 'Vincular API'}
+          </Button>
         </div>
 
         <div className="border-t pt-6 mb-6">
@@ -146,7 +167,10 @@ export default function Account() {
         </div>
       </Card>
 
+      <TelegramSettings />
       <NotificationSettings />
+      
+      <ApiKeyModal open={showApiKeyModal} onOpenChange={setShowApiKeyModal} />
     </div>
   );
 }

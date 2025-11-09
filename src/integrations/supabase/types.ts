@@ -235,6 +235,36 @@ export type Database = {
         }
         Relationships: []
       }
+      settings: {
+        Row: {
+          api_key: string | null
+          created_at: string
+          id: string
+          owner_id: string
+          telegram_bot_token: string | null
+          telegram_chat_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string
+          id?: string
+          owner_id: string
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string
+          id?: string
+          owner_id?: string
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       simulacoes: {
         Row: {
           comentarios: string | null

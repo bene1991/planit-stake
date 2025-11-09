@@ -12,7 +12,7 @@ import {
   formatGameName,
 } from '@/utils/notificationHelpers';
 import { playNotificationSound, NotificationSoundType } from '@/utils/soundManager';
-import { supabase } from '@/integrations/supabase/client';
+import { sendTelegramNotification } from '@/utils/telegramNotification';
 import { getNowInBrasilia } from '@/utils/timezone';
 
 interface NotificationCenterProps {
@@ -46,7 +46,7 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
   }, [preferences.nativeEnabled, requestNativePermission]);
 
   // Send Telegram notification
-  const sendTelegramNotification = async (
+  const sendTelegramMsg = async (
     title: string,
     body: string,
     type: NotificationSoundType
@@ -67,26 +67,8 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
       return;
     }
 
-    try {
-      if (import.meta.env.DEV) {
-        console.log('📤 Invoking Telegram edge function...');
-      }
-      const { data, error } = await supabase.functions.invoke('send-telegram-notification', {
-        body: {
-          title,
-          message: body,
-          type,
-        },
-      });
-
-      if (error) {
-        console.error('❌ Telegram error:', error);
-      } else if (import.meta.env.DEV) {
-        console.log('✅ Telegram sent successfully:', data);
-      }
-    } catch (error) {
-      console.error('💥 Telegram exception:', error);
-    }
+    const message = `${title}\n${body}`;
+    await sendTelegramNotification(message);
   };
 
   // Show notification (toast, native, sound, and telegram)
@@ -100,7 +82,7 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     playNotificationSound(type, preferences.soundEnabled);
 
     // Send to Telegram (async, non-blocking)
-    sendTelegramNotification(title, body, type);
+    sendTelegramMsg(title, body, type);
 
     const useNative = preferences.nativeEnabled && !isPageVisible && 'Notification' in window && Notification.permission === 'granted';
 
@@ -226,8 +208,9 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
         if (preferences.gameLive && previousGame.status !== 'Live' && game.status === 'Live') {
           const notifId = `game-${game.id}-live`;
           if (canShowNotification(notifId, 120)) { // 2h cooldown
+            const message = `⚽ Jogo AO VIVO: ${game.homeTeam} x ${game.awayTeam} (${game.league})`;
             showNotification(
-              `🟢 LIVE AGORA: ${gameName}`,
+              message,
               'O jogo começou!',
               'success',
               { label: 'Acompanhar', onClick: () => navigate('/daily-planning') }
@@ -240,8 +223,9 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
         if (preferences.gameFinished && previousGame.status !== 'Finished' && game.status === 'Finished') {
           const notifId = `game-${game.id}-finished`;
           if (canShowNotification(notifId, 180)) { // 3h cooldown
+            const message = `🏁 Jogo finalizado: ${game.homeTeam} x ${game.awayTeam}`;
             showNotification(
-              `✅ Jogo finalizado: ${gameName}`,
+              message,
               'Hora de finalizar as operações',
               'info',
               { label: 'Ver resultado', onClick: () => navigate('/daily-planning') }

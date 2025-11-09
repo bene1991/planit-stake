@@ -41,6 +41,19 @@ interface TimelineData {
   cumulative: number;
 }
 
+// Função para calcular resultado correto baseado no tipo de operação
+const calculateResult = (op: { operationType?: 'Back' | 'Lay'; entryOdds?: number; exitOdds?: number }): 'Green' | 'Red' | null => {
+  if (!op.entryOdds || !op.exitOdds || !op.operationType) return null;
+  
+  if (op.operationType === 'Back') {
+    // Back: Green se odd de saída < entrada
+    return op.exitOdds < op.entryOdds ? 'Green' : 'Red';
+  } else {
+    // Lay: Green se odd de saída > entrada
+    return op.exitOdds > op.entryOdds ? 'Green' : 'Red';
+  }
+};
+
 export const useStatistics = (games: Game[], methods: Method[]) => {
   const statistics = useMemo(() => {
     // Filtrar apenas jogos finalizados
@@ -50,10 +63,16 @@ export const useStatistics = (games: Game[], methods: Method[]) => {
 
     const allOperations = finalizedGames.flatMap((g) => g.methodOperations);
 
-    // Estatísticas gerais
+    // Estatísticas gerais (usando resultado registrado ou calculando)
     const totalOperations = allOperations.length;
-    const greenOperations = allOperations.filter((op) => op.result === 'Green').length;
-    const redOperations = allOperations.filter((op) => op.result === 'Red').length;
+    const greenOperations = allOperations.filter((op) => {
+      const result = op.result || calculateResult(op);
+      return result === 'Green';
+    }).length;
+    const redOperations = allOperations.filter((op) => {
+      const result = op.result || calculateResult(op);
+      return result === 'Red';
+    }).length;
     const winRate = totalOperations > 0 ? (greenOperations / totalOperations) * 100 : 0;
 
     const overallStats: OverallStats = {
