@@ -50,23 +50,33 @@ export function FixtureLinker({
   const searchFixtures = async () => {
     setSearching(true);
     try {
+      console.log('Buscando jogos ao vivo...');
       const { data, error } = await supabase.functions.invoke('search-live-fixtures', {
         body: { live: true }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao invocar função:', error);
+        throw error;
+      }
+
+      console.log('Resposta da API:', data);
 
       if (data?.response) {
         // Show all live fixtures
         setFixtures(data.response);
         
         if (data.response.length === 0) {
-          toast.info('Nenhum jogo ao vivo encontrado no momento');
+          toast.info('Nenhum jogo ao vivo encontrado no momento. Verifique se há jogos acontecendo agora ou se a API Key está configurada corretamente.');
+        } else {
+          toast.success(`${data.response.length} jogo(s) ao vivo encontrado(s)`);
         }
+      } else {
+        toast.error('Resposta inválida da API');
       }
     } catch (err) {
       console.error('Error searching fixtures:', err);
-      toast.error('Erro ao buscar jogos ao vivo');
+      toast.error(`Erro ao buscar jogos ao vivo: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     } finally {
       setSearching(false);
     }

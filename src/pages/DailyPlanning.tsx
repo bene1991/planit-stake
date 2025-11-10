@@ -142,11 +142,19 @@ export default function DailyPlanning() {
 
   // Aplicar filtro de período aos jogos finalizados
   const filteredByPeriod = useMemo(() => {
-    const today = new Date();
+    // Usar horário de Brasília (UTC-3)
+    const now = new Date();
+    const brasiliaOffset = -3 * 60; // UTC-3 em minutos
+    const localOffset = now.getTimezoneOffset();
+    const offsetDiff = localOffset - brasiliaOffset;
+    
+    const today = new Date(now.getTime() + offsetDiff * 60000);
     today.setHours(0, 0, 0, 0);
 
     return finalizedGames.filter((game) => {
-      const gameDate = new Date(game.date);
+      // Parse da data do jogo considerando formato YYYY-MM-DD
+      const [year, month, day] = game.date.split('-').map(Number);
+      const gameDate = new Date(year, month - 1, day);
       gameDate.setHours(0, 0, 0, 0);
 
       switch (periodFilter) {

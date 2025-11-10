@@ -20,10 +20,11 @@ serve(async (req) => {
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
 
     if (!apiKey) {
+      console.error('API_FOOTBALL_KEY not configured');
       throw new Error('API_FOOTBALL_KEY not configured');
     }
 
-    console.log('Searching live fixtures...');
+    console.log('Searching live fixtures with API Key:', apiKey.substring(0, 10) + '...');
 
     // Build query parameters for live matches
     const params = new URLSearchParams({
@@ -31,25 +32,31 @@ serve(async (req) => {
       timezone: 'America/Sao_Paulo'
     });
 
-    const response = await fetch(
-      `https://v3.football.api-sports.io/fixtures?${params.toString()}`,
-      {
-        method: 'GET',
-        headers: {
-          'x-apisports-key': apiKey,
-          'x-apisports-host': 'v3.football.api-sports.io',
-        },
-      }
-    );
+    const apiUrl = `https://v3.football.api-sports.io/fixtures?${params.toString()}`;
+    console.log('API URL:', apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'x-apisports-key': apiKey,
+        'x-apisports-host': 'v3.football.api-sports.io',
+      },
+    });
+
+    console.log('API Response status:', response.status);
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('API-Football error:', data);
+      console.error('API-Football error:', JSON.stringify(data));
       throw new Error(`API-Football error: ${data.message || 'Unknown error'}`);
     }
 
-    console.log(`Found ${data.response?.length || 0} fixtures`);
+    console.log(`Found ${data.response?.length || 0} live fixtures`);
+    
+    if (data.response && data.response.length > 0) {
+      console.log('First fixture:', JSON.stringify(data.response[0]));
+    }
 
     return new Response(
       JSON.stringify(data),
