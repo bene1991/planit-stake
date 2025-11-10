@@ -15,7 +15,6 @@ import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
 import LiveGames from "./pages/LiveGames";
 import Statistics from "./pages/Statistics";
-import FinishedGames from "./pages/FinishedGames";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -56,14 +55,6 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><Statistics /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/finished"
-          element={
-            <ProtectedRoute>
-              <Layout><FinishedGames /></Layout>
             </ProtectedRoute>
           }
         />

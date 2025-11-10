@@ -21,7 +21,6 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
     { path: "/", label: "Planejamento Diário", icon: Calendar },
     { path: "/live", label: "Jogos Ao Vivo", icon: Radio },
     { path: "/statistics", label: "Estatísticas", icon: BarChart3 },
-    { path: "/finished", label: "Jogos Finalizados", icon: CheckCircle },
   ];
 
   const handleNavClick = () => {

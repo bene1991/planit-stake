@@ -6,9 +6,7 @@ const corsHeaders = {
 };
 
 interface SearchFixturesRequest {
-  date: string;
-  league?: string;
-  team?: string;
+  live?: boolean;
 }
 
 serve(async (req) => {
@@ -17,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { date, league, team }: SearchFixturesRequest = await req.json();
+    const { live }: SearchFixturesRequest = await req.json();
     
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
 
@@ -25,20 +23,21 @@ serve(async (req) => {
       throw new Error('API_FOOTBALL_KEY not configured');
     }
 
-    console.log('Searching fixtures for date:', date);
+    console.log('Searching live fixtures...');
 
-    // Build query parameters
-    const params = new URLSearchParams({ date });
-    if (league) params.append('league', league);
-    if (team) params.append('team', team);
+    // Build query parameters for live matches
+    const params = new URLSearchParams({
+      live: 'all',
+      timezone: 'America/Sao_Paulo'
+    });
 
     const response = await fetch(
       `https://v3.football.api-sports.io/fixtures?${params.toString()}`,
       {
         method: 'GET',
         headers: {
-          'x-rapidapi-key': apiKey,
-          'x-rapidapi-host': 'v3.football.api-sports.io',
+          'x-apisports-key': apiKey,
+          'x-apisports-host': 'v3.football.api-sports.io',
         },
       }
     );

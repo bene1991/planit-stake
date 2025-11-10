@@ -51,37 +51,37 @@ export function FixtureLinker({
     setSearching(true);
     try {
       const { data, error } = await supabase.functions.invoke('search-live-fixtures', {
-        body: { date: gameDate }
+        body: { live: true }
       });
 
       if (error) throw error;
 
       if (data?.response) {
-        // Filter fixtures that match teams
-        const matchingFixtures = data.response.filter((f: Fixture) => {
-          const homeMatch = f.teams.home.name.toLowerCase().includes(homeTeam.toLowerCase()) ||
-                           homeTeam.toLowerCase().includes(f.teams.home.name.toLowerCase());
-          const awayMatch = f.teams.away.name.toLowerCase().includes(awayTeam.toLowerCase()) ||
-                           awayTeam.toLowerCase().includes(f.teams.away.name.toLowerCase());
-          return homeMatch && awayMatch;
-        });
-
-        setFixtures(matchingFixtures.length > 0 ? matchingFixtures : data.response.slice(0, 20));
+        // Show all live fixtures
+        setFixtures(data.response);
+        
+        if (data.response.length === 0) {
+          toast.info('Nenhum jogo ao vivo encontrado no momento');
+        }
       }
     } catch (err) {
       console.error('Error searching fixtures:', err);
-      toast.error('Erro ao buscar jogos');
+      toast.error('Erro ao buscar jogos ao vivo');
     } finally {
       setSearching(false);
     }
   };
 
-  const linkFixture = async (fixtureId: number) => {
+  const linkFixture = async (fixtureId: number, fixture: Fixture) => {
     setLoading(true);
     try {
       const { error } = await supabase
         .from('games')
-        .update({ api_fixture_id: fixtureId.toString() })
+        .update({ 
+          api_fixture_id: fixtureId.toString(),
+          home_team_logo: fixture.teams.home.logo,
+          away_team_logo: fixture.teams.away.logo
+        })
         .eq('id', gameId);
 
       if (error) throw error;
@@ -141,7 +141,7 @@ export function FixtureLinker({
           <div className="flex gap-2">
             <div className="flex-1">
               <p className="text-sm text-muted-foreground mb-2">
-                Buscando jogos para: {homeTeam} vs {awayTeam} em {gameDate}
+                Buscar jogos ao vivo para vincular
               </p>
             </div>
             <Button onClick={searchFixtures} disabled={searching} size="sm">
@@ -150,7 +150,7 @@ export function FixtureLinker({
               ) : (
                 <Search className="h-4 w-4 mr-2" />
               )}
-              Buscar
+              Buscar Jogos Ao Vivo
             </Button>
           </div>
 
@@ -210,7 +210,7 @@ export function FixtureLinker({
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => linkFixture(fixture.fixture.id)}
+                        onClick={() => linkFixture(fixture.fixture.id, fixture)}
                         disabled={loading}
                       >
                         {loading ? (
@@ -225,7 +225,7 @@ export function FixtureLinker({
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                Clique em "Buscar" para encontrar jogos
+                Clique em "Buscar Jogos Ao Vivo" para ver os jogos em andamento
               </div>
             )}
           </ScrollArea>
