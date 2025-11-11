@@ -137,13 +137,22 @@ export default function DailyPlanning() {
     setShowMethodSelector(true);
   };
 
-  const handleConfirmMethod = async (methodId: string) => {
+  const handleConfirmMethod = async (methodIds: string[]) => {
     setAddingToPlanning(true);
     try {
       const gamesToAdd = dailyGames.filter(g => selectedDailyGames.includes(g.id));
       
       for (const dailyGame of gamesToAdd) {
-        // Add game to planning
+        // Create method operations for each selected method
+        const methodOperations = methodIds.map(methodId => ({
+          methodId: methodId,
+          operationType: undefined,
+          entryOdds: undefined,
+          exitOdds: undefined,
+          result: undefined,
+        }));
+
+        // Add game to planning with all selected methods
         await addGame({
           date: dailyGame.date,
           time: dailyGame.time,
@@ -151,22 +160,17 @@ export default function DailyPlanning() {
           homeTeam: dailyGame.home_team,
           awayTeam: dailyGame.away_team,
           status: dailyGame.status,
-          homeTeamLogo: dailyGame.home_team_logo,
-          awayTeamLogo: dailyGame.away_team_logo,
-          methodOperations: [{
-            methodId: methodId,
-            operationType: 'Back',
-            entryOdds: 0,
-            exitOdds: 0,
-            result: null,
-          }],
+          homeTeamLogo: dailyGame.home_team_logo || undefined,
+          awayTeamLogo: dailyGame.away_team_logo || undefined,
+          methodOperations: methodOperations,
         });
 
         // Mark as added in daily_games
         await markAsAdded(dailyGame.id);
       }
 
-      toast.success(`${gamesToAdd.length} jogo(s) adicionado(s) ao planejamento!`);
+      const totalMethods = gamesToAdd.length * methodIds.length;
+      toast.success(`${gamesToAdd.length} jogo(s) adicionado(s) com ${methodIds.length} método(s) cada!`);
       await loadDailyGames();
       setShowMethodSelector(false);
       setSelectedDailyGames([]);

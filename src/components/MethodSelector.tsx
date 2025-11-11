@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
 
@@ -14,18 +14,26 @@ interface MethodSelectorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   methods: Method[];
-  onConfirm: (methodId: string) => void;
+  onConfirm: (methodIds: string[]) => void;
   loading?: boolean;
 }
 
 export const MethodSelector = ({ open, onOpenChange, methods, onConfirm, loading }: MethodSelectorProps) => {
-  const [selectedMethodId, setSelectedMethodId] = useState<string>('');
+  const [selectedMethodIds, setSelectedMethodIds] = useState<string[]>([]);
 
   const handleConfirm = () => {
-    if (selectedMethodId) {
-      onConfirm(selectedMethodId);
-      setSelectedMethodId('');
+    if (selectedMethodIds.length > 0) {
+      onConfirm(selectedMethodIds);
+      setSelectedMethodIds([]);
     }
+  };
+
+  const toggleMethod = (methodId: string) => {
+    setSelectedMethodIds(prev => 
+      prev.includes(methodId)
+        ? prev.filter(id => id !== methodId)
+        : [...prev, methodId]
+    );
   };
 
   return (
@@ -44,18 +52,20 @@ export const MethodSelector = ({ open, onOpenChange, methods, onConfirm, loading
               Nenhum método disponível. Crie um método primeiro.
             </p>
           ) : (
-            <RadioGroup value={selectedMethodId} onValueChange={setSelectedMethodId}>
-              <div className="space-y-2">
-                {methods.map((method) => (
-                  <div key={method.id} className="flex items-center space-x-2">
-                    <RadioGroupItem value={method.id} id={method.id} />
-                    <Label htmlFor={method.id} className="flex-1 cursor-pointer">
-                      {method.name} ({method.percentage}%)
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </RadioGroup>
+            <div className="space-y-2">
+              {methods.map((method) => (
+                <div key={method.id} className="flex items-center space-x-2">
+                  <Checkbox 
+                    id={method.id} 
+                    checked={selectedMethodIds.includes(method.id)}
+                    onCheckedChange={() => toggleMethod(method.id)}
+                  />
+                  <Label htmlFor={method.id} className="flex-1 cursor-pointer">
+                    {method.name} ({method.percentage}%)
+                  </Label>
+                </div>
+              ))}
+            </div>
           )}
 
           <div className="flex gap-2">
@@ -68,10 +78,10 @@ export const MethodSelector = ({ open, onOpenChange, methods, onConfirm, loading
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={!selectedMethodId || loading}
+              disabled={selectedMethodIds.length === 0 || loading}
               className="flex-1"
             >
-              {loading ? 'Adicionando...' : 'Confirmar'}
+              {loading ? 'Adicionando...' : `Confirmar ${selectedMethodIds.length > 0 ? `(${selectedMethodIds.length})` : ''}`}
             </Button>
           </div>
         </div>
