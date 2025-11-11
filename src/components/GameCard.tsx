@@ -11,6 +11,7 @@ import { Trash2, Edit, Check, X, ChevronDown, ChevronUp, Shield } from "lucide-r
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useTeamLogo } from "@/hooks/useTeamLogo";
 
 interface GameCardProps {
   game: Game;
@@ -29,6 +30,14 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
     entryOdds: "",
     exitOdds: "",
   });
+
+  // Busca dinâmica de logos quando não existem no banco
+  const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
+  const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
+  
+  // Usa logo do banco ou logo buscado dinamicamente
+  const homeTeamLogo = game.homeTeamLogo || homeLogo;
+  const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
   const calculateResult = (
     operationType: "Back" | "Lay",
@@ -116,9 +125,9 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
               )}
             </div>
             <div className="flex items-center gap-2 mb-0.5">
-              {game.homeTeamLogo && (
+              {homeTeamLogo && (
                 <Avatar className="h-8 w-8 flex-shrink-0">
-                  <AvatarImage src={game.homeTeamLogo} alt={game.homeTeam} />
+                  <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
                   <AvatarFallback className="text-xs">
                     <Shield className="h-4 w-4" />
                   </AvatarFallback>
@@ -127,9 +136,9 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
               <h3 className="text-sm font-semibold text-foreground leading-tight">
                 {game.homeTeam} vs {game.awayTeam}
               </h3>
-              {game.awayTeamLogo && (
+              {awayTeamLogo && (
                 <Avatar className="h-8 w-8 flex-shrink-0">
-                  <AvatarImage src={game.awayTeamLogo} alt={game.awayTeam} />
+                  <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
                   <AvatarFallback className="text-xs">
                     <Shield className="h-4 w-4" />
                   </AvatarFallback>
