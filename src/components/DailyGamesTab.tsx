@@ -212,7 +212,6 @@ export const DailyGamesTab = ({ dailyGames, onRefresh, onAddToPlanning, loading 
                 <TableHead>Liga</TableHead>
                 <TableHead>Casa</TableHead>
                 <TableHead>Visitante</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="w-32">Ação</TableHead>
               </TableRow>
             </TableHeader>
@@ -270,11 +269,6 @@ const GameRow = ({ game, selected, onToggle, onAdd }: GameRowProps) => {
         {game.added_to_planning ? (
           <Badge variant="secondary">✅ Adicionado</Badge>
         ) : (
-          <Badge variant="outline">{game.status}</Badge>
-        )}
-      </TableCell>
-      <TableCell>
-        {!game.added_to_planning && (
           <Button size="sm" variant="ghost" onClick={onAdd}>
             <Plus className="h-4 w-4 mr-1" />
             Adicionar
