@@ -3,14 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { FileUp, Image as ImageIcon, Download, Loader2 } from 'lucide-react';
+import { FileUp, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
-import Tesseract from 'tesseract.js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 
 interface GameData {
@@ -85,30 +85,21 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [textInput, setTextInput] = useState('');
+
+  const handleTextParse = () => {
+    if (!textInput.trim()) {
+      toast.warning('Cole os dados dos jogos para processar');
+      return;
+    }
 
     setProcessing(true);
-    toast.info('Processando imagem... Isso pode levar alguns segundos.');
-
     try {
-      const result = await Tesseract.recognize(file, 'por', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-          }
-        },
-      });
-
-      const text = result.data.text;
-      console.log('OCR Result:', text);
-
-      // Parse text to extract game data
-      const lines = text.split('\n').filter(line => line.trim());
+      const lines = textInput.split('\n').filter(line => line.trim());
       const parsedGames: GameData[] = [];
 
-      // Simple parsing logic - can be improved based on actual image formats
+      // Parse text to extract game data
+      // Format expected: "HH:mm Liga Casa vs Visitante" or similar
       lines.forEach(line => {
         // Try to detect time patterns (HH:mm)
         const timeMatch = line.match(/(\d{1,2}):(\d{2})/);
@@ -116,10 +107,13 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
           // Try to extract team names (usually separated by 'vs', 'x', '-')
           const teamsMatch = line.match(/([A-Za-zÀ-ÿ\s]+)\s+(?:vs|x|-)\s+([A-Za-zÀ-ÿ\s]+)/i);
           if (teamsMatch) {
+            // Try to extract league name (before the teams)
+            const leagueMatch = line.match(/\d{1,2}:\d{2}\s+([A-Za-zÀ-ÿ\s]+?)\s+[A-Za-zÀ-ÿ]/);
+            
             parsedGames.push({
               date: format(new Date(), 'dd/MM/yyyy'),
               time: timeMatch[0],
-              league: 'Liga Detectada',
+              league: leagueMatch?.[1]?.trim() || 'Liga',
               homeTeam: teamsMatch[1].trim(),
               awayTeam: teamsMatch[2].trim(),
               status: 'Not Started',
@@ -130,14 +124,15 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
       });
 
       if (parsedGames.length === 0) {
-        toast.warning('Nenhum jogo detectado. Tente com outra imagem ou use a planilha.');
+        toast.warning('Nenhum jogo detectado. Verifique o formato do texto.');
       } else {
         setGames(parsedGames);
         toast.success(`${parsedGames.length} jogo(s) detectado(s). Revise os dados antes de importar.`);
+        setTextInput('');
       }
     } catch (error) {
-      console.error('Error processing image:', error);
-      toast.error('Erro ao processar imagem com OCR');
+      console.error('Error parsing text:', error);
+      toast.error('Erro ao processar texto');
     } finally {
       setProcessing(false);
     }
@@ -259,7 +254,7 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
         <Tabs defaultValue="excel" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="excel">Planilha (.xlsx)</TabsTrigger>
-            <TabsTrigger value="ocr">Imagem (OCR)</TabsTrigger>
+            <TabsTrigger value="text">Texto/Colar</TabsTrigger>
           </TabsList>
 
           <TabsContent value="excel" className="space-y-4">
@@ -292,28 +287,32 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
             </div>
           </TabsContent>
 
-          <TabsContent value="ocr" className="space-y-4">
-            <label>
-              <Button variant="default" className="w-full" disabled={processing} asChild>
-                <span>
-                  {processing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <ImageIcon className="h-4 w-4 mr-2" />
-                  )}
-                  {processing ? 'Processando OCR...' : 'Carregar Imagem'}
-                </span>
-              </Button>
-              <Input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                disabled={processing}
+          <TabsContent value="text" className="space-y-4">
+            <div className="space-y-4">
+              <Textarea
+                placeholder="Cole aqui os dados dos jogos&#10;Formato: HH:mm Liga TimeCasa x TimeVisitante&#10;&#10;Exemplo:&#10;14:00 Brasileirão Flamengo x Palmeiras&#10;16:00 Premier League Arsenal vs Liverpool"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                rows={8}
+                className="font-mono text-sm"
               />
-            </label>
+              <Button 
+                onClick={handleTextParse} 
+                disabled={processing || !textInput.trim()}
+                className="w-full"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  'Processar Texto'
+                )}
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">
-              Envie uma captura de tela ou foto da lista de jogos. O sistema tentará detectar automaticamente os dados.
+              Cole uma lista de jogos copiada de sites como SofaScore, FlashScore, etc. O sistema tentará detectar automaticamente horário, times e liga.
             </p>
           </TabsContent>
         </Tabs>
