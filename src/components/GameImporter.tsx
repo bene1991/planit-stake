@@ -21,6 +21,8 @@ interface GameData {
   awayTeam: string;
   status?: string;
   selected?: boolean;
+  dateConverted?: boolean;
+  timeConverted?: boolean;
 }
 
 interface GameImporterProps {
@@ -35,6 +37,58 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
   const [games, setGames] = useState<GameData[]>([]);
   const [processing, setProcessing] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // Converter número serial do Excel para data DD/MM/AAAA
+  const excelSerialToDate = (serial: number): string => {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + serial * 86400000);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Converter fração do dia do Excel para HH:mm
+  const excelSerialToTime = (serial: number): string => {
+    const totalMinutes = Math.round(serial * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
+
+  // Interpretar data (texto ou número serial)
+  const parseDate = (value: any): { date: string; converted: boolean } => {
+    if (typeof value === 'number' && value > 40000) {
+      return { date: excelSerialToDate(value), converted: true };
+    }
+    if (typeof value === 'string') {
+      // Se já está em DD/MM/AAAA, manter
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+        return { date: value, converted: false };
+      }
+      // Se está em YYYY-MM-DD, converter
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const [year, month, day] = value.split('-');
+        return { date: `${day}/${month}/${year}`, converted: false };
+      }
+    }
+    return { date: String(value || ''), converted: false };
+  };
+
+  // Interpretar horário (texto ou número serial)
+  const parseTime = (value: any): { time: string; converted: boolean } => {
+    if (typeof value === 'number' && value >= 0 && value < 1) {
+      return { time: excelSerialToTime(value), converted: true };
+    }
+    if (typeof value === 'string') {
+      // Se já está em HH:mm ou HH:mm:ss, normalizar para HH:mm
+      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value)) {
+        const parts = value.split(':');
+        return { time: `${parts[0].padStart(2, '0')}:${parts[1]}`, converted: false };
+      }
+    }
+    return { time: String(value || ''), converted: false };
+  };
 
   const downloadTemplate = () => {
     const template = [
@@ -55,7 +109,10 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Limpar jogos anteriores
+    setGames([]);
     setProcessing(true);
+
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
@@ -65,15 +122,22 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
       // Skip header row
       const rows = jsonData.slice(1).filter(row => row.length >= 5);
       
-      const parsedGames: GameData[] = rows.map(row => ({
-        date: row[0]?.toString() || '',
-        time: row[1]?.toString() || '',
-        league: row[2]?.toString() || '',
-        homeTeam: row[3]?.toString() || '',
-        awayTeam: row[4]?.toString() || '',
-        status: row[5]?.toString() || 'Not Started',
-        selected: true,
-      }));
+      const parsedGames: GameData[] = rows.map(row => {
+        const dateResult = parseDate(row[0]);
+        const timeResult = parseTime(row[1]);
+
+        return {
+          date: dateResult.date,
+          time: timeResult.time,
+          league: row[2]?.toString() || '',
+          homeTeam: row[3]?.toString() || '',
+          awayTeam: row[4]?.toString() || '',
+          status: row[5]?.toString() || 'Not Started',
+          selected: true,
+          dateConverted: dateResult.converted,
+          timeConverted: timeResult.converted,
+        };
+      });
 
       setGames(parsedGames);
       toast.success(`${parsedGames.length} jogos encontrados na planilha`);
@@ -82,6 +146,8 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
       toast.error('Erro ao ler arquivo. Verifique o formato da planilha.');
     } finally {
       setProcessing(false);
+      // Reset file input
+      e.target.value = '';
     }
   };
 
@@ -93,7 +159,10 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
       return;
     }
 
+    // Limpar jogos anteriores
+    setGames([]);
     setProcessing(true);
+
     try {
       const lines = textInput.split('\n').filter(line => line.trim());
       const parsedGames: GameData[] = [];
@@ -153,6 +222,69 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
     setGames(prev => prev.map((game, i) => 
       i === index ? { ...game, [field]: value } : game
     ));
+  };
+
+  const fixImportedDates = async () => {
+    if (!user) {
+      toast.error('Usuário não autenticado');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      // Buscar todos os jogos do usuário
+      const { data: allGames, error: fetchError } = await supabase
+        .from('games')
+        .select('id, date, time')
+        .eq('owner_id', user.id);
+
+      if (fetchError) throw fetchError;
+
+      let fixed = 0;
+      for (const game of allGames || []) {
+        let needsUpdate = false;
+        let newDate = game.date;
+        let newTime = game.time;
+
+        // Verificar se date parece ser número serial
+        if (game.date && /^\d{5,}$/.test(game.date)) {
+          const dateResult = parseDate(parseInt(game.date));
+          const [day, month, year] = dateResult.date.split('/');
+          newDate = `${year}-${month}-${day}`;
+          needsUpdate = true;
+        }
+
+        // Verificar se time parece ser número serial (0.xxxxx)
+        if (game.time && /^0\.\d+$/.test(game.time)) {
+          const timeResult = parseTime(parseFloat(game.time));
+          newTime = timeResult.time;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          const { error: updateError } = await supabase
+            .from('games')
+            .update({ date: newDate, time: newTime })
+            .eq('id', game.id);
+
+          if (!updateError) {
+            fixed++;
+          }
+        }
+      }
+
+      if (fixed > 0) {
+        toast.success(`${fixed} jogo(s) corrigido(s) com sucesso!`);
+        onSuccess(); // Recarregar dados
+      } else {
+        toast.info('Nenhum jogo precisou de correção.');
+      }
+    } catch (error) {
+      console.error('Error fixing dates:', error);
+      toast.error('Erro ao corrigir datas importadas');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const importGames = async () => {
@@ -284,6 +416,22 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
                   />
                 </label>
               </div>
+              <Button 
+                variant="outline" 
+                onClick={fixImportedDates} 
+                disabled={processing}
+                className="w-full"
+                size="sm"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Corrigindo...
+                  </>
+                ) : (
+                  'Corrigir datas importadas anteriormente'
+                )}
+              </Button>
             </div>
           </TabsContent>
 
@@ -348,20 +496,34 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          value={game.date}
-                          onChange={(e) => updateGameField(index, 'date', e.target.value)}
-                          className="w-28"
-                          placeholder="DD/MM/AAAA"
-                        />
+                        <div className="flex items-center gap-1">
+                          <Input
+                            value={game.date}
+                            onChange={(e) => updateGameField(index, 'date', e.target.value)}
+                            className="w-28"
+                            placeholder="DD/MM/AAAA"
+                          />
+                          {game.dateConverted && (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap" title="Convertido de formato Excel">
+                              ⏱
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Input
-                          value={game.time}
-                          onChange={(e) => updateGameField(index, 'time', e.target.value)}
-                          className="w-20"
-                          placeholder="HH:mm"
-                        />
+                        <div className="flex items-center gap-1">
+                          <Input
+                            value={game.time}
+                            onChange={(e) => updateGameField(index, 'time', e.target.value)}
+                            className="w-20"
+                            placeholder="HH:mm"
+                          />
+                          {game.timeConverted && (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap" title="Convertido de formato Excel">
+                              ⏱
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Input
