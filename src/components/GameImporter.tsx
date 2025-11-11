@@ -301,36 +301,23 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
 
     setImporting(true);
     let imported = 0;
-    let duplicates = 0;
 
     try {
-      // Check for existing games
-      const { data: existingGames } = await supabase
-        .from('games')
-        .select('home_team, away_team, date, time')
+      // Clear existing daily games before importing
+      const { error: deleteError } = await supabase
+        .from('daily_games')
+        .delete()
         .eq('owner_id', user.id);
 
+      if (deleteError) throw deleteError;
+
+      // Import games to daily_games table
       for (const game of selectedGames) {
-        // Convert DD/MM/YYYY to YYYY-MM-DD
+        // Convert DD/MM/YYYY to YYYY-MM-DD for consistency
         const [day, month, year] = game.date.split('/');
         const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 
-        // Check for duplicates
-        const isDuplicate = existingGames?.some(
-          existing => 
-            existing.home_team === game.homeTeam &&
-            existing.away_team === game.awayTeam &&
-            existing.date === formattedDate &&
-            existing.time === game.time
-        );
-
-        if (isDuplicate) {
-          duplicates++;
-          continue;
-        }
-
-        // Insert game
-        const { error } = await supabase.from('games').insert({
+        const { error } = await supabase.from('daily_games').insert({
           owner_id: user.id,
           date: formattedDate,
           time: game.time,
@@ -338,10 +325,11 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
           home_team: game.homeTeam,
           away_team: game.awayTeam,
           status: game.status || 'Not Started',
+          added_to_planning: false,
         });
 
         if (error) {
-          console.error('Error inserting game:', error);
+          console.error('Error inserting daily game:', error);
         } else {
           imported++;
         }
@@ -353,9 +341,11 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
         .update({ last_import_date: new Date().toISOString() })
         .eq('owner_id', user.id);
 
-      toast.success(
-        `✅ Importação concluída!\n${imported} jogo(s) adicionado(s)${duplicates > 0 ? `\n${duplicates} duplicata(s) ignorada(s)` : ''}`
-      );
+      if (imported > 0) {
+        toast.success(`✅ Jogos importados e exibidos na aba Jogos do Dia\n${imported} jogo(s) disponível(is)`);
+      } else {
+        toast.warning('⚠️ Nenhum jogo foi importado. Verifique o arquivo.');
+      }
 
       setGames([]);
       onSuccess();

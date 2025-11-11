@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { useSettings } from "@/hooks/useSettings";
+import { useDailyGames } from "@/hooks/useDailyGames";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
@@ -14,6 +15,8 @@ import { toast } from "sonner";
 import { GameCard } from "@/components/GameCard";
 import { GameForm } from "@/components/GameForm";
 import { GameImporter } from "@/components/GameImporter";
+import { DailyGamesTab } from "@/components/DailyGamesTab";
+import { MethodSelector } from "@/components/MethodSelector";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +34,7 @@ export default function DailyPlanning() {
   const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const { settings } = useSettings();
+  const { dailyGames, loading: dailyGamesLoading, loadDailyGames, markAsAdded } = useDailyGames();
   const [showForm, setShowForm] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
@@ -39,6 +43,9 @@ export default function DailyPlanning() {
   const [customDateFrom, setCustomDateFrom] = useState<Date>();
   const [customDateTo, setCustomDateTo] = useState<Date>();
   const [rebuildingStats, setRebuildingStats] = useState(false);
+  const [showMethodSelector, setShowMethodSelector] = useState(false);
+  const [selectedDailyGames, setSelectedDailyGames] = useState<string[]>([]);
+  const [addingToPlanning, setAddingToPlanning] = useState(false);
 
   const updateStatuses = async () => {
     const updatedGames = updateGameStatuses(games);
@@ -122,6 +129,52 @@ export default function DailyPlanning() {
       toast.error('Erro ao recalcular: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setRebuildingStats(false);
+    }
+  };
+
+  const handleAddToPlanning = (gameIds: string[]) => {
+    setSelectedDailyGames(gameIds);
+    setShowMethodSelector(true);
+  };
+
+  const handleConfirmMethod = async (methodId: string) => {
+    setAddingToPlanning(true);
+    try {
+      const gamesToAdd = dailyGames.filter(g => selectedDailyGames.includes(g.id));
+      
+      for (const dailyGame of gamesToAdd) {
+        // Add game to planning
+        await addGame({
+          date: dailyGame.date,
+          time: dailyGame.time,
+          league: dailyGame.league,
+          homeTeam: dailyGame.home_team,
+          awayTeam: dailyGame.away_team,
+          status: dailyGame.status,
+          homeTeamLogo: dailyGame.home_team_logo,
+          awayTeamLogo: dailyGame.away_team_logo,
+          methodOperations: [{
+            methodId: methodId,
+            operationType: 'Back',
+            entryOdds: 0,
+            exitOdds: 0,
+            result: null,
+          }],
+        });
+
+        // Mark as added in daily_games
+        await markAsAdded(dailyGame.id);
+      }
+
+      toast.success(`${gamesToAdd.length} jogo(s) adicionado(s) ao planejamento!`);
+      await loadDailyGames();
+      setShowMethodSelector(false);
+      setSelectedDailyGames([]);
+    } catch (error) {
+      console.error('Error adding games to planning:', error);
+      toast.error('Erro ao adicionar jogos ao planejamento');
+    } finally {
+      setAddingToPlanning(false);
     }
   };
 
@@ -323,13 +376,36 @@ export default function DailyPlanning() {
       <GameImporter
         open={showImporter}
         onOpenChange={setShowImporter}
-        onSuccess={refreshGames}
+        onSuccess={() => {
+          refreshGames();
+          loadDailyGames();
+        }}
         lastImportDate={settings?.last_import_date}
       />
 
+      {/* Method Selector */}
+      <MethodSelector
+        open={showMethodSelector}
+        onOpenChange={setShowMethodSelector}
+        methods={bankroll.methods}
+        onConfirm={handleConfirmMethod}
+        loading={addingToPlanning}
+      />
+
       {/* Tabs */}
-      <Tabs defaultValue="planning" className="w-full">
+      <Tabs defaultValue="daily" className="w-full">
         <TabsList className="border-b w-full justify-start rounded-none bg-transparent p-0 h-auto">
+          <TabsTrigger 
+            value="daily"
+            className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none pb-2 text-sm"
+          >
+            Jogos do Dia
+            {dailyGames.length > 0 && (
+              <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+                {dailyGames.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger 
             value="planning"
             className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none pb-2 text-sm"
@@ -353,6 +429,16 @@ export default function DailyPlanning() {
             )}
           </TabsTrigger>
         </TabsList>
+
+        {/* Jogos do Dia Tab */}
+        <TabsContent value="daily" className="mt-4">
+          <DailyGamesTab
+            dailyGames={dailyGames}
+            onRefresh={loadDailyGames}
+            onAddToPlanning={handleAddToPlanning}
+            loading={dailyGamesLoading}
+          />
+        </TabsContent>
 
         {/* Grid responsivo: 1 coluna mobile, 2 colunas tablet+, 3 colunas desktop */}
         <TabsContent value="planning" className="mt-4">

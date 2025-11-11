@@ -38,6 +38,57 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_games: {
+        Row: {
+          added_to_planning: boolean | null
+          away_team: string
+          away_team_logo: string | null
+          created_at: string
+          date: string
+          date_time: string | null
+          home_team: string
+          home_team_logo: string | null
+          id: string
+          league: string
+          owner_id: string
+          status: string | null
+          time: string
+          updated_at: string
+        }
+        Insert: {
+          added_to_planning?: boolean | null
+          away_team: string
+          away_team_logo?: string | null
+          created_at?: string
+          date: string
+          date_time?: string | null
+          home_team: string
+          home_team_logo?: string | null
+          id?: string
+          league: string
+          owner_id: string
+          status?: string | null
+          time: string
+          updated_at?: string
+        }
+        Update: {
+          added_to_planning?: boolean | null
+          away_team?: string
+          away_team_logo?: string | null
+          created_at?: string
+          date?: string
+          date_time?: string | null
+          home_team?: string
+          home_team_logo?: string | null
+          id?: string
+          league?: string
+          owner_id?: string
+          status?: string | null
+          time?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       estrategias: {
         Row: {
           condicoes_entrada: string | null
