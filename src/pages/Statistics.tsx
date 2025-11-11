@@ -37,20 +37,20 @@ export default function Statistics() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between mb-8">
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold mb-1">Estatísticas</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-3xl font-bold mb-2 tracking-tight">Estatísticas</h1>
+          <p className="text-sm text-muted-foreground font-light">
             Análise de performance • {games.length} operações
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRefresh}>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={handleRefresh} className="shadow-apple">
             <RefreshCw className="mr-2 h-4 w-4" />
             Atualizar
           </Button>
-          <Button onClick={handleExport}>
+          <Button onClick={handleExport} className="shadow-apple-md">
             <Download className="mr-2 h-4 w-4" />
             Exportar CSV
           </Button>
@@ -58,7 +58,7 @@ export default function Statistics() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-4">
         <StatCard
           label="Total de Operações"
           value={statistics.overallStats.total}
@@ -67,12 +67,12 @@ export default function Statistics() {
         <StatCard
           label="Greens"
           value={statistics.overallStats.greens}
-          className="text-green-600"
+          className="text-success"
         />
         <StatCard
           label="Reds"
           value={statistics.overallStats.reds}
-          className="text-red-600"
+          className="text-destructive"
         />
         <StatCard
           label="Win Rate"

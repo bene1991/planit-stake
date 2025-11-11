@@ -14,10 +14,10 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="flex h-screen bg-background">
       {/* Mobile Header with Hamburger */}
-      <header className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center gap-4 border-b bg-background px-4 lg:hidden">
+      <header className="fixed top-0 left-0 right-0 z-50 h-16 flex items-center gap-4 border-b bg-card/80 backdrop-blur-xl px-6 lg:hidden shadow-apple-sm">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="rounded-full">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
@@ -25,27 +25,18 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             <Sidebar onItemClick={() => setOpen(false)} />
           </SheetContent>
         </Sheet>
-        <h1 className="text-sm font-semibold">Vini Trader</h1>
+        <h1 className="text-base font-semibold tracking-tight">Vini Trader</h1>
       </header>
 
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block fixed left-0 top-0 h-screen w-52 border-r">
+      <div className="hidden lg:block fixed left-0 top-0 h-screen w-64 border-r bg-card/50 backdrop-blur-xl shadow-apple">
         <Sidebar />
       </div>
 
       {/* Main Content */}
-      <main className="relative flex-1 overflow-auto pt-14 lg:pt-0 lg:ml-52">
-        {/* Subtle background pattern */}
-        <div 
-          className="absolute inset-0 pointer-events-none opacity-[0.02] dark:opacity-[0.03]"
-          style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
-            backgroundSize: '40px 40px'
-          }}
-        />
-        
+      <main className="relative flex-1 overflow-auto pt-16 lg:pt-0 lg:ml-64">
         {/* Content */}
-        <div className="relative container mx-auto px-6 py-8">
+        <div className="relative container mx-auto px-6 py-8 animate-fade-in">
           {children}
         </div>
       </main>

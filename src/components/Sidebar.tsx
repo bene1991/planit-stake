@@ -28,19 +28,19 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
   };
 
   return (
-    <aside className="h-full w-full bg-card shadow-sm">
-      <div className="flex h-full flex-col">
+    <aside className="h-full w-full bg-transparent">
+      <div className="flex h-full flex-col p-4">
         {/* Logo */}
-        <div className="flex h-16 items-center gap-3 border-b px-4 sm:px-6">
-          <VTLogo variant={variant} className="h-10 w-10" />
+        <div className="flex h-20 items-center gap-3 px-2 mb-4">
+          <VTLogo variant={variant} className="h-12 w-12" />
           <div>
-            <h1 className="text-base font-bold text-foreground">Vini Trader</h1>
-            <p className="text-xs text-muted-foreground">Sistema de Gestão</p>
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">Vini Trader</h1>
+            <p className="text-xs text-muted-foreground font-light">Sistema de Gestão</p>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -50,33 +50,33 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
                 to={item.path}
                 onClick={handleNavClick}
                 className={cn(
-                  "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
+                  "group relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
                   isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-apple-md"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                 )}
               >
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r bg-primary" />
-                )}
-                <Icon className="h-5 w-5" />
-                <span>{item.label}</span>
+                <Icon className={cn(
+                  "h-5 w-5 transition-transform duration-200",
+                  isActive ? "scale-110" : "group-hover:scale-110"
+                )} />
+                <span className="tracking-wide">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
         {/* User Section */}
-        <div className="border-t p-4 space-y-2">
-          <div className="px-3 py-2">
-            <p className="text-xs font-medium text-muted-foreground">Conectado como</p>
+        <div className="border-t border-border/50 pt-4 space-y-2 mt-4">
+          <div className="px-3 py-2 rounded-xl bg-secondary/50">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Conectado como</p>
             <p className="text-sm font-medium text-foreground truncate">{user?.email}</p>
           </div>
           
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <Link to="/account" className="flex-1" onClick={handleNavClick}>
-              <Button variant="ghost" size="sm" className="w-full justify-start">
+              <Button variant="ghost" size="sm" className="w-full justify-start rounded-xl">
                 <UserIcon className="mr-2 h-4 w-4" />
                 Conta
               </Button>
@@ -90,7 +90,7 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
               signOut();
               handleNavClick();
             }} 
-            className="w-full justify-start"
+            className="w-full justify-start rounded-xl hover:bg-destructive/10 hover:text-destructive"
           >
             <LogOut className="mr-2 h-4 w-4" />
             Sair

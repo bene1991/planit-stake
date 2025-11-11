@@ -15,10 +15,10 @@ export function GreenVsRedChart({ greens, reds }: GreenVsRedChartProps) {
   const total = greens + reds;
 
   return (
-    <Card className="p-6 shadow-card">
-      <h3 className="mb-4 text-lg font-bold">Green vs Red</h3>
+    <Card className="p-8 animate-scale-in">
+      <h3 className="mb-6 text-xl font-bold tracking-tight">Green vs Red</h3>
       {total === 0 ? (
-        <div className="flex h-64 items-center justify-center text-muted-foreground">
+        <div className="flex h-64 items-center justify-center text-muted-foreground font-light">
           Nenhum resultado registrado
         </div>
       ) : (
@@ -43,14 +43,14 @@ export function GreenVsRedChart({ greens, reds }: GreenVsRedChartProps) {
           </PieChart>
         </ResponsiveContainer>
       )}
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="rounded-lg bg-green-500/10 p-3 text-center">
-          <p className="text-2xl font-bold text-green-600">{greens}</p>
-          <p className="text-sm text-muted-foreground">Greens</p>
+      <div className="mt-6 grid grid-cols-2 gap-4">
+        <div className="rounded-2xl bg-success/10 p-4 text-center backdrop-blur-sm transition-all hover:bg-success/15">
+          <p className="text-3xl font-bold text-success">{greens}</p>
+          <p className="text-sm text-muted-foreground font-medium mt-1">Greens</p>
         </div>
-        <div className="rounded-lg bg-red-500/10 p-3 text-center">
-          <p className="text-2xl font-bold text-red-600">{reds}</p>
-          <p className="text-sm text-muted-foreground">Reds</p>
+        <div className="rounded-2xl bg-destructive/10 p-4 text-center backdrop-blur-sm transition-all hover:bg-destructive/15">
+          <p className="text-3xl font-bold text-destructive">{reds}</p>
+          <p className="text-sm text-muted-foreground font-medium mt-1">Reds</p>
         </div>
       </div>
     </Card>
