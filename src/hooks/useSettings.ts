@@ -7,6 +7,7 @@ export interface Settings {
   api_key?: string;
   telegram_bot_token?: string;
   telegram_chat_id?: string;
+  last_import_date?: string;
 }
 
 export const useSettings = () => {

@@ -240,6 +240,7 @@ export type Database = {
           api_key: string | null
           created_at: string
           id: string
+          last_import_date: string | null
           owner_id: string
           telegram_bot_token: string | null
           telegram_chat_id: string | null
@@ -249,6 +250,7 @@ export type Database = {
           api_key?: string | null
           created_at?: string
           id?: string
+          last_import_date?: string | null
           owner_id: string
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
@@ -258,6 +260,7 @@ export type Database = {
           api_key?: string | null
           created_at?: string
           id?: string
+          last_import_date?: string | null
           owner_id?: string
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
+import { useSettings } from "@/hooks/useSettings";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
@@ -8,10 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Plus, Download, TrendingUp, CheckCircle, XCircle, Target, RefreshCw, Search, CalendarIcon, ChevronDown } from "lucide-react";
+import { Calendar, Plus, Download, TrendingUp, CheckCircle, XCircle, Target, RefreshCw, Search, CalendarIcon, ChevronDown, FileUp } from "lucide-react";
 import { toast } from "sonner";
 import { GameCard } from "@/components/GameCard";
 import { GameForm } from "@/components/GameForm";
+import { GameImporter } from "@/components/GameImporter";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +30,9 @@ import { cn } from "@/lib/utils";
 export default function DailyPlanning() {
   const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
+  const { settings } = useSettings();
   const [showForm, setShowForm] = useState(false);
+  const [showImporter, setShowImporter] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [periodFilter, setPeriodFilter] = useState('today');
@@ -292,6 +296,10 @@ export default function DailyPlanning() {
             <RefreshCw className="h-3.5 w-3.5 sm:mr-2" />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
+          <Button variant="default" size="sm" onClick={() => setShowImporter(true)} className="h-8">
+            <FileUp className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">Adicionar Jogos do Dia</span>
+          </Button>
           <Button size="sm" onClick={() => setShowForm(!showForm)} className="h-8">
             <Plus className="h-3.5 w-3.5 sm:mr-2" />
             <span className="hidden sm:inline">Novo Jogo</span>
@@ -310,6 +318,14 @@ export default function DailyPlanning() {
           />
         </div>
       )}
+
+      {/* Importador */}
+      <GameImporter
+        open={showImporter}
+        onOpenChange={setShowImporter}
+        onSuccess={refreshGames}
+        lastImportDate={settings?.last_import_date}
+      />
 
       {/* Tabs */}
       <Tabs defaultValue="planning" className="w-full">
