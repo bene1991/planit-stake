@@ -115,7 +115,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
       <div className="px-4 py-3 border-b border-border/30 bg-gradient-neon-subtle">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex items-center gap-2 mb-3">
               <p className="text-xs uppercase text-muted-foreground font-bold tracking-wide truncate">{game.league}</p>
               {isLive && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-black px-2.5 py-1 rounded-md bg-gradient-neon shadow-glow">
@@ -124,38 +124,54 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3 mb-1">
-              {homeTeamLogo && (
-                <Avatar className="h-9 w-9 flex-shrink-0 ring-2 ring-background shadow-apple-sm">
-                  <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-                  <AvatarFallback className="text-xs bg-muted">
-                    <Shield className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <h3 className="text-sm font-semibold text-foreground leading-tight tracking-tight">
-                {game.homeTeam} vs {game.awayTeam}
-              </h3>
-              {awayTeamLogo && (
-                <Avatar className="h-9 w-9 flex-shrink-0 ring-2 ring-background shadow-apple-sm">
-                  <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-                  <AvatarFallback className="text-xs bg-muted">
-                    <Shield className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
+            
+            {/* Times com escudos acima dos nomes */}
+            <div className="flex items-center justify-between gap-4">
+              {/* Time da casa */}
+              <div className="flex-1 flex flex-col items-center gap-2">
+                {homeTeamLogo && (
+                  <Avatar className="h-12 w-12 ring-2 ring-background shadow-apple-sm">
+                    <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+                    <AvatarFallback className="text-xs bg-muted">
+                      <Shield className="h-5 w-5" />
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <p className="text-xs font-semibold text-foreground text-center leading-tight">
+                  {game.homeTeam}
+                </p>
+              </div>
+
+              {/* Horário no centro */}
+              <div className="flex flex-col items-center gap-1 px-3">
+                <p className="text-sm font-bold text-foreground whitespace-nowrap">
+                  {game.time}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}
+                </p>
+              </div>
+
+              {/* Time visitante */}
+              <div className="flex-1 flex flex-col items-center gap-2">
+                {awayTeamLogo && (
+                  <Avatar className="h-12 w-12 ring-2 ring-background shadow-apple-sm">
+                    <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+                    <AvatarFallback className="text-xs bg-muted">
+                      <Shield className="h-5 w-5" />
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <p className="text-xs font-semibold text-foreground text-center leading-tight">
+                  {game.awayTeam}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-              <span>{new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}</span>
-              <span>•</span>
-              <span>{game.time}</span>
-              {hasMultipleMethods && (
-                <>
-                  <span>•</span>
-                  <span className="font-medium">{game.methodOperations.length} métodos</span>
-                </>
-              )}
-            </div>
+            {hasMultipleMethods && (
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground font-medium mt-2">
+                <span className="font-medium">{game.methodOperations.length} métodos</span>
+              </div>
+            )}
           </div>
           <div className="flex gap-1 flex-shrink-0">
             {!isFinalized && (
