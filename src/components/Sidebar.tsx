@@ -45,10 +45,10 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
                 to={item.path}
                 onClick={handleNavClick}
                 className={cn(
-                  "group relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
+                  "group relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-all duration-200",
                   isActive
-                    ? "bg-primary text-primary-foreground shadow-apple-md"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-glow"
+                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                 )}
               >
                 <Icon className={cn(

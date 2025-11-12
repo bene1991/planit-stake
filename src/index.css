@@ -8,87 +8,80 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Apple-inspired Light Theme with Dark Gradient */
-    --background: 220 40% 8%;
+    /* Scoretabs-inspired Theme - Ultra Dark with Neon Green */
+    --background: 0 0% 7%;
     --foreground: 0 0% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 13%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 13%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 211 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 160 100% 50%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 13%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 211 100% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 160 100% 50%;
+    --accent-foreground: 0 0% 0%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 76% 36%;
-    --success-foreground: 0 0% 100%;
+    --success: 160 100% 50%;
+    --success-foreground: 0 0% 0%;
 
-    --border: 0 0% 90%;
-    --input: 0 0% 94%;
-    --ring: 211 100% 50%;
+    --border: 0 0% 22%;
+    --input: 0 0% 18%;
+    --ring: 160 100% 50%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
     
-    /* Apple-specific shadows */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    /* Neon glow effects */
+    --glow-primary: 0 0 20px hsl(160 100% 50% / 0.5);
+    --glow-card: 0 4px 20px rgb(0 0 0 / 0.5);
   }
 
   .dark {
-    /* Apple-inspired Dark Theme with Deep Gradient */
-    --background: 220 50% 5%;
+    /* Scoretabs Dark Theme */
+    --background: 0 0% 7%;
     --foreground: 0 0% 98%;
 
-    --card: 0 0% 10%;
+    --card: 0 0% 12%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 10%;
+    --popover: 0 0% 12%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 211 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 160 100% 50%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 0 0% 15%;
+    --secondary: 0 0% 18%;
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 65%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 60%;
 
-    --accent: 211 100% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 160 100% 50%;
+    --accent-foreground: 0 0% 0%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 76% 45%;
-    --success-foreground: 0 0% 100%;
+    --success: 160 100% 50%;
+    --success-foreground: 0 0% 0%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 15%;
-    --ring: 211 100% 50%;
+    --border: 0 0% 22%;
+    --input: 0 0% 18%;
+    --ring: 160 100% 50%;
     
-    /* Apple-specific dark shadows */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.4);
+    --glow-primary: 0 0 20px hsl(160 100% 50% / 0.5);
+    --glow-card: 0 4px 20px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -101,12 +94,12 @@ All colors MUST be HSL.
     @apply text-foreground font-sans antialiased;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: linear-gradient(135deg, hsl(220, 50%, 5%) 0%, hsl(230, 60%, 8%) 50%, hsl(220, 45%, 10%) 100%);
+    background: #0a0a0a;
     background-attachment: fixed;
   }
   
   body.light {
-    background: linear-gradient(135deg, hsl(220, 40%, 8%) 0%, hsl(230, 50%, 12%) 50%, hsl(220, 35%, 15%) 100%);
+    background: #0a0a0a;
     background-attachment: fixed;
   }
   

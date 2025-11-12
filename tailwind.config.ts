@@ -61,11 +61,9 @@ export default {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        'apple-sm': 'var(--shadow-sm)',
-        'apple': 'var(--shadow)',
-        'apple-md': 'var(--shadow-md)',
-        'apple-lg': 'var(--shadow-lg)',
-        'apple-xl': 'var(--shadow-xl)',
+        'glow': 'var(--glow-primary)',
+        'card': 'var(--glow-card)',
+        'neon': '0 0 20px hsl(160 100% 50% / 0.5), 0 0 40px hsl(160 100% 50% / 0.3)',
       },
       keyframes: {
         "accordion-down": {
