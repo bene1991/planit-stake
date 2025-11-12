@@ -2,10 +2,8 @@ import { Link, useLocation } from "react-router-dom";
 import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLogo } from "@/contexts/LogoContext";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { VTLogo } from "@/components/VTLogo";
 
 interface SidebarProps {
   onItemClick?: () => void;
@@ -14,7 +12,6 @@ interface SidebarProps {
 export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
   const location = useLocation();
   const { user, signOut } = useAuth();
-  const { variant } = useLogo();
 
   const navItems = [
     { path: "/bankroll", label: "Gestão de Banca", icon: TrendingUp },
@@ -29,11 +26,10 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
   return (
     <aside className="h-full w-full bg-transparent">
       <div className="flex h-full flex-col p-4">
-        {/* Logo */}
-        <div className="flex h-20 items-center gap-3 px-2 mb-4">
-          <VTLogo variant={variant} className="h-12 w-12" />
+        {/* Header */}
+        <div className="flex h-20 items-center px-2 mb-4">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">Vini Trader</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vini Trader</h1>
             <p className="text-xs text-muted-foreground font-light">Sistema de Gestão</p>
           </div>
         </div>
