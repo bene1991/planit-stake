@@ -112,11 +112,11 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
       isLive ? "border-primary/50 shadow-glow bg-gradient-to-br from-card to-primary/5" : "border-border/40 hover:border-primary/30 bg-card"
     )}>
       {/* Header super compacto */}
-      <div className="px-4 py-3 border-b border-border/30 bg-gradient-neon-subtle">
+      <div className="px-3 py-2 border-b border-border/30 bg-gradient-neon-subtle">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs uppercase text-muted-foreground font-bold tracking-wide truncate">{game.league}</p>
+            <div className="flex items-center gap-2 mb-2">
+              <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide truncate">{game.league}</p>
               {isLive && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-black px-2.5 py-1 rounded-md bg-gradient-neon shadow-glow">
                   <span className="inline-block h-2 w-2 rounded-full bg-black animate-pulse" />
@@ -126,43 +126,43 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
             </div>
             
             {/* Times com escudos acima dos nomes */}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-3">
               {/* Time da casa */}
-              <div className="flex-1 flex flex-col items-center gap-2">
+              <div className="flex-1 flex flex-col items-center gap-1.5">
                 {homeTeamLogo && (
-                  <Avatar className="h-12 w-12 ring-2 ring-background shadow-apple-sm">
+                  <Avatar className="h-10 w-10 ring-2 ring-background shadow-apple-sm">
                     <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
                     <AvatarFallback className="text-xs bg-muted">
                       <Shield className="h-5 w-5" />
                     </AvatarFallback>
                   </Avatar>
                 )}
-                <p className="text-xs font-semibold text-foreground text-center leading-tight">
+                <p className="text-[11px] font-semibold text-foreground text-center leading-tight">
                   {game.homeTeam}
                 </p>
               </div>
 
               {/* Horário no centro */}
-              <div className="flex flex-col items-center gap-1 px-3">
-                <p className="text-sm font-bold text-foreground whitespace-nowrap">
+              <div className="flex flex-col items-center gap-0.5 px-2">
+                <p className="text-xs font-bold text-foreground whitespace-nowrap">
                   {game.time}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground">
                   {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}
                 </p>
               </div>
 
               {/* Time visitante */}
-              <div className="flex-1 flex flex-col items-center gap-2">
+              <div className="flex-1 flex flex-col items-center gap-1.5">
                 {awayTeamLogo && (
-                  <Avatar className="h-12 w-12 ring-2 ring-background shadow-apple-sm">
+                  <Avatar className="h-10 w-10 ring-2 ring-background shadow-apple-sm">
                     <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
                     <AvatarFallback className="text-xs bg-muted">
                       <Shield className="h-5 w-5" />
                     </AvatarFallback>
                   </Avatar>
                 )}
-                <p className="text-xs font-semibold text-foreground text-center leading-tight">
+                <p className="text-[11px] font-semibold text-foreground text-center leading-tight">
                   {game.awayTeam}
                 </p>
               </div>
@@ -187,7 +187,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
       </div>
 
       {/* Corpo com collapsible para múltiplos métodos */}
-      <div className="px-4 py-3">
+      <div className="px-3 py-2">
         {game.notes && (
           <p className="text-xs text-muted-foreground mb-3 pb-3 border-b line-clamp-2 italic">{game.notes}</p>
         )}
