@@ -12,22 +12,22 @@ interface StatCardProps {
 
 export function StatCard({ label, value, detail, trend, icon, className }: StatCardProps) {
   return (
-    <Card className={cn("p-6 bg-card border-2 border-border/50 hover:border-primary/50 shadow-card hover:shadow-glow transition-all duration-300 animate-scale-in", className)}>
-      <div className="flex items-start justify-between mb-4">
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+    <Card className={cn("p-6 bg-card border border-border/30 hover:border-primary/30 shadow-card hover:shadow-neon transition-all duration-300 animate-scale-in group", className)}>
+      <div className="flex items-start justify-between mb-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           {label}
         </p>
         {icon && (
-          <div className="text-primary p-2 rounded-xl bg-primary/20">
+          <div className="text-primary p-2 rounded-lg bg-gradient-neon-subtle group-hover:bg-primary/10 transition-colors">
             {icon}
           </div>
         )}
       </div>
-      <p className="text-4xl font-bold mb-2 tracking-tight text-foreground">{value}</p>
+      <p className="text-4xl font-bold mb-2 tracking-tight text-foreground group-hover:text-primary transition-colors">{value}</p>
       {detail && (
         <p className={cn(
           "text-sm font-semibold",
-          trend === 'up' && "text-success",
+          trend === 'up' && "text-primary",
           trend === 'down' && "text-destructive",
           trend === 'neutral' && "text-muted-foreground"
         )}>

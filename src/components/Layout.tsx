@@ -1,42 +1,136 @@
 import { useState } from "react";
-import { Menu } from "lucide-react";
-import { Sidebar } from "@/components/Sidebar";
+import { Link, useLocation } from "react-router-dom";
+import { Menu, Home, Calendar, BarChart3, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "./ThemeToggle";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const { user, signOut } = useAuth();
+
+  const navItems = [
+    { to: "/", label: "Início", icon: Home },
+    { to: "/daily-planning", label: "Planejamento", icon: Calendar },
+    { to: "/statistics", label: "Estatísticas", icon: BarChart3 },
+    { to: "/bankroll", label: "Banca", icon: Wallet },
+  ];
+
+  const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Mobile Header with Hamburger */}
-      <header className="fixed top-0 left-0 right-0 z-50 h-16 flex items-center gap-4 border-b border-border/50 bg-background/95 backdrop-blur-xl px-6 lg:hidden">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-xl">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[280px] p-0 bg-card border-r-2 border-border/50">
-            <Sidebar onItemClick={() => setOpen(false)} />
-          </SheetContent>
-        </Sheet>
-        <h1 className="text-base font-bold tracking-tight text-primary">Vini Trader</h1>
+    <div className="min-h-screen bg-background">
+      {/* ScoreTabs-style Fixed Header */}
+      <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border/30 bg-background/80 backdrop-blur-xl">
+        <div className="container mx-auto h-full px-6 flex items-center justify-between">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2">
+            <span className="text-2xl font-bold">
+              <span className="text-foreground">vini</span>
+              <span className="text-primary">trader</span>
+              <span className="text-primary text-3xl">.</span>
+            </span>
+          </Link>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden lg:flex items-center gap-8">
+            {navItems.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`flex items-center gap-2 text-sm font-medium transition-all duration-200 hover:text-primary ${
+                  isActive(item.to) ? "text-primary" : "text-muted-foreground"
+                }`}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Right Actions */}
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            
+            {user ? (
+              <div className="hidden lg:flex items-center gap-4">
+                <Link to="/account">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                    Conta
+                  </Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => signOut()}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  Sair
+                </Button>
+              </div>
+            ) : (
+              <Link to="/auth" className="hidden lg:block">
+                <Button size="sm" className="bg-gradient-neon hover:shadow-glow-strong">
+                  Entrar
+                </Button>
+              </Link>
+            )}
+
+            {/* Mobile Menu */}
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="lg:hidden">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px] bg-card border-l border-border/30">
+                <div className="flex flex-col gap-6 mt-8">
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setOpen(false)}
+                      className={`flex items-center gap-3 text-base font-medium transition-all duration-200 hover:text-primary ${
+                        isActive(item.to) ? "text-primary" : "text-muted-foreground"
+                      }`}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </Link>
+                  ))}
+                  
+                  {user && (
+                    <>
+                      <Link
+                        to="/account"
+                        onClick={() => setOpen(false)}
+                        className="flex items-center gap-3 text-base font-medium text-muted-foreground hover:text-primary"
+                      >
+                        Conta
+                      </Link>
+                      <button
+                        onClick={() => {
+                          signOut();
+                          setOpen(false);
+                        }}
+                        className="flex items-center gap-3 text-base font-medium text-destructive hover:text-destructive/80"
+                      >
+                        Sair
+                      </button>
+                    </>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
       </header>
 
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block fixed left-0 top-0 h-screen w-64 border-r-2 border-border/50 bg-card">
-        <Sidebar />
-      </div>
-
       {/* Main Content */}
-      <main className="relative flex-1 overflow-auto pt-16 lg:pt-0 lg:ml-64">
-        {/* Content */}
-        <div className="relative container mx-auto px-6 py-8 animate-fade-in">
+      <main className="pt-16">
+        <div className="container mx-auto px-6 py-8 animate-fade-in">
           {children}
         </div>
       </main>

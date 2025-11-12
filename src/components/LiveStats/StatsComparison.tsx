@@ -14,21 +14,21 @@ interface StatsComparisonProps {
 
 export function StatsComparison({ homeTeam, awayTeam, stats }: StatsComparisonProps) {
   return (
-    <Card className="p-6">
-      <h3 className="text-lg font-semibold mb-4">Estatísticas Comparativas</h3>
+    <Card className="p-6 border border-border/30 hover:border-primary/20 transition-all">
+      <h3 className="text-lg font-bold mb-6 text-foreground">Estatísticas Comparativas</h3>
       
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 pb-2 border-b text-sm font-semibold">
-          <div className="text-left">{homeTeam}</div>
+        <div className="grid grid-cols-3 gap-4 pb-3 border-b border-border/30 text-sm font-bold">
+          <div className="text-left text-foreground">{homeTeam}</div>
           <div className="text-center text-muted-foreground">Estatística</div>
-          <div className="text-right">{awayTeam}</div>
+          <div className="text-right text-foreground">{awayTeam}</div>
         </div>
         
         {stats.map((stat, index) => (
-          <div key={index} className="grid grid-cols-3 gap-4 items-center">
-            <div className="text-left font-semibold">{stat.home}</div>
-            <div className="text-center text-sm text-muted-foreground">{stat.label}</div>
-            <div className="text-right font-semibold">{stat.away}</div>
+          <div key={index} className="grid grid-cols-3 gap-4 items-center py-2 hover:bg-gradient-neon-subtle rounded-lg px-2 transition-colors">
+            <div className="text-left font-bold text-primary">{stat.home}</div>
+            <div className="text-center text-xs text-muted-foreground uppercase tracking-wide">{stat.label}</div>
+            <div className="text-right font-bold text-primary">{stat.away}</div>
           </div>
         ))}
       </div>

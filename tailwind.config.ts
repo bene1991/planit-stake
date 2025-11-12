@@ -61,9 +61,16 @@ export default {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        'glow': 'var(--glow-primary)',
+        'glow': 'var(--glow-neon)',
+        'glow-strong': 'var(--glow-neon-strong)',
         'card': 'var(--glow-card)',
-        'neon': '0 0 20px hsl(160 100% 50% / 0.5), 0 0 40px hsl(160 100% 50% / 0.3)',
+        'card-hover': 'var(--glow-card-hover)',
+        'neon': '0 0 30px rgba(15, 235, 170, 0.4)',
+        'neon-strong': '0 0 40px rgba(15, 235, 170, 0.6)',
+      },
+      backgroundImage: {
+        'gradient-neon': 'var(--gradient-neon)',
+        'gradient-neon-subtle': 'var(--gradient-neon-subtle)',
       },
       keyframes: {
         "accordion-down": {

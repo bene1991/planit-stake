@@ -8,80 +8,73 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Scoretabs-inspired Theme - Ultra Dark with Neon Green */
-    --background: 0 0% 7%;
-    --foreground: 0 0% 98%;
+    /* ScoreTabs Design System - Ultra Dark Premium */
+    --background: 150 5% 5%;        /* #0D0D0D */
+    --foreground: 0 0% 98%;         /* White text */
 
-    --card: 0 0% 12%;
+    --card: 0 0% 7%;                /* #121212 elevated cards */
     --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 12%;
+    --popover: 0 0% 8%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 160 100% 50%;
+    --primary: 160 100% 60%;        /* #00FFAA - Neon Green */
     --primary-foreground: 0 0% 0%;
 
-    --secondary: 0 0% 18%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 0 0% 12%;          /* #1F1F1F */
+    --secondary-foreground: 0 0% 90%;
 
-    --muted: 0 0% 18%;
-    --muted-foreground: 0 0% 60%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;   /* Gray text */
 
-    --accent: 160 100% 50%;
+    --accent: 160 100% 60%;         /* Neon accent */
     --accent-foreground: 0 0% 0%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 160 100% 50%;
+    --success: 160 100% 60%;
     --success-foreground: 0 0% 0%;
 
-    --border: 0 0% 22%;
-    --input: 0 0% 18%;
-    --ring: 160 100% 50%;
+    --border: 0 0% 18%;             /* Subtle borders */
+    --input: 0 0% 10%;
+    --ring: 160 100% 60%;
 
-    --radius: 1rem;
+    --radius: 0.75rem;
     
-    /* Neon glow effects */
-    --glow-primary: 0 0 20px hsl(160 100% 50% / 0.5);
-    --glow-card: 0 4px 20px rgb(0 0 0 / 0.5);
+    /* Premium ScoreTabs glow effects */
+    --glow-neon: 0 0 30px hsl(160 100% 60% / 0.4);
+    --glow-neon-strong: 0 0 40px hsl(160 100% 60% / 0.6);
+    --glow-card: 0 8px 32px rgba(0, 0, 0, 0.6);
+    --glow-card-hover: 0 8px 32px rgba(15, 235, 170, 0.2);
+    
+    /* Premium gradients */
+    --gradient-neon: linear-gradient(90deg, hsl(160 100% 60%), hsl(170 100% 55%));
+    --gradient-neon-subtle: linear-gradient(135deg, hsl(160 100% 60% / 0.1), hsl(170 100% 55% / 0.05));
   }
 
   .dark {
-    /* Scoretabs Dark Theme */
-    --background: 0 0% 7%;
+    --background: 150 5% 5%;
     --foreground: 0 0% 98%;
-
-    --card: 0 0% 12%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-
-    --popover: 0 0% 12%;
+    --popover: 0 0% 8%;
     --popover-foreground: 0 0% 98%;
-
-    --primary: 160 100% 50%;
+    --primary: 160 100% 60%;
     --primary-foreground: 0 0% 0%;
-
-    --secondary: 0 0% 18%;
-    --secondary-foreground: 0 0% 98%;
-
-    --muted: 0 0% 18%;
-    --muted-foreground: 0 0% 60%;
-
-    --accent: 160 100% 50%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 160 100% 60%;
     --accent-foreground: 0 0% 0%;
-
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-
-    --success: 160 100% 50%;
+    --success: 160 100% 60%;
     --success-foreground: 0 0% 0%;
-
-    --border: 0 0% 22%;
-    --input: 0 0% 18%;
-    --ring: 160 100% 50%;
-    
-    --glow-primary: 0 0 20px hsl(160 100% 50% / 0.5);
-    --glow-card: 0 4px 20px rgb(0 0 0 / 0.5);
+    --border: 0 0% 18%;
+    --input: 0 0% 10%;
+    --ring: 160 100% 60%;
   }
 }
 
@@ -91,15 +84,16 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply text-foreground font-sans antialiased;
+    @apply text-foreground antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: #0a0a0a;
+    background: #0D0D0D;
     background-attachment: fixed;
   }
   
   body.light {
-    background: #0a0a0a;
+    background: #0D0D0D;
     background-attachment: fixed;
   }
   

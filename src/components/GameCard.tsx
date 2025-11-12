@@ -108,19 +108,19 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
   return (
     <Card className={cn(
-      "overflow-hidden border-2 transition-all duration-300 animate-slide-up",
-      isLive ? "border-primary/60 shadow-glow" : "border-border/60 hover:border-primary/40"
+      "overflow-hidden transition-all duration-300 animate-slide-up hover:shadow-neon",
+      isLive ? "border-primary/50 shadow-glow bg-gradient-to-br from-card to-primary/5" : "border-border/40 hover:border-primary/30 bg-card"
     )}>
       {/* Header super compacto */}
-      <div className="px-4 py-3 border-b-2 border-border/50 bg-card/50">
+      <div className="px-4 py-3 border-b border-border/30 bg-gradient-neon-subtle">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <p className="text-xs uppercase text-muted-foreground font-semibold tracking-wider truncate">{game.league}</p>
+            <div className="flex items-center gap-2 mb-1.5">
+              <p className="text-xs uppercase text-muted-foreground font-bold tracking-wide truncate">{game.league}</p>
               {isLive && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary px-3 py-1 rounded-lg bg-primary/20 border-2 border-primary/30">
-                  <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  LIVE
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-black px-2.5 py-1 rounded-md bg-gradient-neon shadow-glow">
+                  <span className="inline-block h-2 w-2 rounded-full bg-black animate-pulse" />
+                  AO VIVO
                 </span>
               )}
             </div>
