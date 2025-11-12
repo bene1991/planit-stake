@@ -119,7 +119,7 @@ export function GameForm({ methods, editingGame, onSubmit, onCancel }: GameFormP
   };
 
   return (
-    <Card className="p-6 shadow-card">
+    <Card className="p-6 border-2 border-border/60">
       <h2 className="mb-4 text-xl font-bold">
         {editingGame ? "Editar Jogo" : "Adicionar Jogo"}
       </h2>

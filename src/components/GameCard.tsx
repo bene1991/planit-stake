@@ -108,18 +108,18 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
   return (
     <Card className={cn(
-      "overflow-hidden shadow-apple border-0 transition-all duration-300 hover:shadow-apple-lg animate-slide-up",
-      isLive && "ring-2 ring-destructive/20"
+      "overflow-hidden border-2 transition-all duration-300 animate-slide-up",
+      isLive ? "border-primary/60 shadow-glow" : "border-border/60 hover:border-primary/40"
     )}>
       {/* Header super compacto */}
-      <div className="px-4 py-3 border-b bg-gradient-to-r from-muted/30 to-transparent backdrop-blur-sm">
+      <div className="px-4 py-3 border-b-2 border-border/50 bg-card/50">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <p className="text-xs uppercase text-muted-foreground font-semibold tracking-wider truncate">{game.league}</p>
               {isLive && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-destructive px-2 py-0.5 rounded-full bg-destructive/10">
-                  <span className="inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary px-3 py-1 rounded-lg bg-primary/20 border-2 border-primary/30">
+                  <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
                   LIVE
                 </span>
               )}
@@ -183,19 +183,19 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-3">
                   {greenCount > 0 && (
-                    <span className="text-success font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-success/10">
-                      <Check className="h-3.5 w-3.5" />
+                    <span className="font-bold flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/20 text-primary border-2 border-primary/30">
+                      <Check className="h-4 w-4" />
                       {greenCount}
                     </span>
                   )}
                   {redCount > 0 && (
-                    <span className="text-destructive font-semibold flex items-center gap-1 px-2 py-1 rounded-lg bg-destructive/10">
-                      <X className="h-3.5 w-3.5" />
+                    <span className="font-bold flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/20 text-destructive border-2 border-destructive/30">
+                      <X className="h-4 w-4" />
                       {redCount}
                     </span>
                   )}
                   {pendingCount > 0 && (
-                    <span className="text-muted-foreground font-medium px-2 py-1 rounded-lg bg-muted/50">
+                    <span className="font-bold px-3 py-1.5 rounded-lg bg-secondary/80 text-muted-foreground border-2 border-border/50">
                       {pendingCount} pendente{pendingCount > 1 ? 's' : ''}
                     </span>
                   )}
@@ -222,7 +222,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                   const methodName = getMethodName(operation.methodId);
 
                   return (
-                    <div key={operation.methodId} className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border/50">
+                    <div key={operation.methodId} className="space-y-2 p-3 rounded-xl bg-secondary/50 border-2 border-border/60">
                       <div className="flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
                           <p className="font-semibold text-xs truncate">{methodName}</p>
@@ -234,13 +234,13 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                         </div>
                         <div className="flex items-center gap-2">
                           {operation.result === "Green" && (
-                            <span className="text-xs font-bold text-success flex items-center gap-1 px-2 py-1 rounded-lg bg-success/15">
+                            <span className="text-xs font-bold text-primary flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/20 border-2 border-primary/30">
                               <Check className="h-4 w-4" />
                               GREEN
                             </span>
                           )}
                           {operation.result === "Red" && (
-                            <span className="text-xs font-bold text-destructive flex items-center gap-1 px-2 py-1 rounded-lg bg-destructive/15">
+                            <span className="text-xs font-bold text-destructive flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/20 border-2 border-destructive/30">
                               <X className="h-4 w-4" />
                               RED
                             </span>
@@ -260,7 +260,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
                       {/* Form inline */}
                       {isEditing && (
-                        <div className="p-3 bg-secondary/30 rounded-xl border border-border/50 space-y-3">
+                        <div className="p-3 bg-secondary/80 rounded-xl border-2 border-border/60 space-y-3">
                           <div className="grid gap-3 grid-cols-3">
                             <div>
                               <Label className="text-xs font-medium mb-1">Tipo</Label>
@@ -353,20 +353,20 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                   </div>
                   <div className="flex items-center gap-2">
                     {operation.result === "Green" && (
-                      <span className="text-xs font-bold text-success flex items-center gap-1 px-2 py-1 rounded-lg bg-success/15">
+                      <span className="text-xs font-bold text-primary flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/20 border-2 border-primary/30">
                         <Check className="h-4 w-4" />
                         GREEN
                       </span>
                     )}
                     {operation.result === "Red" && (
-                      <span className="text-xs font-bold text-destructive flex items-center gap-1 px-2 py-1 rounded-lg bg-destructive/15">
+                      <span className="text-xs font-bold text-destructive flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/20 border-2 border-destructive/30">
                         <X className="h-4 w-4" />
                         RED
                       </span>
                     )}
                     {!operation.result && (
                       <>
-                        <span className="text-xs font-medium text-muted-foreground px-2 py-1 rounded-lg bg-muted/50">PENDENTE</span>
+                        <span className="text-xs font-bold text-muted-foreground px-3 py-1.5 rounded-lg bg-secondary/80 border-2 border-border/50">PENDENTE</span>
                         {!isFinalized && (
                           <Button
                             variant="outline"
@@ -384,7 +384,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
 
                 {/* Form inline */}
                 {isEditing && (
-                  <div className="p-3 bg-secondary/30 rounded-xl border border-border/50 space-y-3">
+                  <div className="p-3 bg-secondary/80 rounded-xl border-2 border-border/60 space-y-3">
                     <div className="grid gap-3 grid-cols-3">
                       <div>
                         <Label className="text-xs font-medium mb-1">Tipo</Label>
