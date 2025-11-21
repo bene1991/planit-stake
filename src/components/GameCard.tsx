@@ -18,7 +18,7 @@ interface GameCardProps {
   methods: Method[];
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
-  onEdit: (game: Game) => void;
+  onEdit?: (game: Game) => void;
   isFinalized?: boolean;
 }
 
@@ -174,7 +174,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
             )}
           </div>
           <div className="flex gap-1 flex-shrink-0">
-            {!isFinalized && (
+            {!isFinalized && onEdit && (
               <Button variant="ghost" size="sm" onClick={() => onEdit(game)} className="h-8 w-8 p-0 rounded-full hover:bg-primary/10">
                 <Edit className="h-3.5 w-3.5" />
               </Button>

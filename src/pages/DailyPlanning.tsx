@@ -10,10 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Plus, Download, TrendingUp, CheckCircle, XCircle, Target, RefreshCw, Search, CalendarIcon, ChevronDown, FileUp } from "lucide-react";
+import { Calendar, Download, TrendingUp, CheckCircle, XCircle, Target, RefreshCw, Search, CalendarIcon, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { GameCard } from "@/components/GameCard";
-import { GameForm } from "@/components/GameForm";
 import { GameImporter } from "@/components/GameImporter";
 import { DailyGamesTab } from "@/components/DailyGamesTab";
 import { MethodSelector } from "@/components/MethodSelector";
@@ -35,9 +34,7 @@ export default function DailyPlanning() {
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const { settings } = useSettings();
   const { dailyGames, loading: dailyGamesLoading, loadDailyGames, markAsAdded } = useDailyGames();
-  const [showForm, setShowForm] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
-  const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [periodFilter, setPeriodFilter] = useState('today');
   const [customDateFrom, setCustomDateFrom] = useState<Date>();
@@ -83,28 +80,6 @@ export default function DailyPlanning() {
 
     return () => clearInterval(interval);
   }, []); // Array vazio - interval nunca reseta
-
-  const handleSubmit = (gameData: Omit<Game, "id">) => {
-    if (editingGame) {
-      updateGame(editingGame.id, gameData);
-      toast.success("Jogo atualizado!");
-      setEditingGame(null);
-    } else {
-      addGame(gameData);
-      toast.success("Jogo adicionado ao planejamento!");
-    }
-    setShowForm(false);
-  };
-
-  const handleEdit = (game: Game) => {
-    setEditingGame(game);
-    setShowForm(true);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingGame(null);
-    setShowForm(false);
-  };
 
   const handleDelete = (gameId: string) => {
     deleteGame(gameId);
@@ -354,27 +329,11 @@ export default function DailyPlanning() {
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
           <Button variant="default" size="sm" onClick={() => setShowImporter(true)} className="h-8">
-            <FileUp className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Adicionar Jogos do Dia</span>
-          </Button>
-          <Button size="sm" onClick={() => setShowForm(!showForm)} className="h-8">
-            <Plus className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Novo Jogo</span>
+            <RefreshCw className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">Sincronizar</span>
           </Button>
         </div>
       </div>
-
-      {/* Formulário */}
-      {showForm && (
-        <div className="animate-in slide-in-from-top-2 duration-200">
-          <GameForm
-            methods={bankroll.methods}
-            editingGame={editingGame}
-            onSubmit={handleSubmit}
-            onCancel={handleCancelEdit}
-          />
-        </div>
-      )}
 
       {/* Importador */}
       <GameImporter
@@ -461,7 +420,6 @@ export default function DailyPlanning() {
                     methods={bankroll.methods}
                     onUpdate={updateGame}
                     onDelete={handleDelete}
-                    onEdit={handleEdit}
                   />
                 </div>
               ))}
