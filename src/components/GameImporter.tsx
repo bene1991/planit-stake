@@ -362,98 +362,53 @@ export const GameImporter = ({ open, onOpenChange, onSuccess, lastImportDate }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Importar Jogos do Dia</DialogTitle>
+          <DialogTitle>Sincronizar com Planilha Google Sheets</DialogTitle>
           <DialogDescription>
-            Importe múltiplos jogos de uma vez através de planilha Excel ou imagem
+            Exporte sua planilha do Google Sheets como Excel (.xlsx) e carregue aqui para sincronizar
             {lastImportDate && (
               <span className="block mt-2 text-xs text-muted-foreground">
-                Última importação: {format(new Date(lastImportDate), "dd/MM/yyyy HH:mm")}
+                Última sincronização: {format(new Date(lastImportDate), "dd/MM/yyyy HH:mm")}
               </span>
             )}
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="excel" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="excel">Planilha (.xlsx)</TabsTrigger>
-            <TabsTrigger value="text">Texto/Colar</TabsTrigger>
-          </TabsList>
+        <div className="space-y-4">
+          <div className="bg-muted/50 border rounded-lg p-4 space-y-3">
+            <h4 className="font-semibold text-sm">Como sincronizar:</h4>
+            <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+              <li>Abra sua planilha no Google Sheets</li>
+              <li>Clique em "Arquivo" → "Fazer download" → "Microsoft Excel (.xlsx)"</li>
+              <li>Carregue o arquivo baixado usando o botão abaixo</li>
+            </ol>
+          </div>
 
-          <TabsContent value="excel" className="space-y-4">
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={downloadTemplate} className="flex-1">
-                  <Download className="h-4 w-4 mr-2" />
-                  Baixar Modelo (.xlsx)
-                </Button>
-                <label className="flex-1">
-                  <Button variant="default" className="w-full" disabled={processing} asChild>
-                    <span>
-                      {processing ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <FileUp className="h-4 w-4 mr-2" />
-                      )}
-                      {processing ? 'Processando...' : 'Carregar Planilha'}
-                    </span>
-                  </Button>
-                  <Input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    disabled={processing}
-                  />
-                </label>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={fixImportedDates} 
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={downloadTemplate} className="flex-1">
+              <Download className="h-4 w-4 mr-2" />
+              Baixar Modelo (.xlsx)
+            </Button>
+            <label className="flex-1">
+              <Button variant="default" className="w-full" disabled={processing} asChild>
+                <span>
+                  {processing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileUp className="h-4 w-4 mr-2" />
+                  )}
+                  {processing ? 'Processando...' : 'Carregar Planilha'}
+                </span>
+              </Button>
+              <Input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileUpload}
+                className="hidden"
                 disabled={processing}
-                className="w-full"
-                size="sm"
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Corrigindo...
-                  </>
-                ) : (
-                  'Corrigir datas importadas anteriormente'
-                )}
-              </Button>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="text" className="space-y-4">
-            <div className="space-y-4">
-              <Textarea
-                placeholder="Cole aqui os dados dos jogos&#10;Formato: HH:mm Liga TimeCasa x TimeVisitante&#10;&#10;Exemplo:&#10;14:00 Brasileirão Flamengo x Palmeiras&#10;16:00 Premier League Arsenal vs Liverpool"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                rows={8}
-                className="font-mono text-sm"
               />
-              <Button 
-                onClick={handleTextParse} 
-                disabled={processing || !textInput.trim()}
-                className="w-full"
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  'Processar Texto'
-                )}
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Cole uma lista de jogos copiada de sites como SofaScore, FlashScore, etc. O sistema tentará detectar automaticamente horário, times e liga.
-            </p>
-          </TabsContent>
-        </Tabs>
+            </label>
+          </div>
+        </div>
 
         {games.length > 0 && (
           <div className="space-y-4 mt-4">
