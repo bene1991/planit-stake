@@ -290,6 +290,7 @@ export type Database = {
         Row: {
           api_key: string | null
           created_at: string
+          google_sheets_url: string | null
           id: string
           last_import_date: string | null
           owner_id: string
@@ -300,6 +301,7 @@ export type Database = {
         Insert: {
           api_key?: string | null
           created_at?: string
+          google_sheets_url?: string | null
           id?: string
           last_import_date?: string | null
           owner_id: string
@@ -310,6 +312,7 @@ export type Database = {
         Update: {
           api_key?: string | null
           created_at?: string
+          google_sheets_url?: string | null
           id?: string
           last_import_date?: string | null
           owner_id?: string
