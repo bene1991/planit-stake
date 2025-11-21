@@ -16,6 +16,7 @@ import { GameCard } from "@/components/GameCard";
 import { GameImporter } from "@/components/GameImporter";
 import { DailyGamesTab } from "@/components/DailyGamesTab";
 import { MethodSelector } from "@/components/MethodSelector";
+import { GoogleSheetsSync } from "@/components/GoogleSheetsSync";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 import { Badge } from "@/components/ui/badge";
@@ -328,10 +329,11 @@ export default function DailyPlanning() {
             <RefreshCw className="h-3.5 w-3.5 sm:mr-2" />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
-          <Button variant="default" size="sm" onClick={() => setShowImporter(true)} className="h-8">
-            <RefreshCw className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Sincronizar</span>
-          </Button>
+          <GoogleSheetsSync 
+            onSuccess={() => {
+              loadDailyGames();
+            }} 
+          />
         </div>
       </div>
 
