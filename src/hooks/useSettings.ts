@@ -8,6 +8,7 @@ export interface Settings {
   telegram_bot_token?: string;
   telegram_chat_id?: string;
   last_import_date?: string;
+  google_sheets_url?: string;
 }
 
 export const useSettings = () => {
