@@ -75,21 +75,33 @@ Deno.serve(async (req) => {
         const [date, time, league, home_team, away_team] = values;
         
         if (date && time && league && home_team && away_team) {
-          // Criar date_time combinando data e hora
-          const [day, month, year] = date.split('/');
-          const dateTimeStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${time}:00`;
+          // Parse date DD/MM/YYYY to YYYY-MM-DD
+          const dateParts = date.split('/');
+          if (dateParts.length === 3) {
+            const [day, month, year] = dateParts;
+            const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            
+            // Ensure time is in HH:mm format
+            const timeParts = time.split(':');
+            const formattedTime = timeParts.length === 2 
+              ? `${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}` 
+              : time;
+            
+            // Create ISO datetime string
+            const dateTimeStr = `${formattedDate}T${formattedTime}:00`;
 
-          games.push({
-            owner_id: user.id,
-            date,
-            time,
-            league,
-            home_team,
-            away_team,
-            status: 'Not Started',
-            added_to_planning: false,
-            date_time: dateTimeStr,
-          });
+            games.push({
+              owner_id: user.id,
+              date: formattedDate,
+              time: formattedTime,
+              league,
+              home_team,
+              away_team,
+              status: 'Not Started',
+              added_to_planning: false,
+              date_time: dateTimeStr,
+            });
+          }
         }
       }
     }
