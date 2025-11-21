@@ -5,13 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, TrendingUp, RefreshCw } from "lucide-react";
+import { Trash2, Plus, TrendingUp, RefreshCw, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { MethodEditor } from "@/components/MethodEditor";
 
 export default function BankrollManagement() {
   const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca } = useSupabaseBankroll();
   const [newMethodName, setNewMethodName] = useState("");
   const [newMethodPercentage, setNewMethodPercentage] = useState("");
+  const [editingMethod, setEditingMethod] = useState<any>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -58,6 +61,11 @@ export default function BankrollManagement() {
     if (indice >= 70) return 'Alta';
     if (indice >= 40) return 'Média';
     return 'Baixa';
+  };
+
+  const handleEditMethod = (methodId: string, updates: { name: string; percentage: number }) => {
+    updateMethod(methodId, updates);
+    toast.success("Método atualizado com sucesso!");
   };
 
   if (loading) {
@@ -173,18 +181,16 @@ export default function BankrollManagement() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={method.percentage}
-                      onChange={(e) =>
-                        updateMethod(method.id, { percentage: parseFloat(e.target.value) || 0 })
-                      }
-                      className="w-20 text-right"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                    />
-                    <span className="text-sm text-muted-foreground">%</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        setEditingMethod(method);
+                        setIsEditorOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="destructive"
                       size="icon"
@@ -202,6 +208,15 @@ export default function BankrollManagement() {
           </div>
         )}
       </Card>
+
+      <MethodEditor
+        open={isEditorOpen}
+        onOpenChange={setIsEditorOpen}
+        method={editingMethod}
+        onConfirm={handleEditMethod}
+        loading={loading}
+        remainingPercentage={remainingPercentage}
+      />
     </div>
   );
 }
