@@ -16,6 +16,7 @@ import { GameCard } from "@/components/GameCard";
 import { GameImporter } from "@/components/GameImporter";
 import { DailyGamesTab } from "@/components/DailyGamesTab";
 import { MethodSelector } from "@/components/MethodSelector";
+import { GameMethodEditor } from "@/components/GameMethodEditor";
 import { GoogleSheetsSync } from "@/components/GoogleSheetsSync";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
@@ -44,6 +45,9 @@ export default function DailyPlanning() {
   const [showMethodSelector, setShowMethodSelector] = useState(false);
   const [selectedDailyGames, setSelectedDailyGames] = useState<string[]>([]);
   const [addingToPlanning, setAddingToPlanning] = useState(false);
+  const [showGameMethodEditor, setShowGameMethodEditor] = useState(false);
+  const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
+  const [updatingGameMethods, setUpdatingGameMethods] = useState(false);
 
   const updateStatuses = async () => {
     const updatedGames = updateGameStatuses(games);
@@ -111,6 +115,25 @@ export default function DailyPlanning() {
   const handleAddToPlanning = (gameIds: string[]) => {
     setSelectedDailyGames(gameIds);
     setShowMethodSelector(true);
+  };
+
+  const handleEditGameMethods = (game: Game) => {
+    setSelectedGameForEdit(game);
+    setShowGameMethodEditor(true);
+  };
+
+  const handleConfirmGameMethodsEdit = async (gameId: string, methodOperations: any[]) => {
+    setUpdatingGameMethods(true);
+    try {
+      await updateGame(gameId, { methodOperations });
+      toast.success('Métodos atualizados com sucesso!');
+      setShowGameMethodEditor(false);
+      setSelectedGameForEdit(null);
+    } catch (error: any) {
+      toast.error('Erro ao atualizar métodos: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setUpdatingGameMethods(false);
+    }
   };
 
   const handleConfirmMethod = async (methodIds: string[]) => {
@@ -357,8 +380,18 @@ export default function DailyPlanning() {
         loading={addingToPlanning}
       />
 
+      {/* Game Method Editor */}
+      <GameMethodEditor
+        open={showGameMethodEditor}
+        onOpenChange={setShowGameMethodEditor}
+        game={selectedGameForEdit}
+        methods={bankroll.methods}
+        onConfirm={handleConfirmGameMethodsEdit}
+        loading={updatingGameMethods}
+      />
+
       {/* Tabs */}
-      <Tabs defaultValue="daily" className="w-full">
+      <Tabs defaultValue="planning" className="w-full">
         <TabsList className="border-b w-full justify-start rounded-none bg-transparent p-0 h-auto">
           <TabsTrigger 
             value="daily"
@@ -422,6 +455,7 @@ export default function DailyPlanning() {
                     methods={bankroll.methods}
                     onUpdate={updateGame}
                     onDelete={handleDelete}
+                    onEdit={handleEditGameMethods}
                   />
                 </div>
               ))}
