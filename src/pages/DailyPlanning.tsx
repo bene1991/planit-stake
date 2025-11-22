@@ -48,6 +48,12 @@ export default function DailyPlanning() {
   const [showGameMethodEditor, setShowGameMethodEditor] = useState(false);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
   const [updatingGameMethods, setUpdatingGameMethods] = useState(false);
+  
+  // Filtros da aba Planejamento
+  const [planningMethodFilter, setPlanningMethodFilter] = useState<string>('all');
+  const [planningStatusFilter, setPlanningStatusFilter] = useState<string>('all');
+  const [planningLeagueFilter, setPlanningLeagueFilter] = useState<string>('all');
+  const [planningSearchQuery, setPlanningSearchQuery] = useState('');
 
   const updateStatuses = async () => {
     const updatedGames = updateGameStatuses(games);
@@ -199,6 +205,96 @@ export default function DailyPlanning() {
   };
 
   const sortedPlanned = sortGames(plannedGames);
+
+  // Filtros avançados para aba Planejamento
+  const filteredPlannedGames = useMemo(() => {
+    let filtered = [...sortedPlanned];
+
+    // Filtro por busca (time ou liga)
+    if (planningSearchQuery) {
+      const query = planningSearchQuery.toLowerCase();
+      filtered = filtered.filter(game => 
+        game.homeTeam.toLowerCase().includes(query) ||
+        game.awayTeam.toLowerCase().includes(query) ||
+        game.league.toLowerCase().includes(query)
+      );
+    }
+
+    // Filtro por método
+    if (planningMethodFilter !== 'all') {
+      filtered = filtered.filter(game =>
+        game.methodOperations.some(op => op.methodId === planningMethodFilter)
+      );
+    }
+
+    // Filtro por status
+    if (planningStatusFilter !== 'all') {
+      if (planningStatusFilter === 'configured') {
+        // Todos os métodos configurados
+        filtered = filtered.filter(game =>
+          game.methodOperations.every(op => op.operationType && op.entryOdds && op.exitOdds)
+        );
+      } else if (planningStatusFilter === 'pending') {
+        // Pelo menos um método pendente
+        filtered = filtered.filter(game =>
+          game.methodOperations.some(op => !op.operationType || !op.entryOdds || !op.exitOdds)
+        );
+      } else if (planningStatusFilter === 'live') {
+        filtered = filtered.filter(game => game.status === 'Live');
+      }
+    }
+
+    // Filtro por liga
+    if (planningLeagueFilter !== 'all') {
+      filtered = filtered.filter(game => game.league === planningLeagueFilter);
+    }
+
+    return filtered;
+  }, [sortedPlanned, planningSearchQuery, planningMethodFilter, planningStatusFilter, planningLeagueFilter]);
+
+  // Dashboard de resumo da aba Planejamento
+  const planningDashboard = useMemo(() => {
+    const totalGames = sortedPlanned.length;
+    const configuredGames = sortedPlanned.filter(game =>
+      game.methodOperations.every(op => op.operationType && op.entryOdds && op.exitOdds)
+    ).length;
+    const pendingGames = totalGames - configuredGames;
+    const liveGames = sortedPlanned.filter(game => game.status === 'Live').length;
+
+    // Calcular % da banca usada
+    let bankrollUsage = 0;
+    sortedPlanned.forEach(game => {
+      game.methodOperations.forEach(op => {
+        const method = bankroll.methods.find(m => m.id === op.methodId);
+        if (method) {
+          bankrollUsage += method.percentage;
+        }
+      });
+    });
+
+    // Próximo jogo
+    const now = new Date();
+    const upcomingGames = sortedPlanned.filter(game => {
+      const gameTime = new Date(`${game.date}T${game.time}`);
+      return gameTime > now;
+    });
+    const nextGame = upcomingGames.length > 0 ? upcomingGames[0] : null;
+
+    return {
+      totalGames,
+      configuredGames,
+      pendingGames,
+      liveGames,
+      bankrollUsage,
+      nextGame,
+    };
+  }, [sortedPlanned, bankroll.methods]);
+
+  // Extrair ligas únicas para o filtro
+  const uniqueLeagues = useMemo(() => {
+    const leagues = new Set(sortedPlanned.map(game => game.league));
+    return Array.from(leagues).sort();
+  }, [sortedPlanned]);
 
   // Aplicar filtro de período aos jogos finalizados
   const filteredByPeriod = useMemo(() => {
@@ -439,7 +535,7 @@ export default function DailyPlanning() {
         </TabsContent>
 
         {/* Grid responsivo: 1 coluna mobile, 2 colunas tablet+, 3 colunas desktop */}
-        <TabsContent value="planning" className="mt-4">
+        <TabsContent value="planning" className="mt-4 space-y-4">
           {sortedPlanned.length === 0 ? (
             <EmptyState
               icon={<Calendar className="h-8 w-8 text-muted-foreground" />}
@@ -447,19 +543,193 @@ export default function DailyPlanning() {
               description="Adicione jogos para começar a planejar suas operações"
             />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {sortedPlanned.map((game) => (
-                <div key={game.id} className="animate-in fade-in-50 duration-200">
-                  <GameCard
-                    game={game}
-                    methods={bankroll.methods}
-                    onUpdate={updateGame}
-                    onDelete={handleDelete}
-                    onEdit={handleEditGameMethods}
-                  />
+            <>
+              {/* Dashboard de Resumo */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <Card className="p-4 bg-gradient-to-br from-card to-primary/5 border-primary/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Target className="h-4 w-4 text-primary" />
+                    <p className="text-xs font-medium text-muted-foreground">Total</p>
+                  </div>
+                  <p className="text-2xl font-bold">{planningDashboard.totalGames}</p>
+                  <p className="text-xs text-muted-foreground">jogos</p>
+                </Card>
+
+                <Card className="p-4 bg-gradient-to-br from-card to-green-500/5 border-green-500/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <p className="text-xs font-medium text-muted-foreground">Configurados</p>
+                  </div>
+                  <p className="text-2xl font-bold text-green-600">{planningDashboard.configuredGames}</p>
+                  <p className="text-xs text-muted-foreground">completos</p>
+                </Card>
+
+                <Card className="p-4 bg-gradient-to-br from-card to-orange-500/5 border-orange-500/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <XCircle className="h-4 w-4 text-orange-600" />
+                    <p className="text-xs font-medium text-muted-foreground">Pendentes</p>
+                  </div>
+                  <p className="text-2xl font-bold text-orange-600">{planningDashboard.pendingGames}</p>
+                  <p className="text-xs text-muted-foreground">faltam</p>
+                </Card>
+
+                <Card className="p-4 bg-gradient-to-br from-card to-red-500/5 border-red-500/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                    <p className="text-xs font-medium text-muted-foreground">Ao Vivo</p>
+                  </div>
+                  <p className="text-2xl font-bold text-red-600">{planningDashboard.liveGames}</p>
+                  <p className="text-xs text-muted-foreground">jogando</p>
+                </Card>
+
+                <Card className="p-4 bg-gradient-to-br from-card to-blue-500/5 border-blue-500/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="h-4 w-4 text-blue-600" />
+                    <p className="text-xs font-medium text-muted-foreground">Banca Usada</p>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-600">{planningDashboard.bankrollUsage.toFixed(0)}%</p>
+                  <p className="text-xs text-muted-foreground">alocado</p>
+                </Card>
+
+                <Card className="p-4 bg-gradient-to-br from-card to-purple-500/5 border-purple-500/20">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Calendar className="h-4 w-4 text-purple-600" />
+                    <p className="text-xs font-medium text-muted-foreground">Próximo</p>
+                  </div>
+                  {planningDashboard.nextGame ? (
+                    <>
+                      <p className="text-lg font-bold text-purple-600">{planningDashboard.nextGame.time}</p>
+                      <p className="text-xs text-muted-foreground truncate">{planningDashboard.nextGame.homeTeam}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Nenhum</p>
+                  )}
+                </Card>
+              </div>
+
+              {/* Filtros Avançados */}
+              <Card className="p-4">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    {/* Busca */}
+                    <div className="flex-1">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar por time ou liga..."
+                          value={planningSearchQuery}
+                          onChange={(e) => setPlanningSearchQuery(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Filtro por Método */}
+                    <Select value={planningMethodFilter} onValueChange={setPlanningMethodFilter}>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Todos os métodos" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os métodos</SelectItem>
+                        {bankroll.methods.map(method => (
+                          <SelectItem key={method.id} value={method.id}>
+                            {method.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Filtro por Status */}
+                    <Select value={planningStatusFilter} onValueChange={setPlanningStatusFilter}>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Todos os status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os status</SelectItem>
+                        <SelectItem value="configured">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-3 w-3 text-green-600" />
+                            Configurados
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="pending">
+                          <div className="flex items-center gap-2">
+                            <XCircle className="h-3 w-3 text-orange-600" />
+                            Pendentes
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="live">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                            Ao Vivo
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Filtro por Liga */}
+                    <Select value={planningLeagueFilter} onValueChange={setPlanningLeagueFilter}>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Todas as ligas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as ligas</SelectItem>
+                        {uniqueLeagues.map(league => (
+                          <SelectItem key={league} value={league}>
+                            {league}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Indicador de filtros ativos */}
+                  {(planningSearchQuery || planningMethodFilter !== 'all' || planningStatusFilter !== 'all' || planningLeagueFilter !== 'all') && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-medium">
+                        Mostrando {filteredPlannedGames.length} de {sortedPlanned.length} jogos
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setPlanningSearchQuery('');
+                          setPlanningMethodFilter('all');
+                          setPlanningStatusFilter('all');
+                          setPlanningLeagueFilter('all');
+                        }}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Limpar filtros
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              </Card>
+
+              {/* Lista de Jogos */}
+              {filteredPlannedGames.length === 0 ? (
+                <EmptyState
+                  icon={<Search className="h-8 w-8 text-muted-foreground" />}
+                  title="Nenhum jogo encontrado"
+                  description="Tente ajustar os filtros para ver mais resultados"
+                />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {filteredPlannedGames.map((game) => (
+                    <div key={game.id} className="animate-in fade-in-50 duration-200">
+                      <GameCard
+                        game={game}
+                        methods={bankroll.methods}
+                        onUpdate={updateGame}
+                        onDelete={handleDelete}
+                        onEdit={handleEditGameMethods}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
