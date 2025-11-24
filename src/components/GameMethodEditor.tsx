@@ -1,15 +1,13 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useState, useEffect } from 'react';
 import { Game, Method, MethodOperation } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, Check, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, Check, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -151,33 +149,29 @@ export const GameMethodEditor = ({
 
           {/* Resumo de status */}
           {selectedMethods.length > 0 && (
-            <Alert className="bg-muted/50 border-border/50">
-              <AlertDescription className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-4">
-                  <span className="font-medium">
-                    {selectedMethods.length} método{selectedMethods.length > 1 ? 's' : ''} selecionado{selectedMethods.length > 1 ? 's' : ''}
-                  </span>
-                  {completedCount > 0 && (
-                    <Badge variant="default" className="gap-1">
-                      <Check className="h-3 w-3" />
-                      {completedCount} completo{completedCount > 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                  {pendingCount > 0 && (
-                    <Badge variant="secondary" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {pendingCount} pendente{pendingCount > 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                </div>
-              </AlertDescription>
-            </Alert>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span className="font-medium">
+                {selectedMethods.length} método{selectedMethods.length > 1 ? 's' : ''} selecionado{selectedMethods.length > 1 ? 's' : ''}
+              </span>
+              {completedCount > 0 && (
+                <Badge variant="default" className="gap-1">
+                  <Check className="h-3 w-3" />
+                  {completedCount} com resultado
+                </Badge>
+              )}
+              {pendingCount > 0 && (
+                <Badge variant="secondary" className="gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {pendingCount} sem resultado
+                </Badge>
+              )}
+            </div>
           )}
 
           <div className="space-y-4 overflow-y-auto flex-1 pr-2">
             <div>
               <Label className="text-sm font-medium mb-3 block">
-                Selecione e configure os métodos
+                Selecione os métodos e registre os resultados
               </Label>
               <div className="space-y-3">
                 {methods.map((method) => {
@@ -215,20 +209,20 @@ export const GameMethodEditor = ({
                               <Badge variant="outline" className="text-xs">
                                 {method.percentage}% da banca
                               </Badge>
-                              {isSelected && (
+                              {isSelected && data.result && (
                                 <Badge 
-                                  variant={isComplete ? "default" : "secondary"}
+                                  variant={data.result === 'Green' ? 'default' : 'destructive'}
                                   className="text-xs gap-1"
                                 >
-                                  {isComplete ? (
+                                  {data.result === 'Green' ? (
                                     <>
                                       <Check className="h-3 w-3" />
-                                      Completo
+                                      Green
                                     </>
                                   ) : (
                                     <>
-                                      <AlertTriangle className="h-3 w-3" />
-                                      Pendente
+                                      <X className="h-3 w-3" />
+                                      Red
                                     </>
                                   )}
                                 </Badge>
