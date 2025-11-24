@@ -232,12 +232,12 @@ export default function DailyPlanning() {
       if (planningStatusFilter === 'configured') {
         // Todos os métodos configurados
         filtered = filtered.filter(game =>
-          game.methodOperations.every(op => op.operationType && op.entryOdds && op.exitOdds)
+          game.methodOperations.every(op => op.result)
         );
       } else if (planningStatusFilter === 'pending') {
         // Pelo menos um método pendente
         filtered = filtered.filter(game =>
-          game.methodOperations.some(op => !op.operationType || !op.entryOdds || !op.exitOdds)
+          game.methodOperations.some(op => !op.result)
         );
       } else if (planningStatusFilter === 'live') {
         filtered = filtered.filter(game => game.status === 'Live');
@@ -252,43 +252,6 @@ export default function DailyPlanning() {
     return filtered;
   }, [sortedPlanned, planningSearchQuery, planningMethodFilter, planningStatusFilter, planningLeagueFilter]);
 
-  // Dashboard de resumo da aba Planejamento
-  const planningDashboard = useMemo(() => {
-    const totalGames = sortedPlanned.length;
-    const configuredGames = sortedPlanned.filter(game =>
-      game.methodOperations.every(op => op.operationType && op.entryOdds && op.exitOdds)
-    ).length;
-    const pendingGames = totalGames - configuredGames;
-    const liveGames = sortedPlanned.filter(game => game.status === 'Live').length;
-
-    // Calcular % da banca usada
-    let bankrollUsage = 0;
-    sortedPlanned.forEach(game => {
-      game.methodOperations.forEach(op => {
-        const method = bankroll.methods.find(m => m.id === op.methodId);
-        if (method) {
-          bankrollUsage += method.percentage;
-        }
-      });
-    });
-
-    // Próximo jogo
-    const now = new Date();
-    const upcomingGames = sortedPlanned.filter(game => {
-      const gameTime = new Date(`${game.date}T${game.time}`);
-      return gameTime > now;
-    });
-    const nextGame = upcomingGames.length > 0 ? upcomingGames[0] : null;
-
-    return {
-      totalGames,
-      configuredGames,
-      pendingGames,
-      liveGames,
-      bankrollUsage,
-      nextGame,
-    };
-  }, [sortedPlanned, bankroll.methods]);
 
   // Extrair ligas únicas para o filtro
   const uniqueLeagues = useMemo(() => {
@@ -544,69 +507,6 @@ export default function DailyPlanning() {
             />
           ) : (
             <>
-              {/* Dashboard de Resumo */}
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                <Card className="p-4 bg-gradient-to-br from-card to-primary/5 border-primary/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Target className="h-4 w-4 text-primary" />
-                    <p className="text-xs font-medium text-muted-foreground">Total</p>
-                  </div>
-                  <p className="text-2xl font-bold">{planningDashboard.totalGames}</p>
-                  <p className="text-xs text-muted-foreground">jogos</p>
-                </Card>
-
-                <Card className="p-4 bg-gradient-to-br from-card to-green-500/5 border-green-500/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <p className="text-xs font-medium text-muted-foreground">Configurados</p>
-                  </div>
-                  <p className="text-2xl font-bold text-green-600">{planningDashboard.configuredGames}</p>
-                  <p className="text-xs text-muted-foreground">completos</p>
-                </Card>
-
-                <Card className="p-4 bg-gradient-to-br from-card to-orange-500/5 border-orange-500/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <XCircle className="h-4 w-4 text-orange-600" />
-                    <p className="text-xs font-medium text-muted-foreground">Pendentes</p>
-                  </div>
-                  <p className="text-2xl font-bold text-orange-600">{planningDashboard.pendingGames}</p>
-                  <p className="text-xs text-muted-foreground">faltam</p>
-                </Card>
-
-                <Card className="p-4 bg-gradient-to-br from-card to-red-500/5 border-red-500/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-                    <p className="text-xs font-medium text-muted-foreground">Ao Vivo</p>
-                  </div>
-                  <p className="text-2xl font-bold text-red-600">{planningDashboard.liveGames}</p>
-                  <p className="text-xs text-muted-foreground">jogando</p>
-                </Card>
-
-                <Card className="p-4 bg-gradient-to-br from-card to-blue-500/5 border-blue-500/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <TrendingUp className="h-4 w-4 text-blue-600" />
-                    <p className="text-xs font-medium text-muted-foreground">Banca Usada</p>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-600">{planningDashboard.bankrollUsage.toFixed(0)}%</p>
-                  <p className="text-xs text-muted-foreground">alocado</p>
-                </Card>
-
-                <Card className="p-4 bg-gradient-to-br from-card to-purple-500/5 border-purple-500/20">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Calendar className="h-4 w-4 text-purple-600" />
-                    <p className="text-xs font-medium text-muted-foreground">Próximo</p>
-                  </div>
-                  {planningDashboard.nextGame ? (
-                    <>
-                      <p className="text-lg font-bold text-purple-600">{planningDashboard.nextGame.time}</p>
-                      <p className="text-xs text-muted-foreground truncate">{planningDashboard.nextGame.homeTeam}</p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Nenhum</p>
-                  )}
-                </Card>
-              </div>
-
               {/* Filtros Avançados */}
               <Card className="p-4">
                 <div className="flex flex-col gap-3">

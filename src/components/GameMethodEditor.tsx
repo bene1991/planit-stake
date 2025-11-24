@@ -22,11 +22,9 @@ interface GameMethodEditorProps {
   loading?: boolean;
 }
 
-// Tipo para armazenar dados temporários dos métodos
+// Tipo para armazenar resultado temporário dos métodos
 interface MethodFormData {
-  operationType?: 'Back' | 'Lay';
-  entryOdds?: string;
-  exitOdds?: string;
+  result?: 'Green' | 'Red';
 }
 
 export const GameMethodEditor = ({ 
@@ -50,42 +48,17 @@ export const GameMethodEditor = ({
       const initialData: Record<string, MethodFormData> = {};
       game.methodOperations.forEach(op => {
         initialData[op.methodId] = {
-          operationType: op.operationType,
-          entryOdds: op.entryOdds?.toString() || '',
-          exitOdds: op.exitOdds?.toString() || '',
+          result: op.result,
         };
       });
       setMethodsData(initialData);
     }
   }, [game]);
 
-  // Validação de odds
-  const validateOdds = (value: string): boolean => {
-    const num = parseFloat(value);
-    return !isNaN(num) && num >= 1.01 && num <= 100.00;
-  };
-
-  // Calcular resultado preview
-  const calculatePreviewResult = (methodId: string): 'Green' | 'Red' | null => {
-    const data = methodsData[methodId];
-    if (!data?.operationType || !data?.entryOdds || !data?.exitOdds) return null;
-    
-    const entry = parseFloat(data.entryOdds);
-    const exit = parseFloat(data.exitOdds);
-    
-    if (isNaN(entry) || isNaN(exit)) return null;
-    
-    if (data.operationType === 'Back') {
-      return exit < entry ? 'Green' : 'Red';
-    } else {
-      return exit > entry ? 'Green' : 'Red';
-    }
-  };
-
   // Verificar se método está completo
   const isMethodComplete = (methodId: string): boolean => {
     const data = methodsData[methodId];
-    return !!(data?.operationType && data?.entryOdds && data?.exitOdds);
+    return !!data?.result;
   };
 
   const handleConfirm = () => {
@@ -96,56 +69,18 @@ export const GameMethodEditor = ({
       return;
     }
 
-    // Validar odds de todos os métodos configurados
-    const invalidMethods: string[] = [];
-    selectedMethods.forEach(methodId => {
-      const data = methodsData[methodId];
-      if (data?.entryOdds && !validateOdds(data.entryOdds)) {
-        invalidMethods.push(methodId);
-      }
-      if (data?.exitOdds && !validateOdds(data.exitOdds)) {
-        invalidMethods.push(methodId);
-      }
-    });
-
-    if (invalidMethods.length > 0) {
-      toast.error('Odds devem estar entre 1.01 e 100.00');
-      return;
-    }
-
     // Create method operations array with updated data
     const methodOperations: MethodOperation[] = selectedMethods.map(methodId => {
       const data = methodsData[methodId];
       const existingOp = game.methodOperations.find(op => op.methodId === methodId);
       
-      if (data?.operationType && data?.entryOdds && data?.exitOdds) {
-        // Método configurado - calcular resultado
-        const entry = parseFloat(data.entryOdds);
-        const exit = parseFloat(data.exitOdds);
-        const result = data.operationType === 'Back' 
-          ? (exit < entry ? 'Green' : 'Red')
-          : (exit > entry ? 'Green' : 'Red');
-        
-        return {
-          methodId,
-          operationType: data.operationType,
-          entryOdds: entry,
-          exitOdds: exit,
-          result: existingOp?.result || result, // Manter resultado existente se já finalizado
-        };
-      } else if (existingOp) {
-        // Manter dados existentes se não foram editados
-        return existingOp;
-      } else {
-        // Novo método sem dados
-        return {
-          methodId,
-          operationType: undefined,
-          entryOdds: undefined,
-          exitOdds: undefined,
-          result: undefined,
-        };
-      }
+      return {
+        methodId,
+        operationType: existingOp?.operationType,
+        entryOdds: existingOp?.entryOdds,
+        exitOdds: existingOp?.exitOdds,
+        result: data?.result || existingOp?.result,
+      };
     });
 
     onConfirm(game.id, methodOperations);
@@ -155,9 +90,9 @@ export const GameMethodEditor = ({
 
   const toggleMethod = (methodId: string) => {
     if (selectedMethods.includes(methodId)) {
-      // Verificar se método tem dados antes de remover
+      // Verificar se método tem resultado antes de remover
       const existingOp = game?.methodOperations.find(op => op.methodId === methodId);
-      const hasData = existingOp && (existingOp.operationType || existingOp.entryOdds || existingOp.exitOdds);
+      const hasData = existingOp && existingOp.result;
       
       if (hasData) {
         setMethodToRemove(methodId);
@@ -186,7 +121,7 @@ export const GameMethodEditor = ({
     }
   };
 
-  const updateMethodData = (methodId: string, field: keyof MethodFormData, value: string) => {
+  const updateMethodData = (methodId: string, field: keyof MethodFormData, value: 'Green' | 'Red') => {
     setMethodsData(prev => ({
       ...prev,
       [methodId]: {
@@ -248,7 +183,6 @@ export const GameMethodEditor = ({
                 {methods.map((method) => {
                   const isSelected = selectedMethods.includes(method.id);
                   const isComplete = isMethodComplete(method.id);
-                  const previewResult = calculatePreviewResult(method.id);
                   const data = methodsData[method.id] || {};
                   
                   return (
@@ -302,124 +236,36 @@ export const GameMethodEditor = ({
                             </div>
                           </div>
                           
-                          {/* Campos de edição inline quando selecionado */}
+                          {/* Campo de resultado quando selecionado */}
                           {isSelected && (
-                            <div className="mt-3 p-3 bg-background/50 rounded-lg border border-border/40 space-y-3">
-                              <div className="grid grid-cols-3 gap-3">
-                                {/* Tipo de operação */}
-                                <div>
-                                  <Label className="text-xs font-medium mb-1.5 block">
-                                    Tipo de Operação
-                                  </Label>
-                                  <Select
-                                    value={data.operationType || ''}
-                                    onValueChange={(value: 'Back' | 'Lay') => 
-                                      updateMethodData(method.id, 'operationType', value)
-                                    }
-                                  >
-                                    <SelectTrigger className="h-9 text-xs">
-                                      <SelectValue placeholder="Selecione" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Back">
-                                        <div className="flex items-center gap-2">
-                                          <TrendingUp className="h-3 w-3" />
-                                          Back
-                                        </div>
-                                      </SelectItem>
-                                      <SelectItem value="Lay">
-                                        <div className="flex items-center gap-2">
-                                          <TrendingDown className="h-3 w-3" />
-                                          Lay
-                                        </div>
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-
-                                {/* Odds de entrada */}
-                                <div>
-                                  <Label className="text-xs font-medium mb-1.5 block">
-                                    Odds de Entrada
-                                  </Label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="1.01"
-                                    max="100"
-                                    value={data.entryOdds || ''}
-                                    onChange={(e) => 
-                                      updateMethodData(method.id, 'entryOdds', e.target.value)
-                                    }
-                                    placeholder="Ex: 2.50"
-                                    className={cn(
-                                      "h-9 text-xs",
-                                      data.entryOdds && !validateOdds(data.entryOdds) && "border-destructive"
-                                    )}
-                                  />
-                                </div>
-
-                                {/* Odds de saída */}
-                                <div>
-                                  <Label className="text-xs font-medium mb-1.5 block">
-                                    Odds de Saída
-                                  </Label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="1.01"
-                                    max="100"
-                                    value={data.exitOdds || ''}
-                                    onChange={(e) => 
-                                      updateMethodData(method.id, 'exitOdds', e.target.value)
-                                    }
-                                    placeholder="Ex: 2.30"
-                                    className={cn(
-                                      "h-9 text-xs",
-                                      data.exitOdds && !validateOdds(data.exitOdds) && "border-destructive"
-                                    )}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Preview do resultado */}
-                              {previewResult && (
-                                <Alert className={cn(
-                                  "py-2",
-                                  previewResult === 'Green' 
-                                    ? "bg-primary/10 border-primary/30" 
-                                    : "bg-destructive/10 border-destructive/30"
-                                )}>
-                                  <AlertDescription className="flex items-center gap-2 text-xs font-medium">
-                                    {previewResult === 'Green' ? (
-                                      <>
-                                        <Check className="h-4 w-4 text-primary" />
-                                        <span className="text-primary">
-                                          Preview: GREEN - Operação lucrativa
-                                        </span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <X className="h-4 w-4 text-destructive" />
-                                        <span className="text-destructive">
-                                          Preview: RED - Operação com prejuízo
-                                        </span>
-                                      </>
-                                    )}
-                                  </AlertDescription>
-                                </Alert>
-                              )}
-
-                              {/* Validação de odds */}
-                              {((data.entryOdds && !validateOdds(data.entryOdds)) || 
-                                (data.exitOdds && !validateOdds(data.exitOdds))) && (
-                                <Alert variant="destructive" className="py-2">
-                                  <AlertDescription className="flex items-center gap-2 text-xs">
-                                    <AlertTriangle className="h-4 w-4" />
-                                    Odds devem estar entre 1.01 e 100.00
-                                  </AlertDescription>
-                                </Alert>
-                              )}
+                            <div className="mt-3 p-3 bg-background/50 rounded-lg border border-border/40">
+                              <Label className="text-xs font-medium mb-1.5 block">
+                                Resultado
+                              </Label>
+                              <Select
+                                value={data.result || ''}
+                                onValueChange={(value: 'Green' | 'Red') => 
+                                  updateMethodData(method.id, 'result', value)
+                                }
+                              >
+                                <SelectTrigger className="h-9 text-xs">
+                                  <SelectValue placeholder="Selecione o resultado" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Green">
+                                    <div className="flex items-center gap-2">
+                                      <Check className="h-3 w-3 text-primary" />
+                                      <span className="text-primary font-medium">Green</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="Red">
+                                    <div className="flex items-center gap-2">
+                                      <X className="h-3 w-3 text-destructive" />
+                                      <span className="text-destructive font-medium">Red</span>
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           )}
                         </div>
