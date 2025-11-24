@@ -34,6 +34,14 @@ const AppContent = () => {
           }
         />
         <Route
+          path="/daily-planning"
+          element={
+            <ProtectedRoute>
+              <Layout><DailyPlanning /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/bankroll"
           element={
             <ProtectedRoute>
