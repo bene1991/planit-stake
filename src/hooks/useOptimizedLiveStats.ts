@@ -49,8 +49,17 @@ export function useOptimizedLiveStats(games: Game[]) {
   // Track pending date fetches to avoid duplicate calls
   const isFetchingDates = useRef(false);
 
-  // Get unique dates from games (max 3 dates)
-  const uniqueDates = [...new Set(games.map(g => g.date))].slice(0, 3);
+  // Priorizar datas de jogos pendentes (com operações sem resultado)
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const pendingGames = games.filter(g => g.methodOperations.some(op => !op.result));
+  const pendingDates = [...new Set(pendingGames.map(g => g.date))].sort().reverse(); // Mais recentes primeiro
+  
+  // Garantir que a data de hoje está incluída se houver jogos, e priorizar jogos pendentes
+  const uniqueDates = [...new Set([today, ...pendingDates])].filter(d => 
+    games.some(g => g.date === d)
+  ).slice(0, 3);
+  
+  console.log('[OptimizedLiveStats] Datas priorizadas:', uniqueDates, 'Jogos pendentes:', pendingGames.length);
 
   // Check if cache is still valid
   const isCacheValid = useCallback((fixtureId: number): boolean => {

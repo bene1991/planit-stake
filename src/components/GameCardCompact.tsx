@@ -2,7 +2,7 @@ import { Game, Method } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronDown, Trash2, BarChart3, Loader2 } from "lucide-react";
+import { Shield, Check, X, ChevronDown, Trash2, BarChart3, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState } from "react";
@@ -37,6 +37,7 @@ export function GameCardCompact({
   const [expanded, setExpanded] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [hasLoadedDetails, setHasLoadedDetails] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
@@ -83,6 +84,18 @@ export function GameCardCompact({
     }
   };
 
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!fixtureData?.fixture || !onFetchDetails) return;
+    
+    setIsRefreshing(true);
+    try {
+      await onFetchDetails(fixtureData.fixture.fixture.id);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const hasDetailedStats = fixtureData?.statistics || fixtureData?.events?.length > 0;
 
   return (
@@ -106,10 +119,24 @@ export function GameCardCompact({
               {game.league}
             </p>
             {isLive && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-black px-1.5 py-0.5 rounded bg-primary">
-                <span className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
-                {elapsed ? `${elapsed}'` : 'LIVE'}
-              </span>
+              <>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-black px-1.5 py-0.5 rounded bg-primary">
+                  <span className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
+                  {elapsed ? `${elapsed}'` : 'LIVE'}
+                </span>
+                
+                {/* Botão de refresh */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="h-5 w-5 p-0 text-primary hover:bg-primary/20"
+                  title="Atualizar estatísticas"
+                >
+                  <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
+                </Button>
+              </>
             )}
           </div>
           
@@ -142,6 +169,11 @@ export function GameCardCompact({
             {hasScore ? (
               <span className="text-sm font-bold">
                 {homeScore} - {awayScore}
+              </span>
+            ) : isLive && !fixtureData ? (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Ao vivo
               </span>
             ) : (
               <>
