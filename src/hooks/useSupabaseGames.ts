@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { useFixtureSearch } from "./useFixtureSearch";
 
 export interface MethodOperation {
   methodId: string;
@@ -23,12 +24,14 @@ export interface Game {
   methodOperations: MethodOperation[];
   notes?: string;
   status?: string;
+  apiFixtureId?: string;
 }
 
 export const useSupabaseGames = () => {
   const { user } = useAuth();
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  const { autoLinkGame } = useFixtureSearch();
 
   useEffect(() => {
     if (user) {
@@ -78,6 +81,7 @@ export const useSupabaseGames = () => {
             awayTeamLogo: game.away_team_logo || undefined,
             notes: game.notes || undefined,
             status: game.status || 'Not Started',
+            apiFixtureId: game.api_fixture_id || undefined,
             methodOperations,
           };
         })
@@ -129,8 +133,26 @@ export const useSupabaseGames = () => {
         await supabase.from('method_operations').insert(operations);
       }
 
+      // Auto-link to API-Football
+      try {
+        const result = await autoLinkGame(
+          gameData.id,
+          game.homeTeam,
+          game.awayTeam,
+          game.date
+        );
+        
+        if (result.success) {
+          toast.success('Jogo adicionado e vinculado à API!');
+        } else {
+          toast.success('Jogo adicionado! (Vinculação manual disponível)');
+        }
+      } catch (err) {
+        console.log('Auto-link failed, continuing without link:', err);
+        toast.success('Jogo adicionado!');
+      }
+
       await loadGames();
-      toast.success('Jogo adicionado!');
     }
   };
 
