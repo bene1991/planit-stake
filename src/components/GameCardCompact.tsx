@@ -2,13 +2,12 @@ import { Game, Method } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronDown, Trash2, BarChart3, Loader2, RefreshCw } from "lucide-react";
+import { Shield, Check, X, ChevronDown, Trash2, BarChart3, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { LiveStatsInline } from "./LiveStatsInline";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
-import { toast } from "sonner";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -24,7 +23,7 @@ interface GameCardCompactProps {
   onEdit?: (game: Game) => void;
   fixtureData?: FixtureData | null;
   onFetchDetails?: (fixtureId: number) => Promise<{ success: boolean; statistics?: any; events?: ApiFootballEvent[] }>;
-  onForceRefresh?: (fixtureId: number) => Promise<ApiFootballFixture | null>;
+  lastGlobalRefresh?: number; // Timestamp do último refresh global
 }
 
 export function GameCardCompact({ 
@@ -35,15 +34,17 @@ export function GameCardCompact({
   onEdit,
   fixtureData,
   onFetchDetails,
-  onForceRefresh,
+  lastGlobalRefresh,
 }: GameCardCompactProps) {
   const [expanded, setExpanded] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [hasLoadedDetails, setHasLoadedDetails] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Local elapsed time with seconds (auto-incrementing)
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
+  
+  // Ref para rastrear última sincronização do tempo (evitar rollback)
+  const lastSyncRef = useRef<number>(0);
   
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
@@ -58,12 +59,24 @@ export function GameCardCompact({
   // Get elapsed from API
   const apiElapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
   
-  // Sync local elapsed with API elapsed
+  // Sync local elapsed with API elapsed (only when global refresh happens)
   useEffect(() => {
-    if (apiElapsed && isLive) {
+    if (apiElapsed && isLive && lastGlobalRefresh) {
+      // Só sincroniza se lastGlobalRefresh mudou (indica novo refresh global)
+      if (lastGlobalRefresh > lastSyncRef.current) {
+        console.log(`[GameCardCompact] Syncing elapsed: ${apiElapsed} (global refresh: ${lastGlobalRefresh})`);
+        setLocalElapsed({ minutes: apiElapsed, seconds: 0 });
+        lastSyncRef.current = lastGlobalRefresh;
+      }
+    }
+  }, [apiElapsed, isLive, lastGlobalRefresh]);
+  
+  // Inicializar localElapsed na primeira vez
+  useEffect(() => {
+    if (apiElapsed && isLive && !localElapsed) {
       setLocalElapsed({ minutes: apiElapsed, seconds: 0 });
     }
-  }, [apiElapsed, isLive]);
+  }, [apiElapsed, isLive, localElapsed]);
   
   // Auto-increment elapsed every second while live
   useEffect(() => {
@@ -123,46 +136,18 @@ export function GameCardCompact({
     }
   };
 
-  const handleRefresh = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    // Usar fixtureData se disponível, senão usar api_fixture_id do game
-    const fixtureIdToUse = fixtureData?.fixture?.fixture?.id || 
-                           (game.api_fixture_id ? parseInt(game.api_fixture_id) : null);
-    
-    if (!fixtureIdToUse) {
-      toast.error('Jogo não vinculado à API');
-      console.log('[GameCardCompact] Jogo não vinculado:', game.homeTeam, 'vs', game.awayTeam);
-      return;
-    }
-    
-    if (!onForceRefresh) {
-      console.log('[GameCardCompact] onForceRefresh não disponível');
-      return;
-    }
-    
-    console.log('[GameCardCompact] Refresh fixtureId:', fixtureIdToUse);
-    setIsRefreshing(true);
-    try {
-      const fixture = await onForceRefresh(fixtureIdToUse);
-      if (fixture) {
-        toast.success('Dados atualizados!');
-        // Reset local elapsed with new API elapsed
-        if (fixture.fixture.status.elapsed) {
-          setLocalElapsed({ 
-            minutes: fixture.fixture.status.elapsed, 
-            seconds: 0 
-          });
-        }
-      } else {
-        toast.error('Erro ao atualizar');
-      }
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   const hasDetailedStats = fixtureData?.statistics || fixtureData?.events?.length > 0;
+  
+  // Auto-carregar estatísticas quando expandir jogo ao vivo
+  useEffect(() => {
+    if (expanded && isLive && fixtureData?.fixture && !hasDetailedStats && !loadingDetails && !hasLoadedDetails && onFetchDetails) {
+      console.log('[GameCardCompact] Auto-carregando estatísticas para jogo ao vivo expandido');
+      setLoadingDetails(true);
+      onFetchDetails(fixtureData.fixture.fixture.id)
+        .then(() => setHasLoadedDetails(true))
+        .finally(() => setLoadingDetails(false));
+    }
+  }, [expanded, isLive, fixtureData, hasDetailedStats, loadingDetails, hasLoadedDetails, onFetchDetails]);
 
   return (
     <Card className={cn(
@@ -185,29 +170,15 @@ export function GameCardCompact({
               {game.league}
             </p>
             {isLive && (
-              <>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-black px-1.5 py-0.5 rounded bg-primary">
-                  <span className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
-                  {localElapsed 
-                    ? `${localElapsed.minutes}:${localElapsed.seconds.toString().padStart(2, '0')}`
-                    : fixtureStatus === 'HT' 
-                      ? 'HT'
-                      : 'LIVE'
-                  }
-                </span>
-                
-                {/* Botão de refresh */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                  className="h-5 w-5 p-0 text-primary hover:bg-primary/20"
-                  title="Atualizar estatísticas"
-                >
-                  <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
-                </Button>
-              </>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-black px-1.5 py-0.5 rounded bg-primary">
+                <span className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
+                {localElapsed 
+                  ? `${localElapsed.minutes}:${localElapsed.seconds.toString().padStart(2, '0')}`
+                  : fixtureStatus === 'HT' 
+                    ? 'HT'
+                    : 'LIVE'
+                }
+              </span>
             )}
           </div>
           
