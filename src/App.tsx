@@ -13,7 +13,6 @@ import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { Layout } from "./components/Layout";
 import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
-import LiveGames from "./pages/LiveGames";
 import Statistics from "./pages/Statistics";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
@@ -47,14 +46,6 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><BankrollManagement /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/live"
-          element={
-            <ProtectedRoute>
-              <Layout><LiveGames /></Layout>
             </ProtectedRoute>
           }
         />
