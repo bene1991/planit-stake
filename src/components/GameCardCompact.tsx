@@ -280,7 +280,7 @@ export function GameCardCompact({
           )}
         </div>
 
-        {/* Methods List with Buttons */}
+        {/* Methods List with Buttons - Always show Green/Red buttons to allow editing */}
         <div className="space-y-2 border-t border-border/30 pt-3">
           {game.methodOperations.map((operation) => (
             <div 
@@ -289,36 +289,36 @@ export function GameCardCompact({
             >
               <span className="text-xs font-medium">{getMethodName(operation.methodId)}</span>
               
-              {operation.result ? (
-                <span className={cn(
-                  "text-xs font-bold px-2 py-1 rounded",
-                  operation.result === 'Green' ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
-                )}>
-                  {operation.result === 'Green' ? <Check className="h-3 w-3 inline mr-1" /> : <X className="h-3 w-3 inline mr-1" />}
-                  {operation.result.toUpperCase()}
-                </span>
-              ) : (
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleResultClick(operation.methodId, 'Green')}
-                    className="h-6 px-2 text-[10px] text-primary border-primary/30 hover:bg-primary/20"
-                  >
-                    <Check className="h-3 w-3 mr-1" />
-                    Green
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleResultClick(operation.methodId, 'Red')}
-                    className="h-6 px-2 text-[10px] text-destructive border-destructive/30 hover:bg-destructive/20"
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Red
-                  </Button>
-                </div>
-              )}
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant={operation.result === 'Green' ? "default" : "outline"}
+                  onClick={() => handleResultClick(operation.methodId, 'Green')}
+                  className={cn(
+                    "h-6 px-2 text-[10px]",
+                    operation.result === 'Green' 
+                      ? "bg-primary text-primary-foreground" 
+                      : "text-primary border-primary/30 hover:bg-primary/20"
+                  )}
+                >
+                  <Check className="h-3 w-3 mr-1" />
+                  Green
+                </Button>
+                <Button
+                  size="sm"
+                  variant={operation.result === 'Red' ? "destructive" : "outline"}
+                  onClick={() => handleResultClick(operation.methodId, 'Red')}
+                  className={cn(
+                    "h-6 px-2 text-[10px]",
+                    operation.result === 'Red' 
+                      ? "" 
+                      : "text-destructive border-destructive/30 hover:bg-destructive/20"
+                  )}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Red
+                </Button>
+              </div>
             </div>
           ))}
         </div>

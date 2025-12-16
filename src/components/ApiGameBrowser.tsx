@@ -40,7 +40,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   const today = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(true);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showLeagueSelector, setShowLeagueSelector] = useState(false);
   const [selectedFixtures, setSelectedFixtures] = useState<Set<number>>(new Set());
   const [selectedMethods, setSelectedMethods] = useState<Set<string>>(new Set());
