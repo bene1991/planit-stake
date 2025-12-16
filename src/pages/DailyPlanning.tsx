@@ -203,13 +203,27 @@ export default function DailyPlanning() {
     await refreshGames();
   };
 
-  // Separar jogos em planejados e finalizados
+  // Get today's date in Brasilia timezone
+  const getTodayDate = () => {
+    const now = new Date();
+    const brasiliaOffset = -3 * 60;
+    const localOffset = now.getTimezoneOffset();
+    const offsetDiff = localOffset - brasiliaOffset;
+    const today = new Date(now.getTime() + offsetDiff * 60000);
+    return format(today, 'yyyy-MM-dd');
+  };
+  
+  const todayDate = getTodayDate();
+
+  // Separar jogos: hoje (pendentes + finalizados) vs histórico (outros dias finalizados)
+  const todayGames = games.filter((game) => game.date === todayDate);
+  
   const plannedGames = games.filter((game) =>
     game.methodOperations.some((op) => !op.result)
   );
 
   const finalizedGames = games.filter((game) =>
-    game.methodOperations.length > 0 && game.methodOperations.every((op) => op.result)
+    game.methodOperations.length > 0 && game.methodOperations.every((op) => op.result) && game.date !== todayDate
   );
 
   const sortGames = (gamesToSort: Game[]) => {
@@ -220,7 +234,8 @@ export default function DailyPlanning() {
     });
   };
 
-  const sortedPlanned = sortGames(plannedGames);
+  // Mostrar jogos de hoje (pendentes + finalizados) na seção principal
+  const sortedPlanned = sortGames(todayGames);
 
   // Filtros para planejamento
   const filteredPlannedGames = useMemo(() => {
