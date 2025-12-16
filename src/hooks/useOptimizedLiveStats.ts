@@ -269,21 +269,24 @@ export function useOptimizedLiveStats(games: Game[]) {
     if (game.api_fixture_id) {
       const fixtureId = parseInt(game.api_fixture_id);
       const fixture = state.fixtures.get(fixtureId);
+      console.log(`[getStatsForGame] ${game.homeTeam} vs ${game.awayTeam} - api_fixture_id: ${fixtureId}, found: ${!!fixture}`);
       if (fixture) return fixture;
     }
 
     // Otherwise, try to match by team names
-    for (const [, fixtureData] of state.fixtures) {
+    for (const [id, fixtureData] of state.fixtures) {
       const homeMatch = fixtureData.fixture.teams.home.name.toLowerCase().includes(game.homeTeam.toLowerCase()) ||
                        game.homeTeam.toLowerCase().includes(fixtureData.fixture.teams.home.name.toLowerCase());
       const awayMatch = fixtureData.fixture.teams.away.name.toLowerCase().includes(game.awayTeam.toLowerCase()) ||
                        game.awayTeam.toLowerCase().includes(fixtureData.fixture.teams.away.name.toLowerCase());
       
       if (homeMatch && awayMatch) {
+        console.log(`[getStatsForGame] ${game.homeTeam} vs ${game.awayTeam} - matched by name, fixtureId: ${id}`);
         return fixtureData;
       }
     }
 
+    console.log(`[getStatsForGame] ${game.homeTeam} vs ${game.awayTeam} - NOT FOUND, fixtures count: ${state.fixtures.size}`);
     return null;
   }, [state.fixtures]);
 
