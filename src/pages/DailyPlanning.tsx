@@ -67,6 +67,7 @@ export default function DailyPlanning() {
   const { 
     getStatsForGame, 
     fetchGameDetails, 
+    forceRefreshFixture,
     refresh: refreshLiveStats, 
     loading: statsLoading,
     lastRefresh 
@@ -537,6 +538,7 @@ export default function DailyPlanning() {
                       onEdit={handleEditGameMethods}
                       fixtureData={fixtureData}
                       onFetchDetails={fetchGameDetails}
+                      onForceRefresh={forceRefreshFixture}
                     />
                   );
                 })}
