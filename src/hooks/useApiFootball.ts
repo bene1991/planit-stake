@@ -1,5 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+
+// Cache global para fixtures por data (evita requests duplicados)
+interface CacheEntry<T> {
+  data: T[];
+  timestamp: number;
+}
+const fixturesCache = new Map<string, CacheEntry<unknown>>();
+const FIXTURES_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
 
 // API-Football Response Types
 export interface ApiFootballFixture {
@@ -189,7 +197,77 @@ export function useLiveFixtures(refetchInterval = 30000) {
 }
 
 export function useFixturesByDate(date: string, enabled = true) {
-  return useApiFootball<ApiFootballFixture>('fixtures', { date }, { enabled });
+  const [data, setData] = useState<ApiFootballFixture[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cached, setCached] = useState(false);
+  const pendingRequest = useRef<Promise<void> | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!enabled || !date) return;
+
+    const cacheKey = `fixtures-${date}`;
+    const cachedEntry = fixturesCache.get(cacheKey) as CacheEntry<ApiFootballFixture> | undefined;
+    
+    // Verificar cache válido
+    if (cachedEntry && Date.now() - cachedEntry.timestamp < FIXTURES_CACHE_TTL) {
+      setData(cachedEntry.data);
+      setCached(true);
+      setLoading(false);
+      return;
+    }
+
+    // Evitar requests duplicados para mesma data
+    if (pendingRequest.current) {
+      await pendingRequest.current;
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setCached(false);
+
+    const requestPromise = (async () => {
+      try {
+        const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
+          body: { endpoint: 'fixtures', params: { date } }
+        });
+
+        if (invokeError) {
+          throw new Error(invokeError.message);
+        }
+
+        const apiResponse = response as { response: ApiFootballFixture[]; errors?: Record<string, string> };
+        
+        if (apiResponse.errors && Object.keys(apiResponse.errors).length > 0) {
+          console.warn('API-Football errors:', Object.values(apiResponse.errors).join(', '));
+        }
+
+        // Salvar no cache
+        fixturesCache.set(cacheKey, {
+          data: apiResponse.response,
+          timestamp: Date.now()
+        });
+
+        setData(apiResponse.response);
+      } catch (err) {
+        console.error('Error fetching fixtures:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setLoading(false);
+        pendingRequest.current = null;
+      }
+    })();
+
+    pendingRequest.current = requestPromise;
+    await requestPromise;
+  }, [date, enabled]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { data, loading, error, refetch: fetchData, cached };
 }
 
 export function useFixture(fixtureId: number | string | undefined, refetchInterval?: number) {
