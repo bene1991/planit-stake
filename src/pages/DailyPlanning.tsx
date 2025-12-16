@@ -3,21 +3,22 @@ import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { useSettings } from "@/hooks/useSettings";
 import { useDailyGames } from "@/hooks/useDailyGames";
+import { usePlanningLiveStats } from "@/hooks/usePlanningLiveStats";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StatCard } from "@/components/StatCard";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, TrendingUp, CheckCircle, XCircle, Target, RefreshCw, Search, CalendarIcon, ChevronDown } from "lucide-react";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, Search, CalendarIcon, ChevronDown, Globe } from "lucide-react";
 import { toast } from "sonner";
-import { GameCard } from "@/components/GameCard";
+import { GameCardCompact } from "@/components/GameCardCompact";
 import { GameImporter } from "@/components/GameImporter";
 import { DailyGamesTab } from "@/components/DailyGamesTab";
 import { MethodSelector } from "@/components/MethodSelector";
 import { GameMethodEditor } from "@/components/GameMethodEditor";
 import { GoogleSheetsSync } from "@/components/GoogleSheetsSync";
+import { ApiGameBrowser, SelectedGame } from "@/components/ApiGameBrowser";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ export default function DailyPlanning() {
   const { settings } = useSettings();
   const { dailyGames, loading: dailyGamesLoading, loadDailyGames, markAsAdded } = useDailyGames();
   const [showImporter, setShowImporter] = useState(false);
+  const [showApiBrowser, setShowApiBrowser] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [periodFilter, setPeriodFilter] = useState('today');
   const [customDateFrom, setCustomDateFrom] = useState<Date>();
@@ -48,6 +50,9 @@ export default function DailyPlanning() {
   const [showGameMethodEditor, setShowGameMethodEditor] = useState(false);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
   const [updatingGameMethods, setUpdatingGameMethods] = useState(false);
+  
+  // Live stats for planning games
+  const { getStatsForGame } = usePlanningLiveStats(games);
   
   // Filtros da aba Planejamento
   const [planningMethodFilter, setPlanningMethodFilter] = useState<string>('all');
@@ -185,6 +190,32 @@ export default function DailyPlanning() {
     } finally {
       setAddingToPlanning(false);
     }
+  };
+
+  // Add games from API browser
+  const handleAddFromApi = async (selectedGames: SelectedGame[]) => {
+    for (const game of selectedGames) {
+      const methodOperations = game.methodIds.map(methodId => ({
+        methodId,
+        operationType: undefined,
+        entryOdds: undefined,
+        exitOdds: undefined,
+        result: undefined,
+      }));
+
+      await addGame({
+        date: game.date,
+        time: game.time,
+        league: game.league,
+        homeTeam: game.homeTeam,
+        awayTeam: game.awayTeam,
+        homeTeamLogo: game.homeTeamLogo,
+        awayTeamLogo: game.awayTeamLogo,
+        methodOperations,
+      });
+    }
+    toast.success(`${selectedGames.length} jogo(s) adicionado(s) ao planejamento!`);
+    await refreshGames();
   };
 
   // Separar jogos em planejados e finalizados
@@ -411,11 +442,25 @@ export default function DailyPlanning() {
             <RefreshCw className="h-3.5 w-3.5 sm:mr-2" />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
+          <Button variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8">
+            <Globe className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">Buscar Jogos</span>
+          </Button>
           <GoogleSheetsSync 
             onSuccess={() => {
               loadDailyGames();
             }} 
           />
+        </div>
+      </div>
+
+      {/* API Game Browser */}
+      <ApiGameBrowser
+        open={showApiBrowser}
+        onOpenChange={setShowApiBrowser}
+        methods={bankroll.methods}
+        onAddGames={handleAddFromApi}
+      />
         </div>
       </div>
 
@@ -615,17 +660,17 @@ export default function DailyPlanning() {
                   description="Tente ajustar os filtros para ver mais resultados"
                 />
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredPlannedGames.map((game) => (
-                    <div key={game.id} className="animate-in fade-in-50 duration-200">
-                      <GameCard
-                        game={game}
-                        methods={bankroll.methods}
-                        onUpdate={updateGame}
-                        onDelete={handleDelete}
-                        onEdit={handleEditGameMethods}
-                      />
-                    </div>
+                    <GameCardCompact
+                      key={game.id}
+                      game={game}
+                      methods={bankroll.methods}
+                      onUpdate={updateGame}
+                      onDelete={handleDelete}
+                      onEdit={handleEditGameMethods}
+                      liveStats={getStatsForGame(game.id)}
+                    />
                   ))}
                 </div>
               )}

@@ -375,6 +375,36 @@ export type Database = {
           },
         ]
       }
+      user_favorite_leagues: {
+        Row: {
+          country: string | null
+          created_at: string
+          id: string
+          league_id: number
+          league_name: string
+          logo: string | null
+          owner_id: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          id?: string
+          league_id: number
+          league_name: string
+          logo?: string | null
+          owner_id: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          id?: string
+          league_id?: number
+          league_name?: string
+          logo?: string | null
+          owner_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
