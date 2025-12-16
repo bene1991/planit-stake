@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { useOptimizedLiveStats } from "@/hooks/useOptimizedLiveStats";
+import { usePlanningFilters } from "@/hooks/usePlanningFilters";
+import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
@@ -40,7 +42,26 @@ export default function DailyPlanning() {
   const [showGameMethodEditor, setShowGameMethodEditor] = useState(false);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
   const [updatingGameMethods, setUpdatingGameMethods] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  
+  // Use persisted filters
+  const {
+    methodFilter: planningMethodFilter,
+    statusFilter: planningStatusFilter,
+    leagueFilter: planningLeagueFilter,
+    searchQuery: planningSearchQuery,
+    historyPeriod,
+    showHistory,
+    setMethodFilter: setPlanningMethodFilter,
+    setStatusFilter: setPlanningStatusFilter,
+    setLeagueFilter: setPlanningLeagueFilter,
+    setSearchQuery: setPlanningSearchQuery,
+    setHistoryPeriod,
+    setShowHistory,
+    clearFilters,
+  } = usePlanningFilters();
+  
+  const [customDateFrom, setCustomDateFrom] = useState<Date>();
+  const [customDateTo, setCustomDateTo] = useState<Date>();
   
   // Optimized live stats - single API call for all fixtures
   const { 
@@ -51,14 +72,26 @@ export default function DailyPlanning() {
     lastRefresh 
   } = useOptimizedLiveStats(games);
   
-  // Filtros
-  const [planningMethodFilter, setPlanningMethodFilter] = useState<string>('all');
-  const [planningStatusFilter, setPlanningStatusFilter] = useState<string>('all');
-  const [planningLeagueFilter, setPlanningLeagueFilter] = useState<string>('all');
-  const [planningSearchQuery, setPlanningSearchQuery] = useState('');
-  const [historyPeriod, setHistoryPeriod] = useState('last7');
-  const [customDateFrom, setCustomDateFrom] = useState<Date>();
-  const [customDateTo, setCustomDateTo] = useState<Date>();
+  // Delete with undo functionality
+  const restoreGame = useCallback(async (game: Game) => {
+    await addGame({
+      date: game.date,
+      time: game.time,
+      league: game.league,
+      homeTeam: game.homeTeam,
+      awayTeam: game.awayTeam,
+      homeTeamLogo: game.homeTeamLogo,
+      awayTeamLogo: game.awayTeamLogo,
+      methodOperations: game.methodOperations,
+      apiFixtureId: game.api_fixture_id,
+    });
+    await refreshGames();
+  }, [addGame, refreshGames]);
+  
+  const { deleteWithUndo } = useDeleteWithUndo({
+    onDelete: deleteGame,
+    onRestore: restoreGame,
+  });
 
   const updateStatuses = async () => {
     const updatedGames = updateGameStatuses(games);
@@ -88,10 +121,12 @@ export default function DailyPlanning() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleDelete = (gameId: string) => {
-    deleteGame(gameId);
-    toast.success("Jogo removido");
-  };
+  const handleDelete = useCallback((gameId: string) => {
+    const game = games.find(g => g.id === gameId);
+    if (game) {
+      deleteWithUndo(game);
+    }
+  }, [games, deleteWithUndo]);
 
   const handleExport = () => {
     exportGamesToCSV(games, bankroll.methods);
@@ -377,6 +412,7 @@ export default function DailyPlanning() {
         onOpenChange={setShowApiBrowser}
         methods={bankroll.methods}
         onAddGames={handleAddFromApi}
+        existingFixtureIds={games.filter(g => g.apiFixtureId).map(g => g.apiFixtureId!)}
       />
 
       {/* Method Selector */}
@@ -470,12 +506,7 @@ export default function DailyPlanning() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setPlanningSearchQuery('');
-                        setPlanningMethodFilter('all');
-                        setPlanningStatusFilter('all');
-                        setPlanningLeagueFilter('all');
-                      }}
+                      onClick={clearFilters}
                       className="h-6 px-2 text-xs"
                     >
                       Limpar

@@ -20,6 +20,7 @@ interface ApiGameBrowserProps {
   onOpenChange: (open: boolean) => void;
   methods: Method[];
   onAddGames: (games: SelectedGame[]) => Promise<void>;
+  existingFixtureIds?: string[];
 }
 
 export interface SelectedGame {
@@ -34,7 +35,7 @@ export interface SelectedGame {
   methodIds: string[];
 }
 
-export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames }: ApiGameBrowserProps) {
+export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existingFixtureIds = [] }: ApiGameBrowserProps) {
   const today = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,6 +47,9 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames }: ApiG
 
   const { data: fixtures, loading, refetch } = useFixturesByDate(selectedDate, open);
   const { favoriteLeagues, isFavorite: isLeagueFavorite } = useFavoriteLeagues();
+
+  // Convert existingFixtureIds to a Set for quick lookup
+  const existingIdsSet = new Set(existingFixtureIds);
 
   // Filter fixtures
   const filteredFixtures = useMemo(() => {
@@ -92,6 +96,9 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames }: ApiG
   }, [filteredFixtures]);
 
   const toggleFixture = (fixtureId: number) => {
+    // Don't allow selecting already existing fixtures
+    if (existingIdsSet.has(fixtureId.toString())) return;
+    
     setSelectedFixtures(prev => {
       const newSet = new Set(prev);
       if (newSet.has(fixtureId)) {
@@ -243,17 +250,28 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames }: ApiG
                         const isSelected = selectedFixtures.has(fixture.fixture.id);
                         const fixtureTime = format(new Date(fixture.fixture.date), 'HH:mm');
                         const status = getStatusDisplay(fixture.fixture.status);
+                        const isAlreadyAdded = existingIdsSet.has(fixture.fixture.id.toString());
 
                         return (
                           <div
                             key={fixture.fixture.id}
                             onClick={() => toggleFixture(fixture.fixture.id)}
                             className={cn(
-                              "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors",
-                              isSelected ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/50"
+                              "flex items-center gap-3 p-2 rounded-lg transition-colors",
+                              isAlreadyAdded 
+                                ? "bg-muted/30 opacity-60 cursor-not-allowed" 
+                                : isSelected 
+                                  ? "bg-primary/10 border border-primary/30 cursor-pointer" 
+                                  : "hover:bg-muted/50 cursor-pointer"
                             )}
                           >
-                            <Checkbox checked={isSelected} className="pointer-events-none" />
+                            {isAlreadyAdded ? (
+                              <Badge variant="secondary" className="text-[9px] px-1.5 py-0.5">
+                                Adicionado
+                              </Badge>
+                            ) : (
+                              <Checkbox checked={isSelected} className="pointer-events-none" />
+                            )}
                             
                             <span className="text-xs text-muted-foreground w-12">
                               {status.isLive ? (
