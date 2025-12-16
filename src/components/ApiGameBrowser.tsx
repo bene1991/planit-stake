@@ -7,7 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Search, Loader2, Shield, Calendar, Star, Settings2, Plus } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Search, Loader2, Shield, Calendar, Star, Settings2, Plus, Clock, CheckCircle2 } from "lucide-react";
 import { useFixturesByDate, ApiFootballFixture, getStatusDisplay } from "@/hooks/useApiFootball";
 import { useFavoriteLeagues } from "@/hooks/useFavoriteLeagues";
 import { LeagueSelector } from "./LeagueSelector";
@@ -45,6 +46,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   const [selectedFixtures, setSelectedFixtures] = useState<Set<number>>(new Set());
   const [selectedMethods, setSelectedMethods] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
+  const [activeTab, setActiveTab] = useState<"upcoming" | "finished">("upcoming");
 
   const { data: fixtures, loading, refetch } = useFixturesByDate(selectedDate, open);
   const { favoriteLeagues, isFavorite: isLeagueFavorite } = useFavoriteLeagues();
@@ -65,17 +67,14 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   // Convert existingFixtureIds to a Set for quick lookup
   const existingIdsSet = new Set(existingFixtureIds);
 
-  // Status de jogos finalizados que devem ser ocultados
+  // Status de jogos finalizados
   const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'CANC', 'ABD', 'AWD', 'WO'];
 
-  // Filter fixtures
-  const filteredFixtures = useMemo(() => {
+  // Base filter (search + favorites)
+  const baseFilteredFixtures = useMemo(() => {
     if (!fixtures) return [];
 
     return fixtures.filter(f => {
-      // Excluir jogos já finalizados
-      if (FINISHED_STATUSES.includes(f.fixture.status.short)) return false;
-
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -94,6 +93,20 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
       return true;
     });
   }, [fixtures, searchQuery, showFavoritesOnly, favoriteLeagues, isLeagueFavorite]);
+
+  // Split into upcoming and finished
+  const upcomingFixtures = useMemo(() => 
+    baseFilteredFixtures.filter(f => !FINISHED_STATUSES.includes(f.fixture.status.short)),
+    [baseFilteredFixtures]
+  );
+
+  const finishedFixtures = useMemo(() => 
+    baseFilteredFixtures.filter(f => FINISHED_STATUSES.includes(f.fixture.status.short)),
+    [baseFilteredFixtures]
+  );
+
+  // Current tab fixtures
+  const filteredFixtures = activeTab === "upcoming" ? upcomingFixtures : finishedFixtures;
 
   // Group by league
   const groupedFixtures = useMemo(() => {
@@ -254,6 +267,26 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
             </div>
           </div>
 
+          {/* Tabs for Upcoming vs Finished */}
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upcoming" | "finished")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upcoming" className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Ao Vivo / Próximos
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                  {upcomingFixtures.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="finished" className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4" />
+                Finalizados
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                  {finishedFixtures.length}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
           {/* Filters */}
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -265,7 +298,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
               Apenas ligas favoritas
             </label>
             <span className="text-xs text-muted-foreground">
-              {filteredFixtures.length} jogos encontrados
+              {filteredFixtures.length} jogos
             </span>
           </div>
 
