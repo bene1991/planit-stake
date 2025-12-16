@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut, CheckCircle } from "lucide-react";
+import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
   const navItems = [
     { path: "/bankroll", label: "Gestão de Banca", icon: TrendingUp },
     { path: "/", label: "Planejamento Diário", icon: Calendar },
+    { path: "/live", label: "Ao Vivo", icon: Radio, highlight: true },
     { path: "/statistics", label: "Estatísticas", icon: BarChart3 },
   ];
 
@@ -39,6 +40,7 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
+            const isHighlight = 'highlight' in item && item.highlight;
             return (
               <Link
                 key={item.path}
@@ -48,14 +50,20 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
                   "group relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-all duration-200",
                   isActive
                     ? "bg-primary text-primary-foreground shadow-glow"
+                    : isHighlight
+                    ? "text-red-500 hover:bg-red-500/10 hover:text-red-400"
                     : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                 )}
               >
                 <Icon className={cn(
                   "h-5 w-5 transition-transform duration-200",
-                  isActive ? "scale-110" : "group-hover:scale-110"
+                  isActive ? "scale-110" : "group-hover:scale-110",
+                  isHighlight && !isActive && "animate-pulse"
                 )} />
                 <span className="tracking-wide">{item.label}</span>
+                {isHighlight && !isActive && (
+                  <span className="absolute right-3 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                )}
               </Link>
             );
           })}
