@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
+import { FixtureLinker } from "@/components/LiveStats/FixtureLinker";
 
 interface GameCardProps {
   game: Game;
@@ -19,10 +20,11 @@ interface GameCardProps {
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
+  onRefresh?: () => void;
   isFinalized?: boolean;
 }
 
-export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalized }: GameCardProps) {
+export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh, isFinalized }: GameCardProps) {
   const [editingMethod, setEditingMethod] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [methodForm, setMethodForm] = useState({
@@ -122,6 +124,16 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, isFinalize
                   <span className="inline-block h-2 w-2 rounded-full bg-black animate-pulse" />
                   AO VIVO
                 </span>
+              )}
+              {!isFinalized && (
+                <FixtureLinker
+                  gameId={game.id}
+                  gameDate={game.date}
+                  homeTeam={game.homeTeam}
+                  awayTeam={game.awayTeam}
+                  currentFixtureId={game.api_fixture_id}
+                  onLinked={() => onRefresh?.()}
+                />
               )}
             </div>
             
