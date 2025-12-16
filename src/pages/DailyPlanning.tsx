@@ -461,9 +461,6 @@ export default function DailyPlanning() {
         methods={bankroll.methods}
         onAddGames={handleAddFromApi}
       />
-        </div>
-      </div>
-
       {/* Importador */}
       <GameImporter
         open={showImporter}
