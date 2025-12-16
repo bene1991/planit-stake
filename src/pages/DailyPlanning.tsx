@@ -67,11 +67,19 @@ export default function DailyPlanning() {
   const { 
     getStatsForGame, 
     fetchGameDetails, 
-    forceRefreshFixture,
     refresh: refreshLiveStats, 
     loading: statsLoading,
     lastRefresh 
   } = useOptimizedLiveStats(games);
+  
+  // Timestamp do último refresh global (para sincronizar tempo nos cards)
+  const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
+  
+  const handleGlobalRefresh = async () => {
+    await updateStatuses();
+    await refreshLiveStats();
+    setLastGlobalRefresh(Date.now());
+  };
   
   // Delete with undo functionality
   const restoreGame = useCallback(async (game: Game) => {
@@ -386,7 +394,7 @@ export default function DailyPlanning() {
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={() => { updateStatuses(); refreshLiveStats(); }} 
+            onClick={handleGlobalRefresh} 
             className="h-8"
             disabled={statsLoading}
           >
@@ -538,7 +546,7 @@ export default function DailyPlanning() {
                       onEdit={handleEditGameMethods}
                       fixtureData={fixtureData}
                       onFetchDetails={fetchGameDetails}
-                      onForceRefresh={forceRefreshFixture}
+                      lastGlobalRefresh={lastGlobalRefresh}
                     />
                   );
                 })}
