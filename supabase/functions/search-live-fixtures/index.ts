@@ -39,7 +39,6 @@ serve(async (req) => {
       method: 'GET',
       headers: {
         'x-apisports-key': apiKey,
-        'x-apisports-host': 'v3.football.api-sports.io',
       },
     });
 
