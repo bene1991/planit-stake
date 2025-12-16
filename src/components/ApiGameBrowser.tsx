@@ -65,11 +65,17 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   // Convert existingFixtureIds to a Set for quick lookup
   const existingIdsSet = new Set(existingFixtureIds);
 
+  // Status de jogos finalizados que devem ser ocultados
+  const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'CANC', 'ABD', 'AWD', 'WO'];
+
   // Filter fixtures
   const filteredFixtures = useMemo(() => {
     if (!fixtures) return [];
 
     return fixtures.filter(f => {
+      // Excluir jogos já finalizados
+      if (FINISHED_STATUSES.includes(f.fixture.status.short)) return false;
+
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
