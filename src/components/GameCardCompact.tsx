@@ -2,12 +2,18 @@ import { Game, Method } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronDown, Trash2 } from "lucide-react";
+import { Shield, Check, X, ChevronDown, Trash2, BarChart3, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState } from "react";
 import { LiveStatsInline } from "./LiveStatsInline";
-import { ApiFootballEvent } from "@/hooks/useApiFootball";
+import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
+
+interface FixtureData {
+  fixture: ApiFootballFixture;
+  statistics: any;
+  events: ApiFootballEvent[];
+}
 
 interface GameCardCompactProps {
   game: Game;
@@ -15,12 +21,8 @@ interface GameCardCompactProps {
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
-  liveStats?: {
-    fixture: any;
-    statistics: any;
-    events: ApiFootballEvent[];
-    loading: boolean;
-  } | null;
+  fixtureData?: FixtureData | null;
+  onFetchDetails?: (fixtureId: number) => Promise<{ success: boolean; statistics?: any; events?: ApiFootballEvent[] }>;
 }
 
 export function GameCardCompact({ 
@@ -29,9 +31,12 @@ export function GameCardCompact({
   onUpdate, 
   onDelete, 
   onEdit,
-  liveStats 
+  fixtureData,
+  onFetchDetails,
 }: GameCardCompactProps) {
   const [expanded, setExpanded] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [hasLoadedDetails, setHasLoadedDetails] = useState(false);
   
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
@@ -39,7 +44,10 @@ export function GameCardCompact({
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
-  const isLive = game.status === 'Live';
+  // Determine if game is live from fixture data or game status
+  const fixtureStatus = fixtureData?.fixture?.fixture?.status?.short;
+  const isLive = fixtureStatus ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) : game.status === 'Live';
+  
   const greenCount = game.methodOperations.filter(op => op.result === 'Green').length;
   const redCount = game.methodOperations.filter(op => op.result === 'Red').length;
   const pendingCount = game.methodOperations.filter(op => !op.result).length;
@@ -48,10 +56,11 @@ export function GameCardCompact({
     return methods.find(m => m.id === methodId)?.name || 'Método';
   };
 
-  // Get score from live stats
-  const homeScore = liveStats?.fixture?.goals?.home ?? '-';
-  const awayScore = liveStats?.fixture?.goals?.away ?? '-';
-  const elapsed = liveStats?.fixture?.fixture?.status?.elapsed;
+  // Get score from fixture data
+  const homeScore = fixtureData?.fixture?.goals?.home ?? '-';
+  const awayScore = fixtureData?.fixture?.goals?.away ?? '-';
+  const elapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
+  const hasScore = fixtureData?.fixture?.goals?.home !== null;
 
   const handleResultClick = (methodId: string, result: 'Green' | 'Red') => {
     const updatedOperations = game.methodOperations.map(op =>
@@ -59,6 +68,22 @@ export function GameCardCompact({
     );
     onUpdate(game.id, { methodOperations: updatedOperations });
   };
+
+  const handleFetchDetails = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!fixtureData?.fixture || !onFetchDetails) return;
+    
+    setLoadingDetails(true);
+    try {
+      await onFetchDetails(fixtureData.fixture.fixture.id);
+      setHasLoadedDetails(true);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const hasDetailedStats = fixtureData?.statistics || fixtureData?.events?.length > 0;
 
   return (
     <Card className={cn(
@@ -114,7 +139,7 @@ export function GameCardCompact({
 
           {/* Score / Time */}
           <div className="flex flex-col items-center px-2">
-            {isLive || liveStats?.fixture ? (
+            {hasScore ? (
               <span className="text-sm font-bold">
                 {homeScore} - {awayScore}
               </span>
@@ -169,13 +194,33 @@ export function GameCardCompact({
       {/* Expanded Content */}
       {expanded && (
         <div className="border-t border-border/30">
-          {/* Live Stats */}
-          {isLive && liveStats && (
+          {/* On-demand Stats Button - Only show for live games */}
+          {isLive && fixtureData?.fixture && !hasDetailedStats && (
+            <div className="p-3 border-b border-border/30 bg-muted/20">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchDetails}
+                disabled={loadingDetails}
+                className="w-full h-8 text-xs"
+              >
+                {loadingDetails ? (
+                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                ) : (
+                  <BarChart3 className="h-3 w-3 mr-2" />
+                )}
+                Ver Estatísticas (+2 req)
+              </Button>
+            </div>
+          )}
+
+          {/* Live Stats - Only show if we have detailed stats */}
+          {isLive && hasDetailedStats && (
             <LiveStatsInline 
-              fixture={liveStats.fixture}
-              statistics={liveStats.statistics}
-              events={liveStats.events}
-              loading={liveStats.loading}
+              fixture={fixtureData?.fixture || null}
+              statistics={fixtureData?.statistics}
+              events={fixtureData?.events || []}
+              loading={loadingDetails}
             />
           )}
 
