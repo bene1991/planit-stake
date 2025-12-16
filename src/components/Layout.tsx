@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Home, Calendar, BarChart3, Wallet, X } from "lucide-react";
+import { Menu, Home, Calendar, BarChart3, Wallet, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
+import { BottomNav } from "./BottomNav";
+import { cn } from "@/lib/utils";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
@@ -14,6 +16,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const navItems = [
     { to: "/", label: "Início", icon: Home },
     { to: "/daily-planning", label: "Planejamento", icon: Calendar },
+    { to: "/live", label: "Ao Vivo", icon: Radio, isLive: true },
     { to: "/statistics", label: "Estatísticas", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
   ];
@@ -22,40 +25,52 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* ScoreTabs-style Fixed Header */}
+      {/* Fixed Header */}
       <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border/30 bg-background/80 backdrop-blur-xl">
-        <div className="container mx-auto h-full px-6 flex items-center justify-between">
+        <div className="container mx-auto h-full px-4 lg:px-6 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <span className="text-2xl font-bold">
+            <span className="text-xl lg:text-2xl font-bold">
               <span className="text-foreground">vini</span>
               <span className="text-primary">trader</span>
-              <span className="text-primary text-3xl">.</span>
+              <span className="text-primary text-2xl lg:text-3xl">.</span>
             </span>
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-8">
+          <nav className="hidden lg:flex items-center gap-6">
             {navItems.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex items-center gap-2 text-sm font-medium transition-all duration-200 hover:text-primary ${
+                className={cn(
+                  "flex items-center gap-2 text-sm font-medium transition-all duration-200 hover:text-primary relative",
                   isActive(item.to) ? "text-primary" : "text-muted-foreground"
-                }`}
+                )}
               >
-                <item.icon className="h-4 w-4" />
+                <div className="relative">
+                  <item.icon className={cn(
+                    "h-4 w-4",
+                    item.isLive && "text-red-500"
+                  )} />
+                  {item.isLive && (
+                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  )}
+                </div>
                 {item.label}
+                {isActive(item.to) && (
+                  <span className="absolute -bottom-[21px] left-0 right-0 h-0.5 bg-primary" />
+                )}
               </Link>
             ))}
           </nav>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <ThemeToggle />
             
             {user ? (
-              <div className="hidden lg:flex items-center gap-4">
+              <div className="hidden lg:flex items-center gap-3">
                 <Link to="/account">
                   <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                     Conta
@@ -78,7 +93,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               </Link>
             )}
 
-            {/* Mobile Menu */}
+            {/* Mobile Menu (Sheet for account/settings) */}
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="lg:hidden">
@@ -87,20 +102,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               </SheetTrigger>
               <SheetContent side="right" className="w-[280px] bg-card border-l border-border/30">
                 <div className="flex flex-col gap-6 mt-8">
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setOpen(false)}
-                      className={`flex items-center gap-3 text-base font-medium transition-all duration-200 hover:text-primary ${
-                        isActive(item.to) ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {item.label}
-                    </Link>
-                  ))}
-                  
                   {user && (
                     <>
                       <Link
@@ -121,6 +122,15 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                       </button>
                     </>
                   )}
+                  {!user && (
+                    <Link
+                      to="/auth"
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-3 text-base font-medium text-primary"
+                    >
+                      Entrar
+                    </Link>
+                  )}
                 </div>
               </SheetContent>
             </Sheet>
@@ -129,11 +139,14 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       {/* Main Content */}
-      <main className="pt-16">
-        <div className="container mx-auto px-6 py-8 animate-fade-in">
+      <main className="pt-16 pb-20 lg:pb-8">
+        <div className="container mx-auto px-4 lg:px-6 py-6 lg:py-8 animate-fade-in">
           {children}
         </div>
       </main>
+
+      {/* Bottom Navigation for Mobile */}
+      <BottomNav />
     </div>
   );
 };
