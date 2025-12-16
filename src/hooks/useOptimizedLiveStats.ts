@@ -11,6 +11,12 @@ interface FixtureData {
   events: ApiFootballEvent[];
 }
 
+interface CachedDetails {
+  statistics: ReturnType<typeof parseStatistics> | null;
+  events: ApiFootballEvent[];
+  timestamp: number;
+}
+
 interface LiveStatsState {
   fixtures: Map<number, FixtureData>;
   loading: boolean;
@@ -20,6 +26,10 @@ interface LiveStatsState {
 
 // Refresh interval in milliseconds (10 minutes)
 const REFRESH_INTERVAL = 10 * 60 * 1000;
+// Cache TTL for detailed stats (5 minutes)
+const CACHE_TTL = 5 * 60 * 1000;
+// Finished game statuses that don't need refresh
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'PST'];
 
 export function useOptimizedLiveStats(games: Game[]) {
   const [state, setState] = useState<LiveStatsState>({
@@ -32,45 +42,81 @@ export function useOptimizedLiveStats(games: Game[]) {
   const { trackRequest, canMakeRequest, remaining } = useApiRequestTracker();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFirstLoad = useRef(true);
+  // Cache for detailed stats with TTL
+  const detailsCache = useRef<Map<number, CachedDetails>>(new Map());
+  // Track pending requests to avoid duplicates
+  const pendingRequests = useRef<Set<number>>(new Set());
 
-  // Get unique dates from planned games
-  const uniqueDates = [...new Set(games.map(g => g.date))];
-  const today = format(new Date(), 'yyyy-MM-dd');
+  // Get unique dates from games (max 3 dates)
+  const uniqueDates = [...new Set(games.map(g => g.date))].slice(0, 3);
 
-  // Fetch all fixtures for today with a single API call
-  const fetchTodayFixtures = useCallback(async () => {
-    if (!canMakeRequest) {
-      setState(prev => ({ ...prev, error: 'Limite diário de requisições atingido' }));
+  // Check if cache is still valid
+  const isCacheValid = useCallback((fixtureId: number): boolean => {
+    const cached = detailsCache.current.get(fixtureId);
+    if (!cached) return false;
+    return Date.now() - cached.timestamp < CACHE_TTL;
+  }, []);
+
+  // Get cached details
+  const getCachedDetails = useCallback((fixtureId: number): CachedDetails | null => {
+    if (isCacheValid(fixtureId)) {
+      return detailsCache.current.get(fixtureId) || null;
+    }
+    return null;
+  }, [isCacheValid]);
+
+  // Check if a fixture is finished
+  const isFinished = useCallback((fixture: ApiFootballFixture): boolean => {
+    return FINISHED_STATUSES.includes(fixture.fixture.status.short);
+  }, []);
+
+  // Fetch fixtures for multiple dates with single calls per date
+  const fetchFixturesForDates = useCallback(async () => {
+    if (!canMakeRequest || uniqueDates.length === 0) {
+      if (!canMakeRequest) {
+        setState(prev => ({ ...prev, error: 'Limite diário de requisições atingido' }));
+      }
       return;
     }
 
     setState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      // Single API call for all fixtures of today
-      const { data, error } = await supabase.functions.invoke('api-football', {
-        body: { endpoint: 'fixtures', params: { date: today } }
-      });
-
-      if (error) throw error;
-
-      // Track this single request
-      trackRequest(1);
-
-      const fixturesArray = (data?.response || []) as ApiFootballFixture[];
-      const fixturesMap = new Map<number, FixtureData>();
-
-      // Map fixtures by ID for quick lookup
-      fixturesArray.forEach(fixture => {
-        fixturesMap.set(fixture.fixture.id, {
-          fixture,
-          statistics: null, // Stats fetched on-demand
-          events: [], // Events fetched on-demand
+      const allFixtures = new Map<number, FixtureData>();
+      
+      // Fetch fixtures for each unique date (1 request per date)
+      for (const date of uniqueDates) {
+        if (!canMakeRequest) break;
+        
+        const { data, error } = await supabase.functions.invoke('api-football', {
+          body: { endpoint: 'fixtures', params: { date } }
         });
-      });
+
+        if (error) {
+          console.error(`Error fetching fixtures for ${date}:`, error);
+          continue;
+        }
+
+        // Track this single request
+        trackRequest(1);
+
+        const fixturesArray = (data?.response || []) as ApiFootballFixture[];
+
+        // Map fixtures by ID
+        fixturesArray.forEach(fixture => {
+          // Check if we have cached details
+          const cached = getCachedDetails(fixture.fixture.id);
+          
+          allFixtures.set(fixture.fixture.id, {
+            fixture,
+            statistics: cached?.statistics || null,
+            events: cached?.events || [],
+          });
+        });
+      }
 
       setState({
-        fixtures: fixturesMap,
+        fixtures: allFixtures,
         loading: false,
         error: null,
         lastRefresh: new Date(),
@@ -84,13 +130,41 @@ export function useOptimizedLiveStats(games: Game[]) {
         error: 'Erro ao buscar jogos',
       }));
     }
-  }, [today, canMakeRequest, trackRequest]);
+  }, [uniqueDates, canMakeRequest, trackRequest, getCachedDetails]);
 
-  // Fetch detailed stats for a specific game (on-demand)
+  // Fetch detailed stats for a specific game (on-demand) with caching
   const fetchGameDetails = useCallback(async (fixtureId: number) => {
+    // Check cache first
+    const cached = getCachedDetails(fixtureId);
+    if (cached) {
+      console.log(`Using cached stats for fixture ${fixtureId}`);
+      // Update state with cached data
+      setState(prev => {
+        const newFixtures = new Map(prev.fixtures);
+        const existing = newFixtures.get(fixtureId);
+        if (existing) {
+          newFixtures.set(fixtureId, {
+            ...existing,
+            statistics: cached.statistics,
+            events: cached.events,
+          });
+        }
+        return { ...prev, fixtures: newFixtures };
+      });
+      return { success: true, statistics: cached.statistics, events: cached.events };
+    }
+
+    // Prevent duplicate requests
+    if (pendingRequests.current.has(fixtureId)) {
+      console.log(`Request already pending for fixture ${fixtureId}`);
+      return { success: false, error: 'Requisição em andamento' };
+    }
+
     if (!canMakeRequest) {
       return { success: false, error: 'Limite diário atingido' };
     }
+
+    pendingRequests.current.add(fixtureId);
 
     try {
       // Fetch stats and events in parallel (2 requests)
@@ -109,6 +183,13 @@ export function useOptimizedLiveStats(games: Game[]) {
       const statistics = parseStatistics(statsResponse.data?.response || null);
       const events = (eventsResponse.data?.response || []) as ApiFootballEvent[];
 
+      // Cache the results
+      detailsCache.current.set(fixtureId, {
+        statistics,
+        events,
+        timestamp: Date.now(),
+      });
+
       setState(prev => {
         const newFixtures = new Map(prev.fixtures);
         const existing = newFixtures.get(fixtureId);
@@ -126,8 +207,10 @@ export function useOptimizedLiveStats(games: Game[]) {
     } catch (error) {
       console.error('Error fetching game details:', error);
       return { success: false, error: 'Erro ao buscar estatísticas' };
+    } finally {
+      pendingRequests.current.delete(fixtureId);
     }
-  }, [canMakeRequest, trackRequest]);
+  }, [canMakeRequest, trackRequest, getCachedDetails]);
 
   // Get stats for a specific game by matching fixture ID or team names
   const getStatsForGame = useCallback((game: Game): FixtureData | null => {
@@ -153,20 +236,40 @@ export function useOptimizedLiveStats(games: Game[]) {
     return null;
   }, [state.fixtures]);
 
+  // Refresh only live games (exclude finished ones)
+  const refreshLiveGames = useCallback(async () => {
+    // Filter games that are not finished
+    const liveGames = games.filter(game => {
+      if (!game.api_fixture_id) return true; // Include games without fixture ID
+      const fixtureId = parseInt(game.api_fixture_id);
+      const fixture = state.fixtures.get(fixtureId);
+      if (!fixture) return true;
+      return !isFinished(fixture.fixture);
+    });
+
+    // If all games are finished, skip refresh
+    if (liveGames.length === 0) {
+      console.log('All games finished, skipping refresh');
+      return;
+    }
+
+    await fetchFixturesForDates();
+  }, [games, state.fixtures, isFinished, fetchFixturesForDates]);
+
   // Initial fetch
   useEffect(() => {
     if (isFirstLoad.current && games.length > 0) {
       isFirstLoad.current = false;
-      fetchTodayFixtures();
+      fetchFixturesForDates();
     }
-  }, [games.length, fetchTodayFixtures]);
+  }, [games.length, fetchFixturesForDates]);
 
-  // Auto-refresh every 10 minutes
+  // Auto-refresh every 10 minutes (only for live games)
   useEffect(() => {
     if (games.length === 0) return;
 
     intervalRef.current = setInterval(() => {
-      fetchTodayFixtures();
+      refreshLiveGames();
     }, REFRESH_INTERVAL);
 
     return () => {
@@ -174,12 +277,12 @@ export function useOptimizedLiveStats(games: Game[]) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [games.length, fetchTodayFixtures]);
+  }, [games.length, refreshLiveGames]);
 
   return {
     getStatsForGame,
     fetchGameDetails,
-    refresh: fetchTodayFixtures,
+    refresh: fetchFixturesForDates,
     loading: state.loading,
     error: state.error,
     lastRefresh: state.lastRefresh,
