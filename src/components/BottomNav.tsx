@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, Calendar, Radio, BarChart3, Wallet, User } from "lucide-react";
+import { Home, Calendar, BarChart3, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BottomNav = () => {
@@ -7,8 +7,6 @@ export const BottomNav = () => {
 
   const navItems = [
     { to: "/", label: "Início", icon: Home },
-    { to: "/daily-planning", label: "Plan", icon: Calendar },
-    { to: "/live", label: "Ao Vivo", icon: Radio, isLive: true },
     { to: "/statistics", label: "Stats", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
   ];
@@ -30,13 +28,7 @@ export const BottomNav = () => {
             )}
           >
             <div className="relative">
-              <item.icon className={cn(
-                "h-5 w-5",
-                item.isLive && isActive(item.to) && "text-red-500"
-              )} />
-              {item.isLive && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-              )}
+              <item.icon className="h-5 w-5" />
             </div>
             <span className="text-[10px] font-medium">{item.label}</span>
           </Link>
