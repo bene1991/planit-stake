@@ -7,13 +7,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Search, Loader2, Shield, Calendar, Star, Settings2, Plus, Clock } from "lucide-react";
+import { Search, Loader2, Shield, Calendar, Star, Settings2, Plus } from "lucide-react";
 import { useFixturesByDate, ApiFootballFixture, getStatusDisplay } from "@/hooks/useApiFootball";
 import { useFavoriteLeagues } from "@/hooks/useFavoriteLeagues";
 import { LeagueSelector } from "./LeagueSelector";
 import { Method } from "@/types";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface ApiGameBrowserProps {
   open: boolean;
@@ -47,6 +48,19 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
 
   const { data: fixtures, loading, refetch } = useFixturesByDate(selectedDate, open);
   const { favoriteLeagues, isFavorite: isLeagueFavorite } = useFavoriteLeagues();
+
+  // Helper functions for quick date navigation
+  const getDateString = (daysFromToday: number) => format(addDays(new Date(), daysFromToday), 'yyyy-MM-dd');
+  const isDateSelected = (daysFromToday: number) => selectedDate === getDateString(daysFromToday);
+  
+  // Format selected date for display
+  const formattedSelectedDate = useMemo(() => {
+    try {
+      return format(new Date(selectedDate + 'T12:00:00'), "EEEE, d 'de' MMMM", { locale: ptBR });
+    } catch {
+      return selectedDate;
+    }
+  }, [selectedDate]);
 
   // Convert existingFixtureIds to a Set for quick lookup
   const existingIdsSet = new Set(existingFixtureIds);
@@ -172,35 +186,66 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
           </DialogHeader>
 
           {/* Controls */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Date Picker */}
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full sm:w-auto"
-            />
-
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="space-y-3">
+            {/* Quick Date Navigation */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={isDateSelected(0) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedDate(getDateString(0))}
+                className="h-8"
+              >
+                Hoje
+              </Button>
+              <Button
+                variant={isDateSelected(1) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedDate(getDateString(1))}
+                className="h-8"
+              >
+                Amanhã
+              </Button>
+              <Button
+                variant={isDateSelected(2) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedDate(getDateString(2))}
+                className="h-8"
+              >
+                +2 dias
+              </Button>
               <Input
-                placeholder="Buscar time ou liga..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-auto h-8"
               />
             </div>
 
-            {/* League Settings */}
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => setShowLeagueSelector(true)}
-              title="Configurar ligas favoritas"
-            >
-              <Settings2 className="h-4 w-4" />
-            </Button>
+            {/* Selected Date Display */}
+            <p className="text-xs text-muted-foreground capitalize">
+              {formattedSelectedDate}
+            </p>
+
+            {/* Search and Settings */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar time ou liga..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => setShowLeagueSelector(true)}
+                title="Configurar ligas favoritas"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Filters */}
