@@ -23,12 +23,18 @@ const defaultFilters: PlanningFilters = {
 export function usePlanningFilters() {
   const [filters, setFilters] = useState<PlanningFilters>(defaultFilters);
 
+const VALID_STATUS_FILTERS = ['all', 'pending', 'live', 'finished'];
+
   // Load filters from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
+        // Validate statusFilter - reset if invalid (fixes ghost 'configured' filter)
+        if (parsed.statusFilter && !VALID_STATUS_FILTERS.includes(parsed.statusFilter)) {
+          parsed.statusFilter = 'all';
+        }
         setFilters({ ...defaultFilters, ...parsed });
       }
     } catch (e) {

@@ -257,16 +257,16 @@ export default function DailyPlanning() {
     }
 
     if (planningStatusFilter !== 'all') {
-      if (planningStatusFilter === 'configured') {
-        filtered = filtered.filter(game =>
-          game.methodOperations.every(op => op.result)
-        );
-      } else if (planningStatusFilter === 'pending') {
+      if (planningStatusFilter === 'pending') {
         filtered = filtered.filter(game =>
           game.methodOperations.some(op => !op.result)
         );
       } else if (planningStatusFilter === 'live') {
         filtered = filtered.filter(game => game.status === 'Live');
+      } else if (planningStatusFilter === 'finished') {
+        filtered = filtered.filter(game =>
+          game.methodOperations.length > 0 && game.methodOperations.every(op => op.result)
+        );
       }
     }
 
@@ -506,6 +506,7 @@ export default function DailyPlanning() {
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="pending">Pendentes</SelectItem>
                       <SelectItem value="live">Ao Vivo</SelectItem>
+                      <SelectItem value="finished">Finalizados</SelectItem>
                     </SelectContent>
                   </Select>
 
