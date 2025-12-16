@@ -86,11 +86,21 @@ export function GameCardCompact({
 
   const handleRefresh = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!fixtureData?.fixture || !onFetchDetails) return;
+    if (!onFetchDetails) return;
     
+    // Usar fixtureData se disponível, senão usar api_fixture_id do game
+    const fixtureIdToUse = fixtureData?.fixture?.fixture?.id || 
+                           (game.api_fixture_id ? parseInt(game.api_fixture_id) : null);
+    
+    if (!fixtureIdToUse) {
+      console.log('[GameCardCompact] Jogo não vinculado:', game.homeTeam, 'vs', game.awayTeam);
+      return;
+    }
+    
+    console.log('[GameCardCompact] Refresh fixtureId:', fixtureIdToUse);
     setIsRefreshing(true);
     try {
-      await onFetchDetails(fixtureData.fixture.fixture.id);
+      await onFetchDetails(fixtureIdToUse);
     } finally {
       setIsRefreshing(false);
     }

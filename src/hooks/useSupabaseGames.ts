@@ -24,7 +24,7 @@ export interface Game {
   methodOperations: MethodOperation[];
   notes?: string;
   status?: string;
-  apiFixtureId?: string;
+  api_fixture_id?: string;
 }
 
 export const useSupabaseGames = () => {
@@ -81,7 +81,7 @@ export const useSupabaseGames = () => {
             awayTeamLogo: game.away_team_logo || undefined,
             notes: game.notes || undefined,
             status: game.status || 'Not Started',
-            apiFixtureId: game.api_fixture_id || undefined,
+            api_fixture_id: game.api_fixture_id || undefined,
             methodOperations,
           };
         })

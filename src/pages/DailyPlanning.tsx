@@ -83,7 +83,7 @@ export default function DailyPlanning() {
       homeTeamLogo: game.homeTeamLogo,
       awayTeamLogo: game.awayTeamLogo,
       methodOperations: game.methodOperations,
-      apiFixtureId: game.api_fixture_id,
+      api_fixture_id: game.api_fixture_id,
     });
     await refreshGames();
   }, [addGame, refreshGames]);
@@ -187,7 +187,7 @@ export default function DailyPlanning() {
         homeTeamLogo: game.homeTeamLogo,
         awayTeamLogo: game.awayTeamLogo,
         methodOperations,
-        apiFixtureId: game.fixtureId.toString(),
+        api_fixture_id: game.fixtureId.toString(),
       });
     }
     toast.success(`${selectedGames.length} jogo(s) adicionado(s)!`);
@@ -412,7 +412,7 @@ export default function DailyPlanning() {
         onOpenChange={setShowApiBrowser}
         methods={bankroll.methods}
         onAddGames={handleAddFromApi}
-        existingFixtureIds={games.filter(g => g.apiFixtureId).map(g => g.apiFixtureId!)}
+        existingFixtureIds={games.filter(g => g.api_fixture_id).map(g => g.api_fixture_id!)}
       />
 
       {/* Method Selector */}
