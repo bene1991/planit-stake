@@ -2,11 +2,10 @@ import { Game, Method } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronDown, Trash2, BarChart3, Loader2 } from "lucide-react";
+import { Shield, Check, X, Trash2, Calendar, Trophy, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef } from "react";
-import { LiveStatsInline } from "./LiveStatsInline";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 
 interface FixtureData {
@@ -23,7 +22,7 @@ interface GameCardCompactProps {
   onEdit?: (game: Game) => void;
   fixtureData?: FixtureData | null;
   onFetchDetails?: (fixtureId: number) => Promise<{ success: boolean; statistics?: any; events?: ApiFootballEvent[] }>;
-  lastGlobalRefresh?: number; // Timestamp do último refresh global
+  lastGlobalRefresh?: number;
 }
 
 export function GameCardCompact({ 
@@ -36,10 +35,6 @@ export function GameCardCompact({
   onFetchDetails,
   lastGlobalRefresh,
 }: GameCardCompactProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const [hasLoadedDetails, setHasLoadedDetails] = useState(false);
-  
   // Local elapsed time with seconds (auto-incrementing)
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
   
@@ -112,8 +107,15 @@ export function GameCardCompact({
   // Get score from fixture data
   const homeScore = fixtureData?.fixture?.goals?.home ?? '-';
   const awayScore = fixtureData?.fixture?.goals?.away ?? '-';
-  const elapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
   const hasScore = fixtureData?.fixture?.goals?.home !== null;
+
+  // Get goal events
+  const goalEvents = fixtureData?.events?.filter(e => e.type === 'Goal') || [];
+  const homeGoals = goalEvents.filter(e => e.team.id === fixtureData?.fixture?.teams?.home?.id);
+  const awayGoals = goalEvents.filter(e => e.team.id === fixtureData?.fixture?.teams?.away?.id);
+
+  // Get venue info
+  const venue = fixtureData?.fixture?.fixture?.venue?.name;
 
   const handleResultClick = (methodId: string, result: 'Green' | 'Red') => {
     const updatedOperations = game.methodOperations.map(op =>
@@ -122,226 +124,205 @@ export function GameCardCompact({
     onUpdate(game.id, { methodOperations: updatedOperations });
   };
 
-  const handleFetchDetails = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    if (!fixtureData?.fixture || !onFetchDetails) return;
-    
-    setLoadingDetails(true);
-    try {
-      await onFetchDetails(fixtureData.fixture.fixture.id);
-      setHasLoadedDetails(true);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
-
-  const hasDetailedStats = fixtureData?.statistics || fixtureData?.events?.length > 0;
-  
-  // Auto-carregar estatísticas quando expandir jogo ao vivo
-  useEffect(() => {
-    if (expanded && isLive && fixtureData?.fixture && !hasDetailedStats && !loadingDetails && !hasLoadedDetails && onFetchDetails) {
-      console.log('[GameCardCompact] Auto-carregando estatísticas para jogo ao vivo expandido');
-      setLoadingDetails(true);
-      onFetchDetails(fixtureData.fixture.fixture.id)
-        .then(() => setHasLoadedDetails(true))
-        .finally(() => setLoadingDetails(false));
-    }
-  }, [expanded, isLive, fixtureData, hasDetailedStats, loadingDetails, hasLoadedDetails, onFetchDetails]);
-
   return (
     <Card className={cn(
       "overflow-hidden transition-all duration-300",
-      isLive ? "border-primary/50 shadow-glow" : "border-border/40 hover:border-primary/30",
-      expanded && "col-span-full"
+      isLive ? "border-primary/50 shadow-glow" : "border-border/40 hover:border-primary/30"
     )}>
-      {/* Compact Header */}
-      <div 
-        className={cn(
-          "p-3 cursor-pointer hover:bg-muted/30 transition-colors",
-          isLive && "bg-gradient-neon-subtle"
-        )}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center justify-between gap-2">
-          {/* League & Live Badge */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className={cn(
+        "p-4",
+        isLive && "bg-gradient-neon-subtle"
+      )}>
+        {/* Header: League + Delete */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-3 w-3 text-primary" />
             <p className="text-[10px] uppercase text-muted-foreground font-bold truncate">
               {game.league}
             </p>
-            {isLive && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-black px-1.5 py-0.5 rounded bg-primary">
-                <span className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
-                {localElapsed 
-                  ? `${localElapsed.minutes}:${localElapsed.seconds.toString().padStart(2, '0')}`
-                  : fixtureStatus === 'HT' 
-                    ? 'HT'
-                    : 'LIVE'
-                }
-              </span>
-            )}
           </div>
-          
-          {/* Delete Button */}
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={(e) => { e.stopPropagation(); onDelete(game.id); }}
+            onClick={() => onDelete(game.id)}
             className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
           >
             <Trash2 className="h-3 w-3" />
           </Button>
         </div>
 
-        {/* Teams Row */}
-        <div className="flex items-center justify-between gap-2 mt-2">
+        {/* Main Score Section - ScoreTabs Style */}
+        <div className="flex items-center justify-center gap-4 my-4">
           {/* Home Team */}
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Avatar className="h-7 w-7 flex-shrink-0">
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <Avatar className="h-14 w-14">
               <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-              <AvatarFallback className="text-[8px]">
-                <Shield className="h-3 w-3" />
+              <AvatarFallback className="text-xs bg-secondary">
+                <Shield className="h-6 w-6" />
               </AvatarFallback>
             </Avatar>
-            <span className="text-xs font-medium truncate">{game.homeTeam}</span>
+            <span className="text-xs font-medium text-center leading-tight max-w-[80px] truncate">
+              {game.homeTeam}
+            </span>
           </div>
 
           {/* Score / Time */}
-          <div className="flex flex-col items-center px-2">
+          <div className="flex flex-col items-center">
             {hasScore ? (
-              <span className="text-sm font-bold">
-                {homeScore} - {awayScore}
-              </span>
-            ) : isLive && !fixtureData ? (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Ao vivo
-              </span>
+              <>
+                <span className="text-4xl font-bold tracking-tight">
+                  {homeScore} - {awayScore}
+                </span>
+                {isLive && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-black px-2 py-0.5 rounded bg-primary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-black animate-pulse" />
+                      {localElapsed 
+                        ? `${localElapsed.minutes}:${localElapsed.seconds.toString().padStart(2, '0')}`
+                        : fixtureStatus === 'HT' 
+                          ? 'HT'
+                          : 'LIVE'
+                      }
+                    </span>
+                  </div>
+                )}
+              </>
             ) : (
               <>
-                <span className="text-xs font-bold">{game.time}</span>
-                <span className="text-[9px] text-muted-foreground">
-                  {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })}
+                <span className="text-2xl font-bold">{game.time}</span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { 
+                    day: '2-digit', 
+                    month: '2-digit',
+                    year: 'numeric'
+                  })}
                 </span>
               </>
             )}
           </div>
 
           {/* Away Team */}
-          <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
-            <span className="text-xs font-medium truncate text-right">{game.awayTeam}</span>
-            <Avatar className="h-7 w-7 flex-shrink-0">
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <Avatar className="h-14 w-14">
               <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-              <AvatarFallback className="text-[8px]">
-                <Shield className="h-3 w-3" />
+              <AvatarFallback className="text-xs bg-secondary">
+                <Shield className="h-6 w-6" />
               </AvatarFallback>
             </Avatar>
+            <span className="text-xs font-medium text-center leading-tight max-w-[80px] truncate">
+              {game.awayTeam}
+            </span>
           </div>
         </div>
 
-        {/* Methods Summary */}
-        <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
-          <div className="flex items-center gap-1.5">
-            {greenCount > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                {greenCount}G
-              </span>
-            )}
-            {redCount > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-destructive/20 text-destructive">
-                {redCount}R
-              </span>
-            )}
-            {pendingCount > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                {pendingCount}P
-              </span>
-            )}
+        {/* Goal Scorers */}
+        {goalEvents.length > 0 && (
+          <div className="flex justify-center gap-6 text-[10px] text-muted-foreground mb-3">
+            <div className="text-right flex-1">
+              {homeGoals.map((goal, i) => (
+                <div key={i} className="truncate">
+                  ⚽ {goal.player.name} {goal.time.elapsed}'
+                  {goal.detail === 'Penalty' && ' (Pen.)'}
+                  {goal.detail === 'Own Goal' && ' (OG)'}
+                </div>
+              ))}
+            </div>
+            <div className="text-left flex-1">
+              {awayGoals.map((goal, i) => (
+                <div key={i} className="truncate">
+                  ⚽ {goal.player.name} {goal.time.elapsed}'
+                  {goal.detail === 'Penalty' && ' (Pen.)'}
+                  {goal.detail === 'Own Goal' && ' (OG)'}
+                </div>
+              ))}
+            </div>
           </div>
-          <ChevronDown className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
-            expanded && "rotate-180"
-          )} />
+        )}
+
+        {/* Game Info Line */}
+        <div className="flex items-center justify-center gap-3 text-[10px] text-muted-foreground border-t border-border/30 pt-3 mb-3">
+          <div className="flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            <span>
+              {new Date(game.date + "T00:00:00").toLocaleDateString("pt-BR", { 
+                day: '2-digit', 
+                month: '2-digit' 
+              })} • {game.time}
+            </span>
+          </div>
+          {venue && (
+            <>
+              <span className="text-border">|</span>
+              <div className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                <span className="truncate max-w-[120px]">{venue}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Methods Summary Badge */}
+        <div className="flex items-center justify-center gap-2 mb-3">
+          {greenCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded bg-primary/20 text-primary">
+              {greenCount} Green
+            </span>
+          )}
+          {redCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded bg-destructive/20 text-destructive">
+              {redCount} Red
+            </span>
+          )}
+          {pendingCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded bg-muted text-muted-foreground">
+              {pendingCount} Pendente
+            </span>
+          )}
+        </div>
+
+        {/* Methods List with Buttons */}
+        <div className="space-y-2 border-t border-border/30 pt-3">
+          {game.methodOperations.map((operation) => (
+            <div 
+              key={operation.methodId} 
+              className="flex items-center justify-between p-2 rounded-lg bg-secondary/50"
+            >
+              <span className="text-xs font-medium">{getMethodName(operation.methodId)}</span>
+              
+              {operation.result ? (
+                <span className={cn(
+                  "text-xs font-bold px-2 py-1 rounded",
+                  operation.result === 'Green' ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
+                )}>
+                  {operation.result === 'Green' ? <Check className="h-3 w-3 inline mr-1" /> : <X className="h-3 w-3 inline mr-1" />}
+                  {operation.result.toUpperCase()}
+                </span>
+              ) : (
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResultClick(operation.methodId, 'Green')}
+                    className="h-6 px-2 text-[10px] text-primary border-primary/30 hover:bg-primary/20"
+                  >
+                    <Check className="h-3 w-3 mr-1" />
+                    Green
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResultClick(operation.methodId, 'Red')}
+                    className="h-6 px-2 text-[10px] text-destructive border-destructive/30 hover:bg-destructive/20"
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Red
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
-
-      {/* Expanded Content */}
-      {expanded && (
-        <div className="border-t border-border/30">
-          {/* On-demand Stats Button - Only show for live games */}
-          {isLive && fixtureData?.fixture && !hasDetailedStats && (
-            <div className="p-3 border-b border-border/30 bg-muted/20">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFetchDetails}
-                disabled={loadingDetails}
-                className="w-full h-8 text-xs"
-              >
-                {loadingDetails ? (
-                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                ) : (
-                  <BarChart3 className="h-3 w-3 mr-2" />
-                )}
-                Ver Estatísticas (+2 req)
-              </Button>
-            </div>
-          )}
-
-          {/* Live Stats - Only show if we have detailed stats */}
-          {isLive && hasDetailedStats && (
-            <LiveStatsInline 
-              fixture={fixtureData?.fixture || null}
-              statistics={fixtureData?.statistics}
-              events={fixtureData?.events || []}
-              loading={loadingDetails}
-            />
-          )}
-
-          {/* Methods List */}
-          <div className="p-3 space-y-2">
-            {game.methodOperations.map((operation) => (
-              <div 
-                key={operation.methodId} 
-                className="flex items-center justify-between p-2 rounded-lg bg-secondary/50"
-              >
-                <span className="text-xs font-medium">{getMethodName(operation.methodId)}</span>
-                
-                {operation.result ? (
-                  <span className={cn(
-                    "text-xs font-bold px-2 py-1 rounded",
-                    operation.result === 'Green' ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
-                  )}>
-                    {operation.result === 'Green' ? <Check className="h-3 w-3 inline mr-1" /> : <X className="h-3 w-3 inline mr-1" />}
-                    {operation.result.toUpperCase()}
-                  </span>
-                ) : (
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleResultClick(operation.methodId, 'Green')}
-                      className="h-6 px-2 text-[10px] text-primary border-primary/30 hover:bg-primary/20"
-                    >
-                      <Check className="h-3 w-3 mr-1" />
-                      Green
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleResultClick(operation.methodId, 'Red')}
-                      className="h-6 px-2 text-[10px] text-destructive border-destructive/30 hover:bg-destructive/20"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Red
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </Card>
   );
 }

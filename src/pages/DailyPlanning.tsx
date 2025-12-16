@@ -77,7 +77,7 @@ export default function DailyPlanning() {
   
   const handleGlobalRefresh = async () => {
     await updateStatuses();
-    await refreshLiveStats();
+    await refreshLiveStats(true); // forceNoCache=true para evitar dados antigos
     setLastGlobalRefresh(Date.now());
   };
   

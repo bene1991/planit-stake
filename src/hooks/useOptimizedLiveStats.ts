@@ -82,7 +82,7 @@ export function useOptimizedLiveStats(games: Game[]) {
   }, []);
 
   // Fetch fixtures for multiple dates with single calls per date
-  const fetchFixturesForDates = useCallback(async () => {
+  const fetchFixturesForDates = useCallback(async (forceNoCache = false) => {
     // Evitar chamadas duplicadas
     if (isFetchingDates.current) {
       console.log('[OptimizedLiveStats] Fetch já em andamento, ignorando');
@@ -96,6 +96,15 @@ export function useOptimizedLiveStats(games: Game[]) {
       return;
     }
 
+    // Se forceNoCache, limpar cache das datas que vamos buscar
+    if (forceNoCache) {
+      console.log('[OptimizedLiveStats] Forçando refresh sem cache - limpando cache');
+      uniqueDates.forEach(date => {
+        const cacheKey = `fixtures-${date}`;
+        fixturesCache.delete(cacheKey);
+      });
+    }
+
     isFetchingDates.current = true;
     setState(prev => ({ ...prev, loading: true, error: null }));
 
@@ -107,8 +116,8 @@ export function useOptimizedLiveStats(games: Game[]) {
         const cacheKey = `fixtures-${date}`;
         const cachedEntry = fixturesCache.get(cacheKey);
         
-        // Verificar cache compartilhado ANTES de fazer request
-        if (cachedEntry && Date.now() - cachedEntry.timestamp < FIXTURES_CACHE_TTL) {
+        // Verificar cache compartilhado ANTES de fazer request (skip se forceNoCache)
+        if (!forceNoCache && cachedEntry && Date.now() - cachedEntry.timestamp < FIXTURES_CACHE_TTL) {
           console.log(`[OptimizedLiveStats] Cache HIT para ${date} - usando dados existentes`);
           
           // Usar dados do cache
@@ -123,13 +132,13 @@ export function useOptimizedLiveStats(games: Game[]) {
           continue; // Pula para próxima data
         }
         
-        // Cache miss - fazer request
+        // Cache miss ou forceNoCache - fazer request
         if (!canMakeRequest) {
           console.log(`[OptimizedLiveStats] Limite atingido, parando`);
           break;
         }
         
-        console.log(`[OptimizedLiveStats] Cache MISS para ${date} - fazendo request`);
+        console.log(`[OptimizedLiveStats] ${forceNoCache ? 'Force refresh' : 'Cache MISS'} para ${date} - fazendo request`);
         
         const { data, error } = await supabase.functions.invoke('api-football', {
           body: { endpoint: 'fixtures', params: { date } }
