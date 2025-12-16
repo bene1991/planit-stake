@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Game } from '@/types';
-import { ApiFootballFixture, ApiFootballEvent, parseStatistics } from './useApiFootball';
+import { ApiFootballFixture, ApiFootballEvent, parseStatistics, fixturesCache, FIXTURES_CACHE_TTL } from './useApiFootball';
 import { useApiRequestTracker } from './useApiRequestTracker';
 import { format } from 'date-fns';
 
@@ -46,6 +46,8 @@ export function useOptimizedLiveStats(games: Game[]) {
   const detailsCache = useRef<Map<number, CachedDetails>>(new Map());
   // Track pending requests to avoid duplicates
   const pendingRequests = useRef<Set<number>>(new Set());
+  // Track pending date fetches to avoid duplicate calls
+  const isFetchingDates = useRef(false);
 
   // Get unique dates from games (max 3 dates)
   const uniqueDates = [...new Set(games.map(g => g.date))].slice(0, 3);
@@ -72,6 +74,12 @@ export function useOptimizedLiveStats(games: Game[]) {
 
   // Fetch fixtures for multiple dates with single calls per date
   const fetchFixturesForDates = useCallback(async () => {
+    // Evitar chamadas duplicadas
+    if (isFetchingDates.current) {
+      console.log('[OptimizedLiveStats] Fetch já em andamento, ignorando');
+      return;
+    }
+
     if (!canMakeRequest || uniqueDates.length === 0) {
       if (!canMakeRequest) {
         setState(prev => ({ ...prev, error: 'Limite diário de requisições atingido' }));
@@ -79,6 +87,7 @@ export function useOptimizedLiveStats(games: Game[]) {
       return;
     }
 
+    isFetchingDates.current = true;
     setState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
@@ -86,25 +95,56 @@ export function useOptimizedLiveStats(games: Game[]) {
       
       // Fetch fixtures for each unique date (1 request per date)
       for (const date of uniqueDates) {
-        if (!canMakeRequest) break;
+        const cacheKey = `fixtures-${date}`;
+        const cachedEntry = fixturesCache.get(cacheKey);
+        
+        // Verificar cache compartilhado ANTES de fazer request
+        if (cachedEntry && Date.now() - cachedEntry.timestamp < FIXTURES_CACHE_TTL) {
+          console.log(`[OptimizedLiveStats] Cache HIT para ${date} - usando dados existentes`);
+          
+          // Usar dados do cache
+          cachedEntry.data.forEach(fixture => {
+            const cached = getCachedDetails(fixture.fixture.id);
+            allFixtures.set(fixture.fixture.id, {
+              fixture,
+              statistics: cached?.statistics || null,
+              events: cached?.events || [],
+            });
+          });
+          continue; // Pula para próxima data
+        }
+        
+        // Cache miss - fazer request
+        if (!canMakeRequest) {
+          console.log(`[OptimizedLiveStats] Limite atingido, parando`);
+          break;
+        }
+        
+        console.log(`[OptimizedLiveStats] Cache MISS para ${date} - fazendo request`);
         
         const { data, error } = await supabase.functions.invoke('api-football', {
           body: { endpoint: 'fixtures', params: { date } }
         });
 
         if (error) {
-          console.error(`Error fetching fixtures for ${date}:`, error);
+          console.error(`[OptimizedLiveStats] Erro ao buscar ${date}:`, error);
           continue;
         }
 
         // Track this single request
         trackRequest(1);
+        console.log(`[OptimizedLiveStats] Request feito para ${date}! Créditos restantes: ${remaining - 1}`);
 
         const fixturesArray = (data?.response || []) as ApiFootballFixture[];
 
+        // Salvar no cache compartilhado
+        fixturesCache.set(cacheKey, {
+          data: fixturesArray,
+          timestamp: Date.now()
+        });
+
         // Map fixtures by ID
         fixturesArray.forEach(fixture => {
-          // Check if we have cached details
           const cached = getCachedDetails(fixture.fixture.id);
           
           allFixtures.set(fixture.fixture.id, {
@@ -123,14 +163,16 @@ export function useOptimizedLiveStats(games: Game[]) {
       });
 
     } catch (error) {
-      console.error('Error fetching fixtures:', error);
+      console.error('[OptimizedLiveStats] Erro ao buscar fixtures:', error);
       setState(prev => ({
         ...prev,
         loading: false,
         error: 'Erro ao buscar jogos',
       }));
+    } finally {
+      isFetchingDates.current = false;
     }
-  }, [uniqueDates, canMakeRequest, trackRequest, getCachedDetails]);
+  }, [uniqueDates, canMakeRequest, trackRequest, getCachedDetails, remaining]);
 
   // Fetch detailed stats for a specific game (on-demand) with caching
   const fetchGameDetails = useCallback(async (fixtureId: number) => {

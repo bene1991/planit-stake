@@ -2,12 +2,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 // Cache global para fixtures por data (evita requests duplicados)
+export interface FixturesCacheEntry {
+  data: ApiFootballFixture[];
+  timestamp: number;
+}
+export const fixturesCache = new Map<string, FixturesCacheEntry>();
+export const FIXTURES_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+
 interface CacheEntry<T> {
   data: T[];
   timestamp: number;
 }
-const fixturesCache = new Map<string, CacheEntry<unknown>>();
-const FIXTURES_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
 
 // API-Football Response Types
 export interface ApiFootballFixture {
