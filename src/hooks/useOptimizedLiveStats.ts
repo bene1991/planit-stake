@@ -333,9 +333,57 @@ export function useOptimizedLiveStats(games: Game[]) {
     };
   }, [games.length, refreshLiveGames]);
 
+  // Force refresh a specific fixture by ID (for manual refresh button)
+  const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
+    console.log(`[forceRefreshFixture] Buscando fixture ${fixtureId}`);
+    
+    if (!canMakeRequest) {
+      console.log('[forceRefreshFixture] Limite de requests atingido');
+      return null;
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('api-football', {
+        body: { endpoint: 'fixtures', params: { id: fixtureId } }
+      });
+
+      if (error) {
+        console.error('[forceRefreshFixture] Erro:', error);
+        return null;
+      }
+
+      trackRequest(1);
+      console.log(`[forceRefreshFixture] Request feito! Créditos restantes: ${remaining - 1}`);
+
+      const fixture = data?.response?.[0] as ApiFootballFixture;
+      if (!fixture) {
+        console.log('[forceRefreshFixture] Fixture não encontrada na resposta');
+        return null;
+      }
+
+      // Update state with the fetched fixture
+      const cached = getCachedDetails(fixtureId);
+      setState(prev => {
+        const newFixtures = new Map(prev.fixtures);
+        newFixtures.set(fixtureId, {
+          fixture,
+          statistics: cached?.statistics || null,
+          events: cached?.events || [],
+        });
+        return { ...prev, fixtures: newFixtures, lastRefresh: new Date() };
+      });
+
+      return fixture;
+    } catch (err) {
+      console.error('[forceRefreshFixture] Exception:', err);
+      return null;
+    }
+  }, [canMakeRequest, trackRequest, remaining, getCachedDetails]);
+
   return {
     getStatsForGame,
     fetchGameDetails,
+    forceRefreshFixture,
     refresh: fetchFixturesForDates,
     loading: state.loading,
     error: state.error,
