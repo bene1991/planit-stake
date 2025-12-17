@@ -9,7 +9,7 @@ import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, Search, CalendarIcon, ChevronDown, Globe } from "lucide-react";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { GameCardCompact } from "@/components/GameCardCompact";
 import { MethodSelector } from "@/components/MethodSelector";
@@ -19,7 +19,7 @@ import { ApiRequestIndicator } from "@/components/ApiRequestIndicator";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -34,7 +34,7 @@ export default function DailyPlanning() {
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   
   const [showApiBrowser, setShowApiBrowser] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  
   const [rebuildingStats, setRebuildingStats] = useState(false);
   const [showMethodSelector, setShowMethodSelector] = useState(false);
   const [selectedDailyGames, setSelectedDailyGames] = useState<string[]>([]);
@@ -470,18 +470,6 @@ export default function DailyPlanning() {
             <Card className="p-3">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Buscar..."
-                        value={planningSearchQuery}
-                        onChange={(e) => setPlanningSearchQuery(e.target.value)}
-                        className="pl-9 h-9"
-                      />
-                    </div>
-                  </div>
-
                   <Select value={planningMethodFilter} onValueChange={setPlanningMethodFilter}>
                     <SelectTrigger className="w-full sm:w-[150px] h-9">
                       <SelectValue placeholder="Método" />
@@ -542,7 +530,7 @@ export default function DailyPlanning() {
             {/* Grid de Jogos */}
             {filteredPlannedGames.length === 0 ? (
               <EmptyState
-                icon={<Search className="h-8 w-8 text-muted-foreground" />}
+                icon={<Calendar className="h-8 w-8 text-muted-foreground" />}
                 title="Nenhum jogo encontrado"
                 description="Ajuste os filtros para ver mais resultados"
               />
@@ -596,17 +584,6 @@ export default function DailyPlanning() {
           {/* Filtros do histórico */}
           <Card className="p-3">
             <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-9"
-                  />
-                </div>
-              </div>
               <Select value={historyPeriod} onValueChange={setHistoryPeriod}>
                 <SelectTrigger className="w-full sm:w-[180px] h-9">
                   <SelectValue />
@@ -689,7 +666,7 @@ export default function DailyPlanning() {
               {groupedHistory.map(({ date, games }) => (
                 <div key={date} className="space-y-2">
                   <h4 className="text-sm font-semibold text-muted-foreground">
-                    {format(new Date(date), "dd 'de' MMMM", { locale: ptBR })}
+                    {format(new Date(date + 'T12:00:00'), "dd 'de' MMMM", { locale: ptBR })}
                   </h4>
                   <div className="space-y-2">
                     {games.map((game) => (
