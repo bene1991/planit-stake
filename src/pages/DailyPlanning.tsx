@@ -466,78 +466,10 @@ export default function DailyPlanning() {
           />
         ) : (
           <>
-            {/* Filtros */}
-            <Card className="p-3">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Select value={planningMethodFilter} onValueChange={setPlanningMethodFilter}>
-                    <SelectTrigger className="w-full sm:w-[150px] h-9">
-                      <SelectValue placeholder="Método" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {bankroll.methods.map(method => (
-                        <SelectItem key={method.id} value={method.id}>
-                          {method.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={planningStatusFilter} onValueChange={setPlanningStatusFilter}>
-                    <SelectTrigger className="w-full sm:w-[130px] h-9">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="pending">Pendentes</SelectItem>
-                      <SelectItem value="live">Ao Vivo</SelectItem>
-                      <SelectItem value="finished">Finalizados</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={planningLeagueFilter} onValueChange={setPlanningLeagueFilter}>
-                    <SelectTrigger className="w-full sm:w-[150px] h-9">
-                      <SelectValue placeholder="Liga" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {uniqueLeagues.map(league => (
-                        <SelectItem key={league} value={league}>
-                          {league}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {(planningSearchQuery || planningMethodFilter !== 'all' || planningStatusFilter !== 'all' || planningLeagueFilter !== 'all') && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{filteredPlannedGames.length} de {sortedPlanned.length} jogos</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="h-6 px-2 text-xs"
-                    >
-                      Limpar
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </Card>
-
             {/* Grid de Jogos */}
-            {filteredPlannedGames.length === 0 ? (
-              <EmptyState
-                icon={<Calendar className="h-8 w-8 text-muted-foreground" />}
-                title="Nenhum jogo encontrado"
-                description="Ajuste os filtros para ver mais resultados"
-              />
-            ) : (
-              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredPlannedGames.map((game) => {
-                  const fixtureData = getStatsForGame(game);
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedPlanned.map((game) => {
+                const fixtureData = getStatsForGame(game);
                   return (
                     <GameCardCompact
                       key={game.id}
@@ -551,9 +483,8 @@ export default function DailyPlanning() {
                       lastGlobalRefresh={lastGlobalRefresh}
                     />
                   );
-                })}
-              </div>
-            )}
+              })}
+            </div>
           </>
         )}
       </div>
