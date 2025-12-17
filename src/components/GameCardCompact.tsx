@@ -260,16 +260,16 @@ export function GameCardCompact({
                   <button
                     onClick={() => setShowActions(isActive ? null : operation.methodId)}
                     className={cn(
-                      "text-[10px] px-2.5 py-1 rounded-full font-medium transition-all inline-flex items-center gap-1",
-                      operation.result === 'Green' && "bg-primary/40 text-primary border border-primary/60",
-                      operation.result === 'Red' && "bg-destructive/40 text-destructive border border-destructive/60",
-                      !operation.result && "bg-muted text-muted-foreground hover:bg-muted/80"
+                      "text-[10px] px-2.5 py-1 rounded-full font-semibold transition-all inline-flex items-center gap-1",
+                      operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
+                      operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
+                      !operation.result && "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
                     )}
                   >
                     {getMethodName(operation.methodId)}
                     {operation.result === 'Green' && <Check className="h-3 w-3" />}
                     {operation.result === 'Red' && <X className="h-3 w-3" />}
-                    {!operation.result && <span className="h-2 w-2 rounded-full bg-muted-foreground/50" />}
+                    {!operation.result && <span className="h-2 w-2 rounded-full bg-zinc-500" />}
                   </button>
                   
                   {isActive && (
