@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Home, Calendar, BarChart3, Wallet, Radio } from "lucide-react";
+import { Menu, Home, Calendar, BarChart3, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,7 +16,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const navItems = [
     { to: "/", label: "Início", icon: Home },
     { to: "/daily-planning", label: "Planejamento", icon: Calendar },
-    { to: "/live", label: "Ao Vivo", icon: Radio, isLive: true },
     { to: "/statistics", label: "Estatísticas", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
   ];
@@ -49,13 +48,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                 )}
               >
                 <div className="relative">
-                  <item.icon className={cn(
-                    "h-4 w-4",
-                    item.isLive && "text-red-500"
-                  )} />
-                  {item.isLive && (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                  )}
+                  <item.icon className="h-4 w-4" />
                 </div>
                 {item.label}
                 {isActive(item.to) && (
