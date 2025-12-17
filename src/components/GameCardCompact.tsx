@@ -142,134 +142,171 @@ export function GameCardCompact({
     return null;
   };
 
+  // Get goal events for display
+  const homeGoals = fixtureData?.events?.filter(
+    e => e.type === 'Goal' && e.team?.id === fixtureData?.fixture?.teams?.home?.id
+  ) || [];
+  const awayGoals = fixtureData?.events?.filter(
+    e => e.type === 'Goal' && e.team?.id === fixtureData?.fixture?.teams?.away?.id
+  ) || [];
+
   return (
     <Card className={cn(
       "overflow-hidden transition-all duration-200",
       isLive ? "border-primary/50 shadow-glow" : "border-border/40 hover:border-primary/30"
     )}>
       <div className={cn(
-        "p-2.5",
+        "p-4",
         isLive && "bg-gradient-neon-subtle"
       )}>
-        {/* Row 1: League + Status + Delete */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            <Trophy className="h-2.5 w-2.5 text-primary" />
-            <span className="text-[9px] uppercase text-muted-foreground font-bold truncate max-w-[100px]">
+        {/* Main row: Home - Score - Away */}
+        <div className="flex items-center justify-between gap-3">
+          {/* Home Team */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-sm font-semibold truncate text-foreground">
+              {game.homeTeam}
+            </span>
+            <Avatar className="h-10 w-10 flex-shrink-0">
+              <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+              <AvatarFallback className="text-[10px] bg-secondary">
+                <Shield className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
+          </div>
+
+          {/* Score + Time */}
+          <div className="flex flex-col items-center flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold tabular-nums text-foreground">{hasScore ? homeScore : '-'}</span>
+              <span className="text-muted-foreground text-lg">-</span>
+              <span className="text-2xl font-bold tabular-nums text-foreground">{hasScore ? awayScore : '-'}</span>
+            </div>
+            {isLive && localElapsed ? (
+              <span className={cn(
+                "text-xs font-medium mt-0.5",
+                isHalfTime ? "text-amber-500" : "text-primary"
+              )}>
+                {isHalfTime ? 'Intervalo' : `${localElapsed.minutes}:${String(localElapsed.seconds).padStart(2, '0')}`}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground mt-0.5">{game.time}</span>
+            )}
+          </div>
+
+          {/* Away Team */}
+          <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+            <Avatar className="h-10 w-10 flex-shrink-0">
+              <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+              <AvatarFallback className="text-[10px] bg-secondary">
+                <Shield className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-sm font-semibold truncate text-right text-foreground">
+              {game.awayTeam}
+            </span>
+          </div>
+        </div>
+
+        {/* Goal scorers */}
+        {(homeGoals.length > 0 || awayGoals.length > 0) && (
+          <div className="flex justify-between gap-4 mt-2 pt-2 border-t border-border/20">
+            <div className="flex-1 text-right">
+              {homeGoals.map((goal, i) => (
+                <div key={i} className="text-[10px] text-muted-foreground">
+                  {goal.player?.name} {goal.time?.elapsed}'{goal.detail === 'Penalty' ? ' (Pen.)' : ''}
+                </div>
+              ))}
+            </div>
+            <div className="flex-shrink-0">
+              <Trophy className="h-3 w-3 text-muted-foreground/50" />
+            </div>
+            <div className="flex-1 text-left">
+              {awayGoals.map((goal, i) => (
+                <div key={i} className="text-[10px] text-muted-foreground">
+                  {goal.player?.name} {goal.time?.elapsed}'{goal.detail === 'Penalty' ? ' (Pen.)' : ''}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Footer: Date, League, Delete */}
+        <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/20">
+          <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+            <span>{game.date} • {game.time}</span>
+            <span className="flex items-center gap-1">
+              <Trophy className="h-2.5 w-2.5 text-primary" />
               {game.league}
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
-            {getStatusBadge()}
-            {!hasScore && (
-              <span className="text-[9px] text-muted-foreground font-medium">
-                {game.time}
-              </span>
-            )}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => onDelete(game.id)}
-              className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
-            >
-              <Trash2 className="h-2.5 w-2.5" />
-            </Button>
-          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => onDelete(game.id)}
+            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
         </div>
 
-        {/* Row 2: Teams + Score (horizontal) */}
-        <div className="flex items-center justify-between gap-2">
-          {/* Home */}
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <Avatar className="h-7 w-7 flex-shrink-0">
-              <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-              <AvatarFallback className="text-[8px] bg-secondary">
-                <Shield className="h-3 w-3" />
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-[11px] font-medium truncate">
-              {game.homeTeam}
-            </span>
-          </div>
-
-          {/* Score */}
-          <div className="flex items-center gap-1.5 flex-shrink-0 px-2">
-            <span className="text-lg font-bold tabular-nums">{hasScore ? homeScore : '-'}</span>
-            <span className="text-muted-foreground text-sm">-</span>
-            <span className="text-lg font-bold tabular-nums">{hasScore ? awayScore : '-'}</span>
-          </div>
-
-          {/* Away */}
-          <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
-            <span className="text-[11px] font-medium truncate text-right">
-              {game.awayTeam}
-            </span>
-            <Avatar className="h-7 w-7 flex-shrink-0">
-              <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-              <AvatarFallback className="text-[8px] bg-secondary">
-                <Shield className="h-3 w-3" />
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        </div>
-
-        {/* Row 3: Methods as Pills */}
-        <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-border/30">
-          {game.methodOperations.map((operation) => {
-            const isActive = showActions === operation.methodId;
-            
-            return (
-              <div key={operation.methodId} className="relative">
-                <button
-                  onClick={() => setShowActions(isActive ? null : operation.methodId)}
-                  className={cn(
-                    "text-[9px] px-2 py-0.5 rounded-full font-medium transition-all",
-                    operation.result === 'Green' && "bg-primary/20 text-primary",
-                    operation.result === 'Red' && "bg-destructive/20 text-destructive",
-                    !operation.result && "bg-muted text-muted-foreground hover:bg-muted/80"
+        {/* Methods as Pills */}
+        {game.methodOperations.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border/30">
+            {game.methodOperations.map((operation) => {
+              const isActive = showActions === operation.methodId;
+              
+              return (
+                <div key={operation.methodId} className="relative">
+                  <button
+                    onClick={() => setShowActions(isActive ? null : operation.methodId)}
+                    className={cn(
+                      "text-[10px] px-2.5 py-1 rounded-full font-medium transition-all",
+                      operation.result === 'Green' && "bg-primary/20 text-primary",
+                      operation.result === 'Red' && "bg-destructive/20 text-destructive",
+                      !operation.result && "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                  >
+                    {getMethodName(operation.methodId)}
+                    {operation.result === 'Green' && ' ✓'}
+                    {operation.result === 'Red' && ' ✗'}
+                    {!operation.result && ' ○'}
+                  </button>
+                  
+                  {isActive && (
+                    <div className="absolute top-full left-0 mt-1 z-10 flex gap-1 bg-background border border-border rounded-lg p-1 shadow-lg">
+                      <Button
+                        size="sm"
+                        variant={operation.result === 'Green' ? "default" : "outline"}
+                        onClick={() => handleResultClick(operation.methodId, 'Green')}
+                        className={cn(
+                          "h-6 px-2 text-[10px]",
+                          operation.result === 'Green' 
+                            ? "bg-primary text-primary-foreground" 
+                            : "text-primary border-primary/30 hover:bg-primary/20"
+                        )}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={operation.result === 'Red' ? "destructive" : "outline"}
+                        onClick={() => handleResultClick(operation.methodId, 'Red')}
+                        className={cn(
+                          "h-6 px-2 text-[10px]",
+                          operation.result === 'Red' 
+                            ? "" 
+                            : "text-destructive border-destructive/30 hover:bg-destructive/20"
+                        )}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                   )}
-                >
-                  {getMethodName(operation.methodId)}
-                  {operation.result === 'Green' && ' ✓'}
-                  {operation.result === 'Red' && ' ✗'}
-                  {!operation.result && ' ○'}
-                </button>
-                
-                {/* Dropdown Actions */}
-                {isActive && (
-                  <div className="absolute top-full left-0 mt-1 z-10 flex gap-1 bg-background border border-border rounded-lg p-1 shadow-lg">
-                    <Button
-                      size="sm"
-                      variant={operation.result === 'Green' ? "default" : "outline"}
-                      onClick={() => handleResultClick(operation.methodId, 'Green')}
-                      className={cn(
-                        "h-5 px-1.5 text-[9px]",
-                        operation.result === 'Green' 
-                          ? "bg-primary text-primary-foreground" 
-                          : "text-primary border-primary/30 hover:bg-primary/20"
-                      )}
-                    >
-                      <Check className="h-2.5 w-2.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={operation.result === 'Red' ? "destructive" : "outline"}
-                      onClick={() => handleResultClick(operation.methodId, 'Red')}
-                      className={cn(
-                        "h-5 px-1.5 text-[9px]",
-                        operation.result === 'Red' 
-                          ? "" 
-                          : "text-destructive border-destructive/30 hover:bg-destructive/20"
-                      )}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </Card>
   );
