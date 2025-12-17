@@ -215,8 +215,11 @@ export default function DailyPlanning() {
   
   const todayDate = getTodayDate();
 
-  // Separar jogos: hoje (pendentes + finalizados) vs histórico (outros dias finalizados)
-  const todayGames = games.filter((game) => game.date === todayDate);
+  // Separar jogos: hoje + pendentes de qualquer data vs histórico (finalizados de outros dias)
+  const todayGames = games.filter((game) => 
+    game.date === todayDate || 
+    game.methodOperations.some((op) => !op.result) // Incluir pendentes de qualquer data
+  );
   
   const plannedGames = games.filter((game) =>
     game.methodOperations.some((op) => !op.result)
