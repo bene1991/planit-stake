@@ -215,18 +215,13 @@ export default function DailyPlanning() {
   
   const todayDate = getTodayDate();
 
-  // Separar jogos: hoje + pendentes de qualquer data vs histórico (finalizados de outros dias)
-  const todayGames = games.filter((game) => 
-    game.date === todayDate || 
-    game.methodOperations.some((op) => !op.result) // Incluir pendentes de qualquer data
-  );
-  
-  const plannedGames = games.filter((game) =>
+  // Separar jogos: PENDENTES (pelo menos 1 operação sem resultado) vs FINALIZADOS (todas com resultado)
+  const pendingGames = games.filter((game) =>
     game.methodOperations.some((op) => !op.result)
   );
 
   const finalizedGames = games.filter((game) =>
-    game.methodOperations.length > 0 && game.methodOperations.every((op) => op.result) && game.date !== todayDate
+    game.methodOperations.length > 0 && game.methodOperations.every((op) => op.result)
   );
 
   const sortGames = (gamesToSort: Game[]) => {
@@ -237,8 +232,8 @@ export default function DailyPlanning() {
     });
   };
 
-  // Mostrar jogos de hoje (pendentes + finalizados) na seção principal
-  const sortedPlanned = sortGames(todayGames);
+  // Mostrar apenas jogos pendentes na seção principal
+  const sortedPlanned = sortGames(pendingGames);
 
   // Filtros para planejamento
   const filteredPlannedGames = useMemo(() => {
