@@ -36,7 +36,6 @@ export function GameCardCompact({
   lastGlobalRefresh,
 }: GameCardCompactProps) {
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
-  const [showActions, setShowActions] = useState<string | null>(null);
   const lastSyncRef = useRef<number>(0);
   
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
@@ -100,7 +99,6 @@ export function GameCardCompact({
       op.methodId === methodId ? { ...op, result } : op
     );
     onUpdate(game.id, { methodOperations: updatedOperations });
-    setShowActions(null);
   };
 
   const getStatusBadge = () => {
@@ -249,62 +247,50 @@ export function GameCardCompact({
           </Button>
         </div>
 
-        {/* Methods as Pills */}
+        {/* Methods as Pills with Always Visible Buttons */}
         {game.methodOperations.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border/30">
-            {game.methodOperations.map((operation) => {
-              const isActive = showActions === operation.methodId;
-              
-              return (
-                <div key={operation.methodId} className="relative">
+          <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t border-border/30">
+            {game.methodOperations.map((operation) => (
+              <div key={operation.methodId} className="flex items-center gap-1.5">
+                {/* Method name pill */}
+                <span className={cn(
+                  "text-[10px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1",
+                  operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
+                  operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
+                  !operation.result && "bg-zinc-700 text-zinc-300"
+                )}>
+                  {getMethodName(operation.methodId)}
+                  {operation.result === 'Green' && <Check className="h-3 w-3" />}
+                  {operation.result === 'Red' && <X className="h-3 w-3" />}
+                </span>
+                
+                {/* Always visible Green/Red buttons */}
+                <div className="flex gap-1">
                   <button
-                    onClick={() => setShowActions(isActive ? null : operation.methodId)}
+                    onClick={() => handleResultClick(operation.methodId, 'Green')}
                     className={cn(
-                      "text-[10px] px-2.5 py-1 rounded-full font-semibold transition-all inline-flex items-center gap-1",
-                      operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
-                      operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
-                      !operation.result && "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                      "h-6 w-6 rounded-full flex items-center justify-center transition-all",
+                      operation.result === 'Green' 
+                        ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50" 
+                        : "bg-zinc-800 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/50"
                     )}
                   >
-                    {getMethodName(operation.methodId)}
-                    {operation.result === 'Green' && <Check className="h-3 w-3" />}
-                    {operation.result === 'Red' && <X className="h-3 w-3" />}
-                    {!operation.result && <span className="h-2 w-2 rounded-full bg-zinc-500" />}
+                    <Check className="h-3.5 w-3.5" />
                   </button>
-                  
-                  {isActive && (
-                    <div className="absolute top-full left-0 mt-1 z-10 flex gap-1 bg-background border border-border rounded-lg p-1 shadow-lg">
-                      <Button
-                        size="sm"
-                        variant={operation.result === 'Green' ? "default" : "outline"}
-                        onClick={() => handleResultClick(operation.methodId, 'Green')}
-                        className={cn(
-                          "h-6 px-2 text-[10px]",
-                          operation.result === 'Green' 
-                            ? "bg-primary text-primary-foreground" 
-                            : "text-primary border-primary/30 hover:bg-primary/20"
-                        )}
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={operation.result === 'Red' ? "destructive" : "outline"}
-                        onClick={() => handleResultClick(operation.methodId, 'Red')}
-                        className={cn(
-                          "h-6 px-2 text-[10px]",
-                          operation.result === 'Red' 
-                            ? "" 
-                            : "text-destructive border-destructive/30 hover:bg-destructive/20"
-                        )}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
+                  <button
+                    onClick={() => handleResultClick(operation.methodId, 'Red')}
+                    className={cn(
+                      "h-6 w-6 rounded-full flex items-center justify-center transition-all",
+                      operation.result === 'Red' 
+                        ? "bg-red-500 text-white shadow-sm shadow-red-500/50" 
+                        : "bg-zinc-800 text-red-500 hover:bg-red-500/20 border border-red-500/50"
+                    )}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
