@@ -28,6 +28,8 @@ interface LiveStatsState {
 const REFRESH_INTERVAL = 10 * 60 * 1000;
 // Cache TTL for detailed stats (5 minutes)
 const CACHE_TTL = 5 * 60 * 1000;
+// Live game statuses that need event fetching
+const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'LIVE', 'BT', 'P'];
 // Finished game statuses that don't need refresh
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'PST'];
 
@@ -343,7 +345,6 @@ export function useOptimizedLiveStats(games: Game[]) {
   }, [games.length, refreshLiveGames]);
 
   // Buscar eventos automaticamente para jogos ao vivo
-  const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'LIVE', 'BT', 'P'];
   const autoFetchedRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
@@ -369,10 +370,14 @@ export function useOptimizedLiveStats(games: Game[]) {
       const toFetch = liveFixturesNeedingEvents.slice(0, 3);
       toFetch.forEach(id => {
         autoFetchedRef.current.add(id);
-        fetchGameDetails(id);
       });
+      
+      // Delay para evitar race conditions com React
+      setTimeout(() => {
+        toFetch.forEach(id => fetchGameDetails(id));
+      }, 100);
     }
-  }, [state.fixtures, fetchGameDetails]);
+  }, [state.fixtures.size]); // Dependência mais estável
 
   // Force refresh a specific fixture by ID (for manual refresh button)
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
