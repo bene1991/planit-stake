@@ -66,6 +66,9 @@ export function AttackMomentum({
   statistics,
   currentMinute = 90
 }: AttackMomentumProps) {
+  // Se não há eventos nem estatísticas, mostrar mensagem de aguardando
+  const hasData = (events && events.length > 0) || (statistics && (statistics.homePossession || statistics.homeShots));
+  
   // Calcular momentum baseado em eventos
   const momentumData = useMemo(() => {
     // Criar intervalos de 5 minutos
@@ -193,6 +196,27 @@ export function AttackMomentum({
     }
     return null;
   };
+
+  // Mostrar estado de carregamento se não há dados
+  if (!hasData) {
+    return (
+      <Card className="p-3 bg-card/50">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-medium text-muted-foreground">Attack Momentum</h4>
+        </div>
+        <div className="h-[80px] flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-75" />
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
+            </div>
+            <span className="text-xs text-muted-foreground">Aguardando dados...</span>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-3 bg-card/50">
