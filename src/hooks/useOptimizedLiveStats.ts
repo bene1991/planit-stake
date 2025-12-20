@@ -345,36 +345,40 @@ export function useOptimizedLiveStats(games: Game[]) {
   }, [games.length, refreshLiveGames]);
 
   // Buscar eventos automaticamente para jogos ao vivo
+  const autoFetchedRef = useRef<Set<number>>(new Set());
+  
   useEffect(() => {
     if (state.fixtures.size === 0) return;
 
-    const fetchLiveDetails = async () => {
-      const liveFixturesNeedingData: number[] = [];
+    const liveFixturesNeedingData: number[] = [];
 
-      state.fixtures.forEach((data, fixtureId) => {
-        const status = data.fixture.fixture.status.short;
-        const isLive = LIVE_STATUSES.includes(status);
-        const hasEvents = data.events && data.events.length > 0;
-        const hasStats = data.statistics !== null;
+    state.fixtures.forEach((data, fixtureId) => {
+      const status = data.fixture.fixture.status.short;
+      const isLive = LIVE_STATUSES.includes(status);
+      const hasEvents = data.events && data.events.length > 0;
+      const hasStats = data.statistics !== null;
+      const alreadyFetched = autoFetchedRef.current.has(fixtureId);
 
-        // Buscar se é ao vivo e não tem eventos NEM estatísticas
-        if (isLive && !hasEvents && !hasStats) {
-          liveFixturesNeedingData.push(fixtureId);
-        }
-      });
-
-      if (liveFixturesNeedingData.length > 0) {
-        console.log('[OptimizedLiveStats] Buscando dados para jogos ao vivo:', liveFixturesNeedingData);
-        
-        // Buscar até 5 jogos sequencialmente
-        for (const id of liveFixturesNeedingData.slice(0, 5)) {
-          await fetchGameDetails(id);
-        }
+      // Buscar se é ao vivo, não tem dados, e ainda não buscamos
+      if (isLive && !hasEvents && !hasStats && !alreadyFetched) {
+        liveFixturesNeedingData.push(fixtureId);
       }
-    };
+    });
 
-    fetchLiveDetails();
-  }, [state.fixtures, fetchGameDetails]);
+    if (liveFixturesNeedingData.length > 0) {
+      console.log('[OptimizedLiveStats] Buscando dados para jogos ao vivo:', liveFixturesNeedingData);
+      
+      // Marcar como buscados ANTES de buscar
+      liveFixturesNeedingData.slice(0, 3).forEach(id => {
+        autoFetchedRef.current.add(id);
+      });
+      
+      // Buscar até 3 jogos
+      liveFixturesNeedingData.slice(0, 3).forEach(id => {
+        fetchGameDetails(id);
+      });
+    }
+  }, [state.fixtures.size]); // Dependência estável: apenas o SIZE do map
 
   // Force refresh a specific fixture by ID (for manual refresh button)
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
