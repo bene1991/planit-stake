@@ -50,6 +50,8 @@ export function useOptimizedLiveStats(games: Game[]) {
   const pendingRequests = useRef<Set<number>>(new Set());
   // Track pending date fetches to avoid duplicate calls
   const isFetchingDates = useRef(false);
+  // Track auto-fetched fixtures to avoid duplicate fetches
+  const autoFetchedRef = useRef<Set<number>>(new Set());
 
   // Priorizar datas de jogos pendentes (com operações sem resultado)
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -345,8 +347,6 @@ export function useOptimizedLiveStats(games: Game[]) {
   }, [games.length, refreshLiveGames]);
 
   // Buscar eventos automaticamente para jogos ao vivo
-  const autoFetchedRef = useRef<Set<number>>(new Set());
-  
   useEffect(() => {
     if (state.fixtures.size === 0) return;
 
