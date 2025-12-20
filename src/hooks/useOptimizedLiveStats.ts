@@ -100,9 +100,11 @@ export function useOptimizedLiveStats(games: Game[]) {
       return;
     }
 
-    // Se forceNoCache, limpar cache das datas que vamos buscar
+    // Se forceNoCache, limpar cache das datas que vamos buscar e também o autoFetchedRef
     if (forceNoCache) {
-      console.log('[OptimizedLiveStats] Forçando refresh sem cache - limpando cache');
+      console.log('[OptimizedLiveStats] Forçando refresh sem cache - limpando cache e autoFetchedRef');
+      autoFetchedRef.current.clear(); // Permite re-buscar detalhes
+      detailsCache.current.clear(); // Limpa cache de detalhes
       uniqueDates.forEach(date => {
         const cacheKey = `fixtures-${date}`;
         fixturesCache.delete(cacheKey);
