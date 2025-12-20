@@ -10,6 +10,7 @@ import { PressureChart } from '@/components/LiveStats/PressureChart';
 import { StatsComparison } from '@/components/LiveStats/StatsComparison';
 import { EventTimeline } from '@/components/LiveStats/EventTimeline';
 import { MyLiveGames } from '@/components/LiveStats/MyLiveGames';
+import { AttackMomentum } from '@/components/LiveStats/AttackMomentum';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { 
@@ -273,6 +274,19 @@ export default function LiveGames() {
                         </Button>
                       </div>
                     </Card>
+
+                    {/* Attack Momentum Chart */}
+                    {isSelected && eventsData && (
+                      <AttackMomentum
+                        homeTeam={fixture.teams.home.name}
+                        awayTeam={fixture.teams.away.name}
+                        homeTeamId={fixture.teams.home.id}
+                        awayTeamId={fixture.teams.away.id}
+                        events={eventsData}
+                        statistics={stats}
+                        currentMinute={fixture.fixture.status.elapsed || 0}
+                      />
+                    )}
 
                     {/* Live Statistics */}
                     {isSelected && stats && (
