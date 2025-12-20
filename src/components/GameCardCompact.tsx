@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Shield, Check, X, Trash2, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
+import { AttackMomentum } from "@/components/LiveStats/AttackMomentum";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -225,6 +226,21 @@ export function GameCardCompact({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Attack Momentum Chart - apenas para jogos ao vivo com eventos */}
+        {isLive && fixtureData?.events && fixtureData.events.length > 0 && (
+          <div className="mt-3 pt-2 border-t border-border/20">
+            <AttackMomentum
+              homeTeam={game.homeTeam}
+              awayTeam={game.awayTeam}
+              homeTeamId={fixtureData?.fixture?.teams?.home?.id}
+              awayTeamId={fixtureData?.fixture?.teams?.away?.id}
+              events={fixtureData.events}
+              statistics={fixtureData.statistics}
+              currentMinute={localElapsed?.minutes || apiElapsed || 0}
+            />
           </div>
         )}
 
