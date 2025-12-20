@@ -229,17 +229,19 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Attack Momentum Chart - para jogos ao vivo com eventos OU estatísticas */}
-        {isLive && fixtureData && (fixtureData.events?.length > 0 || fixtureData.statistics) && (
+        {/* Attack Momentum Chart - SEMPRE para jogos ao vivo */}
+        {isLive && (
           <div className="mt-3 pt-2 border-t border-border/20">
             <AttackMomentum
               homeTeam={game.homeTeam}
               awayTeam={game.awayTeam}
               homeTeamId={fixtureData?.fixture?.teams?.home?.id}
               awayTeamId={fixtureData?.fixture?.teams?.away?.id}
-              events={fixtureData.events}
-              statistics={fixtureData.statistics}
+              events={fixtureData?.events || []}
+              statistics={fixtureData?.statistics}
               currentMinute={localElapsed?.minutes || apiElapsed || 0}
+              fixtureId={game.api_fixture_id ? parseInt(game.api_fixture_id) : undefined}
+              onFetchDetails={onFetchDetails}
             />
           </div>
         )}

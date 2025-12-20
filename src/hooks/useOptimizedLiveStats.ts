@@ -345,41 +345,36 @@ export function useOptimizedLiveStats(games: Game[]) {
   }, [games.length, refreshLiveGames]);
 
   // Buscar eventos automaticamente para jogos ao vivo
-  const autoFetchedRef = useRef<Set<number>>(new Set());
-
   useEffect(() => {
     if (state.fixtures.size === 0) return;
 
-    const liveFixturesNeedingEvents: number[] = [];
+    const fetchLiveDetails = async () => {
+      const liveFixturesNeedingData: number[] = [];
 
-    state.fixtures.forEach((data, fixtureId) => {
-      const status = data.fixture.fixture.status.short;
-      const isLive = LIVE_STATUSES.includes(status);
-      const hasEvents = data.events && data.events.length > 0;
-      const hasStats = data.statistics !== null;
-      const alreadyFetched = autoFetchedRef.current.has(fixtureId);
+      state.fixtures.forEach((data, fixtureId) => {
+        const status = data.fixture.fixture.status.short;
+        const isLive = LIVE_STATUSES.includes(status);
+        const hasEvents = data.events && data.events.length > 0;
+        const hasStats = data.statistics !== null;
 
-      // Buscar se é ao vivo e não tem eventos NEM estatísticas
-      if (isLive && !hasEvents && !hasStats && !alreadyFetched) {
-        liveFixturesNeedingEvents.push(fixtureId);
-      }
-    });
-
-    if (liveFixturesNeedingEvents.length > 0) {
-      console.log('[OptimizedLiveStats] Buscando eventos para jogos ao vivo:', liveFixturesNeedingEvents);
-      
-      // Limitar a 3 jogos por vez para economizar requests
-      const toFetch = liveFixturesNeedingEvents.slice(0, 3);
-      toFetch.forEach(id => {
-        autoFetchedRef.current.add(id);
+        // Buscar se é ao vivo e não tem eventos NEM estatísticas
+        if (isLive && !hasEvents && !hasStats) {
+          liveFixturesNeedingData.push(fixtureId);
+        }
       });
-      
-      // Delay para evitar race conditions com React
-      setTimeout(() => {
-        toFetch.forEach(id => fetchGameDetails(id));
-      }, 100);
-    }
-  }, [state.fixtures.size]); // Dependência mais estável
+
+      if (liveFixturesNeedingData.length > 0) {
+        console.log('[OptimizedLiveStats] Buscando dados para jogos ao vivo:', liveFixturesNeedingData);
+        
+        // Buscar até 5 jogos sequencialmente
+        for (const id of liveFixturesNeedingData.slice(0, 5)) {
+          await fetchGameDetails(id);
+        }
+      }
+    };
+
+    fetchLiveDetails();
+  }, [state.fixtures, fetchGameDetails]);
 
   // Force refresh a specific fixture by ID (for manual refresh button)
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
