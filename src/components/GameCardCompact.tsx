@@ -46,7 +46,10 @@ export function GameCardCompact({
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
   const fixtureStatus = fixtureData?.fixture?.fixture?.status?.short;
-  const isLive = fixtureStatus ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) : game.status === 'Live';
+  // Usar status da API se disponível, senão usar status do banco como fallback
+  const isLive = fixtureStatus 
+    ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) 
+    : (game.status === 'Live' || game.status === 'Pending');
   const isHalfTime = fixtureStatus === 'HT';
   const isExtraTime = fixtureStatus === 'ET';
   const isPenalty = fixtureStatus === 'P';

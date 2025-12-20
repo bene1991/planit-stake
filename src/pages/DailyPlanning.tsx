@@ -78,6 +78,24 @@ export default function DailyPlanning() {
   const handleGlobalRefresh = async () => {
     await updateStatuses();
     await refreshLiveStats(true); // forceNoCache=true para evitar dados antigos
+    
+    // Buscar detalhes para jogos ao vivo que não têm dados completos
+    const liveGames = games.filter(g => 
+      (g.status === 'Live' || g.status === 'Pending') && g.api_fixture_id
+    );
+    
+    // Buscar detalhes para até 5 jogos ao vivo
+    const gamesToFetch = liveGames.slice(0, 5);
+    console.log(`[DailyPlanning] Buscando detalhes para ${gamesToFetch.length} jogos ao vivo`);
+    
+    for (const game of gamesToFetch) {
+      try {
+        await fetchGameDetails(parseInt(game.api_fixture_id!));
+      } catch (error) {
+        console.error(`[DailyPlanning] Erro ao buscar detalhes para ${game.homeTeam} x ${game.awayTeam}:`, error);
+      }
+    }
+    
     setLastGlobalRefresh(Date.now());
   };
   
