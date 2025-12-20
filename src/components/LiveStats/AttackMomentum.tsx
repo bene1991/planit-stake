@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ApiFootballEvent } from '@/hooks/useApiFootball';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
+import { RefreshCw } from 'lucide-react';
 
 interface AttackMomentumProps {
   homeTeam: string;
@@ -22,6 +24,8 @@ interface AttackMomentumProps {
     awayFouls?: number;
   } | null;
   currentMinute?: number;
+  fixtureId?: number;
+  onFetchDetails?: (fixtureId: number) => Promise<{ success: boolean; statistics?: any; events?: ApiFootballEvent[] }>;
 }
 
 interface MomentumPoint {
@@ -64,10 +68,24 @@ export function AttackMomentum({
   awayTeamId,
   events,
   statistics,
-  currentMinute = 90
+  currentMinute = 90,
+  fixtureId,
+  onFetchDetails
 }: AttackMomentumProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  
   // Se não há eventos nem estatísticas, mostrar mensagem de aguardando
   const hasData = (events && events.length > 0) || (statistics && (statistics.homePossession || statistics.homeShots));
+
+  const handleFetchData = async () => {
+    if (!fixtureId || !onFetchDetails) return;
+    setIsLoading(true);
+    try {
+      await onFetchDetails(fixtureId);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Calcular momentum baseado em eventos
   const momentumData = useMemo(() => {
@@ -205,13 +223,32 @@ export function AttackMomentum({
           <h4 className="text-xs font-medium text-muted-foreground">Attack Momentum</h4>
         </div>
         <div className="h-[80px] flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex gap-1">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-75" />
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
-            </div>
-            <span className="text-xs text-muted-foreground">Aguardando dados...</span>
+          <div className="flex flex-col items-center gap-3">
+            {isLoading ? (
+              <>
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-75" />
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
+                </div>
+                <span className="text-xs text-muted-foreground">Carregando...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-xs text-muted-foreground">Sem dados de momentum</span>
+                {fixtureId && onFetchDetails && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleFetchData}
+                    className="h-7 text-xs gap-1"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Buscar dados
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </Card>
