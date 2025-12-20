@@ -356,9 +356,11 @@ export function useOptimizedLiveStats(games: Game[]) {
       const status = data.fixture.fixture.status.short;
       const isLive = LIVE_STATUSES.includes(status);
       const hasEvents = data.events && data.events.length > 0;
+      const hasStats = data.statistics !== null;
       const alreadyFetched = autoFetchedRef.current.has(fixtureId);
 
-      if (isLive && !hasEvents && !alreadyFetched) {
+      // Buscar se é ao vivo e não tem eventos NEM estatísticas
+      if (isLive && !hasEvents && !hasStats && !alreadyFetched) {
         liveFixturesNeedingEvents.push(fixtureId);
       }
     });

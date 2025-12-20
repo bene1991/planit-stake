@@ -229,8 +229,8 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Attack Momentum Chart - apenas para jogos ao vivo com eventos */}
-        {isLive && fixtureData?.events && fixtureData.events.length > 0 && (
+        {/* Attack Momentum Chart - para jogos ao vivo com eventos OU estatísticas */}
+        {isLive && fixtureData && (fixtureData.events?.length > 0 || fixtureData.statistics) && (
           <div className="mt-3 pt-2 border-t border-border/20">
             <AttackMomentum
               homeTeam={game.homeTeam}
