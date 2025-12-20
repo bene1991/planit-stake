@@ -342,6 +342,38 @@ export function useOptimizedLiveStats(games: Game[]) {
     };
   }, [games.length, refreshLiveGames]);
 
+  // Buscar eventos automaticamente para jogos ao vivo
+  const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'LIVE', 'BT', 'P'];
+  const autoFetchedRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (state.fixtures.size === 0) return;
+
+    const liveFixturesNeedingEvents: number[] = [];
+
+    state.fixtures.forEach((data, fixtureId) => {
+      const status = data.fixture.fixture.status.short;
+      const isLive = LIVE_STATUSES.includes(status);
+      const hasEvents = data.events && data.events.length > 0;
+      const alreadyFetched = autoFetchedRef.current.has(fixtureId);
+
+      if (isLive && !hasEvents && !alreadyFetched) {
+        liveFixturesNeedingEvents.push(fixtureId);
+      }
+    });
+
+    if (liveFixturesNeedingEvents.length > 0) {
+      console.log('[OptimizedLiveStats] Buscando eventos para jogos ao vivo:', liveFixturesNeedingEvents);
+      
+      // Limitar a 3 jogos por vez para economizar requests
+      const toFetch = liveFixturesNeedingEvents.slice(0, 3);
+      toFetch.forEach(id => {
+        autoFetchedRef.current.add(id);
+        fetchGameDetails(id);
+      });
+    }
+  }, [state.fixtures, fetchGameDetails]);
+
   // Force refresh a specific fixture by ID (for manual refresh button)
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
     console.log(`[forceRefreshFixture] Buscando fixture ${fixtureId}`);
