@@ -5,9 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Shield, Check, X, Trash2, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
-import { AttackMomentum } from "@/components/LiveStats/AttackMomentum";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -22,7 +21,6 @@ interface GameCardCompactProps {
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
   fixtureData?: FixtureData | null;
-  onFetchDetails?: (fixtureId: number) => Promise<{ success: boolean; statistics?: any; events?: ApiFootballEvent[] }>;
   lastGlobalRefresh?: number;
 }
 
@@ -33,7 +31,6 @@ export function GameCardCompact({
   onDelete, 
   onEdit,
   fixtureData,
-  onFetchDetails,
   lastGlobalRefresh,
 }: GameCardCompactProps) {
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
@@ -229,23 +226,6 @@ export function GameCardCompact({
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Attack Momentum Chart - SEMPRE para jogos ao vivo */}
-        {isLive && (
-          <div className="mt-3 pt-2 border-t border-border/20">
-            <AttackMomentum
-              homeTeam={game.homeTeam}
-              awayTeam={game.awayTeam}
-              homeTeamId={fixtureData?.fixture?.teams?.home?.id}
-              awayTeamId={fixtureData?.fixture?.teams?.away?.id}
-              events={fixtureData?.events || []}
-              statistics={fixtureData?.statistics}
-              currentMinute={localElapsed?.minutes || apiElapsed || 0}
-              fixtureId={game.api_fixture_id ? parseInt(game.api_fixture_id) : undefined}
-              onFetchDetails={onFetchDetails}
-            />
           </div>
         )}
 
