@@ -13,6 +13,7 @@ import { VTLogo } from '@/components/VTLogo';
 import { LogoVariant } from '@/hooks/useLogoVariant';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { TelegramSettings } from '@/components/TelegramSettings';
+import { PushNotificationSettings } from '@/components/PushNotificationSettings';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { useSettings } from '@/hooks/useSettings';
 
@@ -168,6 +169,7 @@ export default function Account() {
       </Card>
 
       <TelegramSettings />
+      <PushNotificationSettings />
       <NotificationSettings />
       
       <ApiKeyModal open={showApiKeyModal} onOpenChange={setShowApiKeyModal} />

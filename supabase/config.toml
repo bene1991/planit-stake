@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.sync-google-sheets]
 verify_jwt = false
+
+[functions.manage-vapid-keys]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false

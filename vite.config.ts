@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
+      srcDir: "src",
+      filename: "sw.ts",
+      strategies: "injectManifest",
       includeAssets: ["favicon.svg", "favicon.ico", "sounds/*.mp3"],
       manifest: {
         name: "Vini Trader - Gestão de Banca",
@@ -45,24 +48,12 @@ export default defineConfig(({ mode }) => ({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,mp3}"],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/api\.api-football\.com\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-football-cache",
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 5, // 5 minutes
-              },
-            },
-          },
-        ],
       },
       devOptions: {
         enabled: true,
+        type: "module",
       },
     }),
   ].filter(Boolean),
