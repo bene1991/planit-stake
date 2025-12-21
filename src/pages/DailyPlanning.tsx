@@ -497,7 +497,6 @@ export default function DailyPlanning() {
                       onDelete={handleDelete}
                       onEdit={handleEditGameMethods}
                       fixtureData={fixtureData}
-                      onFetchDetails={fetchGameDetails}
                       lastGlobalRefresh={lastGlobalRefresh}
                     />
                   );
