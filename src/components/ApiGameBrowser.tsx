@@ -193,117 +193,121 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-primary" />
-              Buscar Jogos do Dia
-            </DialogTitle>
-            <DialogDescription>
-              Selecione jogos da API-Football para adicionar ao planejamento
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-2xl h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col p-0">
+          {/* Fixed Header */}
+          <div className="p-4 pb-2 border-b flex-shrink-0">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Buscar Jogos do Dia
+              </DialogTitle>
+              <DialogDescription>
+                Selecione jogos da API-Football para adicionar ao planejamento
+              </DialogDescription>
+            </DialogHeader>
 
-          {/* Controls */}
-          <div className="space-y-3">
-            {/* Quick Date Navigation */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant={isDateSelected(0) ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedDate(getDateString(0))}
-                className="h-8"
-              >
-                Hoje
-              </Button>
-              <Button
-                variant={isDateSelected(1) ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedDate(getDateString(1))}
-                className="h-8"
-              >
-                Amanhã
-              </Button>
-              <Button
-                variant={isDateSelected(2) ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedDate(getDateString(2))}
-                className="h-8"
-              >
-                +2 dias
-              </Button>
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-auto h-8"
-              />
-            </div>
-
-            {/* Selected Date Display */}
-            <p className="text-xs text-muted-foreground capitalize">
-              {formattedSelectedDate}
-            </p>
-
-            {/* Search and Settings */}
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            {/* Controls */}
+            <div className="space-y-3 mt-3">
+              {/* Quick Date Navigation */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant={isDateSelected(0) ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedDate(getDateString(0))}
+                  className="h-8"
+                >
+                  Hoje
+                </Button>
+                <Button
+                  variant={isDateSelected(1) ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedDate(getDateString(1))}
+                  className="h-8"
+                >
+                  Amanhã
+                </Button>
+                <Button
+                  variant={isDateSelected(2) ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedDate(getDateString(2))}
+                  className="h-8"
+                >
+                  +2 dias
+                </Button>
                 <Input
-                  placeholder="Buscar time ou liga..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-auto h-8"
                 />
               </div>
-              <Button 
-                variant="outline" 
-                size="icon"
-                onClick={() => setShowLeagueSelector(true)}
-                title="Configurar ligas favoritas"
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
+
+              {/* Selected Date Display */}
+              <p className="text-xs text-muted-foreground capitalize">
+                {formattedSelectedDate}
+              </p>
+
+              {/* Search and Settings */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar time ou liga..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => setShowLeagueSelector(true)}
+                  title="Configurar ligas favoritas"
+                >
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Tabs for Upcoming vs Finished */}
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upcoming" | "finished")} className="mt-3">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="upcoming" className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Ao Vivo / Próximos
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                    {upcomingFixtures.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="finished" className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Finalizados
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
+                    {finishedFixtures.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {/* Filters */}
+            <div className="flex items-center gap-4 mt-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox 
+                  checked={showFavoritesOnly} 
+                  onCheckedChange={(checked) => setShowFavoritesOnly(!!checked)}
+                />
+                <Star className="h-4 w-4 text-primary" />
+                Apenas ligas favoritas
+              </label>
+              <span className="text-xs text-muted-foreground">
+                {filteredFixtures.length} jogos
+              </span>
             </div>
           </div>
 
-          {/* Tabs for Upcoming vs Finished */}
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upcoming" | "finished")}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="upcoming" className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Ao Vivo / Próximos
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                  {upcomingFixtures.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="finished" className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" />
-                Finalizados
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                  {finishedFixtures.length}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          {/* Filters */}
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <Checkbox 
-                checked={showFavoritesOnly} 
-                onCheckedChange={(checked) => setShowFavoritesOnly(!!checked)}
-              />
-              <Star className="h-4 w-4 text-primary" />
-              Apenas ligas favoritas
-            </label>
-            <span className="text-xs text-muted-foreground">
-              {filteredFixtures.length} jogos
-            </span>
-          </div>
-
-          {/* Fixtures List */}
-          <ScrollArea className="h-[400px]">
+          {/* Scrollable Content Area */}
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {/* Fixtures List */}
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -323,10 +327,10 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                 )}
               </div>
             ) : (
-              <div className="space-y-4 pr-4">
+              <div className="space-y-4 pt-2">
                 {groupedFixtures.map(([league, leagueFixtures]) => (
                   <div key={league}>
-                    <h3 className="text-xs font-bold text-muted-foreground uppercase mb-2 sticky top-0 bg-background py-1">
+                    <h3 className="text-xs font-bold text-muted-foreground uppercase mb-2 sticky top-0 bg-background py-1 z-10">
                       {league}
                     </h3>
                     <div className="space-y-1">
@@ -400,62 +404,64 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                 ))}
               </div>
             )}
-          </ScrollArea>
 
-          {/* Method Selection */}
-          {selectedFixtures.size > 0 && (
-            <Card className="p-3 bg-muted/30">
-              <p className="text-xs font-medium mb-2">
-                {selectedFixtures.size} jogo(s) selecionado(s) - Escolha o(s) método(s):
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {methods.map((method) => (
-                  <Button
-                    key={method.id}
-                    variant={selectedMethods.has(method.id) ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => toggleMethod(method.id)}
-                    className="h-7 text-xs"
-                  >
-                    {method.name}
-                  </Button>
-                ))}
-              </div>
-            </Card>
-          )}
+            {/* Method Selection - inside scrollable area */}
+            {selectedFixtures.size > 0 && (
+              <Card className="p-3 bg-muted/30 mt-4">
+                <p className="text-xs font-medium mb-2">
+                  {selectedFixtures.size} jogo(s) selecionado(s) - Escolha o(s) método(s):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {methods.map((method) => (
+                    <Button
+                      key={method.id}
+                      variant={selectedMethods.has(method.id) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => toggleMethod(method.id)}
+                      className="h-7 text-xs"
+                    >
+                      {method.name}
+                    </Button>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
 
-          {/* Actions */}
-          <div className="flex justify-between items-center pt-2 border-t">
-            <span className="text-xs text-muted-foreground">
-              {selectedFixtures.size > 0 && selectedMethods.size > 0 && (
-                <>
-                  Adicionar {selectedFixtures.size} jogo(s) com {selectedMethods.size} método(s)
-                </>
-              )}
-            </span>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleAddGames}
-                disabled={selectedFixtures.size === 0 || selectedMethods.size === 0 || adding}
-              >
-                {adding ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Plus className="h-4 w-4 mr-2" />
+          {/* Fixed Footer */}
+          <div className="p-4 border-t bg-background flex-shrink-0">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground">
+                {selectedFixtures.size > 0 && selectedMethods.size > 0 && (
+                  <>
+                    Adicionar {selectedFixtures.size} jogo(s) com {selectedMethods.size} método(s)
+                  </>
                 )}
-                Adicionar
-              </Button>
+              </span>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleAddGames}
+                  disabled={selectedFixtures.size === 0 || selectedMethods.size === 0 || adding}
+                >
+                  {adding ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-2" />
+                  )}
+                  Adicionar
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <LeagueSelector 
-        open={showLeagueSelector} 
-        onOpenChange={setShowLeagueSelector} 
+      <LeagueSelector
+        open={showLeagueSelector}
+        onOpenChange={setShowLeagueSelector}
       />
     </>
   );
