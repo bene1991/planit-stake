@@ -9,7 +9,7 @@ import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe } from "lucide-react";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { GameCardCompact } from "@/components/GameCardCompact";
 import { MethodSelector } from "@/components/MethodSelector";
@@ -629,6 +629,30 @@ export default function DailyPlanning() {
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditGameMethods(game);
+                                  }}
+                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+                                  title="Editar métodos"
+                                >
+                                  <Settings className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(game.id);
+                                  }}
+                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                  title="Remover jogo"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
                                 <Badge variant="secondary" className="text-[10px]">
                                   {game.methodOperations.filter((op) => op.result === 'Green').length}G •{' '}
                                   {game.methodOperations.filter((op) => op.result === 'Red').length}R
