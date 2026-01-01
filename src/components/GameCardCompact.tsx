@@ -2,7 +2,7 @@ import { Game, Method } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, Trash2, Trophy } from "lucide-react";
+import { Shield, Check, X, Trash2, Trophy, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef } from "react";
@@ -229,7 +229,7 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Footer: Date, League, Delete */}
+        {/* Footer: Date, League, Actions */}
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/20">
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
             <span>{game.date} • {game.time}</span>
@@ -238,14 +238,28 @@ export function GameCardCompact({
               {game.league}
             </span>
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => onDelete(game.id)}
-            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {onEdit && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => onEdit(game)}
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+                title="Editar métodos"
+              >
+                <Settings className="h-3 w-3" />
+              </Button>
+            )}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => onDelete(game.id)}
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+              title="Remover jogo"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
 
         {/* Methods as Pills with Always Visible Buttons */}
