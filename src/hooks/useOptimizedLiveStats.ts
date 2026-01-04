@@ -15,6 +15,7 @@ interface CachedDetails {
   statistics: ReturnType<typeof parseStatistics> | null;
   events: ApiFootballEvent[];
   timestamp: number;
+  goalsSnapshot: { home: number; away: number };
 }
 
 interface LiveStatsState {
@@ -194,24 +195,48 @@ export function useOptimizedLiveStats(games: Game[]) {
 
   // Fetch detailed stats for a specific game (on-demand) with caching
   const fetchGameDetails = useCallback(async (fixtureId: number) => {
+    // Get current goals from state to compare with cache
+    const currentFixture = state.fixtures.get(fixtureId);
+    const currentGoals = {
+      home: currentFixture?.fixture.goals?.home ?? 0,
+      away: currentFixture?.fixture.goals?.away ?? 0,
+    };
+    const currentTotalGoals = currentGoals.home + currentGoals.away;
+
     // Check cache first
-    const cached = getCachedDetails(fixtureId);
-    if (cached) {
-      console.log(`Using cached stats for fixture ${fixtureId}`);
-      // Update state with cached data
-      setState(prev => {
-        const newFixtures = new Map(prev.fixtures);
-        const existing = newFixtures.get(fixtureId);
-        if (existing) {
-          newFixtures.set(fixtureId, {
-            ...existing,
-            statistics: cached.statistics,
-            events: cached.events,
-          });
-        }
-        return { ...prev, fixtures: newFixtures };
-      });
-      return { success: true, statistics: cached.statistics, events: cached.events };
+    const cached = detailsCache.current.get(fixtureId);
+    const cacheValid = cached && Date.now() - cached.timestamp < CACHE_TTL;
+
+    if (cacheValid && cached) {
+      // Invalidate cache if goals changed
+      const cachedTotalGoals = cached.goalsSnapshot.home + cached.goalsSnapshot.away;
+      const goalsChanged = currentTotalGoals !== cachedTotalGoals;
+      
+      // Also invalidate if there are goals but no goal events in cache
+      const hasGoalEvents = cached.events.some(e => e.type === 'Goal');
+      const needsGoalEvents = currentTotalGoals > 0 && !hasGoalEvents;
+
+      if (goalsChanged || needsGoalEvents) {
+        console.log(`[fetchGameDetails] Cache invalidado para ${fixtureId}: goalsChanged=${goalsChanged}, needsGoalEvents=${needsGoalEvents}`);
+        detailsCache.current.delete(fixtureId);
+        autoFetchedRef.current.delete(fixtureId);
+      } else {
+        console.log(`Using cached stats for fixture ${fixtureId}`);
+        // Update state with cached data
+        setState(prev => {
+          const newFixtures = new Map(prev.fixtures);
+          const existing = newFixtures.get(fixtureId);
+          if (existing) {
+            newFixtures.set(fixtureId, {
+              ...existing,
+              statistics: cached.statistics,
+              events: cached.events,
+            });
+          }
+          return { ...prev, fixtures: newFixtures };
+        });
+        return { success: true, statistics: cached.statistics, events: cached.events };
+      }
     }
 
     // Prevent duplicate requests
@@ -219,8 +244,6 @@ export function useOptimizedLiveStats(games: Game[]) {
       console.log(`Request already pending for fixture ${fixtureId}`);
       return { success: false, error: 'Requisição em andamento' };
     }
-
-    // Não bloqueia - a API retorna erro se limite for atingido
 
     pendingRequests.current.add(fixtureId);
 
@@ -241,11 +264,12 @@ export function useOptimizedLiveStats(games: Game[]) {
       const statistics = parseStatistics(statsResponse.data?.response || null);
       const events = (eventsResponse.data?.response || []) as ApiFootballEvent[];
 
-      // Cache the results
+      // Cache the results with goals snapshot
       detailsCache.current.set(fixtureId, {
         statistics,
         events,
         timestamp: Date.now(),
+        goalsSnapshot: currentGoals,
       });
 
       setState(prev => {
@@ -268,7 +292,7 @@ export function useOptimizedLiveStats(games: Game[]) {
     } finally {
       pendingRequests.current.delete(fixtureId);
     }
-  }, [canMakeRequest, trackRequest, getCachedDetails]);
+  }, [state.fixtures, trackRequest]);
 
   // Get stats for a specific game by matching fixture ID or team names
   const getStatsForGame = useCallback((game: Game): FixtureData | null => {
