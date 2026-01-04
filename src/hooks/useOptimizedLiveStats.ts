@@ -340,43 +340,49 @@ export function useOptimizedLiveStats(games: Game[]) {
     };
   }, [games.length, refreshLiveGames]);
 
-  // Buscar eventos automaticamente APENAS para jogos AO VIVO com gols (economiza API)
+  // Buscar eventos automaticamente APENAS para jogos do PLANEJAMENTO (pendentes) que estejam AO VIVO e com gols
   useEffect(() => {
     if (state.fixtures.size === 0) return;
+
+    const planningLiveFixtureIds = new Set(
+      pendingGames
+        .map(g => (g.api_fixture_id ? parseInt(g.api_fixture_id) : null))
+        .filter((id): id is number => typeof id === 'number' && !Number.isNaN(id))
+    );
 
     const fixturesNeedingData: number[] = [];
 
     state.fixtures.forEach((data, fixtureId) => {
+      if (!planningLiveFixtureIds.has(fixtureId)) return;
+
       const status = data.fixture.fixture.status.short;
       const isLive = LIVE_STATUSES.includes(status);
+      if (!isLive) return;
+
       const hasEvents = data.events && data.events.length > 0;
       const alreadyFetched = autoFetchedRef.current.has(fixtureId);
-      
-      // Verificar se tem gols (home ou away > 0)
+
       const homeGoals = data.fixture.goals?.home ?? 0;
       const awayGoals = data.fixture.goals?.away ?? 0;
       const hasGoals = homeGoals > 0 || awayGoals > 0;
 
-      // Buscar APENAS se: está ao vivo, tem gols, não tem eventos, e ainda não buscamos
-      if (isLive && hasGoals && !hasEvents && !alreadyFetched) {
+      if (hasGoals && !hasEvents && !alreadyFetched) {
         fixturesNeedingData.push(fixtureId);
       }
     });
 
     if (fixturesNeedingData.length > 0) {
-      console.log('[OptimizedLiveStats] Buscando eventos para jogos com gols:', fixturesNeedingData);
-      
-      // Marcar como buscados ANTES de buscar
+      console.log('[OptimizedLiveStats] Buscando eventos (planejamento+ao vivo):', fixturesNeedingData);
+
       fixturesNeedingData.slice(0, 5).forEach(id => {
         autoFetchedRef.current.add(id);
       });
-      
-      // Buscar até 5 jogos
+
       fixturesNeedingData.slice(0, 5).forEach(id => {
         fetchGameDetails(id);
       });
     }
-  }, [state.fixtures.size]); // Dependência estável: apenas o SIZE do map
+  }, [state.lastRefresh, pendingGames.length, fetchGameDetails]);
 
   // Force refresh a specific fixture by ID (for manual refresh button)
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
