@@ -93,10 +93,7 @@ export function useOptimizedLiveStats(games: Game[]) {
       return;
     }
 
-    if (!canMakeRequest || uniqueDates.length === 0) {
-      if (!canMakeRequest) {
-        setState(prev => ({ ...prev, error: 'Limite diário de requisições atingido' }));
-      }
+    if (uniqueDates.length === 0) {
       return;
     }
 
@@ -139,10 +136,7 @@ export function useOptimizedLiveStats(games: Game[]) {
         }
         
         // Cache miss ou forceNoCache - fazer request
-        if (!canMakeRequest) {
-          console.log(`[OptimizedLiveStats] Limite atingido, parando`);
-          break;
-        }
+        // Não bloqueia mais - a própria API retorna erro se limite for atingido
         
         console.log(`[OptimizedLiveStats] ${forceNoCache ? 'Force refresh' : 'Cache MISS'} para ${date} - fazendo request`);
         
@@ -226,9 +220,7 @@ export function useOptimizedLiveStats(games: Game[]) {
       return { success: false, error: 'Requisição em andamento' };
     }
 
-    if (!canMakeRequest) {
-      return { success: false, error: 'Limite diário atingido' };
-    }
+    // Não bloqueia - a API retorna erro se limite for atingido
 
     pendingRequests.current.add(fixtureId);
 
@@ -348,35 +340,37 @@ export function useOptimizedLiveStats(games: Game[]) {
     };
   }, [games.length, refreshLiveGames]);
 
-  // Buscar eventos automaticamente para jogos ao vivo
+  // Buscar eventos automaticamente para jogos com gols (ao vivo ou finalizados)
   useEffect(() => {
     if (state.fixtures.size === 0) return;
 
-    const liveFixturesNeedingData: number[] = [];
+    const fixturesNeedingData: number[] = [];
 
     state.fixtures.forEach((data, fixtureId) => {
-      const status = data.fixture.fixture.status.short;
-      const isLive = LIVE_STATUSES.includes(status);
       const hasEvents = data.events && data.events.length > 0;
-      const hasStats = data.statistics !== null;
       const alreadyFetched = autoFetchedRef.current.has(fixtureId);
+      
+      // Verificar se tem gols (home ou away > 0)
+      const homeGoals = data.fixture.goals?.home ?? 0;
+      const awayGoals = data.fixture.goals?.away ?? 0;
+      const hasGoals = homeGoals > 0 || awayGoals > 0;
 
-      // Buscar se é ao vivo, não tem dados, e ainda não buscamos
-      if (isLive && !hasEvents && !hasStats && !alreadyFetched) {
-        liveFixturesNeedingData.push(fixtureId);
+      // Buscar se tem gols, não tem eventos, e ainda não buscamos
+      if (hasGoals && !hasEvents && !alreadyFetched) {
+        fixturesNeedingData.push(fixtureId);
       }
     });
 
-    if (liveFixturesNeedingData.length > 0) {
-      console.log('[OptimizedLiveStats] Buscando dados para jogos ao vivo:', liveFixturesNeedingData);
+    if (fixturesNeedingData.length > 0) {
+      console.log('[OptimizedLiveStats] Buscando eventos para jogos com gols:', fixturesNeedingData);
       
       // Marcar como buscados ANTES de buscar
-      liveFixturesNeedingData.slice(0, 3).forEach(id => {
+      fixturesNeedingData.slice(0, 5).forEach(id => {
         autoFetchedRef.current.add(id);
       });
       
-      // Buscar até 3 jogos
-      liveFixturesNeedingData.slice(0, 3).forEach(id => {
+      // Buscar até 5 jogos
+      fixturesNeedingData.slice(0, 5).forEach(id => {
         fetchGameDetails(id);
       });
     }
@@ -386,10 +380,7 @@ export function useOptimizedLiveStats(games: Game[]) {
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {
     console.log(`[forceRefreshFixture] Buscando fixture ${fixtureId}`);
     
-    if (!canMakeRequest) {
-      console.log('[forceRefreshFixture] Limite de requests atingido');
-      return null;
-    }
+    // Não bloqueia - a API retorna erro se limite for atingido
 
     try {
       const { data, error } = await supabase.functions.invoke('api-football', {

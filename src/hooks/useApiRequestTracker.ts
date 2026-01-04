@@ -63,8 +63,8 @@ export function useApiRequestTracker() {
     saveCount(0);
   }, [saveCount]);
 
-  // Check if we can make more requests
-  const canMakeRequest = requestCount < DAILY_LIMIT;
+  // Informativo apenas - não bloqueia mais (a própria API retorna erro quando limite é atingido)
+  const canMakeRequest = true;
   const remaining = Math.max(0, DAILY_LIMIT - requestCount);
   const percentage = (requestCount / DAILY_LIMIT) * 100;
 
