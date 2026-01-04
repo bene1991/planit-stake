@@ -340,13 +340,15 @@ export function useOptimizedLiveStats(games: Game[]) {
     };
   }, [games.length, refreshLiveGames]);
 
-  // Buscar eventos automaticamente para jogos com gols (ao vivo ou finalizados)
+  // Buscar eventos automaticamente APENAS para jogos AO VIVO com gols (economiza API)
   useEffect(() => {
     if (state.fixtures.size === 0) return;
 
     const fixturesNeedingData: number[] = [];
 
     state.fixtures.forEach((data, fixtureId) => {
+      const status = data.fixture.fixture.status.short;
+      const isLive = LIVE_STATUSES.includes(status);
       const hasEvents = data.events && data.events.length > 0;
       const alreadyFetched = autoFetchedRef.current.has(fixtureId);
       
@@ -355,8 +357,8 @@ export function useOptimizedLiveStats(games: Game[]) {
       const awayGoals = data.fixture.goals?.away ?? 0;
       const hasGoals = homeGoals > 0 || awayGoals > 0;
 
-      // Buscar se tem gols, não tem eventos, e ainda não buscamos
-      if (hasGoals && !hasEvents && !alreadyFetched) {
+      // Buscar APENAS se: está ao vivo, tem gols, não tem eventos, e ainda não buscamos
+      if (isLive && hasGoals && !hasEvents && !alreadyFetched) {
         fixturesNeedingData.push(fixtureId);
       }
     });
