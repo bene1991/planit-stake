@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef } from "react";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
+import { GameNotesEditor } from "@/components/GameNotesEditor";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -228,6 +229,15 @@ export function GameCardCompact({
             </div>
           </div>
         )}
+
+        {/* Notes section */}
+        <div className="mt-2 pt-2 border-t border-border/20">
+          <GameNotesEditor
+            notes={game.notes}
+            onSave={(notes) => onUpdate(game.id, { notes })}
+            compact
+          />
+        </div>
 
         {/* Footer: Date, League, Actions */}
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/20">

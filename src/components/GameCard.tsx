@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { FixtureLinker } from "@/components/LiveStats/FixtureLinker";
+import { GameNotesEditor } from "@/components/GameNotesEditor";
 
 interface GameCardProps {
   game: Game;
@@ -200,9 +201,12 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
 
       {/* Corpo com collapsible para múltiplos métodos */}
       <div className="px-3 py-2">
-        {game.notes && (
-          <p className="text-xs text-muted-foreground mb-3 pb-3 border-b line-clamp-2 italic">{game.notes}</p>
-        )}
+        <div className="mb-3 pb-3 border-b border-border/30">
+          <GameNotesEditor
+            notes={game.notes}
+            onSave={(notes) => onUpdate(game.id, { notes })}
+          />
+        </div>
 
         {hasMultipleMethods ? (
           <Collapsible open={isOpen} onOpenChange={setIsOpen}>
