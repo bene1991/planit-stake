@@ -160,8 +160,8 @@ serve(async (req) => {
       }
     }
     
-    // Always add timezone for fixtures
-    if (endpoint.includes('fixtures') && !params.timezone) {
+    // Only add timezone for the main fixtures endpoint (not fixtures/events or fixtures/statistics)
+    if (endpoint === 'fixtures' && !params.timezone) {
       queryParams.append('timezone', 'America/Sao_Paulo');
     }
 
