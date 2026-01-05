@@ -18,6 +18,13 @@ export interface MethodOperation {
   result?: 'Green' | 'Red';
 }
 
+export interface GoalEvent {
+  teamId: number;
+  playerName: string;
+  minute: number;
+  detail?: string;
+}
+
 export interface Game {
   id: string;
   date: string;
@@ -31,6 +38,9 @@ export interface Game {
   notes?: string;
   status?: string;
   api_fixture_id?: string;
+  goalEvents?: GoalEvent[];
+  finalScoreHome?: number;
+  finalScoreAway?: number;
 }
 
 export interface Estrategia {

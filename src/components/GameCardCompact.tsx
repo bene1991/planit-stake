@@ -1,11 +1,11 @@
-import { Game, Method } from "@/types";
+import { Game, Method, GoalEvent } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Shield, Check, X, Trash2, Trophy, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 
@@ -142,13 +142,89 @@ export function GameCardCompact({
     return null;
   };
 
-  // Get goal events for display
-  const homeGoals = fixtureData?.events?.filter(
-    e => e.type === 'Goal' && e.team?.id === fixtureData?.fixture?.teams?.home?.id
-  ) || [];
-  const awayGoals = fixtureData?.events?.filter(
-    e => e.type === 'Goal' && e.team?.id === fixtureData?.fixture?.teams?.away?.id
-  ) || [];
+  // Get goal events for display - use API events if available, fallback to persisted goalEvents
+  const { homeGoals, awayGoals } = useMemo(() => {
+    const homeTeamId = fixtureData?.fixture?.teams?.home?.id;
+    const awayTeamId = fixtureData?.fixture?.teams?.away?.id;
+    
+    // If we have live API events, use them
+    if (fixtureData?.events?.length) {
+      return {
+        homeGoals: fixtureData.events
+          .filter(e => e.type === 'Goal' && e.team?.id === homeTeamId)
+          .map(e => ({
+            teamId: e.team?.id || 0,
+            playerName: e.player?.name || '',
+            minute: e.time?.elapsed || 0,
+            detail: e.detail,
+          })),
+        awayGoals: fixtureData.events
+          .filter(e => e.type === 'Goal' && e.team?.id === awayTeamId)
+          .map(e => ({
+            teamId: e.team?.id || 0,
+            playerName: e.player?.name || '',
+            minute: e.time?.elapsed || 0,
+            detail: e.detail,
+          })),
+      };
+    }
+    
+    // Fallback to persisted goalEvents from database
+    if (game.goalEvents?.length) {
+      // For persisted events, we need to match team by position since we have teamId
+      // The first team in persisted events with most goals is likely home
+      const homeEvents = game.goalEvents.filter(e => {
+        // If we have fixture data with team IDs, use those
+        if (homeTeamId) return e.teamId === homeTeamId;
+        // Otherwise we stored teamId as the API team ID, just split by that
+        return true; // We'll handle this case differently below
+      });
+      
+      // If we have team IDs from fixture, use them
+      if (homeTeamId && awayTeamId) {
+        return {
+          homeGoals: game.goalEvents.filter(e => e.teamId === homeTeamId),
+          awayGoals: game.goalEvents.filter(e => e.teamId === awayTeamId),
+        };
+      }
+      
+      // If no fixture data, use persisted as-is (we stored teamId correctly)
+      // We'll need to infer home/away from scores if available
+      const homeScore = game.finalScoreHome ?? 0;
+      const awayScore = game.finalScoreAway ?? 0;
+      
+      // Group by teamId
+      const byTeam = game.goalEvents.reduce((acc, e) => {
+        if (!acc[e.teamId]) acc[e.teamId] = [];
+        acc[e.teamId].push(e);
+        return acc;
+      }, {} as Record<number, GoalEvent[]>);
+      
+      const teamIds = Object.keys(byTeam).map(Number);
+      if (teamIds.length === 2) {
+        // Match by goal count
+        const [team1, team2] = teamIds;
+        const team1Goals = byTeam[team1].length;
+        const team2Goals = byTeam[team2].length;
+        
+        if (team1Goals === homeScore && team2Goals === awayScore) {
+          return { homeGoals: byTeam[team1], awayGoals: byTeam[team2] };
+        } else if (team2Goals === homeScore && team1Goals === awayScore) {
+          return { homeGoals: byTeam[team2], awayGoals: byTeam[team1] };
+        }
+      }
+      
+      // Fallback: first teamId = home
+      if (teamIds.length >= 1) {
+        return {
+          homeGoals: byTeam[teamIds[0]] || [],
+          awayGoals: teamIds.length > 1 ? byTeam[teamIds[1]] : [],
+        };
+      }
+    }
+    
+    return { homeGoals: [], awayGoals: [] };
+  }, [fixtureData?.events, fixtureData?.fixture?.teams, game.goalEvents, game.finalScoreHome, game.finalScoreAway]);
 
   return (
     <Card className={cn(
@@ -213,7 +289,7 @@ export function GameCardCompact({
             <div className="flex-1 text-right">
               {homeGoals.map((goal, i) => (
                 <div key={i} className="text-[10px] text-muted-foreground">
-                  {goal.player?.name} {goal.time?.elapsed}'{goal.detail === 'Penalty' ? ' (Pen.)' : ''}
+                  {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (Pen.)' : ''}
                 </div>
               ))}
             </div>
@@ -223,7 +299,7 @@ export function GameCardCompact({
             <div className="flex-1 text-left">
               {awayGoals.map((goal, i) => (
                 <div key={i} className="text-[10px] text-muted-foreground">
-                  {goal.player?.name} {goal.time?.elapsed}'{goal.detail === 'Penalty' ? ' (Pen.)' : ''}
+                  {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (Pen.)' : ''}
                 </div>
               ))}
             </div>
