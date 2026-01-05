@@ -159,6 +159,9 @@ export type Database = {
           created_at: string | null
           date: string
           date_time: string | null
+          final_score_away: number | null
+          final_score_home: number | null
+          goal_events: Json | null
           home_team: string
           home_team_logo: string | null
           id: string
@@ -176,6 +179,9 @@ export type Database = {
           created_at?: string | null
           date: string
           date_time?: string | null
+          final_score_away?: number | null
+          final_score_home?: number | null
+          goal_events?: Json | null
           home_team: string
           home_team_logo?: string | null
           id?: string
@@ -193,6 +199,9 @@ export type Database = {
           created_at?: string | null
           date?: string
           date_time?: string | null
+          final_score_away?: number | null
+          final_score_home?: number | null
+          goal_events?: Json | null
           home_team?: string
           home_team_logo?: string | null
           id?: string

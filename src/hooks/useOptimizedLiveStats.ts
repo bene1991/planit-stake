@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Game } from '@/types';
+import { Game, GoalEvent } from '@/types';
 import { ApiFootballFixture, ApiFootballEvent, parseStatistics, fixturesCache, FIXTURES_CACHE_TTL } from './useApiFootball';
 import { useApiRequestTracker } from './useApiRequestTracker';
 import { format } from 'date-fns';
@@ -33,6 +33,20 @@ const CACHE_TTL = 5 * 60 * 1000;
 const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'LIVE', 'BT', 'P'];
 // Finished game statuses that don't need refresh
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'PST'];
+// Statuses where we should persist goals
+const PERSIST_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
+
+// Convert API events to GoalEvent format for storage
+const convertToGoalEvents = (events: ApiFootballEvent[]): GoalEvent[] => {
+  return events
+    .filter(e => e.type === 'Goal')
+    .map(e => ({
+      teamId: e.team?.id || 0,
+      playerName: e.player?.name || 'Unknown',
+      minute: e.time?.elapsed || 0,
+      detail: e.detail,
+    }));
+};
 
 export function useOptimizedLiveStats(games: Game[]) {
   const [state, setState] = useState<LiveStatsState>({
@@ -53,6 +67,10 @@ export function useOptimizedLiveStats(games: Game[]) {
   const isFetchingDates = useRef(false);
   // Track auto-fetched fixtures to avoid duplicate fetches
   const autoFetchedRef = useRef<Set<number>>(new Set());
+  // Track games where we've already persisted goals
+  const persistedGoalsRef = useRef<Set<string>>(new Set());
+  // Track pending persistence operations
+  const pendingPersistenceRef = useRef<Set<string>>(new Set());
 
   // Priorizar datas de jogos pendentes (com operações sem resultado)
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -407,6 +425,107 @@ export function useOptimizedLiveStats(games: Game[]) {
       });
     }
   }, [state.lastRefresh, pendingGames.length, fetchGameDetails]);
+
+  // Persist goals for finished games that have goals but no persisted goalEvents
+  const persistGoalsForGame = useCallback(async (game: Game, fixtureData: FixtureData) => {
+    // Skip if no fixture ID
+    if (!game.api_fixture_id) return;
+    
+    // Skip if already has persisted goals
+    if (game.goalEvents && game.goalEvents.length > 0) {
+      persistedGoalsRef.current.add(game.id);
+      return;
+    }
+    
+    // Skip if already persisted or pending
+    if (persistedGoalsRef.current.has(game.id) || pendingPersistenceRef.current.has(game.id)) {
+      return;
+    }
+
+    const status = fixtureData.fixture.fixture.status.short;
+    const isFinished = PERSIST_STATUSES.includes(status);
+    if (!isFinished) return;
+
+    const homeGoals = fixtureData.fixture.goals?.home ?? 0;
+    const awayGoals = fixtureData.fixture.goals?.away ?? 0;
+    const hasGoals = homeGoals > 0 || awayGoals > 0;
+    
+    // Only persist if there are goals or we have events
+    const hasEventsInMemory = fixtureData.events && fixtureData.events.some(e => e.type === 'Goal');
+    if (!hasGoals && !hasEventsInMemory) {
+      // Mark as persisted even without goals to avoid re-checking
+      persistedGoalsRef.current.add(game.id);
+      return;
+    }
+
+    pendingPersistenceRef.current.add(game.id);
+
+    try {
+      let goalEvents: GoalEvent[] = [];
+      
+      // If we already have events in memory, use those
+      if (fixtureData.events && fixtureData.events.length > 0) {
+        goalEvents = convertToGoalEvents(fixtureData.events);
+      } else {
+        // Otherwise fetch events from API
+        console.log(`[GoalPersistence] Fetching events for game ${game.id}, fixture ${game.api_fixture_id}`);
+        
+        const { data, error } = await supabase.functions.invoke('api-football', {
+          body: { endpoint: 'fixtures/events', params: { fixture: parseInt(game.api_fixture_id) } }
+        });
+
+        if (error) {
+          console.error(`[GoalPersistence] Error fetching events:`, error);
+          return;
+        }
+
+        trackRequest(1);
+        const events = (data?.response || []) as ApiFootballEvent[];
+        goalEvents = convertToGoalEvents(events);
+      }
+
+      // Persist to database
+      const updates: Record<string, unknown> = {
+        goal_events: goalEvents,
+        final_score_home: homeGoals,
+        final_score_away: awayGoals,
+      };
+
+      const { error: updateError } = await supabase
+        .from('games')
+        .update(updates)
+        .eq('id', game.id);
+
+      if (updateError) {
+        console.error(`[GoalPersistence] Error persisting goals for ${game.id}:`, updateError);
+        return;
+      }
+
+      persistedGoalsRef.current.add(game.id);
+      console.log(`[GoalPersistence] Successfully persisted ${goalEvents.length} goals for game ${game.id} (${game.homeTeam} vs ${game.awayTeam})`);
+    } catch (err) {
+      console.error(`[GoalPersistence] Exception:`, err);
+    } finally {
+      pendingPersistenceRef.current.delete(game.id);
+    }
+  }, [trackRequest]);
+
+  // Auto-persist goals for finished games in planning
+  useEffect(() => {
+    if (state.fixtures.size === 0 || pendingGames.length === 0) return;
+
+    // Check each pending game for goal persistence
+    pendingGames.forEach(game => {
+      if (!game.api_fixture_id) return;
+      
+      const fixtureId = parseInt(game.api_fixture_id);
+      const fixtureData = state.fixtures.get(fixtureId);
+      
+      if (fixtureData) {
+        persistGoalsForGame(game, fixtureData);
+      }
+    });
+  }, [state.fixtures, pendingGames, persistGoalsForGame]);
 
   // Force refresh a specific fixture by ID (for manual refresh button)
   const forceRefreshFixture = useCallback(async (fixtureId: number): Promise<ApiFootballFixture | null> => {

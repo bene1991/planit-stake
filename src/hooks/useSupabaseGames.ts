@@ -12,6 +12,13 @@ export interface MethodOperation {
   result?: 'Green' | 'Red';
 }
 
+export interface GoalEvent {
+  teamId: number;
+  playerName: string;
+  minute: number;
+  detail?: string;
+}
+
 export interface Game {
   id: string;
   date: string;
@@ -25,6 +32,9 @@ export interface Game {
   notes?: string;
   status?: string;
   api_fixture_id?: string;
+  goalEvents?: GoalEvent[];
+  finalScoreHome?: number;
+  finalScoreAway?: number;
 }
 
 export const useSupabaseGames = () => {
@@ -70,6 +80,10 @@ export const useSupabaseGames = () => {
             result: op.result as 'Green' | 'Red' | undefined,
           })) || [];
 
+          // Parse goal_events from jsonb
+          const rawGoalEvents = game.goal_events;
+          const goalEvents = Array.isArray(rawGoalEvents) ? (rawGoalEvents as unknown as GoalEvent[]) : undefined;
+
           return {
             id: game.id,
             date: game.date,
@@ -82,6 +96,9 @@ export const useSupabaseGames = () => {
             notes: game.notes || undefined,
             status: game.status || 'Not Started',
             api_fixture_id: game.api_fixture_id || undefined,
+            goalEvents,
+            finalScoreHome: game.final_score_home ?? undefined,
+            finalScoreAway: game.final_score_away ?? undefined,
             methodOperations,
           };
         })
@@ -169,6 +186,9 @@ export const useSupabaseGames = () => {
     if (updates.awayTeamLogo !== undefined) gameUpdates.away_team_logo = updates.awayTeamLogo;
     if (updates.notes !== undefined) gameUpdates.notes = updates.notes;
     if (updates.status) gameUpdates.status = updates.status;
+    if (updates.goalEvents !== undefined) gameUpdates.goal_events = updates.goalEvents;
+    if (updates.finalScoreHome !== undefined) gameUpdates.final_score_home = updates.finalScoreHome;
+    if (updates.finalScoreAway !== undefined) gameUpdates.final_score_away = updates.finalScoreAway;
 
     const { error: gameError } = await supabase
       .from('games')
