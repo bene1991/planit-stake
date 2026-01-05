@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Home, Calendar, BarChart3, Wallet } from "lucide-react";
+import { Menu, Home, Calendar, BarChart3, Wallet, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +17,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { to: "/", label: "Início", icon: Home },
     { to: "/daily-planning", label: "Planejamento", icon: Calendar },
     { to: "/statistics", label: "Estatísticas", icon: BarChart3 },
+    { to: "/operational-status", label: "Status", icon: Activity },
     { to: "/bankroll", label: "Banca", icon: Wallet },
   ];
 

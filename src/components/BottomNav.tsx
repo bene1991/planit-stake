@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, Calendar, BarChart3, Wallet } from "lucide-react";
+import { Home, BarChart3, Wallet, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BottomNav = () => {
@@ -8,6 +8,7 @@ export const BottomNav = () => {
   const navItems = [
     { to: "/", label: "Início", icon: Home },
     { to: "/statistics", label: "Stats", icon: BarChart3 },
+    { to: "/operational-status", label: "Status", icon: Activity },
     { to: "/bankroll", label: "Banca", icon: Wallet },
   ];
 

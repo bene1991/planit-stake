@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut } from "lucide-react";
+import { TrendingUp, Calendar, BarChart3, User as UserIcon, LogOut, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ export const Sidebar = ({ onItemClick }: SidebarProps = {}) => {
     { path: "/bankroll", label: "Gestão de Banca", icon: TrendingUp },
     { path: "/", label: "Planejamento Diário", icon: Calendar },
     { path: "/statistics", label: "Estatísticas", icon: BarChart3 },
+    { path: "/operational-status", label: "Status Operacional", icon: Activity },
   ];
 
   const handleNavClick = () => {
