@@ -16,6 +16,10 @@ export interface MethodOperation {
   entryOdds?: number;
   exitOdds?: number;
   result?: 'Green' | 'Red';
+  stakeValue?: number;
+  odd?: number;
+  profit?: number;
+  commissionRate?: number;
 }
 
 export interface GoalEvent {

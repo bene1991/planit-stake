@@ -10,6 +10,10 @@ export interface MethodOperation {
   entryOdds?: number;
   exitOdds?: number;
   result?: 'Green' | 'Red';
+  stakeValue?: number;
+  odd?: number;
+  profit?: number;
+  commissionRate?: number;
 }
 
 export interface GoalEvent {
@@ -78,6 +82,10 @@ export const useSupabaseGames = () => {
             entryOdds: op.entry_odds ? Number(op.entry_odds) : undefined,
             exitOdds: op.exit_odds ? Number(op.exit_odds) : undefined,
             result: op.result as 'Green' | 'Red' | undefined,
+            stakeValue: op.stake_value ? Number(op.stake_value) : undefined,
+            odd: op.odd ? Number(op.odd) : undefined,
+            profit: op.profit ? Number(op.profit) : undefined,
+            commissionRate: op.commission_rate ? Number(op.commission_rate) : undefined,
           })) || [];
 
           // Parse goal_events from jsonb
@@ -145,6 +153,10 @@ export const useSupabaseGames = () => {
           entry_odds: op.entryOdds,
           exit_odds: op.exitOdds,
           result: op.result,
+          stake_value: op.stakeValue,
+          odd: op.odd,
+          profit: op.profit,
+          commission_rate: op.commissionRate,
         }));
 
         await supabase.from('method_operations').insert(operations);
@@ -219,6 +231,10 @@ export const useSupabaseGames = () => {
           entry_odds: op.entryOdds,
           exit_odds: op.exitOdds,
           result: op.result,
+          stake_value: op.stakeValue,
+          odd: op.odd,
+          profit: op.profit,
+          commission_rate: op.commissionRate,
         }));
 
         await supabase.from('method_operations').insert(operations);

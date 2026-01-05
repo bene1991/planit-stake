@@ -216,36 +216,48 @@ export type Database = {
       }
       method_operations: {
         Row: {
+          commission_rate: number | null
           created_at: string | null
           entry_odds: number | null
           exit_odds: number | null
           game_id: string
           id: string
           method_id: string
+          odd: number | null
           operation_type: string | null
+          profit: number | null
           result: string | null
+          stake_value: number | null
           updated_at: string | null
         }
         Insert: {
+          commission_rate?: number | null
           created_at?: string | null
           entry_odds?: number | null
           exit_odds?: number | null
           game_id: string
           id?: string
           method_id: string
+          odd?: number | null
           operation_type?: string | null
+          profit?: number | null
           result?: string | null
+          stake_value?: number | null
           updated_at?: string | null
         }
         Update: {
+          commission_rate?: number | null
           created_at?: string | null
           entry_odds?: number | null
           exit_odds?: number | null
           game_id?: string
           id?: string
           method_id?: string
+          odd?: number | null
           operation_type?: string | null
+          profit?: number | null
           result?: string | null
+          stake_value?: number | null
           updated_at?: string | null
         }
         Relationships: [
@@ -291,6 +303,39 @@ export type Database = {
           name?: string
           owner_id?: string
           percentage?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      operational_settings: {
+        Row: {
+          commission_rate: number | null
+          created_at: string | null
+          devolucao_maxima_percent: number | null
+          id: string
+          meta_mensal_stakes: number | null
+          owner_id: string
+          stop_diario_stakes: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          commission_rate?: number | null
+          created_at?: string | null
+          devolucao_maxima_percent?: number | null
+          id?: string
+          meta_mensal_stakes?: number | null
+          owner_id: string
+          stop_diario_stakes?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          commission_rate?: number | null
+          created_at?: string | null
+          devolucao_maxima_percent?: number | null
+          id?: string
+          meta_mensal_stakes?: number | null
+          owner_id?: string
+          stop_diario_stakes?: number | null
           updated_at?: string | null
         }
         Relationships: []

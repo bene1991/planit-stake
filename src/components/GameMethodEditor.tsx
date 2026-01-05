@@ -1,15 +1,17 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Game, Method, MethodOperation } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, Check, AlertTriangle } from 'lucide-react';
+import { X, Check, AlertTriangle, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { calculateProfit, calculatePotentialProfit, formatCurrency } from '@/utils/profitCalculator';
 
 interface GameMethodEditorProps {
   open: boolean;
@@ -20,10 +22,14 @@ interface GameMethodEditorProps {
   loading?: boolean;
 }
 
-// Tipo para armazenar resultado temporário dos métodos
 interface MethodFormData {
   result?: 'Green' | 'Red';
+  operationType?: 'Back' | 'Lay';
+  stakeValue?: number;
+  odd?: number;
 }
+
+const DEFAULT_COMMISSION = 0.045;
 
 export const GameMethodEditor = ({ 
   open, 
@@ -39,21 +45,21 @@ export const GameMethodEditor = ({
 
   useEffect(() => {
     if (game) {
-      // Pre-select methods that are already in the game
       setSelectedMethods(game.methodOperations.map(op => op.methodId));
       
-      // Pre-fill existing data
       const initialData: Record<string, MethodFormData> = {};
       game.methodOperations.forEach(op => {
         initialData[op.methodId] = {
           result: op.result,
+          operationType: op.operationType || 'Back',
+          stakeValue: op.stakeValue,
+          odd: op.odd,
         };
       });
       setMethodsData(initialData);
     }
   }, [game]);
 
-  // Verificar se método está completo
   const isMethodComplete = (methodId: string): boolean => {
     const data = methodsData[methodId];
     return !!data?.result;
@@ -67,17 +73,36 @@ export const GameMethodEditor = ({
       return;
     }
 
-    // Create method operations array with updated data
     const methodOperations: MethodOperation[] = selectedMethods.map(methodId => {
       const data = methodsData[methodId];
       const existingOp = game.methodOperations.find(op => op.methodId === methodId);
       
+      const operationType = data?.operationType || existingOp?.operationType || 'Back';
+      const result = data?.result || existingOp?.result;
+      const stakeValue = data?.stakeValue || existingOp?.stakeValue;
+      const odd = data?.odd || existingOp?.odd;
+      
+      let profit: number | undefined;
+      if (result && stakeValue && odd && operationType) {
+        profit = calculateProfit({
+          stakeValue,
+          odd,
+          operationType,
+          result,
+          commissionRate: DEFAULT_COMMISSION
+        });
+      }
+      
       return {
         methodId,
-        operationType: existingOp?.operationType,
+        operationType,
         entryOdds: existingOp?.entryOdds,
         exitOdds: existingOp?.exitOdds,
-        result: data?.result || existingOp?.result,
+        result,
+        stakeValue,
+        odd,
+        profit,
+        commissionRate: DEFAULT_COMMISSION,
       };
     });
 
@@ -88,7 +113,6 @@ export const GameMethodEditor = ({
 
   const toggleMethod = (methodId: string) => {
     if (selectedMethods.includes(methodId)) {
-      // Verificar se método tem resultado antes de remover
       const existingOp = game?.methodOperations.find(op => op.methodId === methodId);
       const hasData = existingOp && existingOp.result;
       
@@ -97,14 +121,16 @@ export const GameMethodEditor = ({
         return;
       }
       
-      // Remover método sem dados
       setSelectedMethods(prev => prev.filter(id => id !== methodId));
       const newData = { ...methodsData };
       delete newData[methodId];
       setMethodsData(newData);
     } else {
-      // Adicionar método
       setSelectedMethods(prev => [...prev, methodId]);
+      setMethodsData(prev => ({
+        ...prev,
+        [methodId]: { operationType: 'Back' }
+      }));
     }
   };
 
@@ -119,7 +145,11 @@ export const GameMethodEditor = ({
     }
   };
 
-  const updateMethodData = (methodId: string, field: keyof MethodFormData, value: 'Green' | 'Red') => {
+  const updateMethodData = <K extends keyof MethodFormData>(
+    methodId: string, 
+    field: K, 
+    value: MethodFormData[K]
+  ) => {
     setMethodsData(prev => ({
       ...prev,
       [methodId]: {
@@ -128,8 +158,6 @@ export const GameMethodEditor = ({
       }
     }));
   };
-
-  if (!game) return null;
 
   if (!game) return null;
 
@@ -147,7 +175,6 @@ export const GameMethodEditor = ({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Resumo de status */}
           {selectedMethods.length > 0 && (
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span className="font-medium">
@@ -176,8 +203,32 @@ export const GameMethodEditor = ({
               <div className="space-y-3">
                 {methods.map((method) => {
                   const isSelected = selectedMethods.includes(method.id);
-                  const isComplete = isMethodComplete(method.id);
                   const data = methodsData[method.id] || {};
+                  
+                  const potentialProfit = useMemo(() => {
+                    if (data.stakeValue && data.odd && data.operationType) {
+                      return calculatePotentialProfit(
+                        data.stakeValue, 
+                        data.odd, 
+                        data.operationType,
+                        DEFAULT_COMMISSION
+                      );
+                    }
+                    return null;
+                  }, [data.stakeValue, data.odd, data.operationType]);
+
+                  const actualProfit = useMemo(() => {
+                    if (data.result && data.stakeValue && data.odd && data.operationType) {
+                      return calculateProfit({
+                        stakeValue: data.stakeValue,
+                        odd: data.odd,
+                        operationType: data.operationType,
+                        result: data.result,
+                        commissionRate: DEFAULT_COMMISSION
+                      });
+                    }
+                    return null;
+                  }, [data.result, data.stakeValue, data.odd, data.operationType]);
                   
                   return (
                     <div 
@@ -189,7 +240,6 @@ export const GameMethodEditor = ({
                           : 'bg-secondary/30 border-border/30 hover:border-border/50'
                       )}
                     >
-                      {/* Header do método */}
                       <div className="flex items-start gap-3 p-3">
                         <Checkbox
                           id={method.id}
@@ -230,36 +280,119 @@ export const GameMethodEditor = ({
                             </div>
                           </div>
                           
-                          {/* Campo de resultado quando selecionado */}
                           {isSelected && (
-                            <div className="mt-3 p-3 bg-background/50 rounded-lg border border-border/40">
-                              <Label className="text-xs font-medium mb-1.5 block">
-                                Resultado
-                              </Label>
-                              <Select
-                                value={data.result || ''}
-                                onValueChange={(value: 'Green' | 'Red') => 
-                                  updateMethodData(method.id, 'result', value)
-                                }
-                              >
-                                <SelectTrigger className="h-9 text-xs">
-                                  <SelectValue placeholder="Selecione o resultado" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Green">
-                                    <div className="flex items-center gap-2">
-                                      <Check className="h-3 w-3 text-primary" />
-                                      <span className="text-primary font-medium">Green</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="Red">
-                                    <div className="flex items-center gap-2">
-                                      <X className="h-3 w-3 text-destructive" />
-                                      <span className="text-destructive font-medium">Red</span>
-                                    </div>
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
+                            <div className="mt-3 p-3 bg-background/50 rounded-lg border border-border/40 space-y-3">
+                              {/* Row 1: Operation Type and Odd */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label className="text-xs font-medium mb-1.5 block">
+                                    Tipo de Operação
+                                  </Label>
+                                  <Select
+                                    value={data.operationType || 'Back'}
+                                    onValueChange={(value: 'Back' | 'Lay') => 
+                                      updateMethodData(method.id, 'operationType', value)
+                                    }
+                                  >
+                                    <SelectTrigger className="h-9 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Back">Back</SelectItem>
+                                      <SelectItem value="Lay">Lay</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-xs font-medium mb-1.5 block">
+                                    Odd
+                                  </Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="1.01"
+                                    placeholder="Ex: 1.80"
+                                    value={data.odd || ''}
+                                    onChange={(e) => 
+                                      updateMethodData(method.id, 'odd', Number(e.target.value) || undefined)
+                                    }
+                                    className="h-9 text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Row 2: Stake Value and Result */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label className="text-xs font-medium mb-1.5 block">
+                                    Valor de Entrada (R$)
+                                  </Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="Ex: 100.00"
+                                    value={data.stakeValue || ''}
+                                    onChange={(e) => 
+                                      updateMethodData(method.id, 'stakeValue', Number(e.target.value) || undefined)
+                                    }
+                                    className="h-9 text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs font-medium mb-1.5 block">
+                                    Resultado
+                                  </Label>
+                                  <Select
+                                    value={data.result || ''}
+                                    onValueChange={(value: 'Green' | 'Red') => 
+                                      updateMethodData(method.id, 'result', value)
+                                    }
+                                  >
+                                    <SelectTrigger className="h-9 text-xs">
+                                      <SelectValue placeholder="Selecione" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Green">
+                                        <div className="flex items-center gap-2">
+                                          <Check className="h-3 w-3 text-emerald-500" />
+                                          <span className="text-emerald-500 font-medium">Green</span>
+                                        </div>
+                                      </SelectItem>
+                                      <SelectItem value="Red">
+                                        <div className="flex items-center gap-2">
+                                          <X className="h-3 w-3 text-red-500" />
+                                          <span className="text-red-500 font-medium">Red</span>
+                                        </div>
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+
+                              {/* Profit Preview */}
+                              {(potentialProfit || actualProfit !== null) && (
+                                <div className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50 border border-border/30">
+                                  <Calculator className="h-4 w-4 text-muted-foreground" />
+                                  {actualProfit !== null ? (
+                                    <span className={cn(
+                                      "text-sm font-medium",
+                                      actualProfit >= 0 ? "text-emerald-500" : "text-red-500"
+                                    )}>
+                                      Lucro: {formatCurrency(actualProfit)}
+                                      <span className="text-xs text-muted-foreground ml-1">
+                                        (4,5% comissão)
+                                      </span>
+                                    </span>
+                                  ) : potentialProfit && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Se Green: <span className="text-emerald-500 font-medium">{formatCurrency(potentialProfit.green)}</span>
+                                      {' | '}
+                                      Se Red: <span className="text-red-500 font-medium">{formatCurrency(potentialProfit.red)}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -290,7 +423,6 @@ export const GameMethodEditor = ({
         </DialogContent>
       </Dialog>
 
-      {/* Diálogo de confirmação para remover método com dados */}
       <AlertDialog open={!!methodToRemove} onOpenChange={(open) => !open && setMethodToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -311,4 +443,3 @@ export const GameMethodEditor = ({
     </>
   );
 };
-
