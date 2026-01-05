@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Game, Method, MethodOperation } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { X, Check, AlertTriangle, Calculator } from 'lucide-react';
@@ -201,34 +201,24 @@ export const GameMethodEditor = ({
                 Selecione os métodos e registre os resultados
               </Label>
               <div className="space-y-3">
-                {methods.map((method) => {
+              {methods.map((method) => {
                   const isSelected = selectedMethods.includes(method.id);
                   const data = methodsData[method.id] || {};
                   
-                  const potentialProfit = useMemo(() => {
-                    if (data.stakeValue && data.odd && data.operationType) {
-                      return calculatePotentialProfit(
-                        data.stakeValue, 
-                        data.odd, 
-                        data.operationType,
-                        DEFAULT_COMMISSION
-                      );
-                    }
-                    return null;
-                  }, [data.stakeValue, data.odd, data.operationType]);
+                  // Calculate profits directly without hooks
+                  const potentialProfit = (data.stakeValue && data.odd && data.operationType)
+                    ? calculatePotentialProfit(data.stakeValue, data.odd, data.operationType, DEFAULT_COMMISSION)
+                    : null;
 
-                  const actualProfit = useMemo(() => {
-                    if (data.result && data.stakeValue && data.odd && data.operationType) {
-                      return calculateProfit({
+                  const actualProfit = (data.result && data.stakeValue && data.odd && data.operationType)
+                    ? calculateProfit({
                         stakeValue: data.stakeValue,
                         odd: data.odd,
                         operationType: data.operationType,
                         result: data.result,
                         commissionRate: DEFAULT_COMMISSION
-                      });
-                    }
-                    return null;
-                  }, [data.result, data.stakeValue, data.odd, data.operationType]);
+                      })
+                    : null;
                   
                   return (
                     <div 
