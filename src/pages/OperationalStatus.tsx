@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,9 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useOperationalStatus, OperationalStatusType } from '@/hooks/useOperationalStatus';
 import { useOperationalSettings } from '@/hooks/useOperationalSettings';
+import { useSupabaseGames } from '@/hooks/useSupabaseGames';
+import { useSupabaseBankroll } from '@/hooks/useSupabaseBankroll';
+import { OperationalFilterBar, OperationalFilters } from '@/components/OperationalFilterBar';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const statusConfig: Record<OperationalStatusType, { color: string; bg: string; icon: React.ElementType; border: string }> = {
   'NORMAL': { 
@@ -40,7 +45,25 @@ const statusConfig: Record<OperationalStatusType, { color: string; bg: string; i
 };
 
 const OperationalStatus = () => {
-  const { metrics, loading } = useOperationalStatus();
+  const { games } = useSupabaseGames();
+  const { bankroll } = useSupabaseBankroll();
+  
+  // Filter state
+  const [filters, setFilters] = useState<OperationalFilters>({
+    period: 'thisMonth',
+    dateFrom: startOfMonth(new Date()),
+    dateTo: endOfMonth(new Date()),
+    selectedMethods: [],
+    selectedLeagues: []
+  });
+
+  // Extract unique leagues from games
+  const leagues = useMemo(() => 
+    [...new Set(games.map(g => g.league))].filter(Boolean).sort(),
+    [games]
+  );
+
+  const { metrics, loading } = useOperationalStatus(filters);
   const { settings, updateSettings } = useOperationalSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editedSettings, setEditedSettings] = useState({
@@ -65,6 +88,20 @@ const OperationalStatus = () => {
     }
   };
 
+  // Period label for display
+  const periodLabel = useMemo(() => {
+    if (filters.period === 'all') return 'Todo período';
+    if (filters.period === 'today') return 'Hoje';
+    if (filters.period === '7days') return 'Últimos 7 dias';
+    if (filters.period === '30days') return 'Últimos 30 dias';
+    if (filters.period === 'thisMonth') return format(new Date(), 'MMMM yyyy', { locale: ptBR });
+    if (filters.period === 'lastMonth') return 'Mês passado';
+    if (filters.dateFrom && filters.dateTo) {
+      return `${format(filters.dateFrom, 'dd/MM', { locale: ptBR })} - ${format(filters.dateTo, 'dd/MM', { locale: ptBR })}`;
+    }
+    return 'Período selecionado';
+  }, [filters]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -76,8 +113,6 @@ const OperationalStatus = () => {
   const statusInfo = statusConfig[metrics.status];
   const StatusIcon = statusInfo.icon;
 
-  const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -88,13 +123,21 @@ const OperationalStatus = () => {
             Status Operacional
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Atualizado automaticamente • Somente leitura
+            Atualizado automaticamente • {periodLabel}
           </p>
         </div>
         <Badge variant="outline" className="text-xs">
-          {metrics.totalOperationsMonth} ops este mês
+          {metrics.totalOperationsPeriod} ops no período
         </Badge>
       </div>
+
+      {/* Filter Bar */}
+      <OperationalFilterBar
+        methods={bankroll.methods}
+        leagues={leagues}
+        filters={filters}
+        onFilterChange={setFilters}
+      />
 
       {/* Main Status Card */}
       <Card className={cn("border-2", statusInfo.border, statusInfo.bg)}>
@@ -157,10 +200,10 @@ const OperationalStatus = () => {
             <div className="flex items-center gap-2">
               <TrendingDown className="h-6 w-6 text-red-500/60" />
               <span className="text-2xl font-bold">
-                {metrics.maxRedStreakMonth} reds
+                {metrics.maxRedStreakPeriod} reds
               </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{currentMonth}</p>
+            <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
           </CardContent>
         </Card>
 
@@ -175,13 +218,28 @@ const OperationalStatus = () => {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-emerald-500/60" />
               <span className="text-2xl font-bold">
-                {metrics.maxGreenStreakMonth} greens
+                {metrics.maxGreenStreakPeriod} greens
               </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{currentMonth}</p>
+            <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Warning for missing financial data */}
+      {metrics.operationsWithoutFinancialData > 0 && (
+        <Card className="border-yellow-500/30 bg-yellow-500/5">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-500">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <p className="text-sm">
+                <strong>{metrics.operationsWithoutFinancialData}</strong> de {metrics.totalOperationsPeriod} operações sem dados financeiros completos (stake/odd). 
+                O cálculo em R$ considera apenas operações com valores preenchidos.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Profit Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -215,31 +273,31 @@ const OperationalStatus = () => {
           </CardContent>
         </Card>
 
-        {/* Monthly Profit */}
+        {/* Period Profit */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Lucro do Mês
+              Lucro do Período
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-1">
               <p className={cn(
                 "text-2xl font-bold",
-                metrics.monthlyProfitStakes >= 0 ? "text-emerald-500" : "text-red-500"
+                metrics.periodProfitStakes >= 0 ? "text-emerald-500" : "text-red-500"
               )}>
-                {metrics.monthlyProfitStakes >= 0 ? '+' : ''}{metrics.monthlyProfitStakes} stakes
+                {metrics.periodProfitStakes >= 0 ? '+' : ''}{metrics.periodProfitStakes} stakes
               </p>
-              {metrics.monthlyProfitMoney !== 0 && (
+              {metrics.periodProfitMoney !== 0 && (
                 <p className={cn(
                   "text-sm",
-                  metrics.monthlyProfitMoney >= 0 ? "text-emerald-500/80" : "text-red-500/80"
+                  metrics.periodProfitMoney >= 0 ? "text-emerald-500/80" : "text-red-500/80"
                 )}>
-                  {formatCurrency(metrics.monthlyProfitMoney)}
+                  {formatCurrency(metrics.periodProfitMoney)}
                 </p>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{currentMonth}</p>
+            <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
           </CardContent>
         </Card>
 

@@ -10,11 +10,13 @@ export interface OperationalSettings {
   commissionRate: number;
 }
 
+export const DEFAULT_COMMISSION = 0.045;
+
 const DEFAULT_SETTINGS: Omit<OperationalSettings, 'id'> = {
   metaMensalStakes: 30,
   stopDiarioStakes: 3,
   devolucaoMaximaPercent: 50,
-  commissionRate: 0.045
+  commissionRate: DEFAULT_COMMISSION
 };
 
 export const useOperationalSettings = () => {
