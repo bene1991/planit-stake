@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useSupabaseGames } from './useSupabaseGames';
 import { useOperationalSettings } from './useOperationalSettings';
+import { OperationalFilters } from '@/components/OperationalFilterBar';
 
 export type OperationalStatusType = 'NORMAL' | 'ALERTA' | 'PROTEÇÃO' | 'PAUSADO';
 
@@ -9,6 +10,8 @@ interface OperationWithDate {
   date: string;
   profit: number | null;
   stakeValue: number | null;
+  methodId: string;
+  league: string;
 }
 
 interface StreakInfo {
@@ -18,27 +21,29 @@ interface StreakInfo {
 
 export interface OperationalMetrics {
   currentStreak: StreakInfo;
-  maxRedStreakMonth: number;
-  maxGreenStreakMonth: number;
+  maxRedStreakPeriod: number;
+  maxGreenStreakPeriod: number;
   dailyProfitStakes: number;
   dailyProfitMoney: number;
-  monthlyProfitStakes: number;
-  monthlyProfitMoney: number;
+  periodProfitStakes: number;
+  periodProfitMoney: number;
   peakProfit: number;
   currentDrawdown: number;
   status: OperationalStatusType;
   statusMessage: string;
   totalOperationsToday: number;
-  totalOperationsMonth: number;
+  totalOperationsPeriod: number;
+  operationsWithFinancialData: number;
+  operationsWithoutFinancialData: number;
 }
 
-export const useOperationalStatus = () => {
+export const useOperationalStatus = (filters?: OperationalFilters) => {
   const { games, loading: gamesLoading } = useSupabaseGames();
   const { settings, loading: settingsLoading } = useOperationalSettings();
 
   const metrics = useMemo<OperationalMetrics>(() => {
     // Flatten all operations from games
-    const allOperations: OperationWithDate[] = [];
+    let allOperations: OperationWithDate[] = [];
     
     games.forEach(game => {
       game.methodOperations.forEach(op => {
@@ -47,11 +52,43 @@ export const useOperationalStatus = () => {
             result: op.result,
             date: game.date,
             profit: op.profit ?? null,
-            stakeValue: op.stakeValue ?? null
+            stakeValue: op.stakeValue ?? null,
+            methodId: op.methodId,
+            league: game.league
           });
         }
       });
     });
+
+    // Apply filters
+    if (filters?.dateFrom) {
+      const fromDate = new Date(filters.dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      allOperations = allOperations.filter(op => {
+        const opDate = new Date(op.date);
+        opDate.setHours(0, 0, 0, 0);
+        return opDate >= fromDate;
+      });
+    }
+    if (filters?.dateTo) {
+      const toDate = new Date(filters.dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      allOperations = allOperations.filter(op => {
+        const opDate = new Date(op.date);
+        opDate.setHours(0, 0, 0, 0);
+        return opDate <= toDate;
+      });
+    }
+    if (filters?.selectedMethods && filters.selectedMethods.length > 0) {
+      allOperations = allOperations.filter(op => 
+        filters.selectedMethods.includes(op.methodId)
+      );
+    }
+    if (filters?.selectedLeagues && filters.selectedLeagues.length > 0) {
+      allOperations = allOperations.filter(op => 
+        filters.selectedLeagues.includes(op.league)
+      );
+    }
 
     // Sort by date descending for streak calculation
     const sortedOps = [...allOperations].sort((a, b) => 
@@ -71,51 +108,52 @@ export const useOperationalStatus = () => {
       }
     }
 
-    // Get current month and today
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const today = now.toISOString().split('T')[0];
-
-    // Filter operations for current month
-    const monthOps = allOperations.filter(op => {
-      const opDate = new Date(op.date);
-      return opDate.getMonth() === currentMonth && opDate.getFullYear() === currentYear;
-    });
+    // Get today
+    const today = new Date().toISOString().split('T')[0];
 
     // Filter operations for today
     const todayOps = allOperations.filter(op => op.date === today);
 
-    // Calculate max streaks for the month
-    let maxRedStreakMonth = 0;
-    let maxGreenStreakMonth = 0;
+    // Period operations = all filtered operations
+    const periodOps = allOperations;
+
+    // Calculate max streaks for the period
+    let maxRedStreakPeriod = 0;
+    let maxGreenStreakPeriod = 0;
     let tempRedStreak = 0;
     let tempGreenStreak = 0;
 
-    // Sort month ops by date for streak calculation
-    const sortedMonthOps = [...monthOps].sort((a, b) => 
+    // Sort period ops by date for streak calculation
+    const sortedPeriodOps = [...periodOps].sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    for (const op of sortedMonthOps) {
+    for (const op of sortedPeriodOps) {
       if (op.result === 'Red') {
         tempRedStreak++;
         tempGreenStreak = 0;
-        maxRedStreakMonth = Math.max(maxRedStreakMonth, tempRedStreak);
+        maxRedStreakPeriod = Math.max(maxRedStreakPeriod, tempRedStreak);
       } else if (op.result === 'Green') {
         tempGreenStreak++;
         tempRedStreak = 0;
-        maxGreenStreakMonth = Math.max(maxGreenStreakMonth, tempGreenStreak);
+        maxGreenStreakPeriod = Math.max(maxGreenStreakPeriod, tempGreenStreak);
       }
     }
 
-    // Calculate profits
-    // Stakes: Green = +1, Red = -1
+    // Calculate profits - now using real stake values when available
     const dailyProfitStakes = todayOps.reduce((acc, op) => {
+      if (op.stakeValue && op.profit) {
+        // Real profit in stakes: profit / stakeValue
+        return acc + (op.profit / op.stakeValue);
+      }
+      // Fallback: simple count
       return acc + (op.result === 'Green' ? 1 : -1);
     }, 0);
 
-    const monthlyProfitStakes = monthOps.reduce((acc, op) => {
+    const periodProfitStakes = periodOps.reduce((acc, op) => {
+      if (op.stakeValue && op.profit) {
+        return acc + (op.profit / op.stakeValue);
+      }
       return acc + (op.result === 'Green' ? 1 : -1);
     }, 0);
 
@@ -124,20 +162,28 @@ export const useOperationalStatus = () => {
       return acc + (op.profit ?? 0);
     }, 0);
 
-    const monthlyProfitMoney = monthOps.reduce((acc, op) => {
+    const periodProfitMoney = periodOps.reduce((acc, op) => {
       return acc + (op.profit ?? 0);
     }, 0);
 
-    // Calculate peak profit and drawdown for the month
+    // Count operations with/without financial data
+    const operationsWithFinancialData = periodOps.filter(op => op.stakeValue && op.profit).length;
+    const operationsWithoutFinancialData = periodOps.length - operationsWithFinancialData;
+
+    // Calculate peak profit and drawdown for the period
     let runningProfit = 0;
     let peakProfit = 0;
 
-    for (const op of sortedMonthOps) {
-      runningProfit += op.result === 'Green' ? 1 : -1;
+    for (const op of sortedPeriodOps) {
+      if (op.stakeValue && op.profit) {
+        runningProfit += op.profit / op.stakeValue;
+      } else {
+        runningProfit += op.result === 'Green' ? 1 : -1;
+      }
       peakProfit = Math.max(peakProfit, runningProfit);
     }
 
-    const currentDrawdown = peakProfit - monthlyProfitStakes;
+    const currentDrawdown = peakProfit - periodProfitStakes;
 
     // Calculate status
     let status: OperationalStatusType = 'NORMAL';
@@ -145,9 +191,9 @@ export const useOperationalStatus = () => {
 
     const redStreakLimit = 8;
     const alertRedStreak = 6;
-    const metaAtingida = monthlyProfitStakes >= settings.metaMensalStakes;
+    const metaAtingida = periodProfitStakes >= settings.metaMensalStakes;
     const stopDiarioAtingido = dailyProfitStakes <= -settings.stopDiarioStakes;
-    const devolucaoExcessiva = metaAtingida && 
+    const devolucaoExcessiva = metaAtingida && peakProfit > 0 &&
       (currentDrawdown / peakProfit) * 100 >= settings.devolucaoMaximaPercent;
 
     if (currentStreak.type === 'Red' && currentStreak.count >= redStreakLimit) {
@@ -161,7 +207,7 @@ export const useOperationalStatus = () => {
       statusMessage = `Devolução de ${settings.devolucaoMaximaPercent}% pós-meta atingida.`;
     } else if (metaAtingida) {
       status = 'PROTEÇÃO';
-      statusMessage = `Meta mensal de ${settings.metaMensalStakes} stakes atingida! Proteja seu lucro.`;
+      statusMessage = `Meta de ${settings.metaMensalStakes} stakes atingida! Proteja seu lucro.`;
     } else if (currentStreak.type === 'Red' && currentStreak.count >= alertRedStreak) {
       status = 'ALERTA';
       statusMessage = `Atenção: ${currentStreak.count} reds consecutivos.`;
@@ -169,20 +215,22 @@ export const useOperationalStatus = () => {
 
     return {
       currentStreak,
-      maxRedStreakMonth,
-      maxGreenStreakMonth,
-      dailyProfitStakes,
+      maxRedStreakPeriod,
+      maxGreenStreakPeriod,
+      dailyProfitStakes: Math.round(dailyProfitStakes * 100) / 100,
       dailyProfitMoney,
-      monthlyProfitStakes,
-      monthlyProfitMoney,
-      peakProfit,
-      currentDrawdown,
+      periodProfitStakes: Math.round(periodProfitStakes * 100) / 100,
+      periodProfitMoney,
+      peakProfit: Math.round(peakProfit * 100) / 100,
+      currentDrawdown: Math.round(currentDrawdown * 100) / 100,
       status,
       statusMessage,
       totalOperationsToday: todayOps.length,
-      totalOperationsMonth: monthOps.length
+      totalOperationsPeriod: periodOps.length,
+      operationsWithFinancialData,
+      operationsWithoutFinancialData
     };
-  }, [games, settings]);
+  }, [games, settings, filters]);
 
   return {
     metrics,

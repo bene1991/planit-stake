@@ -7,13 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Trash2, Edit, Check, X, ChevronDown, ChevronUp, Shield } from "lucide-react";
+import { Trash2, Edit, Check, X, ChevronDown, ChevronUp, Shield, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { FixtureLinker } from "@/components/LiveStats/FixtureLinker";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
+import { calculateProfit, calculatePotentialProfit, formatCurrency } from "@/utils/profitCalculator";
+import { DEFAULT_COMMISSION } from "@/hooks/useOperationalSettings";
 
 interface GameCardProps {
   game: Game;
@@ -32,6 +34,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
     operationType: "" as "Back" | "Lay" | "",
     entryOdds: "",
     exitOdds: "",
+    stakeValue: "",
   });
 
   // Busca dinâmica de logos quando não existem no banco
@@ -56,12 +59,13 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
 
   const handleSaveMethod = (methodId: string) => {
     if (!methodForm.operationType || !methodForm.entryOdds || !methodForm.exitOdds) {
-      toast.error("Preencha todos os campos");
+      toast.error("Preencha tipo, entrada e saída");
       return;
     }
 
     const entry = parseFloat(methodForm.entryOdds);
     const exit = parseFloat(methodForm.exitOdds);
+    const stake = methodForm.stakeValue ? parseFloat(methodForm.stakeValue) : undefined;
 
     if (isNaN(entry) || isNaN(exit)) {
       toast.error("Odds inválidas");
@@ -69,6 +73,18 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
     }
 
     const result = calculateResult(methodForm.operationType, entry, exit);
+
+    // Calculate profit if stake is provided
+    let profit: number | undefined = undefined;
+    if (stake && stake > 0 && entry > 1) {
+      profit = calculateProfit({
+        stakeValue: stake,
+        odd: entry,
+        operationType: methodForm.operationType,
+        result,
+        commissionRate: DEFAULT_COMMISSION
+      });
+    }
 
     const updatedOperations = game.methodOperations.map((op) =>
       op.methodId === methodId
@@ -78,13 +94,17 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
             entryOdds: entry,
             exitOdds: exit,
             result,
+            stakeValue: stake,
+            odd: entry,
+            profit,
+            commissionRate: DEFAULT_COMMISSION
           }
         : op
     );
 
     onUpdate(game.id, { methodOperations: updatedOperations });
     setEditingMethod(null);
-    setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
+    setMethodForm({ operationType: "", entryOdds: "", exitOdds: "", stakeValue: "" });
     toast.success("Método atualizado!");
   };
 
@@ -94,6 +114,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
       operationType: operation.operationType || "",
       entryOdds: operation.entryOdds?.toString() || "",
       exitOdds: operation.exitOdds?.toString() || "",
+      stakeValue: operation.stakeValue?.toString() || "",
     });
   };
 
@@ -293,7 +314,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                       {/* Form inline */}
                       {isEditing && (
                         <div className="p-3 bg-secondary/80 rounded-xl border-2 border-border/60 space-y-3">
-                          <div className="grid gap-3 grid-cols-3">
+                          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
                             <div>
                               <Label className="text-xs font-medium mb-1">Tipo</Label>
                               <Select
@@ -312,7 +333,20 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               </Select>
                             </div>
                             <div>
-                              <Label className="text-xs font-medium mb-1">Entrada</Label>
+                              <Label className="text-xs font-medium mb-1">Stake (R$)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={methodForm.stakeValue}
+                                onChange={(e) =>
+                                  setMethodForm({ ...methodForm, stakeValue: e.target.value })
+                                }
+                                placeholder="100.00"
+                                className="h-9 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs font-medium mb-1">Odd Entrada</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -325,7 +359,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               />
                             </div>
                             <div>
-                              <Label className="text-xs font-medium mb-1">Saída</Label>
+                              <Label className="text-xs font-medium mb-1">Odd Saída</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -338,6 +372,28 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               />
                             </div>
                           </div>
+                          
+                          {/* Profit preview */}
+                          {methodForm.operationType && methodForm.stakeValue && methodForm.entryOdds && (
+                            <div className="flex items-center gap-2 text-xs p-2 bg-background/50 rounded-lg">
+                              <Calculator className="h-4 w-4 text-muted-foreground" />
+                              {(() => {
+                                const stake = parseFloat(methodForm.stakeValue);
+                                const odd = parseFloat(methodForm.entryOdds);
+                                if (stake > 0 && odd > 1) {
+                                  const potential = calculatePotentialProfit(stake, odd, methodForm.operationType as 'Back' | 'Lay', DEFAULT_COMMISSION);
+                                  return (
+                                    <span>
+                                      Se <span className="text-emerald-500 font-medium">Green: {formatCurrency(potential.green)}</span>
+                                      {" | "}
+                                      Se <span className="text-red-500 font-medium">Red: {formatCurrency(potential.red)}</span>
+                                    </span>
+                                  );
+                                }
+                                return <span className="text-muted-foreground">Preencha stake e odd para ver previsão</span>;
+                              })()}
+                            </div>
+                          )}
                           <div className="flex gap-2">
                             <Button 
                               size="sm" 
@@ -351,7 +407,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               size="sm"
                               onClick={() => {
                                 setEditingMethod(null);
-                                setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
+                                setMethodForm({ operationType: "", entryOdds: "", exitOdds: "", stakeValue: "" });
                               }}
                               className="h-8 text-xs px-4 rounded-lg"
                             >
@@ -417,7 +473,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                 {/* Form inline */}
                 {isEditing && (
                   <div className="p-3 bg-secondary/80 rounded-xl border-2 border-border/60 space-y-3">
-                    <div className="grid gap-3 grid-cols-3">
+                    <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
                       <div>
                         <Label className="text-xs font-medium mb-1">Tipo</Label>
                         <Select
@@ -436,7 +492,20 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         </Select>
                       </div>
                       <div>
-                        <Label className="text-xs font-medium mb-1">Entrada</Label>
+                        <Label className="text-xs font-medium mb-1">Stake (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={methodForm.stakeValue}
+                          onChange={(e) =>
+                            setMethodForm({ ...methodForm, stakeValue: e.target.value })
+                          }
+                          placeholder="100.00"
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-medium mb-1">Odd Entrada</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -449,7 +518,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         />
                       </div>
                       <div>
-                        <Label className="text-xs font-medium mb-1">Saída</Label>
+                        <Label className="text-xs font-medium mb-1">Odd Saída</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -462,6 +531,28 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         />
                       </div>
                     </div>
+                    
+                    {/* Profit preview */}
+                    {methodForm.operationType && methodForm.stakeValue && methodForm.entryOdds && (
+                      <div className="flex items-center gap-2 text-xs p-2 bg-background/50 rounded-lg">
+                        <Calculator className="h-4 w-4 text-muted-foreground" />
+                        {(() => {
+                          const stake = parseFloat(methodForm.stakeValue);
+                          const odd = parseFloat(methodForm.entryOdds);
+                          if (stake > 0 && odd > 1) {
+                            const potential = calculatePotentialProfit(stake, odd, methodForm.operationType as 'Back' | 'Lay', DEFAULT_COMMISSION);
+                            return (
+                              <span>
+                                Se <span className="text-emerald-500 font-medium">Green: {formatCurrency(potential.green)}</span>
+                                {" | "}
+                                Se <span className="text-red-500 font-medium">Red: {formatCurrency(potential.red)}</span>
+                              </span>
+                            );
+                          }
+                          return <span className="text-muted-foreground">Preencha stake e odd para ver previsão</span>;
+                        })()}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <Button 
                         size="sm" 
@@ -475,7 +566,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         size="sm"
                         onClick={() => {
                           setEditingMethod(null);
-                          setMethodForm({ operationType: "", entryOdds: "", exitOdds: "" });
+                          setMethodForm({ operationType: "", entryOdds: "", exitOdds: "", stakeValue: "" });
                         }}
                         className="h-8 text-xs px-4 rounded-lg"
                       >
