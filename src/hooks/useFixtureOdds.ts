@@ -311,22 +311,14 @@ export function useFixtureOdds(
     setError(null);
     
     try {
-      // Fetch pre-match odds
+      // Fetch pre-match odds WITHOUT bookmaker filter to ensure we get all data
       const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
-        body: { endpoint: 'odds', params: { fixture: fixtureId, bookmaker: BETFAIR_IDS[0] } }
+        body: { endpoint: 'odds', params: { fixture: fixtureId } }
       });
       
       if (invokeError) throw new Error(invokeError.message);
       
-      let parsedOdds = extractPreMatchOdds(response?.response || [], PREFERRED_BOOKMAKERS);
-      
-      // If Betfair not found, try without bookmaker filter
-      if (!parsedOdds) {
-        const { data: fallbackResponse } = await supabase.functions.invoke('api-football', {
-          body: { endpoint: 'odds', params: { fixture: fixtureId } }
-        });
-        parsedOdds = extractPreMatchOdds(fallbackResponse?.response || [], PREFERRED_BOOKMAKERS);
-      }
+      const parsedOdds = extractPreMatchOdds(response?.response || [], PREFERRED_BOOKMAKERS);
       
       // Cache odds
       preMatchOddsCache.set(cacheKey, { odds: parsedOdds, timestamp: Date.now() });
