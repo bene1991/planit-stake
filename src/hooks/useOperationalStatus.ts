@@ -65,24 +65,19 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
       });
     });
 
-    // Apply filters
+    // Helper function to get local date string (YYYY-MM-DD) without timezone issues
+    const getLocalDateString = (date: Date): string => {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    };
+
+    // Apply filters - compare date strings directly to avoid timezone issues
     if (filters?.dateFrom) {
-      const fromDate = new Date(filters.dateFrom);
-      fromDate.setHours(0, 0, 0, 0);
-      allOperations = allOperations.filter(op => {
-        const opDate = new Date(op.date);
-        opDate.setHours(0, 0, 0, 0);
-        return opDate >= fromDate;
-      });
+      const fromDateStr = getLocalDateString(filters.dateFrom);
+      allOperations = allOperations.filter(op => op.date >= fromDateStr);
     }
     if (filters?.dateTo) {
-      const toDate = new Date(filters.dateTo);
-      toDate.setHours(23, 59, 59, 999);
-      allOperations = allOperations.filter(op => {
-        const opDate = new Date(op.date);
-        opDate.setHours(0, 0, 0, 0);
-        return opDate <= toDate;
-      });
+      const toDateStr = getLocalDateString(filters.dateTo);
+      allOperations = allOperations.filter(op => op.date <= toDateStr);
     }
     if (filters?.selectedMethods && filters.selectedMethods.length > 0) {
       allOperations = allOperations.filter(op => 
@@ -113,8 +108,9 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
       }
     }
 
-    // Get today
-    const today = new Date().toISOString().split('T')[0];
+    // Get today using local date (not UTC)
+    const now = new Date();
+    const today = getLocalDateString(now);
 
     // Filter operations for today
     const todayOps = allOperations.filter(op => op.date === today);
