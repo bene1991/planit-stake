@@ -330,16 +330,11 @@ export function GameCardCompact({
           />
         </div>
 
-        {/* Expandable Details (Stats Table + Momentum Chart) */}
+        {/* Expandable Details (Stats Table) */}
         {(fixtureCache || cacheLoading) && (
           <MatchDetailsAccordion
             stats={fixtureCache?.normalized_stats || null}
-            momentumSeries={fixtureCache?.momentum_series || []}
-            minuteNow={fixtureCache?.minute_now || 0}
-            homeTeam={game.homeTeam}
-            awayTeam={game.awayTeam}
             loading={cacheLoading}
-            keyEvents={fixtureCache?.key_events || []}
           />
         )}
 
