@@ -10,7 +10,6 @@ import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { MatchStatsOverview } from "@/components/MatchStatsOverview";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
-import { useFixtureOdds } from "@/hooks/useFixtureOdds";
 import { OddsDisplay } from "@/components/OddsDisplay";
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -24,6 +23,7 @@ interface GameCardCompactProps {
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
+  onFetchBtts?: (gameId: string, homeTeam: string, awayTeam: string, league: string) => Promise<void>;
   fixtureData?: FixtureData | null;
   lastGlobalRefresh?: number;
 }
@@ -34,9 +34,11 @@ export function GameCardCompact({
   onUpdate, 
   onDelete, 
   onEdit,
+  onFetchBtts,
   fixtureData,
   lastGlobalRefresh,
 }: GameCardCompactProps) {
+  const [fetchingBtts, setFetchingBtts] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
   const lastSyncRef = useRef<number>(0);
   
@@ -57,9 +59,6 @@ export function GameCardCompact({
   const isHalfTime = fixtureStatus === 'HT';
   const isExtraTime = fixtureStatus === 'ET';
   const isPenalty = fixtureStatus === 'P';
-
-  // Fetch odds from Betfair (pre-match + live)
-  const { preMatch: preMatchOdds, live: liveOdds, loading: oddsLoading } = useFixtureOdds(game.api_fixture_id, isLive);
   
   const apiElapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
   
@@ -325,20 +324,26 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Odds Section - Betfair preferred (pre-match + live) + BTTS from The Odds API */}
-        {(preMatchOdds || liveOdds || oddsLoading || game.bttsYes) && game.api_fixture_id && (
+        {/* Odds Section - BTTS only from The Odds API */}
+        {(game.bttsYes || game.api_fixture_id) && (
           <div className="mt-3 pt-2 border-t border-border/20">
             <OddsDisplay 
-              preMatch={preMatchOdds} 
-              live={liveOdds} 
-              loading={oddsLoading}
-              isLive={isLive}
               savedBtts={{
                 yes: game.bttsYes,
                 no: game.bttsNo,
                 bookmaker: game.bttsBookmaker,
                 isBetfair: game.bttsIsBetfair,
               }}
+              onFetchBtts={game.api_fixture_id ? async () => {
+                if (!onFetchBtts) return;
+                setFetchingBtts(true);
+                try {
+                  await onFetchBtts(game.id, game.homeTeam, game.awayTeam, game.league);
+                } finally {
+                  setFetchingBtts(false);
+                }
+              } : undefined}
+              fetchingBtts={fetchingBtts}
             />
           </div>
         )}
