@@ -96,8 +96,8 @@ export function AttackMomentumChart({
     );
   }
 
-  // Bar width as percentage
-  const barWidthPercent = 100 / totalMinutes * 0.85;
+  // Bar width as percentage - increased for better visibility
+  const barWidthPercent = 100 / totalMinutes;
 
   return (
     <div className="space-y-1.5">
@@ -114,8 +114,8 @@ export function AttackMomentumChart({
         </div>
       </div>
 
-      {/* Chart container */}
-      <div className="relative h-28 bg-card/50 rounded-md overflow-hidden border border-border/50">
+      {/* Chart container - taller for better visibility */}
+      <div className="relative h-32 bg-card/50 rounded-md overflow-hidden border border-border/50">
         {/* Goal markers layer - on top */}
         <div className="absolute inset-0 z-20 pointer-events-none">
           {goalEvents.map((event, idx) => {
@@ -178,9 +178,9 @@ export function AttackMomentumChart({
               style={{ 
                 left: `${leftPercent}%`,
                 width: `${barWidthPercent}%`,
-                minWidth: '3px',
+                minWidth: '4px',
                 top: '8px',
-                bottom: '16px',
+                bottom: '18px',
                 transform: 'translateX(-50%)'
               }}
               onMouseEnter={() => setHoveredMinute(point.m)}
@@ -219,32 +219,42 @@ export function AttackMomentumChart({
           );
         })}
 
-        {/* Hover tooltip */}
+        {/* Hover tooltip - dynamic positioning based on chart half */}
         {hoveredInfo && hoveredMinute !== null && (
           <div 
             className="absolute z-30 pointer-events-none"
             style={{ 
               left: `${(hoveredMinute / totalMinutes) * 100}%`,
-              top: '4px',
-              transform: 'translateX(-50%)'
+              top: '50%',
+              transform: hoveredMinute > totalMinutes / 2 
+                ? 'translate(-100%, -50%)' 
+                : 'translate(8px, -50%)'
             }}
           >
-            <div className="bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded shadow-lg border border-border min-w-[100px]">
-              <div className="font-bold text-center mb-0.5">{hoveredMinute}'</div>
+            <div className="bg-popover text-popover-foreground text-[10px] px-2.5 py-1.5 rounded shadow-lg border border-border min-w-[120px]">
+              <div className="font-bold text-center mb-1">{hoveredMinute}'</div>
               {hoveredInfo.point && (
-                <div className="flex justify-between gap-2">
-                  <span className="text-emerald-500">{homeTeam}: {hoveredInfo.point.home.toFixed(1)}</span>
-                  <span className="text-violet-500">{awayTeam}: {hoveredInfo.point.away.toFixed(1)}</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-sm bg-emerald-500 flex-shrink-0" />
+                    <span className="truncate">{homeTeam}:</span>
+                    <span className="font-medium ml-auto">{hoveredInfo.point.home.toFixed(1)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-sm bg-violet-500 flex-shrink-0" />
+                    <span className="truncate">{awayTeam}:</span>
+                    <span className="font-medium ml-auto">{hoveredInfo.point.away.toFixed(1)}</span>
+                  </div>
                 </div>
               )}
               {hoveredInfo.events.length > 0 && (
-                <div className="mt-0.5 pt-0.5 border-t border-border/50">
+                <div className="mt-1 pt-1 border-t border-border/50 space-y-0.5">
                   {hoveredInfo.events.map((e, i) => (
-                    <div key={i} className="text-[9px]">
-                      {e.type === 'goal' && '⚽ '}
-                      {e.type === 'red_card' && '🟥 '}
-                      {e.player && <span className="font-medium">{e.player}</span>}
-                      <span className="text-muted-foreground ml-1">
+                    <div key={i} className="text-[9px] flex items-center gap-1">
+                      {e.type === 'goal' && <span>⚽</span>}
+                      {e.type === 'red_card' && <span>🟥</span>}
+                      {e.player && <span className="font-medium truncate">{e.player}</span>}
+                      <span className="text-muted-foreground ml-auto">
                         ({e.team === 'home' ? homeTeam : awayTeam})
                       </span>
                     </div>
