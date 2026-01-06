@@ -196,6 +196,35 @@ export default function DailyPlanning() {
     }
   };
 
+  // Fetch BTTS for existing games manually
+  const handleFetchBttsForGame = async (
+    gameId: string,
+    homeTeam: string,
+    awayTeam: string,
+    league: string
+  ) => {
+    try {
+      console.log(`[DailyPlanning] Fetching BTTS for existing game: ${homeTeam} vs ${awayTeam}`);
+      const bttsData = await fetchBttsOdds(homeTeam, awayTeam, league);
+      if (bttsData) {
+        await updateGame(gameId, {
+          bttsYes: bttsData.yes,
+          bttsNo: bttsData.no,
+          bttsBookmaker: bttsData.bookmaker,
+          bttsIsBetfair: bttsData.isBetfair,
+          bttsFetchedAt: new Date().toISOString(),
+        });
+        toast.success(`BTTS atualizado: ${bttsData.isBetfair ? 'Betfair' : bttsData.bookmaker}`);
+        await refreshGames();
+      } else {
+        toast.error('BTTS não disponível para esta liga');
+      }
+    } catch (err) {
+      console.error('[DailyPlanning] Error fetching BTTS:', err);
+      toast.error('Erro ao buscar BTTS');
+    }
+  };
+
   // Add games from API browser - fetch BTTS once and save permanently
   const handleAddFromApi = async (selectedGames: SelectedGame[]) => {
     for (const game of selectedGames) {
@@ -532,6 +561,7 @@ export default function DailyPlanning() {
                       onUpdate={updateGame}
                       onDelete={handleDelete}
                       onEdit={handleEditGameMethods}
+                      onFetchBtts={handleFetchBttsForGame}
                       fixtureData={fixtureData}
                       lastGlobalRefresh={lastGlobalRefresh}
                     />
