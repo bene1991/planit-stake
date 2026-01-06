@@ -255,13 +255,18 @@ export function AttackMomentumChart({
           </div>
         )}
 
-        {/* Current minute indicator (red line) */}
+        {/* Current minute indicator (red line with pulse animation) */}
         {minuteNow > 0 && (
           <div
             className="absolute top-0 bottom-4 w-0.5 bg-red-500 z-20 shadow-[0_0_6px_rgba(239,68,68,0.6)]"
             style={{ left: `${currentMinutePercent}%`, transform: 'translateX(-50%)' }}
           >
-            <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-red-500 bg-card/90 px-1 rounded border border-red-500/30">
+            {/* Pulsing glow effect */}
+            <div 
+              className="absolute inset-0 w-1 -left-0.5 bg-red-500/50 animate-pulse"
+              style={{ filter: 'blur(3px)' }}
+            />
+            <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-red-500 bg-card/90 px-1 rounded border border-red-500/30 animate-pulse">
               {minuteNow}'
             </div>
           </div>
