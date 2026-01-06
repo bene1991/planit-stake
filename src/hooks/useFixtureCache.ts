@@ -44,8 +44,8 @@ interface UseFixtureCacheResult {
 // Status codes that indicate a live game
 const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'LIVE'];
 
-// Refresh interval for live games (2 minutes)
-const LIVE_REFRESH_INTERVAL = 120000;
+// Refresh interval for live games (1 minute)
+const LIVE_REFRESH_INTERVAL = 60000;
 
 export function useFixtureCache(fixtureId: number | string | null | undefined): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);

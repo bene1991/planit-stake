@@ -4,6 +4,7 @@ import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { useOptimizedLiveStats } from "@/hooks/useOptimizedLiveStats";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
@@ -382,6 +383,17 @@ export default function DailyPlanning() {
   const redOperations = allOperations.filter((op) => op.result === "Red").length;
   const winRate = totalOperations > 0 ? ((greenOperations / totalOperations) * 100).toFixed(1) : "0.0";
   const liveGames = games.filter(g => g.status === 'Live').length;
+  
+  // Check if there are any live or pending games that need auto-refresh
+  const hasActiveGames = useMemo(() => {
+    return games.some(g => g.status === 'Live' || g.status === 'Pending');
+  }, [games]);
+  
+  // Auto-refresh every 60 seconds when there are live/pending games
+  const { secondsUntilRefresh, isRefreshing } = useAutoRefresh(
+    handleGlobalRefresh,
+    { intervalMs: 60000, enabled: hasActiveGames }
+  );
 
   const getMethodName = (methodId: string) => {
     return bankroll.methods.find((m) => m.id === methodId)?.name || 'Método';
@@ -442,7 +454,12 @@ export default function DailyPlanning() {
       {/* Last Refresh Info */}
       {lastRefresh && (
         <p className="text-[10px] text-muted-foreground">
-          Última atualização: {format(lastRefresh, 'HH:mm:ss')} (auto-refresh a cada 10min)
+          Última atualização: {format(lastRefresh, 'HH:mm:ss')}
+          {hasActiveGames && (
+            <span className="ml-1">
+              • próxima em {secondsUntilRefresh}s
+            </span>
+          )}
         </p>
       )}
 
