@@ -58,8 +58,8 @@ export function GameCardCompact({
   const isExtraTime = fixtureStatus === 'ET';
   const isPenalty = fixtureStatus === 'P';
 
-  // Fetch odds from Betfair
-  const { odds, loading: oddsLoading } = useFixtureOdds(game.api_fixture_id, isLive);
+  // Fetch odds from Betfair (pre-match + live)
+  const { preMatch: preMatchOdds, live: liveOdds, loading: oddsLoading } = useFixtureOdds(game.api_fixture_id, isLive);
   
   const apiElapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
   
@@ -325,10 +325,15 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Odds Section - Betfair preferred */}
-        {(odds || oddsLoading) && game.api_fixture_id && (
+        {/* Odds Section - Betfair preferred (pre-match + live) */}
+        {(preMatchOdds || liveOdds || oddsLoading) && game.api_fixture_id && (
           <div className="mt-3 pt-2 border-t border-border/20">
-            <OddsDisplay odds={odds} loading={oddsLoading} />
+            <OddsDisplay 
+              preMatch={preMatchOdds} 
+              live={liveOdds} 
+              loading={oddsLoading}
+              isLive={isLive}
+            />
           </div>
         )}
 
