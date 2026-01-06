@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useSupabaseGames } from './useSupabaseGames';
 import { useOperationalSettings } from './useOperationalSettings';
 import { OperationalFilters } from '@/components/OperationalFilterBar';
+import { calculateProfit } from '@/utils/profitCalculator';
 
 export type OperationalStatusType = 'NORMAL' | 'ALERTA' | 'PROTEÇÃO' | 'PAUSADO';
 
@@ -12,6 +13,8 @@ interface OperationWithDate {
   stakeValue: number | null;
   methodId: string;
   league: string;
+  operationType: 'Back' | 'Lay' | null;
+  odd: number | null;
 }
 
 interface StreakInfo {
@@ -54,7 +57,9 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
             profit: op.profit ?? null,
             stakeValue: op.stakeValue ?? null,
             methodId: op.methodId,
-            league: game.league
+            league: game.league,
+            operationType: op.operationType ?? null,
+            odd: op.odd ?? null
           });
         }
       });
@@ -140,34 +145,47 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
       }
     }
 
-    // Calculate profits - now using real stake values when available
-    const dailyProfitStakes = todayOps.reduce((acc, op) => {
-      if (op.stakeValue && op.profit) {
-        // Real profit in stakes: profit / stakeValue
-        return acc + (op.profit / op.stakeValue);
+    // Helper function to calculate profit for an operation
+    const getOperationProfit = (op: OperationWithDate): number | null => {
+      // If profit is already calculated, use it
+      if (op.profit !== null) {
+        return op.profit;
       }
-      // Fallback: simple count
-      return acc + (op.result === 'Green' ? 1 : -1);
-    }, 0);
-
-    const periodProfitStakes = periodOps.reduce((acc, op) => {
-      if (op.stakeValue && op.profit) {
-        return acc + (op.profit / op.stakeValue);
+      // If we have all required data, calculate profit in real-time
+      if (op.stakeValue && op.odd && op.operationType && op.result) {
+        return calculateProfit({
+          stakeValue: op.stakeValue,
+          odd: op.odd,
+          operationType: op.operationType,
+          result: op.result,
+          commissionRate: settings.commissionRate
+        });
       }
-      return acc + (op.result === 'Green' ? 1 : -1);
-    }, 0);
+      return null;
+    };
 
-    // Money: use actual profit values if available
-    const dailyProfitMoney = todayOps.reduce((acc, op) => {
-      return acc + (op.profit ?? 0);
-    }, 0);
+    // Helper function to calculate profit in stakes
+    const getProfitInStakes = (op: OperationWithDate): number => {
+      const profit = getOperationProfit(op);
+      if (profit !== null && op.stakeValue) {
+        return profit / op.stakeValue;
+      }
+      // No fallback - if no financial data, return 0
+      return 0;
+    };
 
-    const periodProfitMoney = periodOps.reduce((acc, op) => {
-      return acc + (op.profit ?? 0);
-    }, 0);
+    // Calculate profits using real stake values only
+    const dailyProfitStakes = todayOps.reduce((acc, op) => acc + getProfitInStakes(op), 0);
+    const periodProfitStakes = periodOps.reduce((acc, op) => acc + getProfitInStakes(op), 0);
 
-    // Count operations with/without financial data
-    const operationsWithFinancialData = periodOps.filter(op => op.stakeValue && op.profit).length;
+    // Money: use calculated profit values
+    const dailyProfitMoney = todayOps.reduce((acc, op) => acc + (getOperationProfit(op) ?? 0), 0);
+    const periodProfitMoney = periodOps.reduce((acc, op) => acc + (getOperationProfit(op) ?? 0), 0);
+
+    // Count operations with/without complete financial data (stake + odd + operationType)
+    const operationsWithFinancialData = periodOps.filter(op => 
+      op.stakeValue && op.odd && op.operationType
+    ).length;
     const operationsWithoutFinancialData = periodOps.length - operationsWithFinancialData;
 
     // Calculate peak profit and drawdown for the period
@@ -175,11 +193,7 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
     let peakProfit = 0;
 
     for (const op of sortedPeriodOps) {
-      if (op.stakeValue && op.profit) {
-        runningProfit += op.profit / op.stakeValue;
-      } else {
-        runningProfit += op.result === 'Green' ? 1 : -1;
-      }
+      runningProfit += getProfitInStakes(op);
       peakProfit = Math.max(peakProfit, runningProfit);
     }
 
