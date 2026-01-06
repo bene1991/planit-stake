@@ -165,7 +165,7 @@ export function AttackMomentumChart({
         {/* Momentum bars - absolutely positioned by minute */}
         {visiblePoints.map((point) => {
           const leftPercent = (point.m / totalMinutes) * 100;
-          // Real intensity scaling - no minimum, shows actual variation
+          // Real intensity scaling - limited to 95% max to stay within bounds
           const homeHeightPercent = maxIntensity > 0 ? (point.home / maxIntensity) * 100 : 0;
           const awayHeightPercent = maxIntensity > 0 ? (point.away / maxIntensity) * 100 : 0;
           const hasEvent = eventsByMinute.has(point.m);
@@ -179,22 +179,22 @@ export function AttackMomentumChart({
                 left: `${leftPercent}%`,
                 width: `${barWidthPercent}%`,
                 minWidth: '3px',
-                height: 'calc(100% - 16px)', // Leave space for time markers
+                top: '8px',
+                bottom: '16px',
                 transform: 'translateX(-50%)'
               }}
               onMouseEnter={() => setHoveredMinute(point.m)}
               onMouseLeave={() => setHoveredMinute(null)}
             >
               {/* Home bar (above baseline - grows upward) */}
-              <div className="flex-1 flex items-end justify-center">
+              <div className="h-1/2 flex items-end justify-center overflow-hidden">
                 {point.home > 0 && (
                   <div
                     className={`w-full rounded-t-sm transition-all duration-150 ${
                       isHovered ? 'bg-emerald-400' : hasEvent ? 'bg-emerald-400' : 'bg-emerald-500'
                     }`}
                     style={{ 
-                      height: `${Math.max(homeHeightPercent, 3)}%`,
-                      minHeight: point.home > 0 ? '2px' : '0',
+                      height: `${Math.min(Math.max(homeHeightPercent, 3), 95)}%`,
                       opacity: homeHeightPercent < 20 ? 0.6 : 1,
                     }}
                   />
@@ -202,15 +202,14 @@ export function AttackMomentumChart({
               </div>
 
               {/* Away bar (below baseline - grows downward) */}
-              <div className="flex-1 flex items-start justify-center">
+              <div className="h-1/2 flex items-start justify-center overflow-hidden">
                 {point.away > 0 && (
                   <div
                     className={`w-full rounded-b-sm transition-all duration-150 ${
                       isHovered ? 'bg-violet-400' : hasEvent ? 'bg-violet-400' : 'bg-violet-500'
                     }`}
                     style={{ 
-                      height: `${Math.max(awayHeightPercent, 3)}%`,
-                      minHeight: point.away > 0 ? '2px' : '0',
+                      height: `${Math.min(Math.max(awayHeightPercent, 3), 95)}%`,
                       opacity: awayHeightPercent < 20 ? 0.6 : 1,
                     }}
                   />
