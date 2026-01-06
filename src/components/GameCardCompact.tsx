@@ -10,7 +10,9 @@ import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { MatchStatsOverview } from "@/components/MatchStatsOverview";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
+import { useFixtureOdds } from "@/hooks/useFixtureOdds";
 import { OddsDisplay } from "@/components/OddsDisplay";
+
 interface FixtureData {
   fixture: ApiFootballFixture;
   statistics: any;
@@ -23,7 +25,6 @@ interface GameCardCompactProps {
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
-  onFetchBtts?: (gameId: string, homeTeam: string, awayTeam: string, league: string) => Promise<void>;
   fixtureData?: FixtureData | null;
   lastGlobalRefresh?: number;
 }
@@ -34,11 +35,9 @@ export function GameCardCompact({
   onUpdate, 
   onDelete, 
   onEdit,
-  onFetchBtts,
   fixtureData,
   lastGlobalRefresh,
 }: GameCardCompactProps) {
-  const [fetchingBtts, setFetchingBtts] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
   const lastSyncRef = useRef<number>(0);
   
@@ -51,14 +50,24 @@ export function GameCardCompact({
   // Fetch cached stats and momentum for this fixture
   const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id);
 
+  // Fetch BTTS from API-Football
   const fixtureStatus = fixtureData?.fixture?.fixture?.status?.short;
-  // Usar status da API se disponível, senão usar status do banco como fallback
-  const isLive = fixtureStatus 
+  const isGameLive = fixtureStatus 
     ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) 
     : (game.status === 'Live' || game.status === 'Pending');
+  
+  const { preMatch: oddsData, loading: oddsLoading, refetch: refetchOdds } = useFixtureOdds(
+    game.api_fixture_id,
+    isGameLive
+  );
+
+  const isLive = isGameLive;
   const isHalfTime = fixtureStatus === 'HT';
   const isExtraTime = fixtureStatus === 'ET';
   const isPenalty = fixtureStatus === 'P';
+  
+  // Check if bookmaker is Betfair
+  const isBetfair = oddsData?.bookmakerId ? [6, 15].includes(oddsData.bookmakerId) : false;
   
   const apiElapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
   
@@ -324,26 +333,15 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Odds Section - BTTS only from The Odds API */}
-        {(game.bttsYes || game.api_fixture_id) && (
+        {/* Odds Section - BTTS from API-Football */}
+        {game.api_fixture_id && (
           <div className="mt-3 pt-2 border-t border-border/20">
             <OddsDisplay 
-              savedBtts={{
-                yes: game.bttsYes,
-                no: game.bttsNo,
-                bookmaker: game.bttsBookmaker,
-                isBetfair: game.bttsIsBetfair,
-              }}
-              onFetchBtts={game.api_fixture_id ? async () => {
-                if (!onFetchBtts) return;
-                setFetchingBtts(true);
-                try {
-                  await onFetchBtts(game.id, game.homeTeam, game.awayTeam, game.league);
-                } finally {
-                  setFetchingBtts(false);
-                }
-              } : undefined}
-              fetchingBtts={fetchingBtts}
+              btts={oddsData?.btts}
+              bookmaker={oddsData?.bookmaker}
+              isBetfair={isBetfair}
+              onRefetch={refetchOdds}
+              loading={oddsLoading}
             />
           </div>
         )}

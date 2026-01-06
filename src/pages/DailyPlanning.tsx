@@ -7,7 +7,7 @@ import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
-import { fetchBttsOdds } from "@/hooks/useTheOddsBtts";
+
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
@@ -196,36 +196,8 @@ export default function DailyPlanning() {
     }
   };
 
-  // Fetch BTTS for existing games manually
-  const handleFetchBttsForGame = async (
-    gameId: string,
-    homeTeam: string,
-    awayTeam: string,
-    league: string
-  ) => {
-    try {
-      console.log(`[DailyPlanning] Fetching BTTS for existing game: ${homeTeam} vs ${awayTeam}`);
-      const bttsData = await fetchBttsOdds(homeTeam, awayTeam, league);
-      if (bttsData) {
-        await updateGame(gameId, {
-          bttsYes: bttsData.yes,
-          bttsNo: bttsData.no,
-          bttsBookmaker: bttsData.bookmaker,
-          bttsIsBetfair: bttsData.isBetfair,
-          bttsFetchedAt: new Date().toISOString(),
-        });
-        toast.success(`BTTS atualizado: ${bttsData.isBetfair ? 'Betfair' : bttsData.bookmaker}`);
-        await refreshGames();
-      } else {
-        toast.error('BTTS não disponível para esta liga');
-      }
-    } catch (err) {
-      console.error('[DailyPlanning] Error fetching BTTS:', err);
-      toast.error('Erro ao buscar BTTS');
-    }
-  };
 
-  // Add games from API browser - fetch BTTS once and save permanently
+  // Add games from API browser
   const handleAddFromApi = async (selectedGames: SelectedGame[]) => {
     for (const game of selectedGames) {
       const methodOperations = game.methodIds.map(methodId => ({
@@ -235,18 +207,6 @@ export default function DailyPlanning() {
         exitOdds: undefined,
         result: undefined,
       }));
-
-      // Fetch BTTS odds from The Odds API (only once, will be saved permanently)
-      let bttsData: { yes: number; no: number; bookmaker: string; isBetfair: boolean } | null = null;
-      try {
-        console.log(`[DailyPlanning] Fetching BTTS for ${game.homeTeam} vs ${game.awayTeam}`);
-        bttsData = await fetchBttsOdds(game.homeTeam, game.awayTeam, game.league);
-        if (bttsData) {
-          console.log(`[DailyPlanning] BTTS fetched: Yes ${bttsData.yes}, No ${bttsData.no} (${bttsData.bookmaker})`);
-        }
-      } catch (err) {
-        console.error('[DailyPlanning] Error fetching BTTS:', err);
-      }
 
       await addGame({
         date: game.date,
@@ -258,12 +218,6 @@ export default function DailyPlanning() {
         awayTeamLogo: game.awayTeamLogo,
         methodOperations,
         api_fixture_id: game.fixtureId.toString(),
-        // BTTS odds - saved permanently
-        bttsYes: bttsData?.yes,
-        bttsNo: bttsData?.no,
-        bttsBookmaker: bttsData?.bookmaker,
-        bttsIsBetfair: bttsData?.isBetfair,
-        bttsFetchedAt: bttsData ? new Date().toISOString() : undefined,
       });
     }
     toast.success(`${selectedGames.length} jogo(s) adicionado(s)!`);
@@ -561,7 +515,6 @@ export default function DailyPlanning() {
                       onUpdate={updateGame}
                       onDelete={handleDelete}
                       onEdit={handleEditGameMethods}
-                      onFetchBtts={handleFetchBttsForGame}
                       fixtureData={fixtureData}
                       lastGlobalRefresh={lastGlobalRefresh}
                     />
