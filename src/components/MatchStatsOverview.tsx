@@ -74,6 +74,15 @@ function PossessionRow({ homeValue, awayValue }: { homeValue: number; awayValue:
   );
 }
 
+function hasValidStats(stats: NormalizedStats): boolean {
+  const total = 
+    stats.home.possession + stats.away.possession +
+    stats.home.shots_total + stats.away.shots_total +
+    stats.home.corners + stats.away.corners +
+    stats.home.fouls + stats.away.fouls;
+  return total > 0;
+}
+
 export function MatchStatsOverview({ stats, loading }: MatchStatsOverviewProps) {
   if (loading) {
     return (
@@ -95,6 +104,16 @@ export function MatchStatsOverview({ stats, loading }: MatchStatsOverviewProps) 
 
   if (!stats) {
     return null;
+  }
+
+  if (!hasValidStats(stats)) {
+    return (
+      <div className="bg-muted/30 rounded-lg p-3 text-center">
+        <span className="text-xs text-muted-foreground">
+          Estatísticas disponíveis após o início da partida
+        </span>
+      </div>
+    );
   }
 
   return (
