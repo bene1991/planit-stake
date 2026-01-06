@@ -61,9 +61,10 @@ const preMatchOddsCache = new Map<string, { odds: FixtureOdds | null; timestamp:
 const PREMATCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 function parseMatchOdds(values: Array<{ value: string; odd: string }>): OddsValue | null {
-  const home = values.find(v => v.value === 'Home')?.odd;
-  const draw = values.find(v => v.value === 'Draw')?.odd;
-  const away = values.find(v => v.value === 'Away')?.odd;
+  // Accept both "Home/Draw/Away" and "1/X/2" formats
+  const home = values.find(v => v.value === 'Home' || v.value === '1')?.odd;
+  const draw = values.find(v => v.value === 'Draw' || v.value === 'X')?.odd;
+  const away = values.find(v => v.value === 'Away' || v.value === '2')?.odd;
   
   if (!home || !draw || !away) return null;
   
@@ -193,50 +194,42 @@ export function useFixtureOdds(
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
   
-  const fetchOdds = useCallback(async (live: boolean = false) => {
+  const fetchOdds = useCallback(async () => {
     if (!fixtureId) return;
     
     const cacheKey = `odds-${fixtureId}`;
     
-    // For non-live games, check cache first
-    if (!live) {
-      const cached = preMatchOddsCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < PREMATCH_CACHE_TTL) {
-        setOdds(cached.odds);
-        setLoading(false);
-        return;
-      }
+    // Always check cache first (pre-match odds are valid for the whole match)
+    const cached = preMatchOddsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < PREMATCH_CACHE_TTL) {
+      setOdds(cached.odds);
+      setLoading(false);
+      return;
     }
     
     setLoading(true);
     setError(null);
     
     try {
-      const endpoint = live ? 'odds/live' : 'odds';
-      const params = live 
-        ? { fixture: fixtureId }
-        : { fixture: fixtureId, bookmaker: BETFAIR_IDS[0] }; // Try Betfair first
-      
+      // ALWAYS fetch pre-match odds (odds/live doesn't have 1X2 and BTTS markets)
       const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
-        body: { endpoint, params }
+        body: { endpoint: 'odds', params: { fixture: fixtureId, bookmaker: BETFAIR_IDS[0] } }
       });
       
       if (invokeError) throw new Error(invokeError.message);
       
-      let parsedOdds = extractOddsFromResponse(response?.response || [], PREFERRED_BOOKMAKERS, live);
+      let parsedOdds = extractOddsFromResponse(response?.response || [], PREFERRED_BOOKMAKERS, false);
       
-      // If Betfair not found for pre-match, try without bookmaker filter
-      if (!parsedOdds && !live) {
+      // If Betfair not found, try without bookmaker filter (any bookmaker)
+      if (!parsedOdds) {
         const { data: fallbackResponse } = await supabase.functions.invoke('api-football', {
           body: { endpoint: 'odds', params: { fixture: fixtureId } }
         });
         parsedOdds = extractOddsFromResponse(fallbackResponse?.response || [], PREFERRED_BOOKMAKERS, false);
       }
       
-      // Cache pre-match odds
-      if (!live) {
-        preMatchOddsCache.set(cacheKey, { odds: parsedOdds, timestamp: Date.now() });
-      }
+      // Cache odds
+      preMatchOddsCache.set(cacheKey, { odds: parsedOdds, timestamp: Date.now() });
       
       setOdds(parsedOdds);
     } catch (err) {
@@ -247,23 +240,14 @@ export function useFixtureOdds(
     }
   }, [fixtureId]);
   
-  // Initial fetch
+  // Initial fetch (only once per fixture)
   useEffect(() => {
     if (!fixtureId || fetchedRef.current) return;
     fetchedRef.current = true;
-    fetchOdds(isGameLive);
-  }, [fixtureId, isGameLive, fetchOdds]);
+    fetchOdds();
+  }, [fixtureId, fetchOdds]);
   
-  // Periodic refresh for live games
-  useEffect(() => {
-    if (!isGameLive || !fixtureId) return;
-    
-    const interval = setInterval(() => {
-      fetchOdds(true);
-    }, refetchInterval);
-    
-    return () => clearInterval(interval);
-  }, [isGameLive, fixtureId, refetchInterval, fetchOdds]);
+  // No periodic refresh needed - pre-match odds don't change during live game
   
-  return { odds, loading, error, refetch: () => fetchOdds(isGameLive) };
+  return { odds, loading, error, refetch: fetchOdds };
 }

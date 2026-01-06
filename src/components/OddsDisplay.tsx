@@ -51,15 +51,10 @@ export function OddsDisplay({ odds, loading }: OddsDisplayProps) {
   
   return (
     <div className="space-y-2">
-      {/* Header with bookmaker */}
+      {/* Header with bookmaker - always pre-match odds */}
       <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
         <TrendingUp className="h-3 w-3" />
-        <span>Odds ({odds.bookmaker})</span>
-        {odds.isLive && (
-          <span className="px-1 py-0.5 text-[8px] font-bold bg-primary/20 text-primary rounded">
-            LIVE
-          </span>
-        )}
+        <span>Odds Pré-jogo ({odds.bookmaker})</span>
       </div>
       
       <div className="flex flex-wrap gap-3">
