@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { NormalizedStats, MomentumPoint } from '@/hooks/useFixtureCache';
+import { NormalizedStats, MomentumPoint, KeyEvent } from '@/hooks/useFixtureCache';
 import { AttackMomentumChart } from './AttackMomentumChart';
 
 interface MatchDetailsAccordionProps {
@@ -11,6 +11,7 @@ interface MatchDetailsAccordionProps {
   homeTeam: string;
   awayTeam: string;
   loading?: boolean;
+  keyEvents?: KeyEvent[];
 }
 
 interface StatRowProps {
@@ -48,7 +49,8 @@ export function MatchDetailsAccordion({
   minuteNow,
   homeTeam,
   awayTeam,
-  loading 
+  loading,
+  keyEvents = [],
 }: MatchDetailsAccordionProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -106,6 +108,7 @@ export function MatchDetailsAccordion({
                     minuteNow={minuteNow}
                     homeTeam={homeTeam}
                     awayTeam={awayTeam}
+                    keyEvents={keyEvents}
                   />
                 </div>
               )}
