@@ -166,7 +166,7 @@ serve(async (req) => {
       // Step 2: Get BTTS odds for this event
       const oddsUrl = new URL(`https://api.the-odds-api.com/v4/sports/${resolvedSportKey}/events/${matchingEvent.id}/odds`);
       oddsUrl.searchParams.set('apiKey', apiKey);
-      oddsUrl.searchParams.set('regions', 'uk,eu');
+      oddsUrl.searchParams.set('regions', 'uk,uk2,eu'); // uk2 includes Betfair Exchange
       oddsUrl.searchParams.set('markets', 'btts');
       oddsUrl.searchParams.set('oddsFormat', 'decimal');
       
@@ -186,7 +186,7 @@ serve(async (req) => {
       
       console.log(`[the-odds-api] Credits remaining: ${creditsRemaining}, used: ${creditsUsed}`);
       
-      // Extract BTTS odds - prioritize Betfair Exchange
+      // Extract BTTS odds - prioritize Exchanges (Betfair > Smarkets > Matchbook)
       const bookmakers = oddsData.bookmakers || [];
       
       if (bookmakers.length === 0) {
@@ -200,14 +200,23 @@ serve(async (req) => {
         });
       }
       
-      // Sort bookmakers to prioritize Betfair
+      // Priority order: Betfair Exchange first, then other exchanges, then bookmakers
+      const exchangeKeys = ['betfair_ex_uk', 'betfair_ex_eu', 'betfair', 'smarkets', 'matchbook'];
+      
       const sortedBookmakers = bookmakers.sort((a: any, b: any) => {
-        const aIsBetfair = a.key.toLowerCase().includes('betfair');
-        const bIsBetfair = b.key.toLowerCase().includes('betfair');
-        if (aIsBetfair && !bIsBetfair) return -1;
-        if (!aIsBetfair && bIsBetfair) return 1;
-        return 0;
+        const aKey = a.key.toLowerCase();
+        const bKey = b.key.toLowerCase();
+        
+        const aIndex = exchangeKeys.findIndex(ex => aKey.includes(ex));
+        const bIndex = exchangeKeys.findIndex(ex => bKey.includes(ex));
+        
+        const aPriority = aIndex >= 0 ? aIndex : 999;
+        const bPriority = bIndex >= 0 ? bIndex : 999;
+        
+        return aPriority - bPriority;
       });
+      
+      console.log(`[the-odds-api] Bookmakers available: ${sortedBookmakers.map((b: any) => b.key).join(', ')}`);
       
       const selectedBookmaker = sortedBookmakers[0];
       const bttsMarket = selectedBookmaker.markets?.find((m: any) => m.key === 'btts');
@@ -226,12 +235,17 @@ serve(async (req) => {
       const yesOutcome = bttsMarket.outcomes.find((o: any) => o.name === 'Yes');
       const noOutcome = bttsMarket.outcomes.find((o: any) => o.name === 'No');
       
+      const bookmakerKey = selectedBookmaker.key.toLowerCase();
+      const isBetfair = bookmakerKey.includes('betfair');
+      const isExchange = exchangeKeys.some(ex => bookmakerKey.includes(ex));
+      
       const bttsResult = {
         yes: yesOutcome?.price || null,
         no: noOutcome?.price || null,
         bookmaker: selectedBookmaker.title,
         bookmakerKey: selectedBookmaker.key,
-        isBetfair: selectedBookmaker.key.toLowerCase().includes('betfair'),
+        isBetfair,
+        isExchange,
         lastUpdate: bttsMarket.last_update,
         eventId: matchingEvent.id,
         eventHomeTeam: matchingEvent.home_team,

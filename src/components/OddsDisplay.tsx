@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Check, AlertTriangle, RefreshCw } from "lucide-react";
+import { Check, AlertTriangle, RefreshCw, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface OddsDisplayProps {
@@ -9,6 +9,7 @@ interface OddsDisplayProps {
     no?: number;
     bookmaker?: string;
     isBetfair?: boolean;
+    isExchange?: boolean;
   };
   onFetchBtts?: () => void;
   fetchingBtts?: boolean;
@@ -36,6 +37,41 @@ function OddBadge({
   );
 }
 
+function BookmakerIndicator({ 
+  isBetfair, 
+  isExchange, 
+  bookmaker 
+}: { 
+  isBetfair?: boolean; 
+  isExchange?: boolean; 
+  bookmaker?: string;
+}) {
+  if (isBetfair) {
+    return (
+      <span className="text-[8px] text-emerald-400 flex items-center gap-0.5">
+        <Check className="h-2.5 w-2.5" />
+        Betfair
+      </span>
+    );
+  }
+  
+  if (isExchange) {
+    return (
+      <span className="text-[8px] text-blue-400 flex items-center gap-0.5">
+        <Zap className="h-2.5 w-2.5" />
+        {bookmaker || 'Exchange'}
+      </span>
+    );
+  }
+  
+  return (
+    <span className="text-[8px] text-yellow-400 flex items-center gap-0.5">
+      <AlertTriangle className="h-2.5 w-2.5" />
+      {bookmaker}
+    </span>
+  );
+}
+
 export function OddsDisplay({ savedBtts, onFetchBtts, fetchingBtts }: OddsDisplayProps) {
   const hasSavedBtts = savedBtts?.yes && savedBtts?.no;
   
@@ -51,17 +87,11 @@ export function OddsDisplay({ savedBtts, onFetchBtts, fetchingBtts }: OddsDispla
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
-            {savedBtts.isBetfair ? (
-              <span className="text-[8px] text-emerald-400 flex items-center gap-0.5">
-                <Check className="h-2.5 w-2.5" />
-                Betfair
-              </span>
-            ) : (
-              <span className="text-[8px] text-yellow-400 flex items-center gap-0.5">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                {savedBtts.bookmaker}
-              </span>
-            )}
+            <BookmakerIndicator 
+              isBetfair={savedBtts.isBetfair} 
+              isExchange={savedBtts.isExchange}
+              bookmaker={savedBtts.bookmaker}
+            />
             {/* Refresh button for existing BTTS */}
             {onFetchBtts && (
               <Button
