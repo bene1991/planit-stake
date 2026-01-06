@@ -25,8 +25,9 @@ function StatRow({ label, homeValue, awayValue }: StatRowProps) {
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-6 text-right font-medium">{homeValue}</span>
-      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden flex">
+      <span className="w-20 text-muted-foreground text-left shrink-0">{label}</span>
+      <span className="w-5 text-right font-medium shrink-0">{homeValue}</span>
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden flex min-w-0">
         <div 
           className="h-full bg-emerald-500 transition-all duration-300"
           style={{ width: `${homePercent}%` }}
@@ -36,8 +37,7 @@ function StatRow({ label, homeValue, awayValue }: StatRowProps) {
           style={{ width: `${100 - homePercent}%` }}
         />
       </div>
-      <span className="w-6 text-left font-medium">{awayValue}</span>
-      <span className="w-20 text-muted-foreground truncate">{label}</span>
+      <span className="w-5 text-left font-medium shrink-0">{awayValue}</span>
     </div>
   );
 }
@@ -89,12 +89,12 @@ export function MatchDetailsAccordion({
               {stats && (
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium text-muted-foreground mb-2">Estatísticas Detalhadas</h4>
-                  <StatRow label="Chutes no Gol" homeValue={stats.home.shots_on} awayValue={stats.away.shots_on} />
-                  <StatRow label="Chutes p/ Fora" homeValue={stats.home.shots_off} awayValue={stats.away.shots_off} />
+                  <StatRow label="Chutes Gol" homeValue={stats.home.shots_on} awayValue={stats.away.shots_on} />
+                  <StatRow label="Chutes Fora" homeValue={stats.home.shots_off} awayValue={stats.away.shots_off} />
                   <StatRow label="Faltas" homeValue={stats.home.fouls} awayValue={stats.away.fouls} />
-                  <StatRow label="Impedimentos" homeValue={stats.home.offsides} awayValue={stats.away.offsides} />
-                  <StatRow label="Cartões Am." homeValue={stats.home.yellow} awayValue={stats.away.yellow} />
-                  <StatRow label="Cartões Verm." homeValue={stats.home.red} awayValue={stats.away.red} />
+                  <StatRow label="Impedim." homeValue={stats.home.offsides} awayValue={stats.away.offsides} />
+                  <StatRow label="Amarelos" homeValue={stats.home.yellow} awayValue={stats.away.yellow} />
+                  <StatRow label="Vermelhos" homeValue={stats.home.red} awayValue={stats.away.red} />
                 </div>
               )}
 
