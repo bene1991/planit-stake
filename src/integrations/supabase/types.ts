@@ -151,6 +151,42 @@ export type Database = {
           },
         ]
       }
+      fixture_cache: {
+        Row: {
+          events_raw: Json | null
+          fixture_id: number
+          id: string
+          minute_now: number | null
+          momentum_series: Json | null
+          normalized_stats: Json | null
+          stats_raw: Json | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          events_raw?: Json | null
+          fixture_id: number
+          id?: string
+          minute_now?: number | null
+          momentum_series?: Json | null
+          normalized_stats?: Json | null
+          stats_raw?: Json | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          events_raw?: Json | null
+          fixture_id?: number
+          id?: string
+          minute_now?: number | null
+          momentum_series?: Json | null
+          normalized_stats?: Json | null
+          stats_raw?: Json | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       games: {
         Row: {
           api_fixture_id: string | null
