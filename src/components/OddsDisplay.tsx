@@ -1,6 +1,6 @@
 import { PreMatchOdds, LiveOdds } from "@/hooks/useFixtureOdds";
 import { cn } from "@/lib/utils";
-import { TrendingUp, Radio, Target, CornerDownRight, Goal } from "lucide-react";
+import { TrendingUp, Radio, Target, CornerDownRight, Goal, Check, AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -9,6 +9,13 @@ interface OddsDisplayProps {
   live?: LiveOdds | null;
   loading?: boolean;
   isLive?: boolean;
+  // BTTS from database (fetched once at planning time from The Odds API)
+  savedBtts?: {
+    yes?: number;
+    no?: number;
+    bookmaker?: string;
+    isBetfair?: boolean;
+  };
 }
 
 function OddBadge({ 
@@ -62,7 +69,7 @@ function OverUnderBadge({
   );
 }
 
-export function OddsDisplay({ preMatch, live, loading, isLive }: OddsDisplayProps) {
+export function OddsDisplay({ preMatch, live, loading, isLive, savedBtts }: OddsDisplayProps) {
   if (loading) {
     return (
       <div className="animate-pulse flex gap-2">
@@ -74,8 +81,9 @@ export function OddsDisplay({ preMatch, live, loading, isLive }: OddsDisplayProp
   
   const hasPreMatch = preMatch && (preMatch.matchOdds || preMatch.btts || preMatch.overUnder25);
   const hasLive = live && (live.goalsOU || live.cornersOU || live.nextGoal);
+  const hasSavedBtts = savedBtts?.yes && savedBtts?.no;
   
-  if (!hasPreMatch && !hasLive) {
+  if (!hasPreMatch && !hasLive && !hasSavedBtts) {
     return null;
   }
   
@@ -120,8 +128,29 @@ export function OddsDisplay({ preMatch, live, loading, isLive }: OddsDisplayProp
               </div>
             )}
             
-            {/* BTTS */}
-            {preMatch.btts && (
+            {/* BTTS - prioritize saved BTTS from The Odds API */}
+            {hasSavedBtts ? (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
+                  {savedBtts.isBetfair ? (
+                    <span className="text-[8px] text-emerald-400 flex items-center gap-0.5">
+                      <Check className="h-2.5 w-2.5" />
+                      Betfair
+                    </span>
+                  ) : (
+                    <span className="text-[8px] text-yellow-400 flex items-center gap-0.5">
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                      {savedBtts.bookmaker}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <OddBadge value={savedBtts.yes} label="Sim" />
+                  <OddBadge value={savedBtts.no} label="Não" />
+                </div>
+              </div>
+            ) : preMatch?.btts && (
               <div className="flex flex-col gap-1">
                 <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
                 <div className="flex gap-1">

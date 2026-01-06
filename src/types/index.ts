@@ -45,6 +45,12 @@ export interface Game {
   goalEvents?: GoalEvent[];
   finalScoreHome?: number;
   finalScoreAway?: number;
+  // BTTS odds from The Odds API (fetched once at planning time)
+  bttsYes?: number;
+  bttsNo?: number;
+  bttsBookmaker?: string;
+  bttsIsBetfair?: boolean;
+  bttsFetchedAt?: string;
 }
 
 export interface Estrategia {

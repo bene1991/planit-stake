@@ -39,6 +39,12 @@ export interface Game {
   goalEvents?: GoalEvent[];
   finalScoreHome?: number;
   finalScoreAway?: number;
+  // BTTS odds from The Odds API (fetched once at planning time)
+  bttsYes?: number;
+  bttsNo?: number;
+  bttsBookmaker?: string;
+  bttsIsBetfair?: boolean;
+  bttsFetchedAt?: string;
 }
 
 export const useSupabaseGames = () => {
@@ -108,6 +114,12 @@ export const useSupabaseGames = () => {
             finalScoreHome: game.final_score_home ?? undefined,
             finalScoreAway: game.final_score_away ?? undefined,
             methodOperations,
+            // BTTS odds from The Odds API
+            bttsYes: game.btts_yes ? Number(game.btts_yes) : undefined,
+            bttsNo: game.btts_no ? Number(game.btts_no) : undefined,
+            bttsBookmaker: game.btts_bookmaker || undefined,
+            bttsIsBetfair: game.btts_is_betfair || false,
+            bttsFetchedAt: game.btts_fetched_at || undefined,
           };
         })
       );
@@ -133,6 +145,13 @@ export const useSupabaseGames = () => {
         away_team_logo: game.awayTeamLogo,
         notes: game.notes,
         status: game.status || 'Not Started',
+        api_fixture_id: game.api_fixture_id,
+        // BTTS odds from The Odds API
+        btts_yes: game.bttsYes,
+        btts_no: game.bttsNo,
+        btts_bookmaker: game.bttsBookmaker,
+        btts_is_betfair: game.bttsIsBetfair,
+        btts_fetched_at: game.bttsFetchedAt,
       })
       .select()
       .single();
