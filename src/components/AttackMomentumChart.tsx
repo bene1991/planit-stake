@@ -31,10 +31,24 @@ export function AttackMomentumChart({
     return Math.min((minuteNow / totalMinutes) * 100, 100);
   }, [momentumSeries, minuteNow]);
 
+  // Check if there's any actual momentum data (any non-zero values)
+  const hasAnyMomentum = useMemo(() => {
+    if (!momentumSeries?.length) return false;
+    return momentumSeries.some(p => p.home > 0 || p.away > 0);
+  }, [momentumSeries]);
+
   if (!momentumSeries?.length) {
     return (
       <div className="h-24 flex items-center justify-center text-muted-foreground text-sm">
         Sem dados de momentum
+      </div>
+    );
+  }
+
+  if (!hasAnyMomentum) {
+    return (
+      <div className="h-24 flex items-center justify-center text-muted-foreground text-sm">
+        Nenhum evento registrado ainda
       </div>
     );
   }
@@ -71,19 +85,19 @@ export function AttackMomentumChart({
                 className="flex flex-col items-center justify-center h-full group"
                 style={{ width: barWidth }}
               >
-                {/* Home bar (above baseline) */}
+              {/* Home bar (above baseline) */}
                 <div className="flex-1 flex items-end justify-center">
                   <div
-                    className="w-full max-w-[3px] bg-emerald-500 rounded-t-sm transition-all duration-300 group-hover:bg-emerald-400"
-                    style={{ height: `${homeHeight}%` }}
+                    className="w-full max-w-[4px] bg-emerald-500 rounded-t-sm transition-all duration-300 group-hover:bg-emerald-400"
+                    style={{ height: `${Math.max(homeHeight, point.home > 0 ? 8 : 0)}%` }}
                   />
                 </div>
 
                 {/* Away bar (below baseline) */}
                 <div className="flex-1 flex items-start justify-center">
                   <div
-                    className="w-full max-w-[3px] bg-violet-500 rounded-b-sm transition-all duration-300 group-hover:bg-violet-400"
-                    style={{ height: `${awayHeight}%` }}
+                    className="w-full max-w-[4px] bg-violet-500 rounded-b-sm transition-all duration-300 group-hover:bg-violet-400"
+                    style={{ height: `${Math.max(awayHeight, point.away > 0 ? 8 : 0)}%` }}
                   />
                 </div>
 

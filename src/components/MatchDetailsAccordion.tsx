@@ -28,11 +28,11 @@ function StatRow({ label, homeValue, awayValue }: StatRowProps) {
       <span className="w-6 text-right font-medium">{homeValue}</span>
       <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden flex">
         <div 
-          className="h-full bg-primary transition-all duration-300"
+          className="h-full bg-emerald-500 transition-all duration-300"
           style={{ width: `${homePercent}%` }}
         />
         <div 
-          className="h-full bg-muted-foreground/40 transition-all duration-300"
+          className="h-full bg-violet-500 transition-all duration-300"
           style={{ width: `${100 - homePercent}%` }}
         />
       </div>
@@ -89,12 +89,12 @@ export function MatchDetailsAccordion({
               {stats && (
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium text-muted-foreground mb-2">Estatísticas Detalhadas</h4>
+                  <StatRow label="Chutes no Gol" homeValue={stats.home.shots_on} awayValue={stats.away.shots_on} />
+                  <StatRow label="Chutes p/ Fora" homeValue={stats.home.shots_off} awayValue={stats.away.shots_off} />
                   <StatRow label="Faltas" homeValue={stats.home.fouls} awayValue={stats.away.fouls} />
                   <StatRow label="Impedimentos" homeValue={stats.home.offsides} awayValue={stats.away.offsides} />
-                  <StatRow label="Chutes Off" homeValue={stats.home.shots_off} awayValue={stats.away.shots_off} />
-                  <StatRow label="Bloqueados" homeValue={stats.home.shots_blocked} awayValue={stats.away.shots_blocked} />
-                  <StatRow label="Cartões Amarelos" homeValue={stats.home.yellow} awayValue={stats.away.yellow} />
-                  <StatRow label="Cartões Vermelhos" homeValue={stats.home.red} awayValue={stats.away.red} />
+                  <StatRow label="Cartões Am." homeValue={stats.home.yellow} awayValue={stats.away.yellow} />
+                  <StatRow label="Cartões Verm." homeValue={stats.home.red} awayValue={stats.away.red} />
                 </div>
               )}
 
