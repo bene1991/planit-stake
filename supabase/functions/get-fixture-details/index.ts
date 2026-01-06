@@ -75,16 +75,27 @@ const STAT_MAPPING: Record<string, keyof StatValues> = {
   'Offsides': 'offsides',
 };
 
-// Event weights for momentum calculation (increased for more intensity variation)
+// Event weights for momentum calculation (expanded for richer momentum)
 const EVENT_WEIGHTS: Record<string, number> = {
-  'Goal': 15,
-  'Normal Goal': 15,
-  'Penalty': 15,
-  'Own Goal': 15,
-  'Shot on Goal': 6,
-  'Shot': 3,
-  'Corner': 3,
-  'Red Card': 6,
+  // High-impact offensive events
+  'Goal': 20,
+  'Normal Goal': 20,
+  'Penalty': 20,
+  'Own Goal': 20,
+  'Shot on Goal': 8,
+  'Shot': 4,
+  'Corner': 4,
+  
+  // Medium pressure events
+  'Foul': 2,            // Suffering a foul indicates pressure
+  'Offside': 2,         // Offside indicates attack attempt
+  
+  // Events that benefit opponent
+  'Red Card': 10,
+  'Yellow Card': 1,
+  
+  // Defensive events (benefit the attacking team)
+  'Save': 3,            // Goalkeeper save indicates opponent pressure
 };
 
 function normalizeStatValue(value: string | number | null): number {
@@ -163,20 +174,49 @@ function getEventWeight(type: string, detail: string): number {
     return EVENT_WEIGHTS['Corner'];
   }
 
-  // Check for red cards
-  if (type === 'Card' && detail?.toLowerCase().includes('red')) {
-    return EVENT_WEIGHTS['Red Card'];
+  // Check for cards
+  if (type === 'Card') {
+    if (detail?.toLowerCase().includes('red')) return EVENT_WEIGHTS['Red Card'];
+    if (detail?.toLowerCase().includes('yellow')) return EVENT_WEIGHTS['Yellow Card'];
+  }
+
+  // Fouls - team that suffered the foul was attacking
+  if (type === 'Foul') return EVENT_WEIGHTS['Foul'];
+  
+  // Offsides - indicates attack attempt
+  if (type === 'Offside' || type === 'offside') return EVENT_WEIGHTS['Offside'];
+  
+  // Goalkeeper saves - attacking team forced the save
+  if (type === 'Save' || detail?.toLowerCase().includes('save')) {
+    return EVENT_WEIGHTS['Save'];
   }
 
   return EVENT_WEIGHTS[type] || 0;
 }
 
-function calculateMomentum(events: ApiEvent[], homeTeamId: number, maxMinute: number): MomentumPoint[] {
+function calculateMomentum(
+  events: ApiEvent[], 
+  homeTeamId: number, 
+  maxMinute: number,
+  stats: NormalizedStats
+): MomentumPoint[] {
   const totalMinutes = Math.max(maxMinute, 45); // At least 45 minutes
   const rawMomentum: { home: number[]; away: number[] } = {
     home: new Array(totalMinutes + 1).fill(0),
     away: new Array(totalMinutes + 1).fill(0),
   };
+
+  // NEW: Baseline shots per minute - distributes constant pressure
+  const shotsPerMinute = {
+    home: maxMinute > 0 ? (stats.home.shots_total / maxMinute) * 1.5 : 0,
+    away: maxMinute > 0 ? (stats.away.shots_total / maxMinute) * 1.5 : 0,
+  };
+
+  // Apply baseline to each played minute
+  for (let m = 1; m <= maxMinute; m++) {
+    rawMomentum.home[m] += shotsPerMinute.home;
+    rawMomentum.away[m] += shotsPerMinute.away;
+  }
 
   // Accumulate event weights by minute
   for (const event of events) {
@@ -195,6 +235,13 @@ function calculateMomentum(events: ApiEvent[], homeTeamId: number, maxMinute: nu
       } else {
         rawMomentum.home[minute] += weight;
       }
+    } else if (event.type === 'Save' || event.detail?.toLowerCase().includes('save')) {
+      // Saves benefit the attacking team (opponent forced the save)
+      if (isHome) {
+        rawMomentum.away[minute] += weight;
+      } else {
+        rawMomentum.home[minute] += weight;
+      }
     } else {
       if (isHome) {
         rawMomentum.home[minute] += weight;
@@ -204,15 +251,15 @@ function calculateMomentum(events: ApiEvent[], homeTeamId: number, maxMinute: nu
     }
   }
 
-  // Apply 3-minute moving average smoothing (reduced from 5 to preserve intensity peaks)
+  // Apply 5-minute moving average smoothing (increased from 3 for smoother curves)
   const smoothed: MomentumPoint[] = [];
   for (let m = 1; m <= totalMinutes; m++) {
     let homeSum = 0;
     let awaySum = 0;
     let count = 0;
 
-    // Reduced window: m-1 to m+1 (3 minutes)
-    for (let i = Math.max(1, m - 1); i <= Math.min(totalMinutes, m + 1); i++) {
+    // 5-minute window: m-2 to m+2
+    for (let i = Math.max(1, m - 2); i <= Math.min(totalMinutes, m + 2); i++) {
       homeSum += rawMomentum.home[i];
       awaySum += rawMomentum.away[i];
       count++;
@@ -390,7 +437,7 @@ serve(async (req) => {
 
     // Process events, calculate momentum, and extract key events
     const eventsRaw = eventsData.response || [];
-    const momentumSeries = calculateMomentum(eventsRaw, homeTeamId, minuteNow);
+    const momentumSeries = calculateMomentum(eventsRaw, homeTeamId, minuteNow, normalizedStats);
     const keyEvents = extractKeyEvents(eventsRaw, homeTeamId);
 
     // Upsert to cache

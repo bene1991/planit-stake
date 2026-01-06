@@ -219,51 +219,7 @@ export function AttackMomentumChart({
           );
         })}
 
-        {/* Hover tooltip - dynamic positioning based on chart half */}
-        {hoveredInfo && hoveredMinute !== null && (
-          <div 
-            className="absolute z-30 pointer-events-none"
-            style={{ 
-              left: `${(hoveredMinute / totalMinutes) * 100}%`,
-              top: '50%',
-              transform: hoveredMinute > totalMinutes / 2 
-                ? 'translate(-100%, -50%)' 
-                : 'translate(8px, -50%)'
-            }}
-          >
-            <div className="bg-popover text-popover-foreground text-[10px] px-2.5 py-1.5 rounded shadow-lg border border-border min-w-[120px]">
-              <div className="font-bold text-center mb-1">{hoveredMinute}'</div>
-              {hoveredInfo.point && (
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm bg-emerald-500 flex-shrink-0" />
-                    <span className="truncate">{homeTeam}:</span>
-                    <span className="font-medium ml-auto">{hoveredInfo.point.home.toFixed(1)}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-sm bg-violet-500 flex-shrink-0" />
-                    <span className="truncate">{awayTeam}:</span>
-                    <span className="font-medium ml-auto">{hoveredInfo.point.away.toFixed(1)}</span>
-                  </div>
-                </div>
-              )}
-              {hoveredInfo.events.length > 0 && (
-                <div className="mt-1 pt-1 border-t border-border/50 space-y-0.5">
-                  {hoveredInfo.events.map((e, i) => (
-                    <div key={i} className="text-[9px] flex items-center gap-1">
-                      {e.type === 'goal' && <span>⚽</span>}
-                      {e.type === 'red_card' && <span>🟥</span>}
-                      {e.player && <span className="font-medium truncate">{e.player}</span>}
-                      <span className="text-muted-foreground ml-auto">
-                        ({e.team === 'home' ? homeTeam : awayTeam})
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Tooltip removed - info area now below the chart */}
 
         {/* Current minute indicator (red line with pulse animation) */}
         {minuteNow > 0 && (
@@ -288,6 +244,50 @@ export function AttackMomentumChart({
           <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>45'</span>
           <span className="ml-auto">{totalMinutes > 90 ? '120' : '90'}'</span>
         </div>
+      </div>
+
+      {/* Info display area - OUTSIDE the chart */}
+      <div className="min-h-[44px] bg-muted/30 rounded-md border border-border/30 px-3 py-2">
+        {hoveredMinute !== null && hoveredInfo ? (
+          <div className="space-y-1">
+            {/* Header with minute and scores */}
+            <div className="flex items-center justify-between text-xs">
+              <div className="font-bold text-sm bg-primary/20 px-2 py-0.5 rounded">
+                {hoveredMinute}'
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+                  <span className="text-muted-foreground">{homeTeam}:</span>
+                  <span className="font-semibold">{hoveredInfo.point?.home.toFixed(1) || '0.0'}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm bg-violet-500" />
+                  <span className="text-muted-foreground">{awayTeam}:</span>
+                  <span className="font-semibold">{hoveredInfo.point?.away.toFixed(1) || '0.0'}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Events for this minute */}
+            {hoveredInfo.events.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1 border-t border-border/30">
+                {hoveredInfo.events.map((e, i) => (
+                  <span key={i} className="text-[10px] flex items-center gap-1 bg-muted/50 px-2 py-0.5 rounded">
+                    {e.type === 'goal' && '⚽'}
+                    {e.type === 'red_card' && '🟥'}
+                    {e.player && <span className="font-medium">{e.player}</span>}
+                    <span className="text-muted-foreground">({e.team === 'home' ? homeTeam : awayTeam})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground text-center py-1">
+            Passe o mouse sobre uma barra para ver detalhes
+          </div>
+        )}
       </div>
     </div>
   );
