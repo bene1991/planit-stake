@@ -21,12 +21,12 @@ export function AttackMomentumChart({
   // Total minutes for the match (90 or 120 for extra time)
   const totalMinutes = minuteNow > 90 ? 120 : 90;
   
-  // Time markers based on total minutes
+  // Simplified time markers - only key intervals
   const timeMarkers = useMemo(() => {
     if (totalMinutes > 90) {
-      return [0, 15, 30, 45, 60, 75, 90, 105, 120];
+      return [0, 45, 90, 120];
     }
-    return [0, 15, 30, 45, 60, 75, 90];
+    return [0, 45, 90];
   }, [totalMinutes]);
 
   // Filter points to show only up to current minute (no future bars)
@@ -128,11 +128,20 @@ export function AttackMomentumChart({
                 style={{ 
                   left: `${leftPercent}%`,
                   transform: 'translateX(-50%)',
-                  top: isHome ? '2px' : 'auto',
-                  bottom: isHome ? 'auto' : '14px',
+                  top: isHome ? '4px' : 'auto',
+                  bottom: isHome ? 'auto' : '16px',
                 }}
               >
-                <span className="text-[10px]">⚽</span>
+                <span className="text-xs drop-shadow-sm">⚽</span>
+                {/* Vertical line marking the goal minute */}
+                <div 
+                  className="absolute w-px bg-yellow-400/50" 
+                  style={{
+                    height: '50%',
+                    top: isHome ? '14px' : 'auto',
+                    bottom: isHome ? 'auto' : '14px'
+                  }}
+                />
               </div>
             );
           })}
@@ -259,21 +268,11 @@ export function AttackMomentumChart({
           </div>
         )}
 
-        {/* Time markers at bottom */}
-        <div className="absolute bottom-0.5 left-0 right-0 flex justify-between px-1 pointer-events-none z-10">
-          {timeMarkers.map((minute) => (
-            <span 
-              key={minute}
-              className="text-[8px] text-muted-foreground/70 font-medium"
-              style={{ 
-                position: 'absolute',
-                left: `${(minute / totalMinutes) * 100}%`,
-                transform: 'translateX(-50%)'
-              }}
-            >
-              {minute}'
-            </span>
-          ))}
+        {/* Time markers at bottom - simplified */}
+        <div className="absolute bottom-0 left-0 right-0 flex justify-between px-1 pointer-events-none z-10 text-[7px] text-muted-foreground/60">
+          <span>0'</span>
+          <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>45'</span>
+          <span className="ml-auto">{totalMinutes > 90 ? '120' : '90'}'</span>
         </div>
       </div>
     </div>
