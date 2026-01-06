@@ -39,6 +39,14 @@ interface MomentumPoint {
   away: number;
 }
 
+interface KeyEvent {
+  minute: number;
+  team: 'home' | 'away';
+  type: 'goal' | 'shot_on' | 'red_card';
+  player?: string;
+  detail?: string;
+}
+
 interface ApiEvent {
   time: { elapsed: number; extra?: number };
   team: { id: number; name: string };
@@ -67,16 +75,16 @@ const STAT_MAPPING: Record<string, keyof StatValues> = {
   'Offsides': 'offsides',
 };
 
-// Event weights for momentum calculation
+// Event weights for momentum calculation (increased for more intensity variation)
 const EVENT_WEIGHTS: Record<string, number> = {
-  'Goal': 8,
-  'Normal Goal': 8,
-  'Penalty': 8,
-  'Own Goal': 8,
-  'Shot on Goal': 4,
-  'Shot': 2,
-  'Corner': 2,
-  'Red Card': 3,
+  'Goal': 15,
+  'Normal Goal': 15,
+  'Penalty': 15,
+  'Own Goal': 15,
+  'Shot on Goal': 6,
+  'Shot': 3,
+  'Corner': 3,
+  'Red Card': 6,
 };
 
 function normalizeStatValue(value: string | number | null): number {
@@ -196,14 +204,15 @@ function calculateMomentum(events: ApiEvent[], homeTeamId: number, maxMinute: nu
     }
   }
 
-  // Apply 5-minute moving average smoothing
+  // Apply 3-minute moving average smoothing (reduced from 5 to preserve intensity peaks)
   const smoothed: MomentumPoint[] = [];
   for (let m = 1; m <= totalMinutes; m++) {
     let homeSum = 0;
     let awaySum = 0;
     let count = 0;
 
-    for (let i = Math.max(1, m - 2); i <= Math.min(totalMinutes, m + 2); i++) {
+    // Reduced window: m-1 to m+1 (3 minutes)
+    for (let i = Math.max(1, m - 1); i <= Math.min(totalMinutes, m + 1); i++) {
       homeSum += rawMomentum.home[i];
       awaySum += rawMomentum.away[i];
       count++;
@@ -217,6 +226,41 @@ function calculateMomentum(events: ApiEvent[], homeTeamId: number, maxMinute: nu
   }
 
   return smoothed;
+}
+
+function extractKeyEvents(events: ApiEvent[], homeTeamId: number): KeyEvent[] {
+  const keyEvents: KeyEvent[] = [];
+
+  for (const event of events) {
+    const minute = event.time?.elapsed || 0;
+    if (minute < 1) continue;
+
+    const isHome = event.team?.id === homeTeamId;
+    const team: 'home' | 'away' = isHome ? 'home' : 'away';
+
+    // Goals
+    if (event.type === 'Goal') {
+      keyEvents.push({
+        minute,
+        team,
+        type: 'goal',
+        player: event.player?.name,
+        detail: event.detail,
+      });
+    }
+
+    // Red cards
+    if (event.type === 'Card' && event.detail?.toLowerCase().includes('red')) {
+      keyEvents.push({
+        minute,
+        team,
+        type: 'red_card',
+        player: event.player?.name,
+      });
+    }
+  }
+
+  return keyEvents;
 }
 
 serve(async (req) => {
@@ -270,6 +314,7 @@ serve(async (req) => {
           minute_now: cached.minute_now,
           normalized_stats: cached.normalized_stats,
           momentum_series: cached.momentum_series,
+          key_events: cached.key_events || [],
           cached: true,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
@@ -283,6 +328,7 @@ serve(async (req) => {
           minute_now: cached.minute_now,
           normalized_stats: cached.normalized_stats,
           momentum_series: cached.momentum_series,
+          key_events: cached.key_events || [],
           cached: true,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
@@ -328,9 +374,10 @@ serve(async (req) => {
     const statsRaw = statsData.response || [];
     const normalizedStats = normalizeStatistics(statsRaw);
 
-    // Process events and calculate momentum
+    // Process events, calculate momentum, and extract key events
     const eventsRaw = eventsData.response || [];
     const momentumSeries = calculateMomentum(eventsRaw, homeTeamId, minuteNow);
+    const keyEvents = extractKeyEvents(eventsRaw, homeTeamId);
 
     // Upsert to cache
     const cacheData = {
@@ -340,6 +387,7 @@ serve(async (req) => {
       minute_now: minuteNow,
       events_raw: eventsRaw,
       stats_raw: statsRaw,
+      key_events: keyEvents,
       momentum_series: momentumSeries,
       normalized_stats: normalizedStats,
     };
@@ -360,6 +408,7 @@ serve(async (req) => {
       minute_now: minuteNow,
       normalized_stats: normalizedStats,
       momentum_series: momentumSeries,
+      key_events: keyEvents,
       cached: false,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

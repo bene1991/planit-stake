@@ -25,12 +25,21 @@ export interface MomentumPoint {
   away: number;
 }
 
+export interface KeyEvent {
+  minute: number;
+  team: 'home' | 'away';
+  type: 'goal' | 'shot_on' | 'red_card';
+  player?: string;
+  detail?: string;
+}
+
 export interface FixtureCacheData {
   fixture_id: number;
   status: string;
   minute_now: number;
   normalized_stats: NormalizedStats;
   momentum_series: MomentumPoint[];
+  key_events: KeyEvent[];
   cached: boolean;
 }
 

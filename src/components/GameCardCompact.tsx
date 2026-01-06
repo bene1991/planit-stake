@@ -339,6 +339,7 @@ export function GameCardCompact({
             homeTeam={game.homeTeam}
             awayTeam={game.awayTeam}
             loading={cacheLoading}
+            keyEvents={fixtureCache?.key_events || []}
           />
         )}
 
