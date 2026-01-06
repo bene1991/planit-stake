@@ -363,7 +363,21 @@ serve(async (req) => {
     // Extract fixture info
     const fixture = fixtureData.response?.[0];
     if (!fixture) {
-      throw new Error('Fixture not found');
+      // Return 404 with empty data instead of throwing error
+      console.log(`[NOT FOUND] Fixture ${fixtureIdNum} not found in API`);
+      return new Response(JSON.stringify({
+        fixture_id: fixtureIdNum,
+        status: 'NOT_FOUND',
+        minute_now: 0,
+        normalized_stats: { home: {}, away: {} },
+        momentum_series: [],
+        key_events: [],
+        cached: false,
+        error: 'Fixture not found in API',
+      }), { 
+        status: 200, // Return 200 so client can handle gracefully
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
 
     const status = fixture.fixture?.status?.short || 'NS';
