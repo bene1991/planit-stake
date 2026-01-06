@@ -8,6 +8,7 @@ export interface OperationalSettings {
   stopDiarioStakes: number;
   devolucaoMaximaPercent: number;
   commissionRate: number;
+  stakeValueReais: number;
 }
 
 export const DEFAULT_COMMISSION = 0.045;
@@ -16,7 +17,8 @@ const DEFAULT_SETTINGS: Omit<OperationalSettings, 'id'> = {
   metaMensalStakes: 30,
   stopDiarioStakes: 3,
   devolucaoMaximaPercent: 50,
-  commissionRate: DEFAULT_COMMISSION
+  commissionRate: DEFAULT_COMMISSION,
+  stakeValueReais: 100
 };
 
 export const useOperationalSettings = () => {
@@ -42,7 +44,8 @@ export const useOperationalSettings = () => {
           metaMensalStakes: data.meta_mensal_stakes,
           stopDiarioStakes: data.stop_diario_stakes,
           devolucaoMaximaPercent: data.devolucao_maxima_percent,
-          commissionRate: data.commission_rate
+          commissionRate: data.commission_rate,
+          stakeValueReais: data.stake_value_reais ?? DEFAULT_SETTINGS.stakeValueReais
         });
       } else {
         // Create default settings if none exist
@@ -53,7 +56,8 @@ export const useOperationalSettings = () => {
             meta_mensal_stakes: DEFAULT_SETTINGS.metaMensalStakes,
             stop_diario_stakes: DEFAULT_SETTINGS.stopDiarioStakes,
             devolucao_maxima_percent: DEFAULT_SETTINGS.devolucaoMaximaPercent,
-            commission_rate: DEFAULT_SETTINGS.commissionRate
+            commission_rate: DEFAULT_SETTINGS.commissionRate,
+            stake_value_reais: DEFAULT_SETTINGS.stakeValueReais
           })
           .select()
           .single();
@@ -65,7 +69,8 @@ export const useOperationalSettings = () => {
           metaMensalStakes: newData.meta_mensal_stakes,
           stopDiarioStakes: newData.stop_diario_stakes,
           devolucaoMaximaPercent: newData.devolucao_maxima_percent,
-          commissionRate: newData.commission_rate
+          commissionRate: newData.commission_rate,
+          stakeValueReais: newData.stake_value_reais ?? DEFAULT_SETTINGS.stakeValueReais
         });
       }
     } catch (error) {
@@ -88,6 +93,7 @@ export const useOperationalSettings = () => {
       if (updates.stopDiarioStakes !== undefined) updatePayload.stop_diario_stakes = updates.stopDiarioStakes;
       if (updates.devolucaoMaximaPercent !== undefined) updatePayload.devolucao_maxima_percent = updates.devolucaoMaximaPercent;
       if (updates.commissionRate !== undefined) updatePayload.commission_rate = updates.commissionRate;
+      if (updates.stakeValueReais !== undefined) updatePayload.stake_value_reais = updates.stakeValueReais;
 
       const { error } = await supabase
         .from('operational_settings')

@@ -315,6 +315,7 @@ export type Database = {
           id: string
           meta_mensal_stakes: number | null
           owner_id: string
+          stake_value_reais: number | null
           stop_diario_stakes: number | null
           updated_at: string | null
         }
@@ -325,6 +326,7 @@ export type Database = {
           id?: string
           meta_mensal_stakes?: number | null
           owner_id: string
+          stake_value_reais?: number | null
           stop_diario_stakes?: number | null
           updated_at?: string | null
         }
@@ -335,6 +337,7 @@ export type Database = {
           id?: string
           meta_mensal_stakes?: number | null
           owner_id?: string
+          stake_value_reais?: number | null
           stop_diario_stakes?: number | null
           updated_at?: string | null
         }

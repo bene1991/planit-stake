@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw, AlertCircle } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw, AlertCircle, DollarSign } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,12 +66,34 @@ const OperationalStatus = () => {
   const { metrics, loading } = useOperationalStatus(filters);
   const { settings, updateSettings } = useOperationalSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [stakeInput, setStakeInput] = useState(settings.stakeValueReais.toString());
   const [editedSettings, setEditedSettings] = useState({
     metaMensalStakes: settings.metaMensalStakes,
     stopDiarioStakes: settings.stopDiarioStakes,
     devolucaoMaximaPercent: settings.devolucaoMaximaPercent,
     commissionRate: settings.commissionRate * 100
   });
+
+  // Sync stake input when settings load
+  useEffect(() => {
+    setStakeInput(settings.stakeValueReais.toString());
+  }, [settings.stakeValueReais]);
+
+  const handleStakeSave = async () => {
+    const value = parseFloat(stakeInput.replace(',', '.'));
+    if (isNaN(value) || value <= 0) {
+      toast.error('Valor de stake inválido');
+      setStakeInput(settings.stakeValueReais.toString());
+      return;
+    }
+    try {
+      await updateSettings({ stakeValueReais: value });
+      toast.success('Stake atualizada!');
+    } catch {
+      toast.error('Erro ao salvar stake');
+      setStakeInput(settings.stakeValueReais.toString());
+    }
+  };
 
   const handleSaveSettings = async () => {
     try {
@@ -113,6 +135,10 @@ const OperationalStatus = () => {
   const statusInfo = statusConfig[metrics.status];
   const StatusIcon = statusInfo.icon;
 
+  // Calculate R$ values using stake
+  const dailyProfitReais = metrics.dailyProfitStakes * settings.stakeValueReais;
+  const periodProfitReais = metrics.periodProfitStakes * settings.stakeValueReais;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -130,6 +156,37 @@ const OperationalStatus = () => {
           {metrics.totalOperationsPeriod} ops no período
         </Badge>
       </div>
+
+      {/* Stake Input Card */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" />
+              <Label htmlFor="stakeAtual" className="text-sm font-medium whitespace-nowrap">
+                Stake Atual:
+              </Label>
+            </div>
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-muted-foreground">R$</span>
+              <Input
+                id="stakeAtual"
+                type="text"
+                inputMode="decimal"
+                value={stakeInput}
+                onChange={(e) => setStakeInput(e.target.value)}
+                onBlur={handleStakeSave}
+                onKeyDown={(e) => e.key === 'Enter' && handleStakeSave()}
+                className="max-w-[120px] font-mono text-lg"
+                placeholder="100,00"
+              />
+              <span className="text-xs text-muted-foreground">
+                por operação
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filter Bar */}
       <OperationalFilterBar
@@ -256,16 +313,14 @@ const OperationalStatus = () => {
                 "text-2xl font-bold",
                 metrics.dailyProfitStakes >= 0 ? "text-emerald-500" : "text-red-500"
               )}>
-                {metrics.dailyProfitStakes >= 0 ? '+' : ''}{metrics.dailyProfitStakes} stakes
+                {metrics.dailyProfitStakes >= 0 ? '+' : ''}{metrics.dailyProfitStakes.toFixed(2)} stakes
               </p>
-              {metrics.dailyProfitMoney !== 0 && (
-                <p className={cn(
-                  "text-sm",
-                  metrics.dailyProfitMoney >= 0 ? "text-emerald-500/80" : "text-red-500/80"
-                )}>
-                  {formatCurrency(metrics.dailyProfitMoney)}
-                </p>
-              )}
+              <p className={cn(
+                "text-sm",
+                dailyProfitReais >= 0 ? "text-emerald-500/80" : "text-red-500/80"
+              )}>
+                {formatCurrency(dailyProfitReais)}
+              </p>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {metrics.totalOperationsToday} operações hoje
@@ -286,16 +341,14 @@ const OperationalStatus = () => {
                 "text-2xl font-bold",
                 metrics.periodProfitStakes >= 0 ? "text-emerald-500" : "text-red-500"
               )}>
-                {metrics.periodProfitStakes >= 0 ? '+' : ''}{metrics.periodProfitStakes} stakes
+                {metrics.periodProfitStakes >= 0 ? '+' : ''}{metrics.periodProfitStakes.toFixed(2)} stakes
               </p>
-              {metrics.periodProfitMoney !== 0 && (
-                <p className={cn(
-                  "text-sm",
-                  metrics.periodProfitMoney >= 0 ? "text-emerald-500/80" : "text-red-500/80"
-                )}>
-                  {formatCurrency(metrics.periodProfitMoney)}
-                </p>
-              )}
+              <p className={cn(
+                "text-sm",
+                periodProfitReais >= 0 ? "text-emerald-500/80" : "text-red-500/80"
+              )}>
+                {formatCurrency(periodProfitReais)}
+              </p>
             </div>
             <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
           </CardContent>
