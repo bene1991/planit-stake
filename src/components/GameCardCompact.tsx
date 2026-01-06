@@ -10,6 +10,8 @@ import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { MatchStatsOverview } from "@/components/MatchStatsOverview";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
+import { useFixtureOdds } from "@/hooks/useFixtureOdds";
+import { OddsDisplay } from "@/components/OddsDisplay";
 interface FixtureData {
   fixture: ApiFootballFixture;
   statistics: any;
@@ -55,6 +57,9 @@ export function GameCardCompact({
   const isHalfTime = fixtureStatus === 'HT';
   const isExtraTime = fixtureStatus === 'ET';
   const isPenalty = fixtureStatus === 'P';
+
+  // Fetch odds from Betfair
+  const { odds, loading: oddsLoading } = useFixtureOdds(game.api_fixture_id, isLive);
   
   const apiElapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
   
@@ -317,6 +322,13 @@ export function GameCardCompact({
               stats={fixtureCache?.normalized_stats || null} 
               loading={cacheLoading}
             />
+          </div>
+        )}
+
+        {/* Odds Section - Betfair preferred */}
+        {(odds || oddsLoading) && game.api_fixture_id && (
+          <div className="mt-3 pt-2 border-t border-border/20">
+            <OddsDisplay odds={odds} loading={oddsLoading} />
           </div>
         )}
 

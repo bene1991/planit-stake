@@ -24,6 +24,9 @@ const CACHE_TTL = {
   leagues: 24 * 60 * 60 * 1000,  // 24 hours for leagues
   teams: 24 * 60 * 60 * 1000,    // 24 hours for teams
   standings: 60 * 60 * 1000,     // 1 hour for standings
+  odds: 5 * 60 * 1000,       // 5 minutes for pre-match odds
+  odds_live: 30 * 1000,      // 30 seconds for live odds
+  bookmakers: 24 * 60 * 60 * 1000, // 24 hours for bookmakers list
   default: 60 * 1000,        // 1 minute default
 };
 
@@ -74,6 +77,21 @@ function getTTL(endpoint: string, params: Record<string, unknown>): number {
   // Standings
   if (endpoint === 'standings') {
     return CACHE_TTL.standings;
+  }
+  
+  // Odds
+  if (endpoint === 'odds') {
+    return CACHE_TTL.odds;
+  }
+  
+  // Live odds
+  if (endpoint === 'odds/live') {
+    return CACHE_TTL.odds_live;
+  }
+  
+  // Bookmakers
+  if (endpoint === 'bookmakers') {
+    return CACHE_TTL.bookmakers;
   }
   
   return CACHE_TTL.default;
