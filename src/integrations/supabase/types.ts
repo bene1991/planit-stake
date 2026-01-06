@@ -156,6 +156,7 @@ export type Database = {
           events_raw: Json | null
           fixture_id: number
           id: string
+          key_events: Json | null
           minute_now: number | null
           momentum_series: Json | null
           normalized_stats: Json | null
@@ -167,6 +168,7 @@ export type Database = {
           events_raw?: Json | null
           fixture_id: number
           id?: string
+          key_events?: Json | null
           minute_now?: number | null
           momentum_series?: Json | null
           normalized_stats?: Json | null
@@ -178,6 +180,7 @@ export type Database = {
           events_raw?: Json | null
           fixture_id?: number
           id?: string
+          key_events?: Json | null
           minute_now?: number | null
           momentum_series?: Json | null
           normalized_stats?: Json | null
