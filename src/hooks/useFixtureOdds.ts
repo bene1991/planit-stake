@@ -28,7 +28,8 @@ export interface FixtureOdds {
 interface OddsApiResponse {
   response: Array<{
     fixture: { id: number };
-    bookmakers: Array<{
+    // Pre-match format
+    bookmakers?: Array<{
       id: number;
       name: string;
       bets: Array<{
@@ -38,6 +39,18 @@ interface OddsApiResponse {
           value: string;
           odd: string;
         }>;
+      }>;
+    }>;
+    // Live format
+    odds?: Array<{
+      id: number;
+      name: string;
+      values: Array<{
+        value: string;
+        odd: string;
+        handicap?: string;
+        main?: boolean | null;
+        suspended?: boolean;
       }>;
     }>;
   }>;
@@ -75,16 +88,73 @@ function parseBttsOdds(values: Array<{ value: string; odd: string }>): BttsOdds 
 
 function extractOddsFromResponse(
   response: OddsApiResponse['response'],
-  preferredBookmakers: number[]
+  preferredBookmakers: number[],
+  isLiveFormat: boolean = false
 ): FixtureOdds | null {
-  if (!response?.length || !response[0]?.bookmakers?.length) return null;
+  if (!response?.length) return null;
   
-  const bookmakers = response[0].bookmakers;
+  const data = response[0];
+  
+  // Live odds format: response[0].odds (array of bet types, no bookmaker structure)
+  if (isLiveFormat && data?.odds?.length) {
+    const oddsArray = data.odds;
+    
+    // Match Winner (1X2) - id 1 or name contains "Winner"
+    const matchWinnerBet = oddsArray.find((b: any) => 
+      b.id === 1 || b.name === 'Match Winner' || b.name === '3Way Result'
+    );
+    
+    let matchOdds: OddsValue | null = null;
+    if (matchWinnerBet?.values) {
+      const home = matchWinnerBet.values.find((v: any) => v.value === 'Home' || v.value === '1')?.odd;
+      const draw = matchWinnerBet.values.find((v: any) => v.value === 'Draw' || v.value === 'X')?.odd;
+      const away = matchWinnerBet.values.find((v: any) => v.value === 'Away' || v.value === '2')?.odd;
+      
+      if (home && draw && away) {
+        matchOdds = {
+          home: parseFloat(home),
+          draw: parseFloat(draw),
+          away: parseFloat(away),
+        };
+      }
+    }
+    
+    // Both Teams Score - id 8
+    const bttsBet = oddsArray.find((b: any) => 
+      b.id === 8 || b.name === 'Both Teams Score' || b.name === 'Both Teams to Score'
+    );
+    
+    let btts: BttsOdds | null = null;
+    if (bttsBet?.values) {
+      const yes = bttsBet.values.find((v: any) => v.value === 'Yes')?.odd;
+      const no = bttsBet.values.find((v: any) => v.value === 'No')?.odd;
+      
+      if (yes && no) {
+        btts = { yes: parseFloat(yes), no: parseFloat(no) };
+      }
+    }
+    
+    if (!matchOdds && !btts) return null;
+    
+    return {
+      matchOdds,
+      btts,
+      bookmaker: 'Live',
+      bookmakerId: 0,
+      isLive: true,
+      lastUpdate: new Date().toISOString(),
+    };
+  }
+  
+  // Pre-match format: response[0].bookmakers
+  if (!data?.bookmakers?.length) return null;
+  
+  const bookmakers = data.bookmakers;
   
   // Find preferred bookmaker
   let selectedBookmaker = null;
   for (const prefId of preferredBookmakers) {
-    selectedBookmaker = bookmakers.find(b => b.id === prefId);
+    selectedBookmaker = bookmakers.find((b: any) => b.id === prefId);
     if (selectedBookmaker) break;
   }
   
@@ -96,11 +166,11 @@ function extractOddsFromResponse(
   if (!selectedBookmaker) return null;
   
   // Match Winner (1X2) - bet id 1
-  const matchWinnerBet = selectedBookmaker.bets.find(b => b.id === 1 || b.name === 'Match Winner');
+  const matchWinnerBet = selectedBookmaker.bets.find((b: any) => b.id === 1 || b.name === 'Match Winner');
   const matchOdds = matchWinnerBet ? parseMatchOdds(matchWinnerBet.values) : null;
   
   // Both Teams Score - bet id 8
-  const bttsBet = selectedBookmaker.bets.find(b => b.id === 8 || b.name === 'Both Teams Score');
+  const bttsBet = selectedBookmaker.bets.find((b: any) => b.id === 8 || b.name === 'Both Teams Score');
   const btts = bttsBet ? parseBttsOdds(bttsBet.values) : null;
   
   return {
@@ -153,18 +223,14 @@ export function useFixtureOdds(
       
       if (invokeError) throw new Error(invokeError.message);
       
-      let parsedOdds = extractOddsFromResponse(response?.response || [], PREFERRED_BOOKMAKERS);
+      let parsedOdds = extractOddsFromResponse(response?.response || [], PREFERRED_BOOKMAKERS, live);
       
       // If Betfair not found for pre-match, try without bookmaker filter
       if (!parsedOdds && !live) {
         const { data: fallbackResponse } = await supabase.functions.invoke('api-football', {
           body: { endpoint: 'odds', params: { fixture: fixtureId } }
         });
-        parsedOdds = extractOddsFromResponse(fallbackResponse?.response || [], PREFERRED_BOOKMAKERS);
-      }
-      
-      if (parsedOdds) {
-        parsedOdds.isLive = live;
+        parsedOdds = extractOddsFromResponse(fallbackResponse?.response || [], PREFERRED_BOOKMAKERS, false);
       }
       
       // Cache pre-match odds
