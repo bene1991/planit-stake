@@ -8,7 +8,9 @@ import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
-
+import { MatchCardStatsRow } from "@/components/MatchCardStatsRow";
+import { MatchDetailsAccordion } from "@/components/MatchDetailsAccordion";
+import { useFixtureCache } from "@/hooks/useFixtureCache";
 interface FixtureData {
   fixture: ApiFootballFixture;
   statistics: any;
@@ -42,6 +44,9 @@ export function GameCardCompact({
   
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
+
+  // Fetch cached stats and momentum for this fixture
+  const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id);
 
   const fixtureStatus = fixtureData?.fixture?.fixture?.status?.short;
   // Usar status da API se disponível, senão usar status do banco como fallback
@@ -306,6 +311,16 @@ export function GameCardCompact({
           </div>
         )}
 
+        {/* Stats Row - 4 main stats */}
+        {(fixtureCache?.normalized_stats || cacheLoading) && (
+          <div className="mt-3 pt-2 border-t border-border/20">
+            <MatchCardStatsRow 
+              stats={fixtureCache?.normalized_stats || null} 
+              loading={cacheLoading}
+            />
+          </div>
+        )}
+
         {/* Notes section */}
         <div className="mt-2 pt-2 border-t border-border/20">
           <GameNotesEditor
@@ -314,6 +329,18 @@ export function GameCardCompact({
             compact
           />
         </div>
+
+        {/* Expandable Details (Stats Table + Momentum Chart) */}
+        {(fixtureCache || cacheLoading) && (
+          <MatchDetailsAccordion
+            stats={fixtureCache?.normalized_stats || null}
+            momentumSeries={fixtureCache?.momentum_series || []}
+            minuteNow={fixtureCache?.minute_now || 0}
+            homeTeam={game.homeTeam}
+            awayTeam={game.awayTeam}
+            loading={cacheLoading}
+          />
+        )}
 
         {/* Footer: Date, League, Actions */}
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/20">
