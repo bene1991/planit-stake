@@ -106,15 +106,6 @@ export function MatchStatsOverview({ stats, loading }: MatchStatsOverviewProps) 
     return null;
   }
 
-  if (!hasValidStats(stats)) {
-    return (
-      <div className="bg-muted/30 rounded-lg p-3 text-center">
-        <span className="text-xs text-muted-foreground">
-          Estatísticas disponíveis após o início da partida
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-muted/30 rounded-lg p-3 space-y-3">
