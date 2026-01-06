@@ -8,8 +8,7 @@ import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
-import { MatchCardStatsRow } from "@/components/MatchCardStatsRow";
-import { MatchDetailsAccordion } from "@/components/MatchDetailsAccordion";
+import { MatchStatsOverview } from "@/components/MatchStatsOverview";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -311,10 +310,10 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Stats Row - 4 main stats */}
+        {/* Stats Overview - SofaScore style */}
         {(fixtureCache?.normalized_stats || cacheLoading) && (
           <div className="mt-3 pt-2 border-t border-border/20">
-            <MatchCardStatsRow 
+            <MatchStatsOverview 
               stats={fixtureCache?.normalized_stats || null} 
               loading={cacheLoading}
             />
@@ -329,14 +328,6 @@ export function GameCardCompact({
             compact
           />
         </div>
-
-        {/* Expandable Details (Stats Table) */}
-        {(fixtureCache || cacheLoading) && (
-          <MatchDetailsAccordion
-            stats={fixtureCache?.normalized_stats || null}
-            loading={cacheLoading}
-          />
-        )}
 
         {/* Footer: Date, League, Actions */}
         <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/20">
