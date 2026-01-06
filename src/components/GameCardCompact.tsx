@@ -50,6 +50,12 @@ export function GameCardCompact({
   // Fetch cached stats and momentum for this fixture
   const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id);
 
+  // Default empty stats for display when no cache data
+  const emptyStats = {
+    home: { possession: 0, shots_total: 0, shots_on: 0, shots_off: 0, shots_blocked: 0, corners: 0, fouls: 0, offsides: 0, yellow: 0, red: 0 },
+    away: { possession: 0, shots_total: 0, shots_on: 0, shots_off: 0, shots_blocked: 0, corners: 0, fouls: 0, offsides: 0, yellow: 0, red: 0 }
+  };
+
   // Fetch BTTS from API-Football
   const fixtureStatus = fixtureData?.fixture?.fixture?.status?.short;
   const isGameLive = fixtureStatus 
@@ -323,15 +329,13 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Stats Overview - SofaScore style */}
-        {(fixtureCache?.normalized_stats || cacheLoading) && (
-          <div className="mt-3 pt-2 border-t border-border/20">
-            <MatchStatsOverview 
-              stats={fixtureCache?.normalized_stats || null} 
-              loading={cacheLoading}
-            />
-          </div>
-        )}
+        {/* Stats Overview - Always visible */}
+        <div className="mt-3 pt-2 border-t border-border/20">
+          <MatchStatsOverview 
+            stats={fixtureCache?.normalized_stats || emptyStats} 
+            loading={cacheLoading}
+          />
+        </div>
 
         {/* Odds Section - BTTS from API-Football */}
         {game.api_fixture_id && (
