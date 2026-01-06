@@ -325,14 +325,20 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Odds Section - Betfair preferred (pre-match + live) */}
-        {(preMatchOdds || liveOdds || oddsLoading) && game.api_fixture_id && (
+        {/* Odds Section - Betfair preferred (pre-match + live) + BTTS from The Odds API */}
+        {(preMatchOdds || liveOdds || oddsLoading || game.bttsYes) && game.api_fixture_id && (
           <div className="mt-3 pt-2 border-t border-border/20">
             <OddsDisplay 
               preMatch={preMatchOdds} 
               live={liveOdds} 
               loading={oddsLoading}
               isLive={isLive}
+              savedBtts={{
+                yes: game.bttsYes,
+                no: game.bttsNo,
+                bookmaker: game.bttsBookmaker,
+                isBetfair: game.bttsIsBetfair,
+              }}
             />
           </div>
         )}

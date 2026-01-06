@@ -195,6 +195,11 @@ export type Database = {
           api_fixture_id: string | null
           away_team: string
           away_team_logo: string | null
+          btts_bookmaker: string | null
+          btts_fetched_at: string | null
+          btts_is_betfair: boolean | null
+          btts_no: number | null
+          btts_yes: number | null
           created_at: string | null
           date: string
           date_time: string | null
@@ -215,6 +220,11 @@ export type Database = {
           api_fixture_id?: string | null
           away_team: string
           away_team_logo?: string | null
+          btts_bookmaker?: string | null
+          btts_fetched_at?: string | null
+          btts_is_betfair?: boolean | null
+          btts_no?: number | null
+          btts_yes?: number | null
           created_at?: string | null
           date: string
           date_time?: string | null
@@ -235,6 +245,11 @@ export type Database = {
           api_fixture_id?: string | null
           away_team?: string
           away_team_logo?: string | null
+          btts_bookmaker?: string | null
+          btts_fetched_at?: string | null
+          btts_is_betfair?: boolean | null
+          btts_no?: number | null
+          btts_yes?: number | null
           created_at?: string | null
           date?: string
           date_time?: string | null
