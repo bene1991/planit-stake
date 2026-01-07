@@ -50,6 +50,7 @@ export interface FixtureOddsResult {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  lastUpdate: Date | null;
 }
 
 // Legacy interface for backward compatibility
@@ -293,6 +294,7 @@ export function useFixtureOdds(
   const [live, setLive] = useState<LiveOdds | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const fetchedPreMatchRef = useRef(false);
   
   const fetchPreMatchOdds = useCallback(async (forceRefresh = false) => {
@@ -324,9 +326,12 @@ export function useFixtureOdds(
       
       const parsedOdds = extractPreMatchOdds(response?.response || [], PREFERRED_BOOKMAKERS);
       
-      // Cache odds
+      // Cache odds and update timestamp
       preMatchOddsCache.set(cacheKey, { odds: parsedOdds, timestamp: Date.now() });
       setPreMatch(parsedOdds);
+      if (parsedOdds) {
+        setLastUpdate(new Date());
+      }
       
       // If no odds found on initial load (not forced), retry once after 2s (cold start handling)
       if (!parsedOdds && !forceRefresh) {
@@ -411,7 +416,7 @@ export function useFixtureOdds(
     }
   }, [fixtureId, fetchPreMatchOdds, fetchLiveOdds, isGameLive]);
   
-  return { preMatch, live, loading, error, refetch };
+  return { preMatch, live, loading, error, refetch, lastUpdate };
 }
 
 // Legacy hook for backward compatibility
