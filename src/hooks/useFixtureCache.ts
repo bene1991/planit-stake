@@ -62,14 +62,16 @@ export function useFixtureCache(fixtureId: number | string | null | undefined): 
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchDetails = useCallback(async () => {
+  const fetchDetails = useCallback(async (retryCount = 0) => {
     if (!fixtureId) return;
 
     const fixtureIdNum = parseInt(String(fixtureId), 10);
     if (isNaN(fixtureIdNum)) return;
 
-    setLoading(true);
-    setError(null);
+    if (retryCount === 0) {
+      setLoading(true);
+      setError(null);
+    }
 
     try {
       const { data: result, error: fnError } = await supabase.functions.invoke('get-fixture-details', {
@@ -80,15 +82,24 @@ export function useFixtureCache(fixtureId: number | string | null | undefined): 
         throw new Error(fnError.message || 'Failed to fetch fixture details');
       }
 
-      if (result?.error) {
+      if (result?.error && result.error !== 'Fixture not found in API') {
         throw new Error(result.error);
       }
 
       setData(result as FixtureCacheData);
+      setLoading(false);
     } catch (err) {
-      console.error('useFixtureCache error:', err);
+      console.error(`[useFixtureCache] Erro (tentativa ${retryCount + 1}/3):`, err);
+      
+      // Retry até 2 vezes com delay crescente (1s, 2s) para lidar com cold start
+      if (retryCount < 2) {
+        const delay = (retryCount + 1) * 1000;
+        console.log(`[useFixtureCache] Retry em ${delay}ms...`);
+        setTimeout(() => fetchDetails(retryCount + 1), delay);
+        return;
+      }
+      
       setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
       setLoading(false);
     }
   }, [fixtureId]);

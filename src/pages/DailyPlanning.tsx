@@ -77,6 +77,23 @@ export default function DailyPlanning() {
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
   
+  // Auto-refresh após mount para combater cold start de Edge Functions
+  const initialLoadRef = useRef(false);
+  
+  useEffect(() => {
+    if (!gamesLoading && games.length > 0 && !initialLoadRef.current) {
+      initialLoadRef.current = true;
+      
+      // Delay para permitir que Edge Functions "acordem"
+      const timer = setTimeout(() => {
+        console.log('[DailyPlanning] Auto-refresh após mount (cold start mitigation)');
+        refreshLiveStats(true); // forceNoCache=true
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [gamesLoading, games.length, refreshLiveStats]);
+  
   const handleGlobalRefresh = async () => {
     await updateStatuses();
     await refreshLiveStats(true); // forceNoCache=true para evitar dados antigos
