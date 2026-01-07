@@ -1,7 +1,10 @@
 import { cn } from "@/lib/utils";
-import { Check, AlertTriangle, RefreshCw } from "lucide-react";
+import { Check, AlertTriangle, RefreshCw, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BttsOdds } from "@/hooks/useFixtureOdds";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface OddsDisplayProps {
   btts?: BttsOdds | null;
@@ -9,6 +12,7 @@ interface OddsDisplayProps {
   isBetfair?: boolean;
   onRefetch?: () => void;
   loading?: boolean;
+  lastUpdate?: Date | string | null;
 }
 
 function OddBadge({ 
@@ -29,6 +33,21 @@ function OddBadge({
     )}>
       <span className="text-[9px] text-muted-foreground uppercase">{label}</span>
       <span className="text-xs font-semibold tabular-nums">{value.toFixed(2)}</span>
+    </div>
+  );
+}
+
+function OddsSkeleton() {
+  return (
+    <div className="flex flex-col gap-1 animate-fade-in">
+      <div className="flex items-center gap-1.5">
+        <Skeleton className="h-3 w-8" />
+        <Skeleton className="h-3 w-12" />
+      </div>
+      <div className="flex gap-1">
+        <Skeleton className="h-9 w-[42px] rounded-md" />
+        <Skeleton className="h-9 w-[42px] rounded-md" />
+      </div>
     </div>
   );
 }
@@ -57,8 +76,27 @@ function BookmakerIndicator({
   );
 }
 
-export function OddsDisplay({ btts, bookmaker, isBetfair, onRefetch, loading }: OddsDisplayProps) {
+function LastUpdateIndicator({ lastUpdate }: { lastUpdate?: Date | string | null }) {
+  if (!lastUpdate) return null;
+  
+  const date = typeof lastUpdate === 'string' ? new Date(lastUpdate) : lastUpdate;
+  const formattedTime = format(date, "HH:mm", { locale: ptBR });
+  
+  return (
+    <span className="text-[8px] text-muted-foreground flex items-center gap-0.5 ml-auto">
+      <Clock className="h-2 w-2" />
+      {formattedTime}
+    </span>
+  );
+}
+
+export function OddsDisplay({ btts, bookmaker, isBetfair, onRefetch, loading, lastUpdate }: OddsDisplayProps) {
   const hasBtts = btts?.yes && btts?.no;
+  
+  // Show skeleton while loading and no data yet
+  if (loading && !hasBtts) {
+    return <OddsSkeleton />;
+  }
   
   if (!hasBtts && !onRefetch) {
     return null;
@@ -67,7 +105,7 @@ export function OddsDisplay({ btts, bookmaker, isBetfair, onRefetch, loading }: 
   return (
     <div className="space-y-2">
       {hasBtts ? (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 animate-fade-in">
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
             <BookmakerIndicator 
@@ -86,6 +124,7 @@ export function OddsDisplay({ btts, bookmaker, isBetfair, onRefetch, loading }: 
                 <RefreshCw className={cn("h-2.5 w-2.5 text-muted-foreground", loading && "animate-spin")} />
               </Button>
             )}
+            <LastUpdateIndicator lastUpdate={lastUpdate} />
           </div>
           <div className="flex gap-1">
             <OddBadge value={btts.yes} label="Sim" />

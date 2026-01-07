@@ -62,7 +62,7 @@ export function GameCardCompact({
     ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) 
     : (game.status === 'Live' || game.status === 'Pending');
   
-  const { preMatch: oddsData, loading: oddsLoading, refetch: refetchOdds } = useFixtureOdds(
+  const { preMatch: oddsData, loading: oddsLoading, refetch: refetchOdds, lastUpdate: oddsLastUpdate } = useFixtureOdds(
     game.api_fixture_id,
     isGameLive
   );
@@ -346,6 +346,7 @@ export function GameCardCompact({
               isBetfair={isBetfair}
               onRefetch={refetchOdds}
               loading={oddsLoading}
+              lastUpdate={oddsLastUpdate}
             />
           </div>
         )}
