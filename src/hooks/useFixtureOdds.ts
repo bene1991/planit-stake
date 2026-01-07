@@ -295,22 +295,26 @@ export function useFixtureOdds(
   const [error, setError] = useState<string | null>(null);
   const fetchedPreMatchRef = useRef(false);
   
-  const fetchPreMatchOdds = useCallback(async () => {
+  const fetchPreMatchOdds = useCallback(async (forceRefresh = false) => {
     if (!fixtureId) return;
     
     const cacheKey = `prematch-${fixtureId}`;
     
-    // Check cache first
-    const cached = preMatchOddsCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < PREMATCH_CACHE_TTL) {
-      setPreMatch(cached.odds);
-      return;
+    // Check cache first (skip if force refresh)
+    if (!forceRefresh) {
+      const cached = preMatchOddsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < PREMATCH_CACHE_TTL) {
+        setPreMatch(cached.odds);
+        return;
+      }
     }
     
     setLoading(true);
     setError(null);
     
     try {
+      console.log(`[useFixtureOdds] Fetching odds for fixture ${fixtureId}, force=${forceRefresh}`);
+      
       // Fetch pre-match odds WITHOUT bookmaker filter to ensure we get all data
       const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
         body: { endpoint: 'odds', params: { fixture: fixtureId } }
@@ -323,9 +327,21 @@ export function useFixtureOdds(
       // Cache odds
       preMatchOddsCache.set(cacheKey, { odds: parsedOdds, timestamp: Date.now() });
       setPreMatch(parsedOdds);
+      
+      // If no odds found on initial load (not forced), retry once after 2s (cold start handling)
+      if (!parsedOdds && !forceRefresh) {
+        console.log('[useFixtureOdds] No odds found, scheduling retry for cold start...');
+        setTimeout(() => fetchPreMatchOdds(true), 2000);
+      }
     } catch (err) {
       console.error('Error fetching pre-match odds:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
+      
+      // Retry once on error if not already a forced refresh
+      if (!forceRefresh) {
+        console.log('[useFixtureOdds] Error on fetch, scheduling retry...');
+        setTimeout(() => fetchPreMatchOdds(true), 2000);
+      }
     } finally {
       setLoading(false);
     }
@@ -382,9 +398,18 @@ export function useFixtureOdds(
   }, [isGameLive, fixtureId, refetchInterval, fetchLiveOdds]);
   
   const refetch = useCallback(() => {
-    fetchPreMatchOdds();
-    if (isGameLive) fetchLiveOdds();
-  }, [fetchPreMatchOdds, fetchLiveOdds, isGameLive]);
+    // Clear cache for this fixture to force fresh fetch
+    const cacheKey = `prematch-${fixtureId}`;
+    preMatchOddsCache.delete(cacheKey);
+    console.log(`[useFixtureOdds] Manual refetch for fixture ${fixtureId}, cache cleared`);
+    
+    fetchPreMatchOdds(true); // Force refresh bypassing cache
+    
+    if (isGameLive) {
+      liveOddsCache.delete(`live-${fixtureId}`);
+      fetchLiveOdds();
+    }
+  }, [fixtureId, fetchPreMatchOdds, fetchLiveOdds, isGameLive]);
   
   return { preMatch, live, loading, error, refetch };
 }
