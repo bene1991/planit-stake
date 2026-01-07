@@ -130,6 +130,14 @@ export function useOptimizedLiveStats(games: Game[]) {
     isFetchingDates.current = true;
     setState(prev => ({ ...prev, loading: true, error: null }));
 
+    // Safety timeout para liberar o flag em caso de travamento (30s)
+    const safetyTimeoutId = setTimeout(() => {
+      if (isFetchingDates.current) {
+        console.warn('[OptimizedLiveStats] Safety timeout - liberando flag de fetch');
+        isFetchingDates.current = false;
+      }
+    }, 30000);
+
     try {
       const allFixtures = new Map<number, FixtureData>();
       
@@ -207,6 +215,7 @@ export function useOptimizedLiveStats(games: Game[]) {
         error: 'Erro ao buscar jogos',
       }));
     } finally {
+      clearTimeout(safetyTimeoutId);
       isFetchingDates.current = false;
     }
   }, [uniqueDates, canMakeRequest, trackRequest, getCachedDetails, remaining]);
