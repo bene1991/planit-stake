@@ -38,6 +38,132 @@ export type Database = {
         }
         Relationships: []
       }
+      btts_entries: {
+        Row: {
+          away_team: string
+          created_at: string | null
+          date: string
+          home_team: string
+          id: string
+          league: string
+          method: string | null
+          odd: number
+          owner_id: string
+          profit: number | null
+          result: string
+          stake_value: number
+          time: string
+          updated_at: string | null
+        }
+        Insert: {
+          away_team: string
+          created_at?: string | null
+          date: string
+          home_team: string
+          id?: string
+          league: string
+          method?: string | null
+          odd: number
+          owner_id: string
+          profit?: number | null
+          result: string
+          stake_value: number
+          time: string
+          updated_at?: string | null
+        }
+        Update: {
+          away_team?: string
+          created_at?: string | null
+          date?: string
+          home_team?: string
+          id?: string
+          league?: string
+          method?: string | null
+          odd?: number
+          owner_id?: string
+          profit?: number | null
+          result?: string
+          stake_value?: number
+          time?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      btts_health_settings: {
+        Row: {
+          bankroll_current: number | null
+          bankroll_initial: number | null
+          bankroll_peak: number | null
+          created_at: string | null
+          id: string
+          odd_range_max: number | null
+          odd_range_min: number | null
+          owner_id: string
+          pause_until: string | null
+          stake_percent: number | null
+          stake_reduction_percent: number | null
+          stake_reduction_until: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          bankroll_current?: number | null
+          bankroll_initial?: number | null
+          bankroll_peak?: number | null
+          created_at?: string | null
+          id?: string
+          odd_range_max?: number | null
+          odd_range_min?: number | null
+          owner_id: string
+          pause_until?: string | null
+          stake_percent?: number | null
+          stake_reduction_percent?: number | null
+          stake_reduction_until?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          bankroll_current?: number | null
+          bankroll_initial?: number | null
+          bankroll_peak?: number | null
+          created_at?: string | null
+          id?: string
+          odd_range_max?: number | null
+          odd_range_min?: number | null
+          owner_id?: string
+          pause_until?: string | null
+          stake_percent?: number | null
+          stake_reduction_percent?: number | null
+          stake_reduction_until?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      btts_league_quarantine: {
+        Row: {
+          created_at: string | null
+          id: string
+          league: string
+          owner_id: string
+          quarantine_until: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          league: string
+          owner_id: string
+          quarantine_until: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          league?: string
+          owner_id?: string
+          quarantine_until?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       daily_games: {
         Row: {
           added_to_planning: boolean | null
