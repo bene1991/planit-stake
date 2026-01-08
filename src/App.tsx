@@ -15,6 +15,7 @@ import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
 import Statistics from "./pages/Statistics";
 import OperationalStatus from "./pages/OperationalStatus";
+import BttsHealth from "./pages/BttsHealth";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -63,6 +64,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><OperationalStatus /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/btts-health"
+          element={
+            <ProtectedRoute>
+              <Layout><BttsHealth /></Layout>
             </ProtectedRoute>
           }
         />
