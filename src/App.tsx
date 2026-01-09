@@ -13,9 +13,7 @@ import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { Layout } from "./components/Layout";
 import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
-import Statistics from "./pages/Statistics";
-import OperationalStatus from "./pages/OperationalStatus";
-import BttsHealth from "./pages/BttsHealth";
+import Performance from "./pages/Performance";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -52,26 +50,10 @@ const AppContent = () => {
           }
         />
         <Route
-          path="/statistics"
+          path="/performance"
           element={
             <ProtectedRoute>
-              <Layout><Statistics /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/operational-status"
-          element={
-            <ProtectedRoute>
-              <Layout><OperationalStatus /></Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/btts-health"
-          element={
-            <ProtectedRoute>
-              <Layout><BttsHealth /></Layout>
+              <Layout><Performance /></Layout>
             </ProtectedRoute>
           }
         />

@@ -63,6 +63,12 @@ interface ComparisonStats {
   bestMethod: { name: string; winRate: number } | null;
 }
 
+export interface BankrollEvolutionData {
+  date: string;
+  cumulativeStakes: number;
+  dailyChange: number;
+}
+
 export interface FilteredStatisticsResult {
   overallStats: OverallStats;
   methodDetailStats: MethodDetailStats[];
@@ -71,6 +77,10 @@ export interface FilteredStatisticsResult {
   methodNames: string[];
   comparison: ComparisonStats;
   leagues: string[];
+  averageOdd: number;
+  operationsWithOdd: number;
+  breakevenRate: number;
+  bankrollEvolution: BankrollEvolutionData[];
 }
 
 export const useFilteredStatistics = (
@@ -325,6 +335,50 @@ export const useFilteredStatistics = (
       bestMethod,
     };
 
+    // Calculate average odd
+    const operationsWithOdd = allFilteredOps.filter(op => op.odd && op.odd > 0);
+    const averageOdd = operationsWithOdd.length > 0 
+      ? operationsWithOdd.reduce((sum, op) => sum + (op.odd || 0), 0) / operationsWithOdd.length
+      : 0;
+    const breakevenRate = averageOdd > 0 ? 100 / averageOdd : 0;
+
+    // Calculate bankroll evolution (cumulative stakes per day)
+    const dailyProfitMap = new Map<string, number>();
+    
+    filteredGames.forEach((game) => {
+      const ops = getFilteredOperations(game);
+      ops.forEach((op) => {
+        if (!op.result) return;
+        
+        let profitStakes = 0;
+        if (op.profit !== undefined && op.profit !== null && op.stakeValue && op.stakeValue > 0) {
+          profitStakes = op.profit / op.stakeValue;
+        } else if (op.result === 'Green') {
+          profitStakes = op.odd && op.odd > 0 ? op.odd - 1 : 0;
+        } else if (op.result === 'Red') {
+          profitStakes = -1;
+        }
+        
+        const current = dailyProfitMap.get(game.date) || 0;
+        dailyProfitMap.set(game.date, current + profitStakes);
+      });
+    });
+
+    const sortedDates = Array.from(dailyProfitMap.keys()).sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+    );
+
+    let cumulative = 0;
+    const bankrollEvolution: BankrollEvolutionData[] = sortedDates.map((date) => {
+      const dailyChange = dailyProfitMap.get(date) || 0;
+      cumulative += dailyChange;
+      return {
+        date,
+        cumulativeStakes: parseFloat(cumulative.toFixed(2)),
+        dailyChange: parseFloat(dailyChange.toFixed(2)),
+      };
+    });
+
     return {
       overallStats,
       methodDetailStats,
@@ -333,6 +387,10 @@ export const useFilteredStatistics = (
       methodNames,
       comparison,
       leagues,
+      averageOdd: parseFloat(averageOdd.toFixed(2)),
+      operationsWithOdd: operationsWithOdd.length,
+      breakevenRate: parseFloat(breakevenRate.toFixed(1)),
+      bankrollEvolution,
     };
   }, [games, methods, filters]);
 };
