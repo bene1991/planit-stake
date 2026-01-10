@@ -211,10 +211,10 @@ export default function Performance() {
   return (
     <div className="space-y-6 animate-fade-in pb-24 lg:pb-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Activity className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl lg:text-3xl font-bold flex items-center gap-2">
+            <Activity className="h-6 w-6 lg:h-7 lg:w-7 text-primary" />
             Desempenho
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -224,11 +224,11 @@ export default function Performance() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Atualizar
+            <span className="hidden sm:inline">Atualizar</span>
           </Button>
           <Button size="sm" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
-            CSV
+            <span className="hidden sm:inline">CSV</span>
           </Button>
         </div>
       </div>
@@ -272,40 +272,120 @@ export default function Performance() {
         onFilterChange={setFilters}
       />
 
-      {/* Main Status Card */}
-      <Card className={cn("border-2", statusInfo.border, statusInfo.bg)}>
-        <CardContent className="py-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <StatusIcon className={cn("h-10 w-10", statusInfo.color)} />
+      {/* Main Status Card + KPI Cards - Desktop: Side by side */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Status Card */}
+        <Card className={cn("border-2 lg:w-80 lg:flex-shrink-0", statusInfo.border, statusInfo.bg)}>
+          <CardContent className="py-4 lg:py-6">
+            <div className="flex flex-col items-center text-center gap-3">
+              <StatusIcon className={cn("h-12 w-12 lg:h-14 lg:w-14", statusInfo.color)} />
               <div>
-                <h2 className={cn("text-2xl font-bold", statusInfo.color)}>
+                <h2 className={cn("text-2xl lg:text-3xl font-bold", statusInfo.color)}>
                   {metrics.status}
                 </h2>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground mt-1 max-w-[250px]">
                   {metrics.statusMessage}
                 </p>
               </div>
+              <div className="flex items-center gap-4 text-sm mt-2">
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">Streak</p>
+                  <p className={cn("font-bold text-lg", metrics.currentStreak.type === 'Green' ? 'text-emerald-500' : metrics.currentStreak.type === 'Red' ? 'text-red-500' : 'text-muted-foreground')}>
+                    {metrics.currentStreak.count} {metrics.currentStreak.type || '-'}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">Max R</p>
+                  <p className="font-bold text-lg">{metrics.maxRedStreakPeriod}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">Max G</p>
+                  <p className="font-bold text-lg">{metrics.maxGreenStreakPeriod}</p>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="text-center">
-                <p className="text-muted-foreground">Streak</p>
-                <p className={cn("font-bold", metrics.currentStreak.type === 'Green' ? 'text-emerald-500' : metrics.currentStreak.type === 'Red' ? 'text-red-500' : 'text-muted-foreground')}>
-                  {metrics.currentStreak.count} {metrics.currentStreak.type || '-'}
-                </p>
+          </CardContent>
+        </Card>
+
+        {/* KPI Cards */}
+        <div className="flex-1 grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* Lucro do Período */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">Lucro Período</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={cn("text-xl lg:text-2xl font-bold", metrics.periodProfitStakes >= 0 ? "text-emerald-500" : "text-red-500")}>
+                {metrics.periodProfitStakes >= 0 ? '+' : ''}{metrics.periodProfitStakes.toFixed(2)} st
+              </p>
+              <p className={cn("text-xs", periodProfitReais >= 0 ? "text-emerald-500/80" : "text-red-500/80")}>
+                {formatCurrency(periodProfitReais)}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Lucro do Dia */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">Lucro Hoje</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={cn("text-xl lg:text-2xl font-bold", metrics.dailyProfitStakes >= 0 ? "text-emerald-500" : "text-red-500")}>
+                {metrics.dailyProfitStakes >= 0 ? '+' : ''}{metrics.dailyProfitStakes.toFixed(2)} st
+              </p>
+              <p className={cn("text-xs", dailyProfitReais >= 0 ? "text-emerald-500/80" : "text-red-500/80")}>
+                {formatCurrency(dailyProfitReais)}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Win Rate */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">Win Rate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl lg:text-2xl font-bold">{overallStats.winRate}%</p>
+              <p className="text-xs text-muted-foreground">{overallStats.greens}G / {overallStats.reds}R</p>
+            </CardContent>
+          </Card>
+
+          {/* Odd Média */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Percent className="h-3 w-3" />
+                Odd Média
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={cn("text-xl lg:text-2xl font-bold", getOddZoneColor(averageOdd))}>
+                {averageOdd > 0 ? averageOdd.toFixed(2) : '-'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {operationsWithOdd} ops • BE: {breakevenRate > 0 ? `${breakevenRate.toFixed(1)}%` : '-'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Pico / Drawdown */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">Pico / DD</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl lg:text-2xl font-bold text-emerald-500">{metrics.peakProfit}</span>
+                <span className="text-muted-foreground">/</span>
+                <span className={cn("text-lg font-bold", metrics.currentDrawdown > 0 ? "text-red-500" : "text-muted-foreground")}>
+                  -{metrics.currentDrawdown}
+                </span>
               </div>
-              <div className="text-center">
-                <p className="text-muted-foreground">Max Reds</p>
-                <p className="font-bold">{metrics.maxRedStreakPeriod}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-muted-foreground">Max Greens</p>
-                <p className="font-bold">{metrics.maxGreenStreakPeriod}</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              <p className="text-xs text-muted-foreground">stakes</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Comparison Cards (show when period filter is applied) */}
       {filters.period !== 'all' && filters.period !== 'custom' && comparison.previousVolume > 0 && (
@@ -367,85 +447,6 @@ export default function Performance() {
         </Card>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
-        {/* Lucro do Período */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Lucro Período</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={cn("text-xl font-bold", metrics.periodProfitStakes >= 0 ? "text-emerald-500" : "text-red-500")}>
-              {metrics.periodProfitStakes >= 0 ? '+' : ''}{metrics.periodProfitStakes.toFixed(2)} st
-            </p>
-            <p className={cn("text-xs", periodProfitReais >= 0 ? "text-emerald-500/80" : "text-red-500/80")}>
-              {formatCurrency(periodProfitReais)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Lucro do Dia */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Lucro Hoje</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={cn("text-xl font-bold", metrics.dailyProfitStakes >= 0 ? "text-emerald-500" : "text-red-500")}>
-              {metrics.dailyProfitStakes >= 0 ? '+' : ''}{metrics.dailyProfitStakes.toFixed(2)} st
-            </p>
-            <p className={cn("text-xs", dailyProfitReais >= 0 ? "text-emerald-500/80" : "text-red-500/80")}>
-              {formatCurrency(dailyProfitReais)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Win Rate */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Win Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xl font-bold">{overallStats.winRate}%</p>
-            <p className="text-xs text-muted-foreground">{overallStats.greens}G / {overallStats.reds}R</p>
-          </CardContent>
-        </Card>
-
-        {/* Odd Média */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <Percent className="h-3 w-3" />
-              Odd Média
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className={cn("text-xl font-bold", getOddZoneColor(averageOdd))}>
-              {averageOdd > 0 ? averageOdd.toFixed(2) : '-'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {operationsWithOdd} ops • BE: {breakevenRate > 0 ? `${breakevenRate.toFixed(1)}%` : '-'}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Pico / Drawdown */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Pico / DD</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold text-emerald-500">{metrics.peakProfit}</span>
-              <span className="text-muted-foreground">/</span>
-              <span className={cn("text-lg font-bold", metrics.currentDrawdown > 0 ? "text-red-500" : "text-muted-foreground")}>
-                -{metrics.currentDrawdown}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">stakes</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Bankroll Evolution Chart */}
       <BankrollEvolutionChart data={bankrollEvolution} />
 
@@ -489,7 +490,7 @@ export default function Performance() {
       </div>
 
       {/* League Stats */}
-      <LeagueStatsChart data={originalStatistics.leagueStats} />
+      <LeagueStatsChart data={originalStatistics.leagueStats} games={games} methods={bankroll.methods} />
 
       {/* Settings Collapsible */}
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>

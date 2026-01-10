@@ -4,6 +4,7 @@ import { Game, GoalEvent } from '@/types';
 import { ApiFootballFixture, ApiFootballEvent, parseStatistics, fixturesCache, FIXTURES_CACHE_TTL } from './useApiFootball';
 import { useApiRequestTracker } from './useApiRequestTracker';
 import { format } from 'date-fns';
+import { getNowInBrasilia } from '@/utils/timezone';
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -73,7 +74,7 @@ export function useOptimizedLiveStats(games: Game[]) {
   const pendingPersistenceRef = useRef<Set<string>>(new Set());
 
   // Priorizar datas de jogos pendentes (com operações sem resultado)
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = format(getNowInBrasilia(), 'yyyy-MM-dd');
   const pendingGames = games.filter(g => g.methodOperations.some(op => !op.result));
   const pendingDates = [...new Set(pendingGames.map(g => g.date))].sort().reverse(); // Mais recentes primeiro
   

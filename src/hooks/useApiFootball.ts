@@ -133,7 +133,25 @@ export interface ApiFootballResponse<T> {
   _cached?: boolean;
 }
 
-// Generic hook for API-Football requests
+// Helper function for retry with exponential backoff
+async function fetchWithRetry<T>(
+  fetchFn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchFn();
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      console.log(`[API-Football] Tentativa ${attempt} falhou, aguardando ${attempt * baseDelay}ms para retry...`);
+      await new Promise(r => setTimeout(r, attempt * baseDelay));
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
+// Generic hook for API-Football requests with retry
 export function useApiFootball<T>(
   endpoint: string,
   params: Record<string, unknown> = {},
@@ -155,23 +173,25 @@ export function useApiFootball<T>(
     setError(null);
 
     try {
-      const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
-        body: { endpoint, params }
+      const result = await fetchWithRetry(async () => {
+        const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
+          body: { endpoint, params }
+        });
+
+        if (invokeError) {
+          throw new Error(invokeError.message);
+        }
+
+        return response as ApiFootballResponse<T>;
       });
 
-      if (invokeError) {
-        throw new Error(invokeError.message);
-      }
-
-      const apiResponse = response as ApiFootballResponse<T>;
-      
-      if (apiResponse.errors && Object.keys(apiResponse.errors).length > 0) {
-        const errorMsg = Object.values(apiResponse.errors).join(', ');
+      if (result.errors && Object.keys(result.errors).length > 0) {
+        const errorMsg = Object.values(result.errors).join(', ');
         console.warn('API-Football errors:', errorMsg);
       }
 
-      setData(apiResponse.response);
-      setCached(apiResponse._cached || false);
+      setData(result.response);
+      setCached(result._cached || false);
     } catch (err) {
       console.error('Error fetching from API-Football:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -234,27 +254,29 @@ export function useFixturesByDate(date: string, enabled = true) {
 
     const requestPromise = (async () => {
       try {
-        const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
-          body: { endpoint: 'fixtures', params: { date } }
+        const result = await fetchWithRetry(async () => {
+          const { data: response, error: invokeError } = await supabase.functions.invoke('api-football', {
+            body: { endpoint: 'fixtures', params: { date } }
+          });
+
+          if (invokeError) {
+            throw new Error(invokeError.message);
+          }
+
+          return response as { response: ApiFootballFixture[]; errors?: Record<string, string> };
         });
-
-        if (invokeError) {
-          throw new Error(invokeError.message);
-        }
-
-        const apiResponse = response as { response: ApiFootballFixture[]; errors?: Record<string, string> };
         
-        if (apiResponse.errors && Object.keys(apiResponse.errors).length > 0) {
-          console.warn('API-Football errors:', Object.values(apiResponse.errors).join(', '));
+        if (result.errors && Object.keys(result.errors).length > 0) {
+          console.warn('API-Football errors:', Object.values(result.errors).join(', '));
         }
 
         // Salvar no cache
         fixturesCache.set(cacheKey, {
-          data: apiResponse.response,
+          data: result.response,
           timestamp: Date.now()
         });
 
-        setData(apiResponse.response);
+        setData(result.response);
       } catch (err) {
         console.error('Error fetching fixtures:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');

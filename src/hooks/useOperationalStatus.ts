@@ -3,6 +3,7 @@ import { useSupabaseGames } from './useSupabaseGames';
 import { useOperationalSettings } from './useOperationalSettings';
 import { OperationalFilters } from '@/components/OperationalFilterBar';
 import { calculateProfit } from '@/utils/profitCalculator';
+import { getNowInBrasilia } from '@/utils/timezone';
 
 export type OperationalStatusType = 'NORMAL' | 'ALERTA' | 'PROTEÇÃO' | 'PAUSADO';
 
@@ -108,8 +109,8 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
       }
     }
 
-    // Get today using local date (not UTC)
-    const now = new Date();
+    // Get today using Brasília time
+    const now = getNowInBrasilia();
     const today = getLocalDateString(now);
 
     // Filter operations for today
