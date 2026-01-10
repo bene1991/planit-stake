@@ -16,6 +16,7 @@ import { Method } from "@/types";
 import { cn } from "@/lib/utils";
 import { format, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { getNowInBrasilia } from "@/utils/timezone";
 
 interface ApiGameBrowserProps {
   open: boolean;
@@ -38,7 +39,7 @@ export interface SelectedGame {
 }
 
 export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existingFixtureIds = [] }: ApiGameBrowserProps) {
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = format(getNowInBrasilia(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -52,7 +53,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   const { favoriteLeagues, isFavorite: isLeagueFavorite } = useFavoriteLeagues();
 
   // Helper functions for quick date navigation
-  const getDateString = (daysFromToday: number) => format(addDays(new Date(), daysFromToday), 'yyyy-MM-dd');
+  const getDateString = (daysFromToday: number) => format(addDays(getNowInBrasilia(), daysFromToday), 'yyyy-MM-dd');
   const isDateSelected = (daysFromToday: number) => selectedDate === getDateString(daysFromToday);
   
   // Format selected date for display
@@ -172,7 +173,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
           fixtureId: fixture.fixture.id,
           date: format(fixtureDate, 'yyyy-MM-dd'),
           time: format(fixtureDate, 'HH:mm'),
-          league: fixture.league.name,
+          league: `${fixture.league.country} - ${fixture.league.name}`,
           homeTeam: fixture.teams.home.name,
           awayTeam: fixture.teams.away.name,
           homeTeamLogo: fixture.teams.home.logo,
