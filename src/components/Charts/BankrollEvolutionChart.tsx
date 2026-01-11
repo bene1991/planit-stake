@@ -80,10 +80,13 @@ export const BankrollEvolutionChart = ({ data }: BankrollEvolutionChartProps) =>
                 }}
                 labelFormatter={(value) => format(new Date(value), "dd 'de' MMMM", { locale: ptBR })}
                 formatter={(value: number, name: string) => {
-                  if (name === 'cumulativeStakes') {
-                    return [`${value >= 0 ? '+' : ''}${value.toFixed(2)} stakes`, 'Saldo Acumulado'];
-                  }
-                  return [`${value >= 0 ? '+' : ''}${value.toFixed(2)} stakes`, 'Variação do Dia'];
+                  const label = name === 'cumulativeStakes' ? 'Saldo Acumulado' : 'Variação do Dia';
+                  return [
+                    <span key={name} className={value >= 0 ? 'text-emerald-500' : 'text-red-500'}>
+                      {value >= 0 ? '+' : ''}{value.toFixed(2)} stakes
+                    </span>,
+                    label
+                  ];
                 }}
               />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" strokeOpacity={0.5} />
