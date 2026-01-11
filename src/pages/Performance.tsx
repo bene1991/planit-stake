@@ -86,6 +86,44 @@ export default function Performance() {
   // Use original statistics for charts that don't need filtering
   const originalStatistics = useStatistics(games, bankroll.methods);
 
+  // Calculate filtered games for LeagueStatsChart
+  const filteredGames = useMemo(() => {
+    return games.filter((game) => {
+      // Must have completed operations
+      if (game.methodOperations.length === 0) return false;
+      if (!game.methodOperations.every((op) => op.result)) return false;
+
+      // Date filter
+      if (filters.dateFrom && filters.dateTo) {
+        const gameDate = new Date(game.date);
+        if (gameDate < filters.dateFrom || gameDate > filters.dateTo) {
+          return false;
+        }
+      }
+
+      // League filter
+      if (filters.selectedLeagues.length > 0 && !filters.selectedLeagues.includes(game.league)) {
+        return false;
+      }
+
+      // Method filter
+      if (filters.selectedMethods.length > 0) {
+        const hasMatchingMethod = game.methodOperations.some(op => 
+          filters.selectedMethods.includes(op.methodId)
+        );
+        if (!hasMatchingMethod) return false;
+      }
+
+      // Result filter
+      if (filters.result !== 'all') {
+        const hasMatchingResult = game.methodOperations.some(op => op.result === filters.result);
+        if (!hasMatchingResult) return false;
+      }
+
+      return true;
+    });
+  }, [games, filters]);
+
   // Operational status
   const operationalFilters = useMemo(() => ({
     period: filters.period === 'all' ? 'all' as const : 
@@ -490,7 +528,7 @@ export default function Performance() {
       </div>
 
       {/* League Stats */}
-      <LeagueStatsChart data={originalStatistics.leagueStats} games={games} methods={bankroll.methods} />
+      <LeagueStatsChart data={originalStatistics.leagueStats} games={filteredGames} methods={bankroll.methods} />
 
       {/* Settings Collapsible */}
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
