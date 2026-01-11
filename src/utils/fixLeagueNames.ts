@@ -1,57 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 
-// Mapping of known leagues to their countries
-const leagueCountryMap: Record<string, string> = {
-  // Major European Leagues
-  'Bundesliga': 'Germany',
-  'La Liga': 'Spain',
-  'Premier League': 'England',
-  'Championship': 'England',
-  'Ligue 1': 'France',
-  'Premiership': 'Scotland',
-  'Segunda División': 'Spain',
-  'Primeira Liga': 'Portugal',
-  'Eredivisie': 'Netherlands',
-  'Serie A': 'Italy',
-  'Serie B': 'Brazil',
-  'Super Lig': 'Turkey',
-  'Jupiler Pro League': 'Belgium',
-  
-  // South American Leagues
-  'Paulista - A1': 'Brazil',
-  'Carioca - A1': 'Brazil',
-  'Gauchão': 'Brazil',
-  'Copa do Brasil': 'Brazil',
-  'Libertadores': 'South America',
-  'Sudamericana': 'South America',
-  
-  // International
-  'Africa Cup of Nations': 'World',
-  'Cup': 'World',
-  'Friendlies': 'World',
-  'World Cup': 'World',
-  'Euro': 'Europe',
-  'Champions League': 'Europe',
-  'Europa League': 'Europe',
-  'Conference League': 'Europe',
-  
-  // Middle East
-  'Division 1': 'Saudi Arabia',
-  'Pro League': 'Saudi Arabia',
-  
-  // Other
-  'A-League': 'Australia',
-  'MLS': 'USA',
-  'Liga MX': 'Mexico',
-  'J-League': 'Japan',
-  'K-League': 'South Korea',
-};
-
-// Map of known teams to help identify countries for ambiguous leagues
+// Mapping of teams to their countries for disambiguation
 const teamCountryMap: Record<string, string> = {
   // Italian Serie A
   'Inter': 'Italy',
   'Milan': 'Italy',
+  'AC Milan': 'Italy',
   'Juventus': 'Italy',
   'Roma': 'Italy',
   'Napoli': 'Italy',
@@ -60,6 +14,16 @@ const teamCountryMap: Record<string, string> = {
   'Atalanta': 'Italy',
   'Bologna': 'Italy',
   'Torino': 'Italy',
+  'Genoa': 'Italy',
+  'Udinese': 'Italy',
+  'Cagliari': 'Italy',
+  'Lecce': 'Italy',
+  'Parma': 'Italy',
+  'Verona': 'Italy',
+  'Monza': 'Italy',
+  'Pisa': 'Italy',
+  'Juve Stabia': 'Italy',
+  'Virtus Entella': 'Italy',
   
   // Brazilian Serie B
   'Goiás': 'Brazil',
@@ -72,6 +36,7 @@ const teamCountryMap: Record<string, string> = {
   'Ituano': 'Brazil',
   'Amazonas': 'Brazil',
   'Brusque': 'Brazil',
+  'Pescara': 'Brazil',
   
   // French Ligue 1
   'PSG': 'France',
@@ -84,6 +49,119 @@ const teamCountryMap: Record<string, string> = {
   'Lens': 'France',
   'Rennes': 'France',
   'Strasbourg': 'France',
+  'Nantes': 'France',
+  
+  // Algerian Ligue 1
+  'MC Alger': 'Algeria',
+  'JS Kabylie': 'Algeria',
+  'CR Belouizdad': 'Algeria',
+  'USM Alger': 'Algeria',
+  'MC Oran': 'Algeria',
+  'CS Constantine': 'Algeria',
+  'Ben Aknoun': 'Algeria',
+  'MB Rouisset': 'Algeria',
+  'Oued Akbou': 'Algeria',
+  
+  // Spanish La Liga
+  'Real Madrid': 'Spain',
+  'Barcelona': 'Spain',
+  'Atletico Madrid': 'Spain',
+  'Sevilla': 'Spain',
+  'Valencia': 'Spain',
+  'Villarreal': 'Spain',
+  'Real Sociedad': 'Spain',
+  'Athletic Club': 'Spain',
+  'Betis': 'Spain',
+  'Celta Vigo': 'Spain',
+  'Getafe': 'Spain',
+  'Osasuna': 'Spain',
+  'Alaves': 'Spain',
+  'Mallorca': 'Spain',
+  'Las Palmas': 'Spain',
+  'Elche': 'Spain',
+  'Girona': 'Spain',
+  'Oviedo': 'Spain',
+  
+  // Spanish Segunda Division
+  'Deportivo La Coruna': 'Spain',
+  'Eibar': 'Spain',
+  'Burgos': 'Spain',
+  'Huesca': 'Spain',
+  'Castellón': 'Spain',
+  'Sporting Gijon': 'Spain',
+  'Cadiz': 'Spain',
+  
+  // English Championship
+  'Derby': 'England',
+  'Wrexham': 'England',
+  'Preston': 'England',
+  'Sheffield Wednesday': 'England',
+  'QPR': 'England',
+  'West Brom': 'England',
+  'Swansea': 'England',
+  'Oxford United': 'England',
+  'Ipswich': 'England',
+  'Millwall': 'England',
+  'Charlton': 'England',
+  'Blackburn': 'England',
+  
+  // German Bundesliga
+  'Union Berlin': 'Germany',
+  'FSV Mainz 05': 'Germany',
+  'Bayern Munich': 'Germany',
+  'Borussia Dortmund': 'Germany',
+  'RB Leipzig': 'Germany',
+  'Bayer Leverkusen': 'Germany',
+  
+  // Scottish Premiership
+  'Linfield': 'Scotland',
+  'Bangor': 'Scotland',
+  'Celtic': 'Scotland',
+  'Rangers': 'Scotland',
+  
+  // Greek Cup
+  'PAOK': 'Greece',
+  'Atromitos': 'Greece',
+  'Aris Thessalonikis': 'Greece',
+  'Panetolikos': 'Greece',
+  
+  // Saudi Division 1
+  'Al Zulfi': 'Saudi Arabia',
+  'Jeddah Club': 'Saudi Arabia',
+};
+
+// Mapping of known leagues to their countries (when unambiguous)
+const leagueCountryMap: Record<string, string> = {
+  'Bundesliga': 'Germany',
+  'La Liga': 'Spain',
+  'Premier League': 'England',
+  'Championship': 'England',
+  'Premiership': 'Scotland',
+  'Segunda División': 'Spain',
+  'Primeira Liga': 'Portugal',
+  'Eredivisie': 'Netherlands',
+  'Super Lig': 'Turkey',
+  'Jupiler Pro League': 'Belgium',
+  'Paulista - A1': 'Brazil',
+  'Carioca - A1': 'Brazil',
+  'Gauchão': 'Brazil',
+  'Copa do Brasil': 'Brazil',
+  'Libertadores': 'South America',
+  'Sudamericana': 'South America',
+  'Africa Cup of Nations': 'World',
+  'Friendlies': 'World',
+  'World Cup': 'World',
+  'Euro': 'Europe',
+  'Champions League': 'Europe',
+  'Europa League': 'Europe',
+  'Conference League': 'Europe',
+  'Division 1': 'Saudi Arabia',
+  'Pro League': 'Saudi Arabia',
+  'A-League': 'Australia',
+  'MLS': 'USA',
+  'Liga MX': 'Mexico',
+  'J-League': 'Japan',
+  'K-League': 'South Korea',
 };
 
 export interface FixLeagueNamesResult {
@@ -91,6 +169,21 @@ export interface FixLeagueNamesResult {
   skipped: number;
   errors: number;
   details: string[];
+}
+
+function getCountryFromTeam(homeTeam: string, awayTeam: string): string | null {
+  // Check exact match first
+  if (teamCountryMap[homeTeam]) return teamCountryMap[homeTeam];
+  if (teamCountryMap[awayTeam]) return teamCountryMap[awayTeam];
+  
+  // Check partial match
+  for (const [team, country] of Object.entries(teamCountryMap)) {
+    if (homeTeam.includes(team) || awayTeam.includes(team)) {
+      return country;
+    }
+  }
+  
+  return null;
 }
 
 export async function fixLeagueNames(): Promise<FixLeagueNamesResult> {
@@ -118,7 +211,7 @@ export async function fixLeagueNames(): Promise<FixLeagueNamesResult> {
       return result;
     }
 
-    // Group games by league to process efficiently
+    // Group games by league
     const gamesByLeague = games.reduce((acc, game) => {
       if (!acc[game.league]) {
         acc[game.league] = [];
@@ -131,48 +224,49 @@ export async function fixLeagueNames(): Promise<FixLeagueNamesResult> {
       // Skip if already has country prefix (contains " - ")
       if (league.includes(' - ')) {
         result.skipped += leagueGames.length;
-        result.details.push(`Pulando "${league}" - já tem país`);
+        result.details.push(`✓ "${league}" - já tem país (${leagueGames.length} jogos)`);
         continue;
       }
 
-      // Try to find country from leagueCountryMap
-      let country = leagueCountryMap[league];
-
-      // If not found, try to infer from team names
-      if (!country) {
-        const firstGame = leagueGames[0];
-        for (const [team, teamCountry] of Object.entries(teamCountryMap)) {
-          if (
-            firstGame.home_team.includes(team) ||
-            firstGame.away_team.includes(team)
-          ) {
+      // Separate games by country detected from teams
+      const gamesByCountry: Record<string, typeof games> = {};
+      
+      for (const game of leagueGames) {
+        let country = leagueCountryMap[league];
+        
+        // If league is ambiguous (like "Ligue 1", "Serie A", "Serie B", "Cup"), check teams
+        if (!country || ['Ligue 1', 'Serie A', 'Serie B', 'Cup'].includes(league)) {
+          const teamCountry = getCountryFromTeam(game.home_team, game.away_team);
+          if (teamCountry) {
             country = teamCountry;
-            break;
+          } else if (!country) {
+            country = 'Unknown';
           }
         }
+        
+        if (!gamesByCountry[country]) {
+          gamesByCountry[country] = [];
+        }
+        gamesByCountry[country].push(game);
       }
 
-      // If still not found, mark as Unknown
-      if (!country) {
-        country = 'Unknown';
-        result.details.push(`⚠️ Liga "${league}" sem país identificado - usando "Unknown"`);
-      }
+      // Update games for each country
+      for (const [country, countryGames] of Object.entries(gamesByCountry)) {
+        const newLeagueName = `${country} - ${league}`;
+        const gameIds = countryGames.map(g => g.id);
+        
+        const { error: updateError } = await supabase
+          .from('games')
+          .update({ league: newLeagueName })
+          .in('id', gameIds);
 
-      const newLeagueName = `${country} - ${league}`;
-
-      // Update all games with this league
-      const gameIds = leagueGames.map(g => g.id);
-      const { error: updateError } = await supabase
-        .from('games')
-        .update({ league: newLeagueName })
-        .in('id', gameIds);
-
-      if (updateError) {
-        result.errors += leagueGames.length;
-        result.details.push(`❌ Erro ao atualizar "${league}": ${updateError.message}`);
-      } else {
-        result.updated += leagueGames.length;
-        result.details.push(`✅ "${league}" → "${newLeagueName}" (${leagueGames.length} jogos)`);
+        if (updateError) {
+          result.errors += countryGames.length;
+          result.details.push(`❌ Erro "${league}" → "${newLeagueName}": ${updateError.message}`);
+        } else {
+          result.updated += countryGames.length;
+          result.details.push(`✅ "${league}" → "${newLeagueName}" (${countryGames.length} jogos)`);
+        }
       }
     }
 

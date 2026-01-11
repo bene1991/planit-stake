@@ -1,6 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Shield, CheckCircle2, XCircle, Calendar, Trophy } from "lucide-react";
 import { Game, Method } from "@/types";
@@ -52,8 +51,8 @@ export function LeagueGamesModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="px-6 pt-6 pb-2">
+      <DialogContent className="max-w-lg flex flex-col p-0" style={{ maxHeight: '90vh' }}>
+        <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-primary" />
             {league}
@@ -75,7 +74,7 @@ export function LeagueGamesModal({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6 pb-6" style={{ maxHeight: 'calc(90vh - 120px)' }}>
+        <div className="flex-1 overflow-y-auto px-6 pb-6" style={{ maxHeight: 'calc(90vh - 100px)' }}>
           {Object.entries(groupedByDate).length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               Nenhum jogo encontrado
@@ -156,7 +155,7 @@ export function LeagueGamesModal({
               ))}
             </div>
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
