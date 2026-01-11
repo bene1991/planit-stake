@@ -52,8 +52,8 @@ export function LeagueGamesModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-primary" />
             {league}
@@ -75,7 +75,7 @@ export function LeagueGamesModal({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <ScrollArea className="flex-1 px-6 pb-6" style={{ maxHeight: 'calc(90vh - 120px)' }}>
           {Object.entries(groupedByDate).length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               Nenhum jogo encontrado
