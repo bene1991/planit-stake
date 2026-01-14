@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { LeagueGamesModal } from './LeagueGamesModal';
 import { Game, Method } from '@/types';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface LeagueStats {
   league: string;
@@ -20,9 +22,14 @@ interface LeagueStatsChartProps {
 
 export function LeagueStatsChart({ data, games = [], methods = [] }: LeagueStatsChartProps) {
   const [selectedLeague, setSelectedLeague] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
-  // Pegar top 10 ligas
-  const topLeagues = data.slice(0, 10);
+  // Mostrar todas ou top 10
+  const displayLeagues = showAll ? data : data.slice(0, 10);
+  const hasMore = data.length > 10;
+
+  // Altura dinâmica baseada no número de ligas
+  const chartHeight = Math.max(300, displayLeagues.length * 40);
 
   // Cor baseada no win rate
   const getColor = (winRate: number) => {
@@ -44,22 +51,27 @@ export function LeagueStatsChart({ data, games = [], methods = [] }: LeagueStats
   return (
     <>
       <Card className="p-6 shadow-card">
-        <h3 className="mb-4 text-lg font-bold">
-          Performance por Liga
-          {games.length > 0 && (
-            <span className="text-xs font-normal text-muted-foreground ml-2">
-              (clique para ver jogos)
-            </span>
-          )}
-        </h3>
-        {topLeagues.length === 0 ? (
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold">
+            Performance por Liga
+            {games.length > 0 && (
+              <span className="text-xs font-normal text-muted-foreground ml-2">
+                (clique para ver jogos)
+              </span>
+            )}
+          </h3>
+          <span className="text-sm text-muted-foreground">
+            {data.length} ligas
+          </span>
+        </div>
+        {displayLeagues.length === 0 ? (
           <div className="flex h-64 items-center justify-center text-muted-foreground">
             Nenhuma estatística disponível
           </div>
         ) : (
           <>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={topLeagues} layout="vertical">
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <BarChart data={displayLeagues} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis type="number" domain={[0, 100]} className="text-xs" />
                 <YAxis 
@@ -102,25 +114,49 @@ export function LeagueStatsChart({ data, games = [], methods = [] }: LeagueStats
                   cursor={games.length > 0 ? 'pointer' : 'default'}
                   onClick={(data) => handleBarClick(data.league)}
                 >
-                  {topLeagues.map((entry, index) => (
+                  {displayLeagues.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={getColor(entry.winRate)} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <div className="flex items-center gap-2 text-sm">
-                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(142 76% 36%)' }} />
-                <span className="text-muted-foreground">≥ 60% Win Rate</span>
+            
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(142 76% 36%)' }} />
+                  <span className="text-muted-foreground">≥ 60% Win Rate</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(45 93% 47%)' }} />
+                  <span className="text-muted-foreground">50-60% Win Rate</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(0 72% 51%)' }} />
+                  <span className="text-muted-foreground">&lt; 50% Win Rate</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(45 93% 47%)' }} />
-                <span className="text-muted-foreground">50-60% Win Rate</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(0 72% 51%)' }} />
-                <span className="text-muted-foreground">&lt; 50% Win Rate</span>
-              </div>
+              
+              {hasMore && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setShowAll(!showAll)}
+                  className="text-primary"
+                >
+                  {showAll ? (
+                    <>
+                      <ChevronUp className="h-4 w-4 mr-1" />
+                      Ver menos
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-4 w-4 mr-1" />
+                      Ver todas ({data.length})
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </>
         )}
