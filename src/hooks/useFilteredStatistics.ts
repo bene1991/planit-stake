@@ -69,6 +69,17 @@ export interface BankrollEvolutionData {
   dailyChange: number;
 }
 
+export interface OddRangeStats {
+  range: string;
+  min: number;
+  max: number;
+  total: number;
+  greens: number;
+  reds: number;
+  winRate: number;
+  breakeven: number;
+}
+
 export interface FilteredStatisticsResult {
   overallStats: OverallStats;
   methodDetailStats: MethodDetailStats[];
@@ -81,6 +92,7 @@ export interface FilteredStatisticsResult {
   operationsWithOdd: number;
   breakevenRate: number;
   bankrollEvolution: BankrollEvolutionData[];
+  oddRangeStats: OddRangeStats[];
 }
 
 export const useFilteredStatistics = (
@@ -342,6 +354,45 @@ export const useFilteredStatistics = (
       : 0;
     const breakevenRate = averageOdd > 0 ? 100 / averageOdd : 0;
 
+    // Calculate win rate by odd range
+    const oddRanges = [
+      { range: '1.80 - 2.00', min: 1.80, max: 2.00 },
+      { range: '2.01 - 2.20', min: 2.01, max: 2.20 },
+      { range: '2.21 - 2.40', min: 2.21, max: 2.40 },
+      { range: '2.41 - 2.60', min: 2.41, max: 2.60 },
+      { range: '2.61 - 2.80', min: 2.61, max: 2.80 },
+      { range: '2.81+', min: 2.81, max: Infinity },
+    ];
+
+    const oddRangeStats: OddRangeStats[] = oddRanges.map(({ range, min, max }) => {
+      const rangeOps = operationsWithOdd.filter(op => {
+        const odd = op.odd || 0;
+        return odd >= min && odd <= max;
+      });
+      
+      const greens = rangeOps.filter(op => op.result === 'Green').length;
+      const reds = rangeOps.filter(op => op.result === 'Red').length;
+      const total = rangeOps.length;
+      const winRate = total > 0 ? (greens / total) * 100 : 0;
+      
+      // Calculate average odd for this range to get breakeven
+      const rangeAvgOdd = total > 0 
+        ? rangeOps.reduce((sum, op) => sum + (op.odd || 0), 0) / total 
+        : (min + (max === Infinity ? min + 0.5 : max)) / 2;
+      const rangeBreakeven = 100 / rangeAvgOdd;
+
+      return {
+        range,
+        min,
+        max,
+        total,
+        greens,
+        reds,
+        winRate: parseFloat(winRate.toFixed(1)),
+        breakeven: parseFloat(rangeBreakeven.toFixed(1)),
+      };
+    }).filter(r => r.total > 0);
+
     // Calculate bankroll evolution (cumulative stakes per day)
     const dailyProfitMap = new Map<string, number>();
     
@@ -391,6 +442,7 @@ export const useFilteredStatistics = (
       operationsWithOdd: operationsWithOdd.length,
       breakevenRate: parseFloat(breakevenRate.toFixed(1)),
       bankrollEvolution,
+      oddRangeStats,
     };
   }, [games, methods, filters]);
 };
