@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { User, KeyRound, Palette, Link, Database, Loader2 } from 'lucide-react';
+import { User, KeyRound, Palette, Link, Database, Loader2, Trophy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { VTLogo } from '@/components/VTLogo';
 import { LogoVariant } from '@/hooks/useLogoVariant';
@@ -17,16 +17,20 @@ import { PushNotificationSettings } from '@/components/PushNotificationSettings'
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { useSettings } from '@/hooks/useSettings';
 import { fixLeagueNames } from '@/utils/fixLeagueNames';
+import { LeagueManager } from '@/components/LeagueManager';
+import { useSupabaseGames } from '@/hooks/useSupabaseGames';
 
 export default function Account() {
   const { user } = useAuth();
   const { variant, setVariant } = useLogo();
   const { settings } = useSettings();
+  const { games, refreshGames } = useSupabaseGames();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [fixingLeagues, setFixingLeagues] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [showLeagueManager, setShowLeagueManager] = useState(false);
 
   const logoVariants: { value: LogoVariant; label: string; description: string }[] = [
     { value: 'chart', label: 'Gráfico Ascendente', description: 'Logo com linha de tendência' },
@@ -137,21 +141,44 @@ export default function Account() {
           <p className="text-sm text-muted-foreground mb-4">
             Corrigir nomes de ligas antigas para incluir o país (ex: "Bundesliga" → "Germany - Bundesliga")
           </p>
-          <Button
-            onClick={handleFixLeagueNames}
-            disabled={fixingLeagues}
-            variant="outline"
-          >
-            {fixingLeagues ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Corrigindo...
-              </>
-            ) : (
-              'Corrigir Nomes das Ligas'
-            )}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={handleFixLeagueNames}
+              disabled={fixingLeagues}
+              variant="outline"
+            >
+              {fixingLeagues ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Corrigindo...
+                </>
+              ) : (
+                'Corrigir Nomes das Ligas'
+              )}
+            </Button>
+            <Button
+              onClick={() => setShowLeagueManager(!showLeagueManager)}
+              variant={showLeagueManager ? 'secondary' : 'outline'}
+            >
+              <Trophy className="mr-2 h-4 w-4" />
+              {showLeagueManager ? 'Fechar Gerenciador' : 'Gerenciar Ligas'}
+            </Button>
+          </div>
         </div>
+
+        {showLeagueManager && (
+          <div className="border-t pt-6 mb-6">
+            <LeagueManager 
+              games={games.map(g => ({ 
+                id: g.id, 
+                league: g.league, 
+                homeTeam: g.homeTeam, 
+                awayTeam: g.awayTeam 
+              }))} 
+              onRefresh={refreshGames} 
+            />
+          </div>
+        )}
 
         <div className="border-t pt-6 mb-6">
           <div className="mb-4 flex items-center gap-2">

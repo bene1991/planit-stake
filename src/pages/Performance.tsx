@@ -19,6 +19,7 @@ import { MethodDetailCard } from '@/components/Charts/MethodDetailCard';
 import { DailyMethodBreakdown } from '@/components/Charts/DailyMethodBreakdown';
 import { MethodTimelineChart } from '@/components/Charts/MethodTimelineChart';
 import { BankrollEvolutionChart } from '@/components/Charts/BankrollEvolutionChart';
+import { OddRangeStatsChart } from '@/components/Charts/OddRangeStatsChart';
 import { StatCard } from '@/components/StatCard';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
@@ -81,6 +82,7 @@ export default function Performance() {
     operationsWithOdd,
     breakevenRate,
     bankrollEvolution,
+    oddRangeStats,
   } = useFilteredStatistics(games, bankroll.methods, filters);
 
   // Use original statistics for charts that don't need filtering
@@ -524,8 +526,10 @@ export default function Performance() {
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-2">
         <GreenVsRedChart greens={overallStats.greens} reds={overallStats.reds} />
-        <MethodComparisonChart data={methodDetailStats} />
+        <OddRangeStatsChart data={oddRangeStats} />
       </div>
+
+      <MethodComparisonChart data={methodDetailStats} />
 
       {/* League Stats */}
       <LeagueStatsChart data={originalStatistics.leagueStats} games={filteredGames} methods={bankroll.methods} />
