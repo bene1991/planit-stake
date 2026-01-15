@@ -1,13 +1,14 @@
 import { cn } from "@/lib/utils";
 import { Check, AlertTriangle, RefreshCw, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BttsOdds } from "@/hooks/useFixtureOdds";
+import { BttsOdds, OddsValue } from "@/hooks/useFixtureOdds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface OddsDisplayProps {
   btts?: BttsOdds | null;
+  matchOdds?: OddsValue | null;
   bookmaker?: string;
   isBetfair?: boolean;
   onRefetch?: () => void;
@@ -90,24 +91,26 @@ function LastUpdateIndicator({ lastUpdate }: { lastUpdate?: Date | string | null
   );
 }
 
-export function OddsDisplay({ btts, bookmaker, isBetfair, onRefetch, loading, lastUpdate }: OddsDisplayProps) {
+export function OddsDisplay({ btts, matchOdds, bookmaker, isBetfair, onRefetch, loading, lastUpdate }: OddsDisplayProps) {
   const hasBtts = btts?.yes && btts?.no;
+  const hasMatchOdds = matchOdds?.home && matchOdds?.draw && matchOdds?.away;
+  const hasAnyOdds = hasBtts || hasMatchOdds;
   
   // Show skeleton while loading and no data yet
-  if (loading && !hasBtts) {
+  if (loading && !hasAnyOdds) {
     return <OddsSkeleton />;
   }
   
-  if (!hasBtts && !onRefetch) {
+  if (!hasAnyOdds && !onRefetch) {
     return null;
   }
   
   return (
     <div className="space-y-2">
-      {hasBtts ? (
-        <div className="flex flex-col gap-1 animate-fade-in">
+      {hasAnyOdds ? (
+        <div className="flex flex-col gap-2 animate-fade-in">
+          {/* Header with bookmaker and refresh */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
             <BookmakerIndicator 
               isBetfair={isBetfair} 
               bookmaker={bookmaker}
@@ -119,21 +122,40 @@ export function OddsDisplay({ btts, bookmaker, isBetfair, onRefetch, loading, la
                 onClick={onRefetch}
                 disabled={loading}
                 className="h-4 w-4 p-0 ml-1"
-                title="Atualizar BTTS"
+                title="Atualizar odds"
               >
                 <RefreshCw className={cn("h-2.5 w-2.5 text-muted-foreground", loading && "animate-spin")} />
               </Button>
             )}
             <LastUpdateIndicator lastUpdate={lastUpdate} />
           </div>
-          <div className="flex gap-1">
-            <OddBadge value={btts.yes} label="Sim" />
-            <OddBadge value={btts.no} label="Não" />
-          </div>
+          
+          {/* Match Odds 1X2 */}
+          {hasMatchOdds && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] text-muted-foreground font-medium">1X2</span>
+              <div className="flex gap-1">
+                <OddBadge value={matchOdds.home} label="1" />
+                <OddBadge value={matchOdds.draw} label="X" />
+                <OddBadge value={matchOdds.away} label="2" />
+              </div>
+            </div>
+          )}
+          
+          {/* BTTS */}
+          {hasBtts && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
+              <div className="flex gap-1">
+                <OddBadge value={btts.yes} label="Sim" />
+                <OddBadge value={btts.no} label="Não" />
+              </div>
+            </div>
+          )}
         </div>
       ) : onRefetch && (
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-muted-foreground font-medium">BTTS</span>
+          <span className="text-[9px] text-muted-foreground font-medium">Odds</span>
           <Button
             variant="outline"
             size="sm"

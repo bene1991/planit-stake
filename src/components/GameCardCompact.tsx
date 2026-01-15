@@ -337,10 +337,11 @@ export function GameCardCompact({
           />
         </div>
 
-        {/* Odds Section - BTTS from API-Football */}
+        {/* Odds Section - Match Odds + BTTS from API-Football */}
         {game.api_fixture_id && (
           <div className="mt-3 pt-2 border-t border-border/20">
             <OddsDisplay 
+              matchOdds={oddsData?.matchOdds}
               btts={oddsData?.btts}
               bookmaker={oddsData?.bookmaker}
               isBetfair={isBetfair}
