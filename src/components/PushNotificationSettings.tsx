@@ -1,8 +1,9 @@
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Bell, BellOff, Send, Smartphone } from 'lucide-react';
+import { Bell, BellOff, Send, Smartphone, Goal } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -16,6 +17,16 @@ export const PushNotificationSettings = () => {
     unsubscribe,
     sendTestNotification,
   } = usePushNotifications();
+
+  // Local storage for goal notifications preference
+  const [goalNotificationsEnabled, setGoalNotificationsEnabled] = useState(() => {
+    const saved = localStorage.getItem('goalNotificationsEnabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('goalNotificationsEnabled', JSON.stringify(goalNotificationsEnabled));
+  }, [goalNotificationsEnabled]);
 
   if (!user) {
     return (
@@ -89,15 +100,36 @@ export const PushNotificationSettings = () => {
         </div>
 
         {isSubscribed && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={sendTestNotification}
-            className="w-full"
-          >
-            <Send className="h-4 w-4 mr-2" />
-            Enviar Notificação de Teste
-          </Button>
+          <>
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="goal-notifications" className="flex-1">
+                  <div className="font-medium flex items-center gap-2">
+                    <Goal className="h-4 w-4" />
+                    Alertas de Gol
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Receba notificação quando houver gol nos seus jogos ao vivo
+                  </div>
+                </Label>
+                <Switch
+                  id="goal-notifications"
+                  checked={goalNotificationsEnabled}
+                  onCheckedChange={setGoalNotificationsEnabled}
+                />
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={sendTestNotification}
+              className="w-full"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Enviar Notificação de Teste
+            </Button>
+          </>
         )}
 
         <div className="text-xs text-muted-foreground">
