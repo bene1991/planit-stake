@@ -214,7 +214,7 @@ export const LeagueManager = ({ games, onRefresh }: LeagueManagerProps) => {
                           <p className="text-xs text-muted-foreground mb-2">
                             Jogos nesta liga:
                           </p>
-                          <ScrollArea className="max-h-[200px]">
+                          <ScrollArea className="max-h-[400px]">
                             <div className="space-y-1">
                               {games
                                 .filter(g => g.league === league.name)
