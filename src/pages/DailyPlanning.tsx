@@ -5,6 +5,7 @@ import { useOptimizedLiveStats } from "@/hooks/useOptimizedLiveStats";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import { useGoalNotifications } from "@/hooks/useGoalNotifications";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 
@@ -74,9 +75,18 @@ export default function DailyPlanning() {
     lastRefresh 
   } = useOptimizedLiveStats(games);
   
+  // Goal notifications for background monitoring
+  const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications();
+  
+  // Start goal monitoring when games change
+  useEffect(() => {
+    setLiveGames(games);
+    startMonitoring();
+  }, [games, setLiveGames, startMonitoring]);
+  
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
-  
+
   // Auto-refresh após mount para combater cold start de Edge Functions
   const initialLoadRef = useRef(false);
   
