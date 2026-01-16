@@ -20,6 +20,7 @@ import { DailyMethodBreakdown } from '@/components/Charts/DailyMethodBreakdown';
 import { MethodTimelineChart } from '@/components/Charts/MethodTimelineChart';
 import { BankrollEvolutionChart } from '@/components/Charts/BankrollEvolutionChart';
 import { OddRangeStatsChart } from '@/components/Charts/OddRangeStatsChart';
+import { TeamStatsChart } from '@/components/Charts/TeamStatsChart';
 import { StatCard } from '@/components/StatCard';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
@@ -83,6 +84,7 @@ export default function Performance() {
     breakevenRate,
     bankrollEvolution,
     oddRangeStats,
+    teamStats,
   } = useFilteredStatistics(games, bankroll.methods, filters);
 
   // Use original statistics for charts that don't need filtering
@@ -533,6 +535,11 @@ export default function Performance() {
 
       {/* League Stats */}
       <LeagueStatsChart data={originalStatistics.leagueStats} games={filteredGames} methods={bankroll.methods} />
+
+      {/* Team Stats */}
+      {teamStats.length > 0 && (
+        <TeamStatsChart data={teamStats} games={filteredGames} methods={bankroll.methods} />
+      )}
 
       {/* Settings Collapsible */}
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>

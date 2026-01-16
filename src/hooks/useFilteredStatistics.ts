@@ -80,6 +80,16 @@ export interface OddRangeStats {
   breakeven: number;
 }
 
+export interface TeamStats {
+  team: string;
+  gamesCount: number;
+  operations: number;
+  greens: number;
+  reds: number;
+  winRate: number;
+  profit: number;
+}
+
 export interface FilteredStatisticsResult {
   overallStats: OverallStats;
   methodDetailStats: MethodDetailStats[];
@@ -93,6 +103,7 @@ export interface FilteredStatisticsResult {
   breakevenRate: number;
   bankrollEvolution: BankrollEvolutionData[];
   oddRangeStats: OddRangeStats[];
+  teamStats: TeamStats[];
 }
 
 export const useFilteredStatistics = (
@@ -430,6 +441,62 @@ export const useFilteredStatistics = (
       };
     });
 
+    // Calculate team statistics
+    const teamMap = new Map<string, {
+      gamesSet: Set<string>;
+      operations: number;
+      greens: number;
+      reds: number;
+      profit: number;
+    }>();
+
+    filteredGames.forEach((game) => {
+      const ops = getFilteredOperations(game);
+      if (ops.length === 0) return;
+
+      [game.homeTeam, game.awayTeam].forEach((team) => {
+        if (!teamMap.has(team)) {
+          teamMap.set(team, {
+            gamesSet: new Set(),
+            operations: 0,
+            greens: 0,
+            reds: 0,
+            profit: 0,
+          });
+        }
+        const teamData = teamMap.get(team)!;
+        teamData.gamesSet.add(game.id);
+
+        ops.forEach((op) => {
+          teamData.operations++;
+          if (op.result === 'Green') teamData.greens++;
+          if (op.result === 'Red') teamData.reds++;
+
+          // Calculate profit in stakes
+          if (op.profit !== undefined && op.profit !== null && op.stakeValue && op.stakeValue > 0) {
+            teamData.profit += op.profit / op.stakeValue;
+          } else if (op.result === 'Green') {
+            teamData.profit += op.odd && op.odd > 0 ? op.odd - 1 : 0;
+          } else if (op.result === 'Red') {
+            teamData.profit -= 1;
+          }
+        });
+      });
+    });
+
+    const teamStats: TeamStats[] = Array.from(teamMap.entries())
+      .map(([team, data]) => ({
+        team,
+        gamesCount: data.gamesSet.size,
+        operations: data.operations,
+        greens: data.greens,
+        reds: data.reds,
+        winRate: data.operations > 0 ? parseFloat(((data.greens / data.operations) * 100).toFixed(1)) : 0,
+        profit: parseFloat(data.profit.toFixed(2)),
+      }))
+      .filter((stat) => stat.gamesCount >= 2)
+      .sort((a, b) => b.winRate - a.winRate);
+
     return {
       overallStats,
       methodDetailStats,
@@ -443,6 +510,7 @@ export const useFilteredStatistics = (
       breakevenRate: parseFloat(breakevenRate.toFixed(1)),
       bankrollEvolution,
       oddRangeStats,
+      teamStats,
     };
   }, [games, methods, filters]);
 };
