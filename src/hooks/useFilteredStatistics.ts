@@ -78,6 +78,7 @@ export interface OddRangeStats {
   reds: number;
   winRate: number;
   breakeven: number;
+  profit: number;
 }
 
 export interface TeamStats {
@@ -392,6 +393,18 @@ export const useFilteredStatistics = (
         : (min + (max === Infinity ? min + 0.5 : max)) / 2;
       const rangeBreakeven = 100 / rangeAvgOdd;
 
+      // Calculate profit in stakes for this range
+      let rangeProfit = 0;
+      rangeOps.forEach((op) => {
+        if (op.profit !== undefined && op.profit !== null && op.stakeValue && op.stakeValue > 0) {
+          rangeProfit += op.profit / op.stakeValue;
+        } else if (op.result === 'Green') {
+          rangeProfit += op.odd && op.odd > 0 ? op.odd - 1 : 0;
+        } else if (op.result === 'Red') {
+          rangeProfit -= 1;
+        }
+      });
+
       return {
         range,
         min,
@@ -401,6 +414,7 @@ export const useFilteredStatistics = (
         reds,
         winRate: parseFloat(winRate.toFixed(1)),
         breakeven: parseFloat(rangeBreakeven.toFixed(1)),
+        profit: parseFloat(rangeProfit.toFixed(2)),
       };
     }).filter(r => r.total > 0);
 

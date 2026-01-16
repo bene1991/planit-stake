@@ -10,6 +10,7 @@ interface OddRangeData {
   reds: number;
   winRate: number;
   breakeven: number;
+  profit: number;
 }
 
 interface OddRangeStatsChartProps {
@@ -38,6 +39,12 @@ export const OddRangeStatsChart = ({ data }: OddRangeStatsChartProps) => {
     return <Minus className="h-4 w-4 text-muted-foreground" />;
   };
 
+  const getProfitColor = (profit: number) => {
+    if (profit > 0) return "text-green-500";
+    if (profit < 0) return "text-red-500";
+    return "text-muted-foreground";
+  };
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -55,13 +62,18 @@ export const OddRangeStatsChart = ({ data }: OddRangeStatsChartProps) => {
                   ({item.total} ops)
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                {getPerformanceIcon(item.winRate, item.breakeven)}
-                <span className={`font-bold ${
-                  item.winRate >= item.breakeven ? "text-green-500" : "text-red-500"
-                }`}>
-                  {item.winRate.toFixed(1)}%
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-medium ${getProfitColor(item.profit)}`}>
+                  {item.profit >= 0 ? '+' : ''}{item.profit.toFixed(2)} stakes
                 </span>
+                <div className="flex items-center gap-1">
+                  {getPerformanceIcon(item.winRate, item.breakeven)}
+                  <span className={`font-bold ${
+                    item.winRate >= item.breakeven ? "text-green-500" : "text-red-500"
+                  }`}>
+                    {item.winRate.toFixed(1)}%
+                  </span>
+                </div>
               </div>
             </div>
             <div className="relative h-6 bg-muted rounded-full overflow-hidden">
