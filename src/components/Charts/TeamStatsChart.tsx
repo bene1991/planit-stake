@@ -41,9 +41,9 @@ export function TeamStatsChart({ data, games, methods }: TeamStatsChartProps) {
   const chartHeight = Math.max(200, displayData.length * 36);
 
   const getBarColor = (winRate: number) => {
-    if (winRate >= 60) return 'hsl(var(--chart-2))'; // Green
-    if (winRate >= 50) return 'hsl(var(--chart-4))'; // Yellow
-    return 'hsl(var(--destructive))'; // Red
+    if (winRate >= 60) return '#10b981'; // Emerald green
+    if (winRate >= 50) return '#eab308'; // Yellow
+    return '#ef4444'; // Red
   };
 
   const chartConfig = {
@@ -167,15 +167,15 @@ export function TeamStatsChart({ data, games, methods }: TeamStatsChartProps) {
             <div className="mt-4 flex items-center justify-between">
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(var(--chart-2))' }} />
+                  <div className="h-3 w-3 rounded-full bg-emerald-500" />
                   <span>≥60% WR</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(var(--chart-4))' }} />
+                  <div className="h-3 w-3 rounded-full bg-yellow-500" />
                   <span>50-60% WR</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: 'hsl(var(--destructive))' }} />
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
                   <span>&lt;50% WR</span>
                 </div>
               </div>
