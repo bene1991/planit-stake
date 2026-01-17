@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
 import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { GameCardCompact } from "@/components/GameCardCompact";
+import { GameListByLeague } from "@/components/GameListByLeague";
+import { GameStatusTabs, GameStatusFilter } from "@/components/GameStatusTabs";
 import { MethodSelector } from "@/components/MethodSelector";
 import { GameMethodEditor } from "@/components/GameMethodEditor";
 import { ApiGameBrowser, SelectedGame } from "@/components/ApiGameBrowser";
@@ -45,7 +46,7 @@ export default function DailyPlanning() {
   const [showGameMethodEditor, setShowGameMethodEditor] = useState(false);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
   const [updatingGameMethods, setUpdatingGameMethods] = useState(false);
-  
+  const [gameStatusFilter, setGameStatusFilter] = useState<GameStatusFilter>('all');
   // Use persisted filters
   const {
     methodFilter: planningMethodFilter,
@@ -522,6 +523,13 @@ export default function DailyPlanning() {
 
       {/* PLANEJAMENTO - Seção Principal */}
       <div className="space-y-4">
+        {/* Status Filter Tabs */}
+        <GameStatusTabs
+          games={sortedPlanned}
+          currentFilter={gameStatusFilter}
+          onFilterChange={setGameStatusFilter}
+        />
+
         {sortedPlanned.length === 0 ? (
           <EmptyState
             icon={<Calendar className="h-8 w-8 text-muted-foreground" />}
@@ -529,26 +537,28 @@ export default function DailyPlanning() {
             description="Clique em 'Buscar Jogos' para adicionar jogos ao planejamento"
           />
         ) : (
-          <>
-            {/* Grid de Jogos */}
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedPlanned.map((game) => {
-                const fixtureData = getStatsForGame(game);
-                  return (
-                    <GameCardCompact
-                      key={game.id}
-                      game={game}
-                      methods={bankroll.methods}
-                      onUpdate={updateGame}
-                      onDelete={handleDelete}
-                      onEdit={handleEditGameMethods}
-                      fixtureData={fixtureData}
-                      lastGlobalRefresh={lastGlobalRefresh}
-                    />
-                  );
+          <div className="border border-border/50 rounded-lg overflow-hidden bg-card">
+            <GameListByLeague
+              games={sortedPlanned.filter((game) => {
+                if (gameStatusFilter === 'all') return true;
+                
+                const fixtureStatus = game.status;
+                const isLive = fixtureStatus === 'Live';
+                const isFinished = fixtureStatus === 'Finished';
+                
+                if (gameStatusFilter === 'live') return isLive;
+                if (gameStatusFilter === 'finished') return isFinished;
+                if (gameStatusFilter === 'pending') return !isLive && !isFinished;
+                return true;
               })}
-            </div>
-          </>
+              methods={bankroll.methods}
+              onUpdate={updateGame}
+              onDelete={handleDelete}
+              onEdit={handleEditGameMethods}
+              getStatsForGame={getStatsForGame}
+              lastGlobalRefresh={lastGlobalRefresh}
+            />
+          </div>
         )}
       </div>
 
