@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { GameListByLeague } from "@/components/GameListByLeague";
-import { GameStatusTabs, GameStatusFilter } from "@/components/GameStatusTabs";
+import { GameStatusTabs, GameStatusFilter, GameSortOrder } from "@/components/GameStatusTabs";
 import { MethodSelector } from "@/components/MethodSelector";
 import { GameMethodEditor } from "@/components/GameMethodEditor";
 import { ApiGameBrowser, SelectedGame } from "@/components/ApiGameBrowser";
@@ -47,6 +47,7 @@ export default function DailyPlanning() {
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
   const [updatingGameMethods, setUpdatingGameMethods] = useState(false);
   const [gameStatusFilter, setGameStatusFilter] = useState<GameStatusFilter>('all');
+  const [gameSortOrder, setGameSortOrder] = useState<GameSortOrder>('time');
   // Use persisted filters
   const {
     methodFilter: planningMethodFilter,
@@ -528,6 +529,8 @@ export default function DailyPlanning() {
           games={sortedPlanned}
           currentFilter={gameStatusFilter}
           onFilterChange={setGameStatusFilter}
+          currentSort={gameSortOrder}
+          onSortChange={setGameSortOrder}
         />
 
         {sortedPlanned.length === 0 ? (
@@ -557,6 +560,7 @@ export default function DailyPlanning() {
               onEdit={handleEditGameMethods}
               getStatsForGame={getStatsForGame}
               lastGlobalRefresh={lastGlobalRefresh}
+              sortOrder={gameSortOrder}
             />
           </div>
         )}
