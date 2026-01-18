@@ -147,114 +147,118 @@ export function GameListItem({
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       {/* Main Row */}
       <div className={cn(
-        "flex items-stretch border-b border-border/30 hover:bg-muted/30 transition-colors",
+        "border-b border-border/30 hover:bg-muted/30 transition-colors",
         isLive && "bg-primary/5"
       )}>
-        {/* Status Column */}
-        <div className={cn(
-          "w-14 flex-shrink-0 flex flex-col items-center justify-center py-2 border-r border-border/30",
-          status.color
-        )}>
-          <span className="text-xs font-bold">{status.text}</span>
-          {status.subText && (
-            <span className="text-[10px]">{status.subText}</span>
-          )}
-        </div>
-
-        {/* Teams Column */}
-        <CollapsibleTrigger asChild>
-          <div className="flex-1 py-2 px-3 cursor-pointer min-w-0">
-            {/* Home Team Row */}
-            <div className="flex items-center gap-2 mb-1">
-              <Avatar className="h-5 w-5 flex-shrink-0">
-                <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-                <AvatarFallback className="text-[8px] bg-secondary">
-                  <Shield className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm truncate flex-1">{game.homeTeam}</span>
-              <span className={cn(
-                "text-sm font-bold w-6 text-right tabular-nums",
-                isLive && "text-foreground",
-                !hasScore && "text-muted-foreground"
-              )}>
-                {hasScore ? homeScore : '-'}
-              </span>
-            </div>
-            
-            {/* Away Team Row */}
-            <div className="flex items-center gap-2">
-              <Avatar className="h-5 w-5 flex-shrink-0">
-                <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-                <AvatarFallback className="text-[8px] bg-secondary">
-                  <Shield className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm truncate flex-1">{game.awayTeam}</span>
-              <span className={cn(
-                "text-sm font-bold w-6 text-right tabular-nums",
-                isLive && "text-foreground",
-                !hasScore && "text-muted-foreground"
-              )}>
-                {hasScore ? awayScore : '-'}
-              </span>
-            </div>
+        <div className="flex items-stretch">
+          {/* Status Column */}
+          <div className={cn(
+            "w-12 sm:w-14 flex-shrink-0 flex flex-col items-center justify-center py-2 border-r border-border/30",
+            status.color
+          )}>
+            <span className="text-[10px] sm:text-xs font-bold">{status.text}</span>
+            {status.subText && (
+              <span className="text-[9px] sm:text-[10px]">{status.subText}</span>
+            )}
           </div>
-        </CollapsibleTrigger>
 
-        {/* Methods summary pills */}
-        <div className="flex items-center gap-1 px-2 flex-shrink-0">
-          {methodsSummary.greens > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-500 font-semibold">
-              {methodsSummary.greens}G
-            </span>
-          )}
-          {methodsSummary.reds > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 font-semibold">
-              {methodsSummary.reds}R
-            </span>
-          )}
-          {methodsSummary.pending > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">
-              {methodsSummary.pending}
-            </span>
-          )}
-        </div>
-
-        {/* Actions Column */}
-        <div className="flex items-center gap-1 px-2 flex-shrink-0 border-l border-border/30">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                <MoreVertical className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onEdit && (
-                <DropdownMenuItem onClick={() => onEdit(game)}>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Editar métodos
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem 
-                onClick={() => onDelete(game.id)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Remover
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          
+          {/* Teams + Score Column */}
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-              <ChevronRight className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform",
-                isExpanded && "rotate-90"
-              )} />
-            </Button>
+            <div className="flex-1 py-2 px-2 sm:px-3 cursor-pointer min-w-0 max-w-md">
+              {/* Home Team Row */}
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
+                  <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+                  <AvatarFallback className="text-[6px] sm:text-[8px] bg-secondary">
+                    <Shield className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-xs sm:text-sm flex-1 truncate">{game.homeTeam}</span>
+                <span className={cn(
+                  "text-xs sm:text-sm font-bold w-5 sm:w-6 text-right tabular-nums flex-shrink-0",
+                  isLive && "text-foreground",
+                  !hasScore && "text-muted-foreground"
+                )}>
+                  {hasScore ? homeScore : '-'}
+                </span>
+              </div>
+              
+              {/* Away Team Row */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
+                  <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+                  <AvatarFallback className="text-[6px] sm:text-[8px] bg-secondary">
+                    <Shield className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-xs sm:text-sm flex-1 truncate">{game.awayTeam}</span>
+                <span className={cn(
+                  "text-xs sm:text-sm font-bold w-5 sm:w-6 text-right tabular-nums flex-shrink-0",
+                  isLive && "text-foreground",
+                  !hasScore && "text-muted-foreground"
+                )}>
+                  {hasScore ? awayScore : '-'}
+                </span>
+              </div>
+            </div>
           </CollapsibleTrigger>
+
+          {/* Actions Column */}
+          <div className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 flex-shrink-0 border-l border-border/30">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-6 sm:h-7 sm:w-7 p-0">
+                  <MoreVertical className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {onEdit && (
+                  <DropdownMenuItem onClick={() => onEdit(game)}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Editar métodos
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem 
+                  onClick={() => onDelete(game.id)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remover
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 w-6 sm:h-7 sm:w-7 p-0">
+                <ChevronRight className={cn(
+                  "h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground transition-transform",
+                  isExpanded && "rotate-90"
+                )} />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
         </div>
+        
+        {/* Methods pills row - always visible below teams */}
+        {game.methodOperations.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
+            {game.methodOperations.map((operation) => (
+              <span
+                key={operation.methodId}
+                className={cn(
+                  "text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5",
+                  operation.result === 'Green' && "bg-emerald-500/20 text-emerald-400",
+                  operation.result === 'Red' && "bg-red-500/20 text-red-400",
+                  !operation.result && "bg-muted text-muted-foreground"
+                )}
+              >
+                {getMethodName(operation.methodId)}
+                {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}
+                {operation.result === 'Red' && <X className="h-2.5 w-2.5" />}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Expanded Content */}
