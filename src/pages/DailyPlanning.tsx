@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
-import { useOptimizedLiveStats } from "@/hooks/useOptimizedLiveStats";
+import { useLiveScores } from "@/hooks/useLiveScores";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
@@ -68,14 +68,13 @@ export default function DailyPlanning() {
   const [customDateFrom, setCustomDateFrom] = useState<Date>();
   const [customDateTo, setCustomDateTo] = useState<Date>();
   
-  // Optimized live stats - single API call for all fixtures
+  // Optimized live scores - single API call with live=all, refreshes every 20s
   const { 
-    getStatsForGame, 
-    fetchGameDetails, 
-    refresh: refreshLiveStats, 
-    loading: statsLoading,
+    getScoreForGame, 
+    refresh: refreshLiveScores, 
+    loading: scoresLoading,
     lastRefresh 
-  } = useOptimizedLiveStats(games);
+  } = useLiveScores(games);
   
   // Goal notifications for background monitoring
   const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications();
@@ -88,45 +87,10 @@ export default function DailyPlanning() {
   
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
-
-  // Auto-refresh após mount para combater cold start de Edge Functions
-  const initialLoadRef = useRef(false);
-  
-  useEffect(() => {
-    if (!gamesLoading && games.length > 0 && !initialLoadRef.current) {
-      initialLoadRef.current = true;
-      
-      // Delay para permitir que Edge Functions "acordem"
-      const timer = setTimeout(() => {
-        console.log('[DailyPlanning] Auto-refresh após mount (cold start mitigation)');
-        refreshLiveStats(true); // forceNoCache=true
-      }, 1500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [gamesLoading, games.length, refreshLiveStats]);
   
   const handleGlobalRefresh = async () => {
     await updateStatuses();
-    await refreshLiveStats(true); // forceNoCache=true para evitar dados antigos
-    
-    // Buscar detalhes para jogos ao vivo que não têm dados completos
-    const liveGames = games.filter(g => 
-      (g.status === 'Live' || g.status === 'Pending') && g.api_fixture_id
-    );
-    
-    // Buscar detalhes para até 5 jogos ao vivo
-    const gamesToFetch = liveGames.slice(0, 5);
-    console.log(`[DailyPlanning] Buscando detalhes para ${gamesToFetch.length} jogos ao vivo`);
-    
-    for (const game of gamesToFetch) {
-      try {
-        await fetchGameDetails(parseInt(game.api_fixture_id!));
-      } catch (error) {
-        console.error(`[DailyPlanning] Erro ao buscar detalhes para ${game.homeTeam} x ${game.awayTeam}:`, error);
-      }
-    }
-    
+    await refreshLiveScores();
     setLastGlobalRefresh(Date.now());
   };
   
@@ -470,9 +434,9 @@ export default function DailyPlanning() {
             size="sm" 
             onClick={handleGlobalRefresh} 
             className="h-8"
-            disabled={statsLoading}
+            disabled={scoresLoading}
           >
-            <RefreshCw className={cn("h-3.5 w-3.5 sm:mr-2", statsLoading && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5 sm:mr-2", scoresLoading && "animate-spin")} />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
           <Button variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8">
@@ -558,7 +522,7 @@ export default function DailyPlanning() {
               onUpdate={updateGame}
               onDelete={handleDelete}
               onEdit={handleEditGameMethods}
-              getStatsForGame={getStatsForGame}
+              getScoreForGame={getScoreForGame}
               lastGlobalRefresh={lastGlobalRefresh}
               sortOrder={gameSortOrder}
             />
