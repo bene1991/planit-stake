@@ -1,11 +1,10 @@
 import { Game, Method } from "@/types";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronRight, Settings, Trash2, Star, MoreVertical } from "lucide-react";
+import { Shield, Check, X, ChevronRight, Settings, Trash2, MoreVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -15,10 +14,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface FixtureData {
-  fixture: ApiFootballFixture;
-  statistics: any;
-  events: ApiFootballEvent[];
+interface LiveScore {
+  fixtureId: number;
+  homeScore: number;
+  awayScore: number;
+  elapsed: number | null;
+  status: string;
+  statusLong: string;
 }
 
 interface GameListItemProps {
@@ -27,7 +29,7 @@ interface GameListItemProps {
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
-  fixtureData?: FixtureData | null;
+  liveScore?: LiveScore | null;
   lastGlobalRefresh?: number;
 }
 
@@ -37,7 +39,7 @@ export function GameListItem({
   onUpdate, 
   onDelete, 
   onEdit,
-  fixtureData,
+  liveScore,
   lastGlobalRefresh,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -50,7 +52,7 @@ export function GameListItem({
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
-  const fixtureStatus = fixtureData?.fixture?.fixture?.status?.short;
+  const fixtureStatus = liveScore?.status;
   const isGameLive = fixtureStatus 
     ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) 
     : (game.status === 'Live' || game.status === 'Pending');
@@ -61,7 +63,7 @@ export function GameListItem({
   const isPenalty = fixtureStatus === 'P';
   const isFinished = fixtureStatus ? ['FT', 'AET', 'PEN'].includes(fixtureStatus) : game.status === 'Finished';
   
-  const apiElapsed = fixtureData?.fixture?.fixture?.status?.elapsed;
+  const apiElapsed = liveScore?.elapsed;
   
   useEffect(() => {
     if (apiElapsed && isLive && lastGlobalRefresh) {
@@ -101,8 +103,9 @@ export function GameListItem({
     return methods.find(m => m.id === methodId)?.name || 'Método';
   };
 
-  const homeScore = fixtureData?.fixture?.goals?.home ?? game.finalScoreHome ?? null;
-  const awayScore = fixtureData?.fixture?.goals?.away ?? game.finalScoreAway ?? null;
+  // Use live score data if available, fallback to game data
+  const homeScore = liveScore?.homeScore ?? game.finalScoreHome ?? null;
+  const awayScore = liveScore?.awayScore ?? game.finalScoreAway ?? null;
   const hasScore = homeScore !== null;
 
   const handleResultClick = (methodId: string, result: 'Green' | 'Red') => {

@@ -1,14 +1,16 @@
 import { Game, Method } from "@/types";
 import { Trophy } from "lucide-react";
 import { GameListItem } from "./GameListItem";
-import { ApiFootballEvent, ApiFootballFixture } from "@/hooks/useApiFootball";
 import { useMemo } from "react";
 import { GameSortOrder } from "./GameStatusTabs";
 
-interface FixtureData {
-  fixture: ApiFootballFixture;
-  statistics: any;
-  events: ApiFootballEvent[];
+interface LiveScore {
+  fixtureId: number;
+  homeScore: number;
+  awayScore: number;
+  elapsed: number | null;
+  status: string;
+  statusLong: string;
 }
 
 interface GameListByLeagueProps {
@@ -17,7 +19,7 @@ interface GameListByLeagueProps {
   onUpdate: (gameId: string, updates: Partial<Game>) => void;
   onDelete: (gameId: string) => void;
   onEdit?: (game: Game) => void;
-  getStatsForGame: (game: Game) => FixtureData | null;
+  getScoreForGame: (game: Game) => LiveScore | null;
   lastGlobalRefresh?: number;
   sortOrder?: GameSortOrder;
 }
@@ -28,7 +30,7 @@ export function GameListByLeague({
   onUpdate,
   onDelete,
   onEdit,
-  getStatsForGame,
+  getScoreForGame,
   lastGlobalRefresh,
   sortOrder = 'time',
 }: GameListByLeagueProps) {
@@ -39,14 +41,14 @@ export function GameListByLeague({
     sorted.sort((a, b) => {
       if (sortOrder === 'elapsed') {
         // Sort by elapsed time (live games first, then by minute descending)
-        const fixtureA = getStatsForGame(a);
-        const fixtureB = getStatsForGame(b);
+        const scoreA = getScoreForGame(a);
+        const scoreB = getScoreForGame(b);
         
-        const elapsedA = fixtureA?.fixture?.fixture?.status?.elapsed ?? 0;
-        const elapsedB = fixtureB?.fixture?.fixture?.status?.elapsed ?? 0;
+        const elapsedA = scoreA?.elapsed ?? 0;
+        const elapsedB = scoreB?.elapsed ?? 0;
         
-        const isLiveA = a.status === 'Live' || ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(fixtureA?.fixture?.fixture?.status?.short || '');
-        const isLiveB = b.status === 'Live' || ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(fixtureB?.fixture?.fixture?.status?.short || '');
+        const isLiveA = a.status === 'Live' || ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(scoreA?.status || '');
+        const isLiveB = b.status === 'Live' || ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(scoreB?.status || '');
         
         // Live games first
         if (isLiveA && !isLiveB) return -1;
@@ -80,7 +82,7 @@ export function GameListByLeague({
     });
     
     return sorted;
-  }, [games, sortOrder, getStatsForGame]);
+  }, [games, sortOrder, getScoreForGame]);
 
   // Group games by league (only for league sort, otherwise show flat list)
   const gamesByLeague = useMemo(() => {
@@ -130,7 +132,7 @@ export function GameListByLeague({
                 onUpdate={onUpdate}
                 onDelete={onDelete}
                 onEdit={onEdit}
-                fixtureData={getStatsForGame(game)}
+                liveScore={getScoreForGame(game)}
                 lastGlobalRefresh={lastGlobalRefresh}
               />
             ))}
