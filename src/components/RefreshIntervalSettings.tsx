@@ -5,7 +5,7 @@ import { Timer, Zap } from 'lucide-react';
 import { useRefreshInterval, REFRESH_INTERVAL_OPTIONS, RefreshInterval } from '@/hooks/useRefreshInterval';
 
 export function RefreshIntervalSettings() {
-  const { interval, setInterval } = useRefreshInterval();
+  const { interval, updateInterval } = useRefreshInterval();
 
   return (
     <Card className="p-6 shadow-card">
@@ -19,7 +19,7 @@ export function RefreshIntervalSettings() {
 
       <RadioGroup 
         value={String(interval)} 
-        onValueChange={(value) => setInterval(parseInt(value, 10) as RefreshInterval)}
+        onValueChange={(value) => updateInterval(parseInt(value, 10) as RefreshInterval)}
       >
         <div className="grid gap-3">
           {REFRESH_INTERVAL_OPTIONS.map((option) => (

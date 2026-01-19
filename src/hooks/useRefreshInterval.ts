@@ -25,7 +25,7 @@ export function useRefreshInterval() {
     return DEFAULT_INTERVAL;
   });
 
-  const setInterval = useCallback((newInterval: RefreshInterval) => {
+  const updateInterval = useCallback((newInterval: RefreshInterval) => {
     setIntervalState(newInterval);
     localStorage.setItem(STORAGE_KEY, String(newInterval));
   }, []);
@@ -48,6 +48,6 @@ export function useRefreshInterval() {
   return {
     interval,
     intervalMs: interval * 1000,
-    setInterval,
+    updateInterval,
   };
 }
