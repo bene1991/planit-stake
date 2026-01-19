@@ -384,10 +384,10 @@ export default function DailyPlanning() {
     return games.some(g => g.status === 'Live' || g.status === 'Pending');
   }, [games]);
   
-  // Auto-refresh every 60 seconds when there are live/pending games
+  // Auto-refresh every 20 seconds when there are live/pending games
   const { secondsUntilRefresh, isRefreshing } = useAutoRefresh(
     handleGlobalRefresh,
-    { intervalMs: 60000, enabled: hasActiveGames }
+    { intervalMs: 20000, enabled: hasActiveGames }
   );
 
   const getMethodName = (methodId: string) => {
