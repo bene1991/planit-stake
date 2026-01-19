@@ -19,6 +19,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { fixLeagueNames } from '@/utils/fixLeagueNames';
 import { LeagueManager } from '@/components/LeagueManager';
 import { useSupabaseGames } from '@/hooks/useSupabaseGames';
+import { RefreshIntervalSettings } from '@/components/RefreshIntervalSettings';
 
 export default function Account() {
   const { user } = useAuth();
@@ -244,6 +245,7 @@ export default function Account() {
         </div>
       </Card>
 
+      <RefreshIntervalSettings />
       <TelegramSettings />
       <PushNotificationSettings />
       <NotificationSettings />

@@ -6,6 +6,7 @@ import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useGoalNotifications } from "@/hooks/useGoalNotifications";
+import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
 
@@ -36,6 +37,7 @@ import { cn } from "@/lib/utils";
 export default function DailyPlanning() {
   const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
+  const { intervalMs } = useRefreshInterval();
   
   const [showApiBrowser, setShowApiBrowser] = useState(false);
   
@@ -384,10 +386,10 @@ export default function DailyPlanning() {
     return games.some(g => g.status === 'Live' || g.status === 'Pending');
   }, [games]);
   
-  // Auto-refresh every 20 seconds when there are live/pending games
+  // Auto-refresh based on user-configured interval when there are live/pending games
   const { secondsUntilRefresh, isRefreshing } = useAutoRefresh(
     handleGlobalRefresh,
-    { intervalMs: 20000, enabled: hasActiveGames }
+    { intervalMs, enabled: hasActiveGames }
   );
 
   const getMethodName = (methodId: string) => {
