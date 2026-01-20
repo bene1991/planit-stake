@@ -6,13 +6,8 @@ import { LeagueGamesModal } from './LeagueGamesModal';
 import { Game, Method } from '@/types';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
-interface LeagueStats {
-  league: string;
-  total: number;
-  greens: number;
-  reds: number;
-  winRate: number;
-}
+import { LeagueStats } from '@/hooks/useFilteredStatistics';
+import { cn } from '@/lib/utils';
 
 interface LeagueStatsChartProps {
   data: LeagueStats[];
@@ -89,7 +84,7 @@ export function LeagueStatsChart({ data, games = [], methods = [] }: LeagueStats
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
-                      const data = payload[0].payload;
+                      const data = payload[0].payload as LeagueStats;
                       return (
                         <div className="rounded-lg border bg-card p-3 shadow-lg">
                           <p className="font-semibold">{data.league}</p>
@@ -98,6 +93,17 @@ export function LeagueStatsChart({ data, games = [], methods = [] }: LeagueStats
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {data.total} operações • {data.greens}G / {data.reds}R
+                          </p>
+                          {data.averageOdd > 0 && (
+                            <p className="text-sm">
+                              Odd Média: <span className="font-bold">{data.averageOdd.toFixed(2)}</span>
+                            </p>
+                          )}
+                          <p className={cn(
+                            "text-sm font-bold",
+                            data.profit >= 0 ? "text-emerald-500" : "text-red-500"
+                          )}>
+                            Lucro: {data.profit >= 0 ? '+' : ''}{data.profit.toFixed(2)} stakes
                           </p>
                           {games.length > 0 && (
                             <p className="text-xs text-primary mt-1">Clique para ver jogos</p>
@@ -175,6 +181,8 @@ export function LeagueStatsChart({ data, games = [], methods = [] }: LeagueStats
             greens: leagueStats.greens,
             reds: leagueStats.reds,
             winRate: leagueStats.winRate,
+            profit: leagueStats.profit,
+            averageOdd: leagueStats.averageOdd,
           }}
         />
       )}

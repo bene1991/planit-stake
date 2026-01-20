@@ -14,6 +14,8 @@ interface LeagueStats {
   greens: number;
   reds: number;
   winRate: number;
+  profit: number;
+  averageOdd: number;
 }
 
 interface TeamStats {
@@ -83,17 +85,38 @@ export const useStatistics = (games: Game[], methods: Method[]) => {
     };
 
     // Estatísticas por liga
-    const leagueMap = new Map<string, { greens: number; reds: number }>();
+    const leagueMap = new Map<string, { 
+      greens: number; 
+      reds: number; 
+      profit: number;
+      totalOdds: number;
+      oddsCount: number;
+    }>();
     
     finalizedGames.forEach((game) => {
       if (!leagueMap.has(game.league)) {
-        leagueMap.set(game.league, { greens: 0, reds: 0 });
+        leagueMap.set(game.league, { greens: 0, reds: 0, profit: 0, totalOdds: 0, oddsCount: 0 });
       }
       const leagueData = leagueMap.get(game.league)!;
       
       game.methodOperations.forEach((op) => {
         if (op.result === 'Green') leagueData.greens++;
         if (op.result === 'Red') leagueData.reds++;
+        
+        // Average odd
+        if (op.odd && op.odd > 0) {
+          leagueData.totalOdds += op.odd;
+          leagueData.oddsCount++;
+        }
+        
+        // Profit in stakes
+        if (op.profit !== undefined && op.profit !== null && op.stakeValue && op.stakeValue > 0) {
+          leagueData.profit += op.profit / op.stakeValue;
+        } else if (op.result === 'Green') {
+          leagueData.profit += op.odd && op.odd > 0 ? op.odd - 1 : 0;
+        } else if (op.result === 'Red') {
+          leagueData.profit -= 1;
+        }
       });
     });
 
@@ -107,6 +130,8 @@ export const useStatistics = (games: Game[], methods: Method[]) => {
           greens: data.greens,
           reds: data.reds,
           winRate: parseFloat(winRate.toFixed(1)),
+          profit: parseFloat(data.profit.toFixed(2)),
+          averageOdd: data.oddsCount > 0 ? parseFloat((data.totalOdds / data.oddsCount).toFixed(2)) : 0,
         };
       })
       .sort((a, b) => b.winRate - a.winRate);
