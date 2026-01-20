@@ -18,6 +18,8 @@ interface LeagueGamesModalProps {
     greens: number;
     reds: number;
     winRate: number;
+    profit?: number;
+    averageOdd?: number;
   };
 }
 
@@ -57,7 +59,7 @@ export function LeagueGamesModal({
             <Trophy className="h-5 w-5 text-primary" />
             {league}
           </DialogTitle>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>{stats.total} operações</span>
             <span>•</span>
             <span className="text-emerald-500">{stats.greens}G</span>
@@ -71,6 +73,23 @@ export function LeagueGamesModal({
             )}>
               {stats.winRate}% WR
             </span>
+            {stats.averageOdd !== undefined && stats.averageOdd > 0 && (
+              <>
+                <span>•</span>
+                <span>Odd: {stats.averageOdd.toFixed(2)}</span>
+              </>
+            )}
+            {stats.profit !== undefined && (
+              <>
+                <span>•</span>
+                <span className={cn(
+                  "font-medium",
+                  stats.profit >= 0 ? "text-emerald-500" : "text-red-500"
+                )}>
+                  {stats.profit >= 0 ? '+' : ''}{stats.profit.toFixed(2)} st
+                </span>
+              </>
+            )}
           </div>
         </DialogHeader>
 

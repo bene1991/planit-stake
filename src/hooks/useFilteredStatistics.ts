@@ -91,6 +91,16 @@ export interface TeamStats {
   profit: number;
 }
 
+export interface LeagueStats {
+  league: string;
+  total: number;
+  greens: number;
+  reds: number;
+  winRate: number;
+  profit: number;
+  averageOdd: number;
+}
+
 export interface FilteredStatisticsResult {
   overallStats: OverallStats;
   methodDetailStats: MethodDetailStats[];
@@ -99,6 +109,7 @@ export interface FilteredStatisticsResult {
   methodNames: string[];
   comparison: ComparisonStats;
   leagues: string[];
+  leagueStats: LeagueStats[];
   averageOdd: number;
   operationsWithOdd: number;
   breakevenRate: number;
@@ -511,6 +522,66 @@ export const useFilteredStatistics = (
       .filter((stat) => stat.gamesCount >= 2)
       .sort((a, b) => b.winRate - a.winRate);
 
+    // Calculate league statistics with profit and averageOdd
+    const leagueMap = new Map<string, {
+      operations: number;
+      greens: number;
+      reds: number;
+      profit: number;
+      totalOdds: number;
+      oddsCount: number;
+    }>();
+
+    filteredGames.forEach((game) => {
+      const ops = getFilteredOperations(game);
+      if (ops.length === 0) return;
+
+      if (!leagueMap.has(game.league)) {
+        leagueMap.set(game.league, {
+          operations: 0,
+          greens: 0,
+          reds: 0,
+          profit: 0,
+          totalOdds: 0,
+          oddsCount: 0,
+        });
+      }
+      const leagueData = leagueMap.get(game.league)!;
+
+      ops.forEach((op) => {
+        leagueData.operations++;
+        if (op.result === 'Green') leagueData.greens++;
+        if (op.result === 'Red') leagueData.reds++;
+
+        // Average odd
+        if (op.odd && op.odd > 0) {
+          leagueData.totalOdds += op.odd;
+          leagueData.oddsCount++;
+        }
+
+        // Profit in stakes
+        if (op.profit !== undefined && op.profit !== null && op.stakeValue && op.stakeValue > 0) {
+          leagueData.profit += op.profit / op.stakeValue;
+        } else if (op.result === 'Green') {
+          leagueData.profit += op.odd && op.odd > 0 ? op.odd - 1 : 0;
+        } else if (op.result === 'Red') {
+          leagueData.profit -= 1;
+        }
+      });
+    });
+
+    const leagueStats: LeagueStats[] = Array.from(leagueMap.entries())
+      .map(([league, data]) => ({
+        league,
+        total: data.operations,
+        greens: data.greens,
+        reds: data.reds,
+        winRate: data.operations > 0 ? parseFloat(((data.greens / data.operations) * 100).toFixed(1)) : 0,
+        profit: parseFloat(data.profit.toFixed(2)),
+        averageOdd: data.oddsCount > 0 ? parseFloat((data.totalOdds / data.oddsCount).toFixed(2)) : 0,
+      }))
+      .sort((a, b) => b.winRate - a.winRate);
+
     return {
       overallStats,
       methodDetailStats,
@@ -519,6 +590,7 @@ export const useFilteredStatistics = (
       methodNames,
       comparison,
       leagues,
+      leagueStats,
       averageOdd: parseFloat(averageOdd.toFixed(2)),
       operationsWithOdd: operationsWithOdd.length,
       breakevenRate: parseFloat(breakevenRate.toFixed(1)),
