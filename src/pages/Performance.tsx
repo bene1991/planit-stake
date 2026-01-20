@@ -22,6 +22,7 @@ import { BankrollEvolutionChart } from '@/components/Charts/BankrollEvolutionCha
 import { OddRangeStatsChart } from '@/components/Charts/OddRangeStatsChart';
 import { TeamStatsChart } from '@/components/Charts/TeamStatsChart';
 import { StatCard } from '@/components/StatCard';
+import { AIPerformanceAnalyzer } from '@/components/AIPerformanceAnalyzer';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -79,6 +80,7 @@ export default function Performance() {
     methodNames,
     comparison,
     leagues,
+    leagueStats,
     averageOdd,
     operationsWithOdd,
     breakevenRate,
@@ -534,12 +536,36 @@ export default function Performance() {
       <MethodComparisonChart data={methodDetailStats} />
 
       {/* League Stats */}
-      <LeagueStatsChart data={originalStatistics.leagueStats} games={filteredGames} methods={bankroll.methods} />
+      <LeagueStatsChart data={leagueStats} games={filteredGames} methods={bankroll.methods} />
 
       {/* Team Stats */}
       {teamStats.length > 0 && (
         <TeamStatsChart data={teamStats} games={filteredGames} methods={bankroll.methods} />
       )}
+
+      {/* AI Performance Analyzer */}
+      <AIPerformanceAnalyzer
+        statistics={{
+          overallStats,
+          methodDetailStats,
+          dailyBreakdown,
+          methodTimeline,
+          methodNames,
+          comparison,
+          leagues,
+          leagueStats,
+          averageOdd,
+          operationsWithOdd,
+          breakevenRate,
+          bankrollEvolution,
+          oddRangeStats,
+          teamStats,
+        }}
+        leagueStats={leagueStats}
+        teamStats={teamStats}
+        period={periodLabel}
+        profit={metrics.periodProfitStakes}
+      />
 
       {/* Settings Collapsible */}
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
