@@ -70,13 +70,19 @@ export default function DailyPlanning() {
   const [customDateFrom, setCustomDateFrom] = useState<Date>();
   const [customDateTo, setCustomDateTo] = useState<Date>();
   
+  // Callback when score is persisted - update local state immediately
+  const handleScorePersisted = useCallback((gameId: string, homeScore: number, awayScore: number) => {
+    // Refresh games to get the persisted data
+    refreshGames();
+  }, [refreshGames]);
+  
   // Optimized live scores - single API call with live=all, refreshes every 20s
   const { 
     getScoreForGame, 
     refresh: refreshLiveScores, 
     loading: scoresLoading,
     lastRefresh 
-  } = useLiveScores(games);
+  } = useLiveScores(games, handleScorePersisted);
   
   // Goal notifications for background monitoring
   const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications();
