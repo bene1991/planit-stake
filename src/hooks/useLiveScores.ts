@@ -134,6 +134,72 @@ export function useLiveScores(
         }
       }
       
+      // Check for games marked as "Live" in DB but not in live=all response
+      // These games likely just finished - fetch individually to get final score
+      const liveGamesNotInResponse = games.filter(g => 
+        g.api_fixture_id && 
+        g.status === 'Live' && 
+        !newScores.has(g.api_fixture_id) &&
+        !persistedScoresRef.current.has(g.id)
+      );
+      
+      // Fetch these games individually (max 3 per cycle to save credits)
+      for (const game of liveGamesNotInResponse.slice(0, 3)) {
+        try {
+          console.log(`[useLiveScores] Game ${game.homeTeam} vs ${game.awayTeam} not in live=all, fetching individually...`);
+          
+          const { data: fixtureData } = await supabase.functions.invoke('api-football', {
+            body: {
+              endpoint: 'fixtures',
+              params: { id: game.api_fixture_id }
+            }
+          });
+          
+          const fixture = fixtureData?.response?.[0];
+          if (fixture) {
+            const status = fixture.fixture?.status?.short ?? 'NS';
+            const homeGoals = fixture.goals?.home ?? 0;
+            const awayGoals = fixture.goals?.away ?? 0;
+            
+            newScores.set(game.api_fixture_id!, {
+              fixtureId: parseInt(game.api_fixture_id!),
+              homeScore: homeGoals,
+              awayScore: awayGoals,
+              elapsed: fixture.fixture?.status?.elapsed ?? null,
+              status: status,
+              statusLong: fixture.fixture?.status?.long ?? 'Not Started',
+            });
+            
+            // If finished, persist the score
+            if (FINISHED_STATUSES.includes(status)) {
+              persistedScoresRef.current.add(game.id);
+              
+              console.log(`[useLiveScores] Persisting final score for ${game.homeTeam} vs ${game.awayTeam}: ${homeGoals}-${awayGoals}`);
+              
+              supabase
+                .from('games')
+                .update({
+                  final_score_home: homeGoals,
+                  final_score_away: awayGoals,
+                  status: 'Finished'
+                })
+                .eq('id', game.id)
+                .then(({ error }) => {
+                  if (error) {
+                    console.error('[useLiveScores] Failed to persist score:', error);
+                    persistedScoresRef.current.delete(game.id);
+                  } else {
+                    console.log(`[useLiveScores] Score persisted for game ${game.id}`);
+                    onScorePersisted?.(game.id, homeGoals, awayGoals);
+                  }
+                });
+            }
+          }
+        } catch (err) {
+          console.warn(`[useLiveScores] Failed to fetch fixture ${game.api_fixture_id}:`, err);
+        }
+      }
+      
       // For games not in live=all response, fetch individually if they might be starting soon
       const pendingGames = games.filter(g => 
         g.api_fixture_id && 
