@@ -23,7 +23,13 @@ interface UseLiveScoresResult {
 // Refresh interval: 20 seconds
 const REFRESH_INTERVAL = 20 * 1000;
 
-export function useLiveScores(games: Game[]): UseLiveScoresResult {
+// Status codes that indicate a finished game
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
+
+export function useLiveScores(
+  games: Game[], 
+  onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void
+): UseLiveScoresResult {
   const [scores, setScores] = useState<Map<string, LiveScore>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +37,7 @@ export function useLiveScores(games: Game[]): UseLiveScoresResult {
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
+  const persistedScoresRef = useRef<Set<string>>(new Set());
   
   // Get list of fixture IDs to monitor
   const fixtureIds = useMemo(() => {
@@ -79,15 +86,51 @@ export function useLiveScores(games: Game[]): UseLiveScoresResult {
       
       for (const fixture of fixtures) {
         const fixtureId = fixture.fixture?.id?.toString();
+        const status = fixture.fixture?.status?.short ?? 'NS';
+        const homeGoals = fixture.goals?.home ?? 0;
+        const awayGoals = fixture.goals?.away ?? 0;
+        
         if (fixtureId && fixtureIds.includes(fixtureId)) {
           newScores.set(fixtureId, {
             fixtureId: parseInt(fixtureId),
-            homeScore: fixture.goals?.home ?? 0,
-            awayScore: fixture.goals?.away ?? 0,
+            homeScore: homeGoals,
+            awayScore: awayGoals,
             elapsed: fixture.fixture?.status?.elapsed ?? null,
-            status: fixture.fixture?.status?.short ?? 'NS',
+            status: status,
             statusLong: fixture.fixture?.status?.long ?? 'Not Started',
           });
+          
+          // Check if game just finished - persist final score
+          if (FINISHED_STATUSES.includes(status)) {
+            const game = games.find(g => g.api_fixture_id === fixtureId);
+            if (game && !persistedScoresRef.current.has(game.id)) {
+              // Mark as persisted immediately to avoid duplicates
+              persistedScoresRef.current.add(game.id);
+              
+              console.log(`[useLiveScores] Persisting final score for ${game.homeTeam} vs ${game.awayTeam}: ${homeGoals}-${awayGoals}`);
+              
+              // Persist to database (fire and forget)
+              supabase
+                .from('games')
+                .update({
+                  final_score_home: homeGoals,
+                  final_score_away: awayGoals,
+                  status: 'Finished'
+                })
+                .eq('id', game.id)
+                .then(({ error }) => {
+                  if (error) {
+                    console.error('[useLiveScores] Failed to persist score:', error);
+                    // Remove from set to allow retry
+                    persistedScoresRef.current.delete(game.id);
+                  } else {
+                    console.log(`[useLiveScores] Score persisted for game ${game.id}`);
+                    // Notify parent to update local state
+                    onScorePersisted?.(game.id, homeGoals, awayGoals);
+                  }
+                });
+            }
+          }
         }
       }
       
