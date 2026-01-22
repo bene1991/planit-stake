@@ -22,6 +22,7 @@ self.addEventListener('push', (event) => {
     body: 'Nova notificação',
     icon: '/pwa-192x192.png',
     badge: '/pwa-192x192.png',
+    data: {} as Record<string, unknown>,
   };
 
   if (event.data) {
@@ -33,15 +34,23 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  const isGoalNotification = data.data?.type === 'goal';
+
   const options = {
     body: data.body,
     icon: data.icon,
     badge: data.badge,
-    tag: 'valuetips-notification',
+    tag: isGoalNotification ? 'valuetips-goal' : 'valuetips-notification',
     renotify: true,
     requireInteraction: true,
+    // Vibração especial para gol! 🎉
+    vibrate: isGoalNotification 
+      ? [300, 100, 300, 100, 300, 100, 500] // Padrão de comemoração
+      : [200],
     data: {
       url: self.location.origin,
+      type: data.data?.type,
+      ...data.data,
     },
   } as NotificationOptions;
 
@@ -56,15 +65,29 @@ self.addEventListener('notificationclick', (event) => {
   
   event.notification.close();
 
-  const urlToOpen = event.notification.data?.url || self.location.origin;
+  const notificationData = event.notification.data || {};
+  const isGoal = notificationData.type === 'goal';
+  
+  // URL com query param para trigger do som de gol ao abrir
+  const urlToOpen = isGoal 
+    ? `${self.location.origin}?goal_alert=true`
+    : self.location.origin;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // If a window is already open, focus it
+        // If a window is already open, focus it and send message
         for (const client of clientList) {
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
+          if ('focus' in client) {
+            client.focus();
+            // Enviar mensagem para o client tocar o som de gol
+            if (isGoal) {
+              client.postMessage({ 
+                type: 'GOAL_NOTIFICATION_CLICKED',
+                data: notificationData 
+              });
+            }
+            return;
           }
         }
         // Otherwise, open a new window
@@ -80,4 +103,13 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   console.log('[SW] Push subscription changed:', event);
   // The subscription needs to be renewed
   // This will be handled by the frontend when it detects the change
+});
+
+// Handle messages from the main thread
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+  
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

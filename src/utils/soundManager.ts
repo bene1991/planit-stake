@@ -1,10 +1,11 @@
-export type NotificationSoundType = 'success' | 'warning' | 'error' | 'info';
+export type NotificationSoundType = 'success' | 'warning' | 'error' | 'info' | 'goal';
 
 const soundMap: Record<NotificationSoundType, string> = {
   success: '/sounds/notification-success.mp3',
   warning: '/sounds/notification-warning.mp3',
   error: '/sounds/notification-error.mp3',
   info: '/sounds/notification-info.mp3',
+  goal: '/sounds/goal-celebration.mp3',
 };
 
 export const playNotificationSound = (
@@ -15,7 +16,8 @@ export const playNotificationSound = (
 
   try {
     const audio = new Audio(soundMap[type]);
-    audio.volume = 0.5;
+    // Volume mais alto para gol (comemoração épica!)
+    audio.volume = type === 'goal' ? 0.8 : 0.5;
     audio.play().catch((err) => {
       console.warn('Could not play notification sound:', err);
     });
@@ -26,4 +28,9 @@ export const playNotificationSound = (
 
 export const testSound = (type: NotificationSoundType): void => {
   playNotificationSound(type, true);
+};
+
+// Função específica para tocar som de gol
+export const playGoalSound = (): void => {
+  playNotificationSound('goal', true);
 };

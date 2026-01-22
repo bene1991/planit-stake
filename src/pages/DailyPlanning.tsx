@@ -6,6 +6,7 @@ import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useGoalNotifications } from "@/hooks/useGoalNotifications";
+import { useGoalSoundTrigger } from "@/hooks/useGoalSoundTrigger";
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
@@ -86,6 +87,9 @@ export default function DailyPlanning() {
   
   // Goal notifications for background monitoring
   const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications();
+  
+  // Listen for goal sound triggers from Service Worker
+  useGoalSoundTrigger();
   
   // Start goal monitoring when games change
   useEffect(() => {

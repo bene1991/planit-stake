@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Game } from '@/types';
+import { playGoalSound } from '@/utils/soundManager';
 
 interface ScoreSnapshot {
   homeScore: number;
@@ -37,26 +38,39 @@ export function useGoalNotifications() {
     newAwayScore: number,
     scoringTeam: 'home' | 'away'
   ) => {
+    // 🔊 TOCAR SOM DE TORCIDA IMEDIATAMENTE!
+    console.log('[GoalNotifications] 🎉 GOOOOOL! Playing crowd celebration sound!');
+    playGoalSound();
+    
     if (!user) return;
     
     try {
       const title = '⚽ GOL!';
-      const body = scoringTeam === 'home' 
-        ? `${homeTeam} ${newHomeScore} x ${newAwayScore} ${awayTeam}`
-        : `${homeTeam} ${newHomeScore} x ${newAwayScore} ${awayTeam}`;
+      const scoringTeamName = scoringTeam === 'home' ? homeTeam : awayTeam;
+      const body = `${scoringTeamName} marca! ${homeTeam} ${newHomeScore} x ${newAwayScore} ${awayTeam}`;
       
       await supabase.functions.invoke('send-push-notification', {
         body: {
           userId: user.id,
-          title,
-          body,
-          data: { type: 'goal' }
+          payload: {
+            title,
+            body,
+            icon: '/pwa-192x192.png',
+            badge: '/pwa-192x192.png',
+            data: { 
+              type: 'goal',
+              homeTeam,
+              awayTeam,
+              homeScore: newHomeScore,
+              awayScore: newAwayScore
+            }
+          }
         }
       });
       
-      console.log(`[GoalNotifications] Sent notification: ${body}`);
+      console.log(`[GoalNotifications] Sent push notification: ${body}`);
     } catch (error) {
-      console.error('[GoalNotifications] Failed to send notification:', error);
+      console.error('[GoalNotifications] Failed to send push notification:', error);
     }
   }, [user]);
 
