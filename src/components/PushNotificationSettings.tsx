@@ -3,9 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Bell, BellOff, Send, Smartphone, Goal } from 'lucide-react';
+import { Bell, BellOff, Send, Smartphone, Goal, Volume2 } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAuth } from '@/contexts/AuthContext';
+import { playGoalSound } from '@/utils/soundManager';
 
 export const PushNotificationSettings = () => {
   const { user } = useAuth();
@@ -27,6 +28,10 @@ export const PushNotificationSettings = () => {
   useEffect(() => {
     localStorage.setItem('goalNotificationsEnabled', JSON.stringify(goalNotificationsEnabled));
   }, [goalNotificationsEnabled]);
+
+  const handleTestGoalSound = () => {
+    playGoalSound();
+  };
 
   if (!user) {
     return (
@@ -109,7 +114,7 @@ export const PushNotificationSettings = () => {
                     Alertas de Gol
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Receba notificação quando houver gol nos seus jogos ao vivo
+                    Som de torcida + notificação push quando houver gol
                   </div>
                 </Label>
                 <Switch
@@ -120,15 +125,26 @@ export const PushNotificationSettings = () => {
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={sendTestNotification}
-              className="w-full"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Enviar Notificação de Teste
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestGoalSound}
+                className="flex-1"
+              >
+                <Volume2 className="h-4 w-4 mr-2" />
+                🎉 Testar Som de Gol
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={sendTestNotification}
+                className="flex-1"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Testar Push
+              </Button>
+            </div>
           </>
         )}
 
