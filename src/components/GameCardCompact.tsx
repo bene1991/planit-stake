@@ -115,9 +115,17 @@ export function GameCardCompact({
     return methods.find(m => m.id === methodId)?.name || 'Método';
   };
 
-  const homeScore = fixtureData?.fixture?.goals?.home ?? '-';
-  const awayScore = fixtureData?.fixture?.goals?.away ?? '-';
-  const hasScore = fixtureData?.fixture?.goals?.home !== null;
+  // Use API fixture data for live games, fallback to persisted final scores for finished games
+  const apiHomeScore = fixtureData?.fixture?.goals?.home;
+  const apiAwayScore = fixtureData?.fixture?.goals?.away;
+  const persistedHomeScore = game.finalScoreHome;
+  const persistedAwayScore = game.finalScoreAway;
+  
+  // Priority: API data > persisted scores
+  const homeScore = apiHomeScore ?? persistedHomeScore ?? '-';
+  const awayScore = apiAwayScore ?? persistedAwayScore ?? '-';
+  const hasScore = apiHomeScore !== null && apiHomeScore !== undefined || 
+                   persistedHomeScore !== null && persistedHomeScore !== undefined;
 
   const handleResultClick = (methodId: string, result: 'Green' | 'Red') => {
     const updatedOperations = game.methodOperations.map(op =>
