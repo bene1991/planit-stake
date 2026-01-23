@@ -82,7 +82,8 @@ export default function DailyPlanning() {
     getScoreForGame, 
     refresh: refreshLiveScores, 
     loading: scoresLoading,
-    lastRefresh 
+    lastRefresh,
+    scores: liveScores 
   } = useLiveScores(games, handleScorePersisted);
   
   // Goal notifications for background monitoring
@@ -96,6 +97,20 @@ export default function DailyPlanning() {
     setLiveGames(games);
     startMonitoring();
   }, [games, setLiveGames, startMonitoring]);
+  
+  // Sync live scores with goal notification snapshots
+  // This ensures goal detection uses the latest known scores from useLiveScores
+  useEffect(() => {
+    games.forEach(game => {
+      if (game.api_fixture_id) {
+        const liveScore = liveScores.get(game.api_fixture_id);
+        if (liveScore) {
+          // Update the snapshot so goal detection compares against current known score
+          updateScoreSnapshot(game.id, liveScore.homeScore, liveScore.awayScore);
+        }
+      }
+    });
+  }, [liveScores, games, updateScoreSnapshot]);
   
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);

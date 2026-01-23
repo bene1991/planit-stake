@@ -104,6 +104,19 @@ export const PushNotificationSettings = () => {
           />
         </div>
 
+        {/* Botão de testar som de gol - sempre visível */}
+        <div className="border-t pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTestGoalSound}
+            className="w-full"
+          >
+            <Volume2 className="h-4 w-4 mr-2" />
+            🎉 Testar Som de Gol
+          </Button>
+        </div>
+
         {isSubscribed && (
           <>
             <div className="border-t pt-4">
@@ -126,15 +139,6 @@ export const PushNotificationSettings = () => {
             </div>
 
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTestGoalSound}
-                className="flex-1"
-              >
-                <Volume2 className="h-4 w-4 mr-2" />
-                🎉 Testar Som de Gol
-              </Button>
               <Button
                 variant="outline"
                 size="sm"

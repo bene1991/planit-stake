@@ -163,33 +163,64 @@ export function useGoalNotifications() {
     }
   }, [user, updateScoreSnapshot, isGoalNotificationsEnabled, sendGoalNotification]);
 
+  // Helper to check if a game should be monitored
+  const isGameLiveOrStartingSoon = useCallback((game: Game): boolean => {
+    // Games with explicit live status
+    if (game.status === 'Live' || 
+        ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(game.status || '')) {
+      return true;
+    }
+    
+    // Pending games that may have already started (within last 2 hours)
+    if ((game.status === 'Pending' || !game.status) && game.date && game.time) {
+      try {
+        const gameDateTime = new Date(`${game.date}T${game.time}`);
+        const now = new Date();
+        const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        const fifteenMinutesFromNow = new Date(now.getTime() + 15 * 60 * 1000);
+        
+        // Monitor if game started up to 2h ago OR starts within 15 min
+        return gameDateTime >= twoHoursAgo && gameDateTime <= fifteenMinutesFromNow;
+      } catch {
+        return false;
+      }
+    }
+    
+    return false;
+  }, []);
+
   // Set live games to monitor
   const setLiveGames = useCallback((games: Game[]) => {
-    const liveGames = games.filter(g => 
-      g.status === 'Live' || 
-      ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(g.status || '')
+    const monitoredGames = games.filter(g => 
+      g.api_fixture_id && isGameLiveOrStartingSoon(g)
     );
     
-    liveGamesRef.current = liveGames;
+    console.log(`[GoalNotifications] Monitoring ${monitoredGames.length} games:`, 
+      monitoredGames.map(g => `${g.homeTeam} vs ${g.awayTeam} (status: ${g.status}, time: ${g.time})`));
+    
+    liveGamesRef.current = monitoredGames;
 
     // Initialize score snapshots for new games
-    for (const game of liveGames) {
+    for (const game of monitoredGames) {
       if (!scoreSnapshotsRef.current.has(game.id)) {
+        const initialHome = game.finalScoreHome || 0;
+        const initialAway = game.finalScoreAway || 0;
+        console.log(`[GoalNotifications] Init snapshot: ${game.homeTeam} vs ${game.awayTeam} = ${initialHome}-${initialAway}`);
         scoreSnapshotsRef.current.set(game.id, {
-          homeScore: game.finalScoreHome || 0,
-          awayScore: game.finalScoreAway || 0,
+          homeScore: initialHome,
+          awayScore: initialAway,
         });
       }
     }
 
-    // Clean up snapshots for games no longer live
-    const liveGameIds = new Set(liveGames.map(g => g.id));
+    // Clean up snapshots for games no longer monitored
+    const monitoredIds = new Set(monitoredGames.map(g => g.id));
     for (const gameId of scoreSnapshotsRef.current.keys()) {
-      if (!liveGameIds.has(gameId)) {
+      if (!monitoredIds.has(gameId)) {
         scoreSnapshotsRef.current.delete(gameId);
       }
     }
-  }, []);
+  }, [isGameLiveOrStartingSoon]);
 
   // Start background monitoring
   const startMonitoring = useCallback(() => {
