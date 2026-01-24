@@ -31,6 +31,7 @@ interface GameListItemProps {
   onEdit?: (game: Game) => void;
   liveScore?: LiveScore | null;
   lastGlobalRefresh?: number;
+  isHighlighted?: boolean;
 }
 
 export function GameListItem({ 
@@ -41,6 +42,7 @@ export function GameListItem({
   onEdit,
   liveScore,
   lastGlobalRefresh,
+  isHighlighted,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
@@ -151,7 +153,8 @@ export function GameListItem({
       {/* Main Row */}
       <div className={cn(
         "border-b border-border/30 hover:bg-muted/30 transition-colors",
-        isLive && "bg-primary/5"
+        isLive && "bg-primary/5",
+        isHighlighted && "goal-highlight"
       )}>
         <div className="flex items-stretch">
           {/* Status Column */}

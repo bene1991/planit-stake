@@ -22,6 +22,7 @@ interface GameListByLeagueProps {
   getScoreForGame: (game: Game) => LiveScore | null;
   lastGlobalRefresh?: number;
   sortOrder?: GameSortOrder;
+  highlightedGameId?: string | null;
 }
 
 export function GameListByLeague({
@@ -33,6 +34,7 @@ export function GameListByLeague({
   getScoreForGame,
   lastGlobalRefresh,
   sortOrder = 'time',
+  highlightedGameId,
 }: GameListByLeagueProps) {
   // Sort games based on sortOrder
   const sortedGames = useMemo(() => {
@@ -134,6 +136,7 @@ export function GameListByLeague({
                 onEdit={onEdit}
                 liveScore={getScoreForGame(game)}
                 lastGlobalRefresh={lastGlobalRefresh}
+                isHighlighted={game.id === highlightedGameId}
               />
             ))}
           </div>
