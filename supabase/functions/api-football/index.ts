@@ -14,20 +14,20 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-// Cache TTL configuration (in milliseconds)
+// Cache TTL configuration (in milliseconds) - OPTIMIZED to reduce API consumption
 const CACHE_TTL = {
-  live: 15 * 1000,           // 15 seconds for live games
-  fixtures_date: 2 * 60 * 1000,  // 2 minutes for fixtures by date
-  fixtures_id: 15 * 1000,    // 15 seconds for specific fixture
-  statistics: 15 * 1000,     // 15 seconds for statistics
-  events: 15 * 1000,         // 15 seconds for events
+  live: 30 * 1000,           // 30 seconds for live games (was 15s)
+  fixtures_date: 5 * 60 * 1000,  // 5 minutes for fixtures by date (was 2 min)
+  fixtures_id: 30 * 1000,    // 30 seconds for specific fixture (was 15s)
+  statistics: 30 * 1000,     // 30 seconds for statistics (was 15s)
+  events: 30 * 1000,         // 30 seconds for events (was 15s)
   leagues: 24 * 60 * 60 * 1000,  // 24 hours for leagues
   teams: 24 * 60 * 60 * 1000,    // 24 hours for teams
   standings: 60 * 60 * 1000,     // 1 hour for standings
   odds: 5 * 60 * 1000,       // 5 minutes for pre-match odds
-  odds_live: 30 * 1000,      // 30 seconds for live odds
+  odds_live: 60 * 1000,      // 60 seconds for live odds (was 30s)
   bookmakers: 24 * 60 * 60 * 1000, // 24 hours for bookmakers list
-  default: 60 * 1000,        // 1 minute default
+  default: 2 * 60 * 1000,    // 2 minutes default (was 1 min)
 };
 
 function getCacheKey(endpoint: string, params: Record<string, unknown>): string {
