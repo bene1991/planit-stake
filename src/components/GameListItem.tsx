@@ -1,4 +1,4 @@
-import { Game, Method } from "@/types";
+import { Game, Method, GoalEvent } from "@/types";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Shield, Check, X, ChevronRight, Settings, Trash2, MoreVertical } from "lucide-react";
@@ -7,6 +7,7 @@ import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useFixtureCache } from "@/hooks/useFixtureCache";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,15 @@ interface LiveScore {
   elapsed: number | null;
   status: string;
   statusLong: string;
+  homeTeamId?: number;
+  awayTeamId?: number;
+  events?: Array<{
+    type: string;
+    team: { id: number };
+    player: { name: string };
+    time: { elapsed: number };
+    detail?: string;
+  }>;
 }
 
 interface GameListItemProps {
@@ -50,6 +60,9 @@ export function GameListItem({
   
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
+  
+  // Fetch fixture cache for live goals (only for games with fixture ID)
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id);
   
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
@@ -140,13 +153,101 @@ export function GameListItem({
 
   const status = getStatusDisplay();
 
-  // Calculate method results summary
-  const methodsSummary = useMemo(() => {
-    const greens = game.methodOperations.filter(op => op.result === 'Green').length;
-    const reds = game.methodOperations.filter(op => op.result === 'Red').length;
-    const pending = game.methodOperations.filter(op => !op.result).length;
-    return { greens, reds, pending };
-  }, [game.methodOperations]);
+  // Get goal events for display - from fixture cache (live), liveScore events, or persisted goalEvents
+  const { homeGoals, awayGoals } = useMemo(() => {
+    // 1. Priority: Use fixture cache key_events for live games (has player names and minutes)
+    if (fixtureCache?.key_events?.length) {
+      const goals = fixtureCache.key_events.filter(e => e.type === 'goal');
+      return {
+        homeGoals: goals
+          .filter(e => e.team === 'home')
+          .map(e => ({
+            teamId: 0,
+            playerName: e.player || '',
+            minute: e.minute,
+            detail: e.detail,
+          })),
+        awayGoals: goals
+          .filter(e => e.team === 'away')
+          .map(e => ({
+            teamId: 0,
+            playerName: e.player || '',
+            minute: e.minute,
+            detail: e.detail,
+          })),
+      };
+    }
+    
+    // 2. Fallback: Use liveScore events if available
+    const homeTeamId = liveScore?.homeTeamId;
+    const awayTeamId = liveScore?.awayTeamId;
+    
+    if (liveScore?.events?.length) {
+      return {
+        homeGoals: liveScore.events
+          .filter(e => e.type === 'Goal' && e.team?.id === homeTeamId)
+          .map(e => ({
+            teamId: e.team?.id || 0,
+            playerName: e.player?.name || '',
+            minute: e.time?.elapsed || 0,
+            detail: e.detail,
+          })),
+        awayGoals: liveScore.events
+          .filter(e => e.type === 'Goal' && e.team?.id === awayTeamId)
+          .map(e => ({
+            teamId: e.team?.id || 0,
+            playerName: e.player?.name || '',
+            minute: e.time?.elapsed || 0,
+            detail: e.detail,
+          })),
+      };
+    }
+    
+    // 3. Fallback: Use persisted goalEvents from database
+    if (game.goalEvents?.length) {
+      // If we have team IDs, use them
+      if (homeTeamId && awayTeamId) {
+        return {
+          homeGoals: game.goalEvents.filter(e => e.teamId === homeTeamId),
+          awayGoals: game.goalEvents.filter(e => e.teamId === awayTeamId),
+        };
+      }
+      
+      // Otherwise try to match by score count
+      const homeScoreNum = game.finalScoreHome ?? 0;
+      const awayScoreNum = game.finalScoreAway ?? 0;
+      
+      // Group by teamId
+      const byTeam = game.goalEvents.reduce((acc, e) => {
+        if (!acc[e.teamId]) acc[e.teamId] = [];
+        acc[e.teamId].push(e);
+        return acc;
+      }, {} as Record<number, GoalEvent[]>);
+      
+      const teamIds = Object.keys(byTeam).map(Number);
+      if (teamIds.length === 2) {
+        const [team1, team2] = teamIds;
+        const team1Goals = byTeam[team1].length;
+        const team2Goals = byTeam[team2].length;
+        
+        if (team1Goals === homeScoreNum && team2Goals === awayScoreNum) {
+          return { homeGoals: byTeam[team1], awayGoals: byTeam[team2] };
+        } else if (team2Goals === homeScoreNum && team1Goals === awayScoreNum) {
+          return { homeGoals: byTeam[team2], awayGoals: byTeam[team1] };
+        }
+      }
+      
+      // Fallback: first teamId = home
+      if (teamIds.length >= 1) {
+        return {
+          homeGoals: byTeam[teamIds[0]] || [],
+          awayGoals: teamIds.length > 1 ? byTeam[teamIds[1]] : [],
+        };
+      }
+    }
+    
+    return { homeGoals: [], awayGoals: [] };
+  }, [fixtureCache?.key_events, liveScore?.events, liveScore?.homeTeamId, liveScore?.awayTeamId, game.goalEvents, game.finalScoreHome, game.finalScoreAway]);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -172,7 +273,7 @@ export function GameListItem({
           <CollapsibleTrigger asChild>
             <div className="flex-1 py-2 px-2 sm:px-3 cursor-pointer min-w-0 max-w-md">
               {/* Home Team Row */}
-              <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
                 <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
                   <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
                   <AvatarFallback className="text-[6px] sm:text-[8px] bg-secondary">
@@ -189,8 +290,19 @@ export function GameListItem({
                 </span>
               </div>
               
+              {/* Home Goals */}
+              {homeGoals.length > 0 && (
+                <div className="ml-5 sm:ml-7 mb-1">
+                  {homeGoals.map((goal, i) => (
+                    <span key={i} className="text-[9px] sm:text-[10px] text-muted-foreground mr-2">
+                      ⚽ {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (P)' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              
               {/* Away Team Row */}
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
                 <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
                   <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
                   <AvatarFallback className="text-[6px] sm:text-[8px] bg-secondary">
@@ -206,6 +318,17 @@ export function GameListItem({
                   {hasScore ? awayScore : '-'}
                 </span>
               </div>
+              
+              {/* Away Goals */}
+              {awayGoals.length > 0 && (
+                <div className="ml-5 sm:ml-7">
+                  {awayGoals.map((goal, i) => (
+                    <span key={i} className="text-[9px] sm:text-[10px] text-muted-foreground mr-2">
+                      ⚽ {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (P)' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </CollapsibleTrigger>
 
