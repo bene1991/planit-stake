@@ -41,7 +41,7 @@ export interface OperationalMetrics {
   operationsWithoutFinancialData: number;
 }
 
-export const useOperationalStatus = (filters?: OperationalFilters) => {
+export const useOperationalStatus = (filters?: OperationalFilters, stakeOverride?: number) => {
   const { games, loading: gamesLoading } = useSupabaseGames();
   const { settings, loading: settingsLoading } = useOperationalSettings();
 
@@ -165,8 +165,8 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
     const dailyProfitMoney = todayOps.reduce((acc, op) => acc + (getOperationProfit(op) ?? 0), 0);
     const periodProfitMoney = periodOps.reduce((acc, op) => acc + (getOperationProfit(op) ?? 0), 0);
 
-    // Convert to stakes using REFERENCE stake from settings
-    const stakeReference = settings.stakeValueReais || 100;
+    // Convert to stakes using REFERENCE stake (override or settings)
+    const stakeReference = stakeOverride || settings.stakeValueReais || 100;
     const dailyProfitStakes = dailyProfitMoney / stakeReference;
     const periodProfitStakes = periodProfitMoney / stakeReference;
 
@@ -233,7 +233,7 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
       operationsWithFinancialData,
       operationsWithoutFinancialData
     };
-  }, [games, settings, filters]);
+  }, [games, settings, filters, stakeOverride]);
 
   return {
     metrics,
