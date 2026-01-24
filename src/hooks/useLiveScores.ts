@@ -39,6 +39,9 @@ export interface GoalDetectedCallback {
 // Refresh interval: 20 seconds
 const REFRESH_INTERVAL = 20 * 1000;
 
+// Minimum interval between calls (throttle protection)
+const MIN_CALL_INTERVAL = 10 * 1000;
+
 // Status codes that indicate a finished game
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
 
@@ -55,9 +58,13 @@ export function useLiveScores(
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
   const persistedScoresRef = useRef<Set<string>>(new Set());
+  const lastCallTimeRef = useRef<number>(0);
   
   // Internal snapshot for goal detection - stores previous scores before update
   const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
+  
+  // Stable ref for fetchLiveScores to avoid useEffect dependency issues
+  const fetchLiveScoresRef = useRef<(() => Promise<void>) | null>(null);
   
   // Get list of fixture IDs to monitor (live + pending)
   const fixtureIds = useMemo(() => {
@@ -81,8 +88,16 @@ export function useLiveScores(
   
   // Fetch all live fixtures in a single API call
   const fetchLiveScores = useCallback(async () => {
+    // Throttle protection - prevent calls more frequent than MIN_CALL_INTERVAL
+    const now = Date.now();
+    if (now - lastCallTimeRef.current < MIN_CALL_INTERVAL) {
+      console.warn('[useLiveScores] Throttled - called too soon, skipping');
+      return;
+    }
+    
     if (isFetchingRef.current || !hasGamesToMonitor) return;
     
+    lastCallTimeRef.current = now;
     isFetchingRef.current = true;
     setLoading(true);
     
@@ -201,7 +216,7 @@ export function useLiveScores(
       // Fetch events for games with goals (max 5 to save credits)
       console.log(`[useLiveScores] Games with goals to fetch events: ${fixturesWithGoals.length}`, fixturesWithGoals);
       
-      for (const fixtureInfo of fixturesWithGoals.slice(0, 5)) {
+      for (const fixtureInfo of fixturesWithGoals.slice(0, 1)) {
         try {
           console.log(`[useLiveScores] Fetching events for fixture ${fixtureInfo.id}...`);
           const { data: detailsData, error: detailsError } = await supabase.functions.invoke('get-fixture-details', {
@@ -241,7 +256,7 @@ export function useLiveScores(
       );
       
       // Fetch these games individually (max 3 per cycle to save credits)
-      for (const game of liveGamesNotInResponse.slice(0, 3)) {
+      for (const game of liveGamesNotInResponse.slice(0, 1)) {
         try {
           console.log(`[useLiveScores] Game ${game.homeTeam} vs ${game.awayTeam} not in live=all, fetching individually...`);
           
@@ -315,7 +330,7 @@ export function useLiveScores(
       });
       
       // Fetch individual fixture data for games starting soon (max 3 to save credits)
-      for (const game of gamesStartingSoon.slice(0, 3)) {
+      for (const game of gamesStartingSoon.slice(0, 1)) {
         try {
           const { data: fixtureData } = await supabase.functions.invoke('api-football', {
             body: {
@@ -344,7 +359,7 @@ export function useLiveScores(
       if (gamesNeedingBackfill.length > 0) {
         console.log(`[useLiveScores] Backfilling ${gamesNeedingBackfill.length} finished games without scores...`);
         
-        for (const game of gamesNeedingBackfill.slice(0, 5)) {
+        for (const game of gamesNeedingBackfill.slice(0, 1)) {
           // Skip if already persisted this session
           if (persistedScoresRef.current.has(game.id)) continue;
           
@@ -412,16 +427,24 @@ export function useLiveScores(
     return scores.get(game.api_fixture_id) || null;
   }, [scores]);
   
+  // Keep fetchLiveScores ref updated (without triggering useEffect)
+  useEffect(() => {
+    fetchLiveScoresRef.current = fetchLiveScores;
+  }, [fetchLiveScores]);
+  
   // Start/stop interval based on whether there are games to monitor
+  // CRITICAL: fetchLiveScores removed from deps to prevent infinite loop!
   useEffect(() => {
     if (hasGamesToMonitor) {
       console.log('[useLiveScores] Starting 20s interval for', fixtureIds.length, 'games');
       
-      // Fetch immediately
-      fetchLiveScores();
+      // Fetch immediately using ref
+      fetchLiveScoresRef.current?.();
       
-      // Then every 20 seconds
-      intervalRef.current = setInterval(fetchLiveScores, REFRESH_INTERVAL);
+      // Then every 20 seconds using ref
+      intervalRef.current = setInterval(() => {
+        fetchLiveScoresRef.current?.();
+      }, REFRESH_INTERVAL);
       
       return () => {
         if (intervalRef.current) {
@@ -436,7 +459,8 @@ export function useLiveScores(
         intervalRef.current = null;
       }
     }
-  }, [hasGamesToMonitor, fixtureIds.length, fetchLiveScores]);
+    // REMOVED: fetchLiveScores from dependencies to prevent race condition!
+  }, [hasGamesToMonitor, fixtureIds.length]);
   
   // Cleanup on unmount
   useEffect(() => {
