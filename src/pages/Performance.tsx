@@ -228,9 +228,9 @@ export default function Performance() {
   const statusInfo = statusConfig[metrics.status];
   const StatusIcon = statusInfo.icon;
 
-  // Calculate R$ values using stake
-  const dailyProfitReais = metrics.dailyProfitStakes * settings.stakeValueReais;
-  const periodProfitReais = metrics.periodProfitStakes * settings.stakeValueReais;
+  // Calculate R$ values - use actual profits saved per operation
+  const dailyProfitReais = metrics.dailyProfitMoney;
+  const periodProfitReais = metrics.periodProfitMoney;
 
   const getChangeIcon = (change: number) => {
     if (change > 0) return <TrendingUp className="h-4 w-4 text-success" />;
