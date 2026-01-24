@@ -100,10 +100,22 @@ export const testSound = (type: NotificationSoundType): void => {
   playNotificationSound(type, true);
 };
 
-// Função para tocar som de gol
+// Debounce para evitar som duplicado
+let lastGoalSoundTime = 0;
+const GOAL_SOUND_DEBOUNCE = 3000; // 3 segundos
+
+// Função para tocar som de gol (com debounce)
 export const playGoalSound = (soundId?: GoalSoundOption): void => {
+  const now = Date.now();
+  if (now - lastGoalSoundTime < GOAL_SOUND_DEBOUNCE) {
+    console.log('[SoundManager] Debouncing goal sound (too soon)');
+    return;
+  }
+  lastGoalSoundTime = now;
+  
   try {
     const path = getGoalSoundPath(soundId);
+    console.log('[SoundManager] Playing goal sound:', path);
     const audio = new Audio(path);
     audio.volume = 0.8;
     audio.play().catch((err) => {
@@ -114,7 +126,17 @@ export const playGoalSound = (soundId?: GoalSoundOption): void => {
   }
 };
 
-// Preview de um som específico
+// Preview de um som específico (sem debounce para testes)
 export const previewGoalSound = (soundId: GoalSoundOption): void => {
-  playGoalSound(soundId);
+  try {
+    const option = goalSoundOptions.find(o => o.id === soundId);
+    const path = option?.path || '/sounds/goal-celebration.mp3';
+    const audio = new Audio(path);
+    audio.volume = 0.8;
+    audio.play().catch((err) => {
+      console.warn('Could not preview goal sound:', err);
+    });
+  } catch (error) {
+    console.warn('Error previewing goal sound:', error);
+  }
 };

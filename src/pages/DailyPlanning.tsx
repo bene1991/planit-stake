@@ -14,7 +14,8 @@ import { rebuildStats } from "@/utils/rebuildStats";
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2 } from "lucide-react";
+import { playGoalSound } from "@/utils/soundManager";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { GameListByLeague } from "@/components/GameListByLeague";
 import { GameStatusTabs, GameStatusFilter, GameSortOrder } from "@/components/GameStatusTabs";
@@ -226,6 +227,18 @@ export default function DailyPlanning() {
     }
   };
 
+  // Test goal highlight + sound
+  const handleTestGoal = () => {
+    const availableGames = filteredPlannedGames.length > 0 ? filteredPlannedGames : pendingGames;
+    if (availableGames.length > 0) {
+      const randomGame = availableGames[Math.floor(Math.random() * availableGames.length)];
+      setHighlightedGameId(randomGame.id);
+      playGoalSound();
+      toast.success(`⚽ Teste de gol: ${randomGame.homeTeam} vs ${randomGame.awayTeam}`);
+    } else {
+      toast.error('Nenhum jogo disponível para testar');
+    }
+  };
 
   // Add games from API browser
   const handleAddFromApi = async (selectedGames: SelectedGame[]) => {
@@ -479,6 +492,15 @@ export default function DailyPlanning() {
           <Button variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8">
             <Globe className="h-3.5 w-3.5 sm:mr-2" />
             <span className="hidden sm:inline">Buscar Jogos</span>
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleTestGoal} 
+            className="h-8 border-warning/50 text-warning hover:bg-warning/10"
+          >
+            <Trophy className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">Testar Gol</span>
           </Button>
         </div>
       </div>
