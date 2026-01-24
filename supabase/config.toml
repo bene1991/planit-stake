@@ -26,3 +26,12 @@ verify_jwt = false
 
 [functions.the-odds-api]
 verify_jwt = false
+
+[functions.analyze-performance]
+verify_jwt = false
+
+[functions.check-goals-and-notify]
+verify_jwt = false
+
+[functions.elevenlabs-sfx]
+verify_jwt = false

@@ -185,6 +185,30 @@ export function StatisticsFilterBar({ methods, leagues, filters, onFilterChange 
           </>
         )}
 
+        {/* Seletor Rápido de Método */}
+        <Select
+          value={filters.selectedMethods.length === 1 ? filters.selectedMethods[0] : 'all'}
+          onValueChange={(v) => {
+            if (v === 'all') {
+              onFilterChange({ ...filters, selectedMethods: [] });
+            } else {
+              onFilterChange({ ...filters, selectedMethods: [v] });
+            }
+          }}
+        >
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Método" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os Métodos</SelectItem>
+            {methods.map((method) => (
+              <SelectItem key={method.id} value={method.id}>
+                {method.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {/* Resultado */}
         <Select
           value={filters.result}

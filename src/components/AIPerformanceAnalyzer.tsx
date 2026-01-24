@@ -1,10 +1,17 @@
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Loader2, RefreshCw, Bot } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Sparkles, Loader2, RefreshCw, Bot, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FilteredStatisticsResult, LeagueStats, TeamStats } from '@/hooks/useFilteredStatistics';
 import { cn } from '@/lib/utils';
+
+interface ActiveFilters {
+  selectedMethods: string[];
+  selectedLeagues: string[];
+  result: 'all' | 'Green' | 'Red';
+}
 
 interface AIPerformanceAnalyzerProps {
   statistics: FilteredStatisticsResult;
@@ -12,6 +19,9 @@ interface AIPerformanceAnalyzerProps {
   teamStats: TeamStats[];
   period: string;
   profit: number;
+  activeFilters: ActiveFilters;
+  methodNames: Record<string, string>;
+  generalWinRate: number;
 }
 
 export function AIPerformanceAnalyzer({ 
@@ -19,11 +29,35 @@ export function AIPerformanceAnalyzer({
   leagueStats, 
   teamStats,
   period,
-  profit 
+  profit,
+  activeFilters,
+  methodNames,
+  generalWinRate,
 }: AIPerformanceAnalyzerProps) {
   const [analysis, setAnalysis] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+
+  // Check if any filter is active
+  const isFiltered = activeFilters.selectedMethods.length > 0 || 
+                     activeFilters.selectedLeagues.length > 0 || 
+                     activeFilters.result !== 'all';
+
+  // Get human-readable filter description
+  const getFilterDescription = () => {
+    const parts: string[] = [];
+    if (activeFilters.selectedMethods.length > 0) {
+      const names = activeFilters.selectedMethods.map(id => methodNames[id] || id);
+      parts.push(names.join(', '));
+    }
+    if (activeFilters.selectedLeagues.length > 0) {
+      parts.push(activeFilters.selectedLeagues.join(', '));
+    }
+    if (activeFilters.result !== 'all') {
+      parts.push(activeFilters.result === 'Green' ? 'Greens' : 'Reds');
+    }
+    return parts.join(' • ');
+  };
 
   const analyzePerformance = useCallback(async () => {
     if (statistics.overallStats.total === 0) {
@@ -95,6 +129,14 @@ export function AIPerformanceAnalyzer({
           winRateChange: statistics.comparison.winRateChange,
           volumeChange: statistics.comparison.volumeChange,
         },
+        // NEW: Add filter context
+        activeFilters: {
+          methods: activeFilters.selectedMethods.map(id => methodNames[id] || id),
+          leagues: activeFilters.selectedLeagues,
+          result: activeFilters.result,
+        },
+        isFiltered,
+        generalWinRate,
       };
 
       const response = await fetch(
@@ -185,7 +227,7 @@ export function AIPerformanceAnalyzer({
     } finally {
       setIsLoading(false);
     }
-  }, [statistics, leagueStats, teamStats, period, profit, toast]);
+  }, [statistics, leagueStats, teamStats, period, profit, activeFilters, methodNames, isFiltered, generalWinRate, toast]);
 
   // Simple markdown to HTML conversion
   const renderMarkdown = (text: string) => {
@@ -200,11 +242,19 @@ export function AIPerformanceAnalyzer({
   return (
     <Card className="shadow-card overflow-hidden">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <Bot className="h-5 w-5 text-primary" />
-            Análise IA
-          </CardTitle>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Bot className="h-5 w-5 text-primary" />
+              Análise IA
+            </CardTitle>
+            {isFiltered && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <Filter className="h-3 w-3" />
+                {getFilterDescription()}
+              </Badge>
+            )}
+          </div>
           <Button
             onClick={analyzePerformance}
             disabled={isLoading}
@@ -237,7 +287,10 @@ export function AIPerformanceAnalyzer({
               <Sparkles className="h-8 w-8 text-primary" />
             </div>
             <p className="text-sm text-muted-foreground max-w-xs">
-              Clique em "Analisar" para receber insights personalizados sobre seu desempenho com base nos seus dados.
+              {isFiltered 
+                ? `Clique em "Analisar" para receber insights sobre ${getFilterDescription()}.`
+                : 'Clique em "Analisar" para receber insights personalizados sobre seu desempenho com base nos seus dados.'
+              }
             </p>
           </div>
         )}
@@ -245,7 +298,12 @@ export function AIPerformanceAnalyzer({
         {isLoading && !analysis && (
           <div className="flex flex-col items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-sm text-muted-foreground">Analisando seus dados...</p>
+            <p className="text-sm text-muted-foreground">
+              {isFiltered 
+                ? `Analisando ${getFilterDescription()}...`
+                : 'Analisando seus dados...'
+              }
+            </p>
           </div>
         )}
 
