@@ -154,6 +154,24 @@ export default function DailyPlanning() {
     }
   }, [games, liveScores, highlightedGameId]);
   
+  // Backfill: trigger refresh on load if there are finished games without scores
+  const backfillTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (backfillTriggeredRef.current || gamesLoading) return;
+    
+    const gamesWithMissingScores = games.filter(g => 
+      g.status === 'Finished' && 
+      g.api_fixture_id && 
+      (g.finalScoreHome === null || g.finalScoreHome === undefined)
+    );
+    
+    if (gamesWithMissingScores.length > 0) {
+      console.log(`[DailyPlanning] Found ${gamesWithMissingScores.length} finished games without scores, triggering backfill...`);
+      backfillTriggeredRef.current = true;
+      refreshLiveScores();
+    }
+  }, [games, gamesLoading, refreshLiveScores]);
+  
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
   

@@ -59,15 +59,25 @@ export function useLiveScores(
   // Internal snapshot for goal detection - stores previous scores before update
   const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
   
-  // Get list of fixture IDs to monitor
+  // Get list of fixture IDs to monitor (live + pending)
   const fixtureIds = useMemo(() => {
     return games
       .filter(g => g.api_fixture_id && (g.status === 'Live' || g.status === 'Pending'))
       .map(g => g.api_fixture_id!);
   }, [games]);
   
+  // Get games that are marked Finished but have no score in DB (need backfill)
+  const gamesNeedingBackfill = useMemo(() => {
+    return games.filter(g => 
+      g.api_fixture_id && 
+      g.status === 'Finished' && 
+      (g.finalScoreHome === null || g.finalScoreHome === undefined ||
+       g.finalScoreAway === null || g.finalScoreAway === undefined)
+    );
+  }, [games]);
+  
   // Check if there are any games to monitor
-  const hasGamesToMonitor = fixtureIds.length > 0;
+  const hasGamesToMonitor = fixtureIds.length > 0 || gamesNeedingBackfill.length > 0;
   
   // Fetch all live fixtures in a single API call
   const fetchLiveScores = useCallback(async () => {
@@ -330,6 +340,57 @@ export function useLiveScores(
         }
       }
       
+      // BACKFILL: Fetch scores for finished games that have no score in DB
+      if (gamesNeedingBackfill.length > 0) {
+        console.log(`[useLiveScores] Backfilling ${gamesNeedingBackfill.length} finished games without scores...`);
+        
+        for (const game of gamesNeedingBackfill.slice(0, 5)) {
+          // Skip if already persisted this session
+          if (persistedScoresRef.current.has(game.id)) continue;
+          
+          try {
+            console.log(`[useLiveScores] Backfill: Fetching score for ${game.homeTeam} vs ${game.awayTeam}...`);
+            
+            const { data: fixtureData } = await supabase.functions.invoke('api-football', {
+              body: {
+                endpoint: 'fixtures',
+                params: { id: game.api_fixture_id }
+              }
+            });
+            
+            const fixture = fixtureData?.response?.[0];
+            if (fixture) {
+              const homeGoals = fixture.goals?.home ?? 0;
+              const awayGoals = fixture.goals?.away ?? 0;
+              
+              // Mark as persisted
+              persistedScoresRef.current.add(game.id);
+              
+              console.log(`[useLiveScores] Backfill: Persisting ${game.homeTeam} ${homeGoals}-${awayGoals} ${game.awayTeam}`);
+              
+              // Persist to database
+              const { error } = await supabase
+                .from('games')
+                .update({
+                  final_score_home: homeGoals,
+                  final_score_away: awayGoals,
+                })
+                .eq('id', game.id);
+              
+              if (error) {
+                console.error('[useLiveScores] Backfill persist error:', error);
+                persistedScoresRef.current.delete(game.id);
+              } else {
+                console.log(`[useLiveScores] Backfill: Score persisted for ${game.id}`);
+                onScorePersisted?.(game.id, homeGoals, awayGoals);
+              }
+            }
+          } catch (err) {
+            console.warn(`[useLiveScores] Backfill failed for ${game.api_fixture_id}:`, err);
+          }
+        }
+      }
+      
       setScores(newScores);
       setLastRefresh(Date.now());
       setError(null);
@@ -343,7 +404,7 @@ export function useLiveScores(
       setLoading(false);
       isFetchingRef.current = false;
     }
-  }, [hasGamesToMonitor, fixtureIds, games, onGoalDetected]);
+  }, [hasGamesToMonitor, fixtureIds, games, gamesNeedingBackfill, onGoalDetected, onScorePersisted]);
   
   // Get score for a specific game
   const getScoreForGame = useCallback((game: Game): LiveScore | null => {
