@@ -4,6 +4,14 @@ import { GameListItem } from "./GameListItem";
 import { useMemo } from "react";
 import { GameSortOrder } from "./GameStatusTabs";
 
+interface LiveScoreEvent {
+  minute: number;
+  team: 'home' | 'away';
+  type: string;
+  player?: string;
+  detail?: string;
+}
+
 interface LiveScore {
   fixtureId: number;
   homeScore: number;
@@ -11,6 +19,9 @@ interface LiveScore {
   elapsed: number | null;
   status: string;
   statusLong: string;
+  homeTeamId?: number;
+  awayTeamId?: number;
+  events?: LiveScoreEvent[];
 }
 
 interface GameListByLeagueProps {

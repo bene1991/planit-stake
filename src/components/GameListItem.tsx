@@ -15,6 +15,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+interface LiveScoreEvent {
+  minute: number;
+  team: 'home' | 'away';
+  type: string;
+  player?: string;
+  detail?: string;
+}
+
 interface LiveScore {
   fixtureId: number;
   homeScore: number;
@@ -24,13 +32,7 @@ interface LiveScore {
   statusLong: string;
   homeTeamId?: number;
   awayTeamId?: number;
-  events?: Array<{
-    type: string;
-    team: { id: number };
-    player: { name: string };
-    time: { elapsed: number };
-    detail?: string;
-  }>;
+  events?: LiveScoreEvent[];
 }
 
 interface GameListItemProps {
@@ -178,32 +180,32 @@ export function GameListItem({
       };
     }
     
-    // 2. Fallback: Use liveScore events if available
-    const homeTeamId = liveScore?.homeTeamId;
-    const awayTeamId = liveScore?.awayTeamId;
-    
+    // 2. Fallback: Use liveScore events if available (new format from useLiveScores)
     if (liveScore?.events?.length) {
       return {
         homeGoals: liveScore.events
-          .filter(e => e.type === 'Goal' && e.team?.id === homeTeamId)
+          .filter(e => e.type === 'goal' && e.team === 'home')
           .map(e => ({
-            teamId: e.team?.id || 0,
-            playerName: e.player?.name || '',
-            minute: e.time?.elapsed || 0,
+            teamId: 0,
+            playerName: e.player || '',
+            minute: e.minute,
             detail: e.detail,
           })),
         awayGoals: liveScore.events
-          .filter(e => e.type === 'Goal' && e.team?.id === awayTeamId)
+          .filter(e => e.type === 'goal' && e.team === 'away')
           .map(e => ({
-            teamId: e.team?.id || 0,
-            playerName: e.player?.name || '',
-            minute: e.time?.elapsed || 0,
+            teamId: 0,
+            playerName: e.player || '',
+            minute: e.minute,
             detail: e.detail,
           })),
       };
     }
     
     // 3. Fallback: Use persisted goalEvents from database
+    const homeTeamId = liveScore?.homeTeamId;
+    const awayTeamId = liveScore?.awayTeamId;
+    
     if (game.goalEvents?.length) {
       // If we have team IDs, use them
       if (homeTeamId && awayTeamId) {

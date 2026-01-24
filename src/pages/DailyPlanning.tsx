@@ -122,6 +122,30 @@ export default function DailyPlanning() {
     });
   }, [liveScores, games, updateScoreSnapshot]);
   
+  // On page load, detect if any live game has goals and highlight it
+  // This ensures the golden highlight shows even if the goal was before we opened the page
+  useEffect(() => {
+    // Only run if no game is currently highlighted and we have live scores
+    if (highlightedGameId || liveScores.size === 0) return;
+    
+    // Find any live game with goals scored
+    const liveGameWithGoals = games.find(game => {
+      if (!game.api_fixture_id) return false;
+      const score = liveScores.get(game.api_fixture_id);
+      if (!score) return false;
+      
+      const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(score.status);
+      const hasGoals = score.homeScore > 0 || score.awayScore > 0;
+      
+      return isLive && hasGoals;
+    });
+    
+    if (liveGameWithGoals) {
+      console.log('[DailyPlanning] Highlighting live game with goals on load:', liveGameWithGoals.homeTeam, 'vs', liveGameWithGoals.awayTeam);
+      setHighlightedGameId(liveGameWithGoals.id);
+    }
+  }, [games, liveScores, highlightedGameId]);
+  
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
   
