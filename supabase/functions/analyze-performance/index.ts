@@ -57,6 +57,14 @@ interface PerformanceData {
     winRateChange: number;
     volumeChange: number;
   };
+  // New filter context fields
+  activeFilters?: {
+    methods: string[];
+    leagues: string[];
+    result: 'all' | 'Green' | 'Red';
+  };
+  isFiltered?: boolean;
+  generalWinRate?: number;
 }
 
 serve(async (req) => {
@@ -72,6 +80,23 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    // Build filter context for the prompt
+    const hasFilters = performanceData.isFiltered;
+    const filterMethods = performanceData.activeFilters?.methods || [];
+    const filterLeagues = performanceData.activeFilters?.leagues || [];
+    const filterResult = performanceData.activeFilters?.result || 'all';
+    
+    const filterContextDescription = hasFilters
+      ? `
+CONTEXTO IMPORTANTE - FILTROS ATIVOS:
+${filterMethods.length > 0 ? `- Método(s) selecionado(s): ${filterMethods.join(', ')}` : ''}
+${filterLeagues.length > 0 ? `- Liga(s) selecionada(s): ${filterLeagues.join(', ')}` : ''}
+${filterResult !== 'all' ? `- Resultado filtrado: Apenas ${filterResult === 'Green' ? 'Greens' : 'Reds'}` : ''}
+${performanceData.generalWinRate ? `- Win Rate geral (sem filtros): ${performanceData.generalWinRate}%` : ''}
+
+INSTRUÇÃO CRÍTICA: Você está analisando APENAS os dados filtrados acima. Sua análise deve ser 100% focada neste contexto específico. Compare com o desempenho geral quando disponível.`
+      : '';
+
     const systemPrompt = `Você é um analista especializado em trading esportivo, especificamente em mercados de futebol como BTTS (Both Teams To Score), Over/Under gols, e operações de Back e Lay em exchanges.
 
 Sua função é analisar os dados de desempenho do trader e fornecer insights acionáveis, identificando padrões, pontos fortes, fraquezas e oportunidades de melhoria.
@@ -86,15 +111,22 @@ REGRAS IMPORTANTES:
 7. Analise a qualidade das odds selecionadas
 8. Seja encorajador quando houver bons resultados
 9. Seja honesto sobre problemas, mas construtivo
+10. CRUCIAL: Se há filtros ativos, foque EXCLUSIVAMENTE nos dados filtrados
+11. Quando analisar um método específico, compare com o desempenho geral
+12. Mencione claramente no início da análise qual contexto está sendo analisado
 
 FORMATO DA RESPOSTA:
 - Use markdown com headers (##)
 - Máximo 300 palavras
-- Seções: Resumo, Pontos Fortes, Pontos de Atenção, Dicas Práticas`;
+- Se houver filtro de método: "## Análise do Método [NOME]"
+- Se houver filtro de liga: "## Análise da Liga [NOME]"
+- Senão: "## Resumo Geral"
+- Seções: Resumo/Contexto, Pontos Fortes, Pontos de Atenção, Dicas Práticas`;
 
     const userPrompt = `Analise meu desempenho de trading no período: ${performanceData.period}
+${filterContextDescription}
 
-📊 ESTATÍSTICAS GERAIS:
+📊 ESTATÍSTICAS ${hasFilters ? '(DADOS FILTRADOS)' : 'GERAIS'}:
 - Total de operações: ${performanceData.overallStats.total}
 - Greens: ${performanceData.overallStats.greens} | Reds: ${performanceData.overallStats.reds}
 - Win Rate: ${performanceData.overallStats.winRate}%

@@ -565,6 +565,13 @@ export default function Performance() {
         teamStats={teamStats}
         period={periodLabel}
         profit={metrics.periodProfitStakes}
+        activeFilters={{
+          selectedMethods: filters.selectedMethods,
+          selectedLeagues: filters.selectedLeagues,
+          result: filters.result,
+        }}
+        methodNames={bankroll.methods.reduce((acc, m) => ({ ...acc, [m.id]: m.name }), {} as Record<string, string>)}
+        generalWinRate={originalStatistics.overallStats.winRate}
       />
 
       {/* Settings Collapsible */}
