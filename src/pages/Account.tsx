@@ -14,6 +14,7 @@ import { LogoVariant } from '@/hooks/useLogoVariant';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { TelegramSettings } from '@/components/TelegramSettings';
 import { PushNotificationSettings } from '@/components/PushNotificationSettings';
+import { GoalSoundSelector } from '@/components/GoalSoundSelector';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { useSettings } from '@/hooks/useSettings';
 import { fixLeagueNames } from '@/utils/fixLeagueNames';
@@ -246,6 +247,7 @@ export default function Account() {
       </Card>
 
       <RefreshIntervalSettings />
+      <GoalSoundSelector />
       <TelegramSettings />
       <PushNotificationSettings />
       <NotificationSettings />

@@ -3,10 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Bell, BellOff, Send, Smartphone, Goal, Volume2 } from 'lucide-react';
+import { Bell, BellOff, Send, Smartphone, Goal } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAuth } from '@/contexts/AuthContext';
-import { playGoalSound } from '@/utils/soundManager';
 
 export const PushNotificationSettings = () => {
   const { user } = useAuth();
@@ -28,10 +27,6 @@ export const PushNotificationSettings = () => {
   useEffect(() => {
     localStorage.setItem('goalNotificationsEnabled', JSON.stringify(goalNotificationsEnabled));
   }, [goalNotificationsEnabled]);
-
-  const handleTestGoalSound = () => {
-    playGoalSound();
-  };
 
   if (!user) {
     return (
@@ -104,19 +99,6 @@ export const PushNotificationSettings = () => {
           />
         </div>
 
-        {/* Botão de testar som de gol - sempre visível */}
-        <div className="border-t pt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleTestGoalSound}
-            className="w-full"
-          >
-            <Volume2 className="h-4 w-4 mr-2" />
-            🎉 Testar Som de Gol
-          </Button>
-        </div>
-
         {isSubscribed && (
           <>
             <div className="border-t pt-4">
@@ -127,7 +109,7 @@ export const PushNotificationSettings = () => {
                     Alertas de Gol
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Som de torcida + notificação push quando houver gol
+                    Som + notificação push quando houver gol
                   </div>
                 </Label>
                 <Switch
