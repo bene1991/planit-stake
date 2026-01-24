@@ -31,6 +31,11 @@ interface UseLiveScoresResult {
   getScoreForGame: (game: Game) => LiveScore | null;
 }
 
+// Callback for goal detection
+export interface GoalDetectedCallback {
+  (gameId: string, team: 'home' | 'away', homeScore: number, awayScore: number, game: Game): void;
+}
+
 // Refresh interval: 20 seconds
 const REFRESH_INTERVAL = 20 * 1000;
 
@@ -39,7 +44,8 @@ const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
 
 export function useLiveScores(
   games: Game[], 
-  onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void
+  onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void,
+  onGoalDetected?: GoalDetectedCallback
 ): UseLiveScoresResult {
   const [scores, setScores] = useState<Map<string, LiveScore>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -49,6 +55,9 @@ export function useLiveScores(
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
   const persistedScoresRef = useRef<Set<string>>(new Set());
+  
+  // Internal snapshot for goal detection - stores previous scores before update
+  const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
   
   // Get list of fixture IDs to monitor
   const fixtureIds = useMemo(() => {
@@ -107,6 +116,28 @@ export function useLiveScores(
         const awayTeamId = fixture.teams?.away?.id;
         
         if (fixtureId && fixtureIds.includes(fixtureId)) {
+          // Find the game for this fixture
+          const game = games.find(g => g.api_fixture_id === fixtureId);
+          
+          // GOAL DETECTION: Compare with previous snapshot BEFORE updating
+          if (game && onGoalDetected) {
+            const previousScore = previousScoresRef.current.get(fixtureId);
+            if (previousScore) {
+              // Detect home goal
+              if (homeGoals > previousScore.homeScore) {
+                console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${game.homeTeam} scores! ${homeGoals}-${awayGoals}`);
+                onGoalDetected(game.id, 'home', homeGoals, awayGoals, game);
+              }
+              // Detect away goal
+              if (awayGoals > previousScore.awayScore) {
+                console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${game.awayTeam} scores! ${homeGoals}-${awayGoals}`);
+                onGoalDetected(game.id, 'away', homeGoals, awayGoals, game);
+              }
+            }
+            // Update previous snapshot for next comparison
+            previousScoresRef.current.set(fixtureId, { homeScore: homeGoals, awayScore: awayGoals });
+          }
+          
           newScores.set(fixtureId, {
             fixtureId: parseInt(fixtureId),
             homeScore: homeGoals,
@@ -312,7 +343,7 @@ export function useLiveScores(
       setLoading(false);
       isFetchingRef.current = false;
     }
-  }, [hasGamesToMonitor, fixtureIds, games]);
+  }, [hasGamesToMonitor, fixtureIds, games, onGoalDetected]);
   
   // Get score for a specific game
   const getScoreForGame = useCallback((game: Game): LiveScore | null => {

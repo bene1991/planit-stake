@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
-import { useLiveScores } from "@/hooks/useLiveScores";
+import { useLiveScores, GoalDetectedCallback } from "@/hooks/useLiveScores";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
-import { useGoalNotifications } from "@/hooks/useGoalNotifications";
 import { useGoalSoundTrigger } from "@/hooks/useGoalSoundTrigger";
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { rebuildStats } from "@/utils/rebuildStats";
+import { playGoalSound } from "@/utils/soundManager";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
@@ -36,6 +38,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
 export default function DailyPlanning() {
+  const { user } = useAuth();
   const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const { intervalMs } = useRefreshInterval();
@@ -80,47 +83,52 @@ export default function DailyPlanning() {
     refreshGames();
   }, [refreshGames]);
   
+  // Goal detection callback - called by useLiveScores when a goal is detected
+  const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game) => {
+    console.log(`[DailyPlanning] ⚽ GOAL! ${team === 'home' ? game.homeTeam : game.awayTeam} scores! ${game.homeTeam} ${homeScore}-${awayScore} ${game.awayTeam}`);
+    
+    // Play celebration sound
+    playGoalSound();
+    
+    // Highlight this game with golden border
+    setHighlightedGameId(gameId);
+    
+    // Send push notification
+    if (user) {
+      const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
+      supabase.functions.invoke('send-push-notification', {
+        body: {
+          userId: user.id,
+          payload: {
+            title: '⚽ GOL!',
+            body: `${scoringTeamName} marca! ${game.homeTeam} ${homeScore} x ${awayScore} ${game.awayTeam}`,
+            icon: '/pwa-192x192.png',
+            badge: '/pwa-192x192.png',
+            data: { 
+              type: 'goal',
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              homeScore,
+              awayScore
+            }
+          }
+        }
+      }).catch(err => console.error('[DailyPlanning] Push notification error:', err));
+    }
+  }, [user]);
+  
   // Optimized live scores - single API call with live=all, refreshes every 20s
+  // Goal detection is now centralized here to avoid race conditions
   const { 
     getScoreForGame, 
     refresh: refreshLiveScores, 
     loading: scoresLoading,
     lastRefresh,
     scores: liveScores 
-  } = useLiveScores(games, handleScorePersisted);
-  
-  // Goal notifications for background monitoring with callback
-  const handleGoalScored = useCallback((gameId: string) => {
-    console.log('[DailyPlanning] Goal scored in game:', gameId);
-    setHighlightedGameId(gameId);
-  }, []);
-  
-  const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications({
-    onGoalScored: handleGoalScored
-  });
+  } = useLiveScores(games, handleScorePersisted, handleGoalDetected);
   
   // Listen for goal sound triggers from Service Worker
   useGoalSoundTrigger();
-  
-  // Start goal monitoring when games change
-  useEffect(() => {
-    setLiveGames(games);
-    startMonitoring();
-  }, [games, setLiveGames, startMonitoring]);
-  
-  // Sync live scores with goal notification snapshots
-  // This ensures goal detection uses the latest known scores from useLiveScores
-  useEffect(() => {
-    games.forEach(game => {
-      if (game.api_fixture_id) {
-        const liveScore = liveScores.get(game.api_fixture_id);
-        if (liveScore) {
-          // Update the snapshot so goal detection compares against current known score
-          updateScoreSnapshot(game.id, liveScore.homeScore, liveScore.awayScore);
-        }
-      }
-    });
-  }, [liveScores, games, updateScoreSnapshot]);
   
   // On page load, detect if any live game has goals and highlight it
   // This ensures the golden highlight shows even if the goal was before we opened the page
