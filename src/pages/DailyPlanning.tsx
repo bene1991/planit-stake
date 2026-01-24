@@ -40,6 +40,9 @@ export default function DailyPlanning() {
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const { intervalMs } = useRefreshInterval();
   
+  // State for highlighting the last game with a goal
+  const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
+  
   const [showApiBrowser, setShowApiBrowser] = useState(false);
   
   const [rebuildingStats, setRebuildingStats] = useState(false);
@@ -86,8 +89,15 @@ export default function DailyPlanning() {
     scores: liveScores 
   } = useLiveScores(games, handleScorePersisted);
   
-  // Goal notifications for background monitoring
-  const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications();
+  // Goal notifications for background monitoring with callback
+  const handleGoalScored = useCallback((gameId: string) => {
+    console.log('[DailyPlanning] Goal scored in game:', gameId);
+    setHighlightedGameId(gameId);
+  }, []);
+  
+  const { setLiveGames, startMonitoring, updateScoreSnapshot } = useGoalNotifications({
+    onGoalScored: handleGoalScored
+  });
   
   // Listen for goal sound triggers from Service Worker
   useGoalSoundTrigger();
@@ -552,6 +562,7 @@ export default function DailyPlanning() {
               getScoreForGame={getScoreForGame}
               lastGlobalRefresh={lastGlobalRefresh}
               sortOrder={gameSortOrder}
+              highlightedGameId={highlightedGameId}
             />
           </div>
         )}

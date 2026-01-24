@@ -1,3 +1,5 @@
+import { generatedSounds } from './generateNotificationSounds';
+
 export type NotificationSoundType = 'success' | 'warning' | 'error' | 'info' | 'goal';
 
 // Opções de sons de gol disponíveis (arquivos locais)
@@ -41,12 +43,8 @@ export const goalSoundOptions: GoalSoundInfo[] = [
   },
 ];
 
-const notificationSoundMap: Record<Exclude<NotificationSoundType, 'goal'>, string> = {
-  success: '/sounds/notification-success.mp3',
-  warning: '/sounds/notification-warning.mp3',
-  error: '/sounds/notification-error.mp3',
-  info: '/sounds/notification-info.mp3',
-};
+// Use Web Audio API generated sounds for notifications (softer, more pleasant)
+const useGeneratedSounds = true;
 
 // Obtém o som de gol selecionado do localStorage
 export const getSelectedGoalSound = (): GoalSoundOption => {
@@ -78,13 +76,13 @@ export const playNotificationSound = (
       return;
     }
     
-    const audio = new Audio(notificationSoundMap[type]);
-    audio.volume = 0.5;
-    audio.play().catch((err) => {
-      console.warn('Could not play notification sound:', err);
-    });
+    // Use Web Audio API generated sounds (softer, more pleasant)
+    if (useGeneratedSounds && type in generatedSounds) {
+      generatedSounds[type as keyof typeof generatedSounds]();
+      return;
+    }
   } catch (error) {
-    console.warn('Error creating audio element:', error);
+    console.warn('Error playing notification sound:', error);
   }
 };
 

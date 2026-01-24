@@ -12,12 +12,22 @@ interface ScoreSnapshot {
 // Interval for background goal checking (20 seconds - uses live=all endpoint)
 const CHECK_INTERVAL = 20 * 1000;
 
-export function useGoalNotifications() {
+interface GoalNotificationsOptions {
+  onGoalScored?: (gameId: string) => void;
+}
+
+export function useGoalNotifications(options?: GoalNotificationsOptions) {
   const { user } = useAuth();
   const scoreSnapshotsRef = useRef<Map<string, ScoreSnapshot>>(new Map());
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const liveGamesRef = useRef<Game[]>([]);
+  const liveGamesRef = useRef<Game[]>();
+  const onGoalScoredRef = useRef(options?.onGoalScored);
   const isFetchingRef = useRef(false);
+  
+  // Keep callback ref updated
+  useEffect(() => {
+    onGoalScoredRef.current = options?.onGoalScored;
+  }, [options?.onGoalScored]);
 
   // Check if goal notifications are enabled in localStorage
   const isGoalNotificationsEnabled = useCallback(() => {
@@ -130,6 +140,8 @@ export function useGoalNotifications() {
         // Detect home goal
         if (currentHomeScore > lastHomeScore) {
           goalsDetected++;
+          // Notify callback with gameId
+          onGoalScoredRef.current?.(game.id);
           await sendGoalNotification(
             game.homeTeam,
             game.awayTeam,
@@ -142,6 +154,8 @@ export function useGoalNotifications() {
         // Detect away goal
         if (currentAwayScore > lastAwayScore) {
           goalsDetected++;
+          // Notify callback with gameId
+          onGoalScoredRef.current?.(game.id);
           await sendGoalNotification(
             game.homeTeam,
             game.awayTeam,
