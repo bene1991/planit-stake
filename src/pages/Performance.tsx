@@ -144,10 +144,17 @@ export default function Performance() {
     selectedLeagues: filters.selectedLeagues,
   }), [filters]);
 
-  const { metrics, loading: statusLoading } = useOperationalStatus(operationalFilters);
   const { settings, updateSettings } = useOperationalSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stakeInput, setStakeInput] = useState(settings.stakeValueReais.toString());
+  
+  // Parse stake input for real-time updates
+  const parsedStake = useMemo(() => {
+    const value = parseFloat(stakeInput.replace(',', '.'));
+    return isNaN(value) || value <= 0 ? settings.stakeValueReais : value;
+  }, [stakeInput, settings.stakeValueReais]);
+  
+  const { metrics, loading: statusLoading } = useOperationalStatus(operationalFilters, parsedStake);
   const [editedSettings, setEditedSettings] = useState({
     metaMensalStakes: settings.metaMensalStakes,
     stopDiarioStakes: settings.stopDiarioStakes,
