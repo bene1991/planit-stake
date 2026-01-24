@@ -43,8 +43,11 @@ export const goalSoundOptions: GoalSoundInfo[] = [
   },
 ];
 
-// Use Web Audio API generated sounds for notifications (softer, more pleasant)
-const useGeneratedSounds = true;
+const notificationSoundMap: Record<Exclude<NotificationSoundType, 'goal' | 'error'>, string> = {
+  success: '/sounds/notification-success.mp3',
+  warning: '/sounds/notification-warning.mp3',
+  info: '/sounds/notification-info.mp3',
+};
 
 // Obtém o som de gol selecionado do localStorage
 export const getSelectedGoalSound = (): GoalSoundOption => {
@@ -76,11 +79,18 @@ export const playNotificationSound = (
       return;
     }
     
-    // Use Web Audio API generated sounds (softer, more pleasant)
-    if (useGeneratedSounds && type in generatedSounds) {
-      generatedSounds[type as keyof typeof generatedSounds]();
+    // Use generated soft sound only for error (the old one sounds like computer error)
+    if (type === 'error') {
+      generatedSounds.error();
       return;
     }
+    
+    // Use original MP3 files for success, warning, info
+    const audio = new Audio(notificationSoundMap[type as keyof typeof notificationSoundMap]);
+    audio.volume = 0.5;
+    audio.play().catch((err) => {
+      console.warn('Could not play notification sound:', err);
+    });
   } catch (error) {
     console.warn('Error playing notification sound:', error);
   }
