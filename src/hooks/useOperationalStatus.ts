@@ -161,23 +161,14 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
       return null;
     };
 
-    // Helper function to calculate profit in stakes
-    const getProfitInStakes = (op: OperationWithDate): number => {
-      const profit = getOperationProfit(op);
-      if (profit !== null && op.stakeValue) {
-        return profit / op.stakeValue;
-      }
-      // No fallback - if no financial data, return 0
-      return 0;
-    };
-
-    // Calculate profits using real stake values only
-    const dailyProfitStakes = todayOps.reduce((acc, op) => acc + getProfitInStakes(op), 0);
-    const periodProfitStakes = periodOps.reduce((acc, op) => acc + getProfitInStakes(op), 0);
-
     // Money: use calculated profit values
     const dailyProfitMoney = todayOps.reduce((acc, op) => acc + (getOperationProfit(op) ?? 0), 0);
     const periodProfitMoney = periodOps.reduce((acc, op) => acc + (getOperationProfit(op) ?? 0), 0);
+
+    // Convert to stakes using REFERENCE stake from settings
+    const stakeReference = settings.stakeValueReais || 100;
+    const dailyProfitStakes = dailyProfitMoney / stakeReference;
+    const periodProfitStakes = periodProfitMoney / stakeReference;
 
     // Count operations with/without complete financial data (stake + odd + operationType)
     const operationsWithFinancialData = periodOps.filter(op => 
@@ -185,16 +176,17 @@ export const useOperationalStatus = (filters?: OperationalFilters) => {
     ).length;
     const operationsWithoutFinancialData = periodOps.length - operationsWithFinancialData;
 
-    // Calculate peak profit and drawdown for the period
-    let runningProfit = 0;
-    let peakProfit = 0;
+    // Calculate peak profit and drawdown for the period (in money, then convert to stakes)
+    let runningProfitMoney = 0;
+    let peakProfitMoney = 0;
 
     for (const op of sortedPeriodOps) {
-      runningProfit += getProfitInStakes(op);
-      peakProfit = Math.max(peakProfit, runningProfit);
+      runningProfitMoney += getOperationProfit(op) ?? 0;
+      peakProfitMoney = Math.max(peakProfitMoney, runningProfitMoney);
     }
 
-    const currentDrawdown = peakProfit - periodProfitStakes;
+    const peakProfit = peakProfitMoney / stakeReference;
+    const currentDrawdown = (peakProfitMoney - periodProfitMoney) / stakeReference;
 
     // Calculate status
     let status: OperationalStatusType = 'NORMAL';
