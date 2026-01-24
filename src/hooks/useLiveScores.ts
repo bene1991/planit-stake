@@ -2,13 +2,24 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Game } from '@/types';
 
-interface LiveScore {
+export interface LiveScoreEvent {
+  minute: number;
+  team: 'home' | 'away';
+  type: string;
+  player?: string;
+  detail?: string;
+}
+
+export interface LiveScore {
   fixtureId: number;
   homeScore: number;
   awayScore: number;
   elapsed: number | null;
   status: string;
   statusLong: string;
+  homeTeamId?: number;
+  awayTeamId?: number;
+  events?: LiveScoreEvent[];
 }
 
 interface UseLiveScoresResult {
@@ -84,11 +95,16 @@ export function useLiveScores(
       // Create a map of fixture ID -> live score data
       const newScores = new Map<string, LiveScore>();
       
+      // Collect fixture IDs that need events fetched
+      const fixturesWithGoals: { id: string; homeTeamId: number; awayTeamId: number }[] = [];
+      
       for (const fixture of fixtures) {
         const fixtureId = fixture.fixture?.id?.toString();
         const status = fixture.fixture?.status?.short ?? 'NS';
         const homeGoals = fixture.goals?.home ?? 0;
         const awayGoals = fixture.goals?.away ?? 0;
+        const homeTeamId = fixture.teams?.home?.id;
+        const awayTeamId = fixture.teams?.away?.id;
         
         if (fixtureId && fixtureIds.includes(fixtureId)) {
           newScores.set(fixtureId, {
@@ -98,7 +114,14 @@ export function useLiveScores(
             elapsed: fixture.fixture?.status?.elapsed ?? null,
             status: status,
             statusLong: fixture.fixture?.status?.long ?? 'Not Started',
+            homeTeamId,
+            awayTeamId,
           });
+          
+          // Track fixtures with goals for event fetching
+          if ((homeGoals > 0 || awayGoals > 0) && homeTeamId && awayTeamId) {
+            fixturesWithGoals.push({ id: fixtureId, homeTeamId, awayTeamId });
+          }
           
           // Check if game just finished - persist final score
           if (FINISHED_STATUSES.includes(status)) {
@@ -131,6 +154,39 @@ export function useLiveScores(
                 });
             }
           }
+        }
+      }
+      
+      // Fetch events for games with goals (max 5 to save credits)
+      console.log(`[useLiveScores] Games with goals to fetch events: ${fixturesWithGoals.length}`, fixturesWithGoals);
+      
+      for (const fixtureInfo of fixturesWithGoals.slice(0, 5)) {
+        try {
+          console.log(`[useLiveScores] Fetching events for fixture ${fixtureInfo.id}...`);
+          const { data: detailsData, error: detailsError } = await supabase.functions.invoke('get-fixture-details', {
+            body: { fixture_id: parseInt(fixtureInfo.id) }
+          });
+          
+          if (detailsError) {
+            console.warn(`[useLiveScores] Error fetching events for fixture ${fixtureInfo.id}:`, detailsError);
+            continue;
+          }
+          
+          console.log(`[useLiveScores] Got key_events for fixture ${fixtureInfo.id}:`, detailsData?.key_events?.length || 0);
+          
+          if (detailsData?.key_events?.length) {
+            const existingScore = newScores.get(fixtureInfo.id);
+            if (existingScore) {
+              const goalEvents = detailsData.key_events.filter((e: { type: string }) => e.type === 'goal');
+              console.log(`[useLiveScores] Adding ${goalEvents.length} goal events to fixture ${fixtureInfo.id}`);
+              newScores.set(fixtureInfo.id, {
+                ...existingScore,
+                events: goalEvents,
+              });
+            }
+          }
+        } catch (err) {
+          console.warn(`[useLiveScores] Failed to fetch events for fixture ${fixtureInfo.id}:`, err);
         }
       }
       
@@ -168,6 +224,8 @@ export function useLiveScores(
               elapsed: fixture.fixture?.status?.elapsed ?? null,
               status: status,
               statusLong: fixture.fixture?.status?.long ?? 'Not Started',
+              homeTeamId: fixture.teams?.home?.id,
+              awayTeamId: fixture.teams?.away?.id,
             });
             
             // If finished, persist the score
