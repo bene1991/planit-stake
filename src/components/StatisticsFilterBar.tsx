@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CalendarIcon, Filter, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Method } from '@/types';
 import { cn } from '@/lib/utils';
@@ -49,16 +49,16 @@ export function StatisticsFilterBar({ methods, leagues, filters, onFilterChange 
 
     switch (period) {
       case 'today':
-        dateFrom = now;
-        dateTo = now;
+        dateFrom = startOfDay(now);
+        dateTo = endOfDay(now);
         break;
       case '7days':
-        dateFrom = subDays(now, 7);
-        dateTo = now;
+        dateFrom = startOfDay(subDays(now, 7));
+        dateTo = endOfDay(now);
         break;
       case '30days':
-        dateFrom = subDays(now, 30);
-        dateTo = now;
+        dateFrom = startOfDay(subDays(now, 30));
+        dateTo = endOfDay(now);
         break;
       case 'thisMonth':
         dateFrom = startOfMonth(now);
