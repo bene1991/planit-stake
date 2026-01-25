@@ -130,29 +130,44 @@ export default function DailyPlanning() {
   // Listen for goal sound triggers from Service Worker
   useGoalSoundTrigger();
   
+  // Track if we already did the initial highlight check
+  const initialHighlightDoneRef = useRef(false);
+  
   // On page load, detect if any live game has goals and highlight it
   // This ensures the golden highlight shows even if the goal was before we opened the page
   useEffect(() => {
-    // Only run if no game is currently highlighted and we have live scores
-    if (highlightedGameId || liveScores.size === 0) return;
+    // Only run once when we first get live scores
+    if (initialHighlightDoneRef.current) return;
+    if (liveScores.size === 0) return;
     
-    // Find any live game with goals scored
-    const liveGameWithGoals = games.find(game => {
-      if (!game.api_fixture_id) return false;
+    // Mark as done so we don't re-run
+    initialHighlightDoneRef.current = true;
+    
+    // Find the most recent live game with goals scored (prefer latest minute)
+    let bestGame: { game: typeof games[0]; score: typeof liveScores extends Map<string, infer V> ? V : never } | null = null;
+    
+    for (const game of games) {
+      if (!game.api_fixture_id) continue;
       const score = liveScores.get(game.api_fixture_id);
-      if (!score) return false;
+      if (!score) continue;
       
-      const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(score.status);
+      // Check if live and has goals
+      const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE', 'INT'].includes(score.status);
       const hasGoals = score.homeScore > 0 || score.awayScore > 0;
       
-      return isLive && hasGoals;
-    });
-    
-    if (liveGameWithGoals) {
-      console.log('[DailyPlanning] Highlighting live game with goals on load:', liveGameWithGoals.homeTeam, 'vs', liveGameWithGoals.awayTeam);
-      setHighlightedGameId(liveGameWithGoals.id);
+      if (isLive && hasGoals) {
+        // Pick the one with highest elapsed time (most recent action)
+        if (!bestGame || (score.elapsed || 0) > (bestGame.score.elapsed || 0)) {
+          bestGame = { game, score };
+        }
+      }
     }
-  }, [games, liveScores, highlightedGameId]);
+    
+    if (bestGame) {
+      console.log('[DailyPlanning] Highlighting live game with goals on load:', bestGame.game.homeTeam, 'vs', bestGame.game.awayTeam, `(${bestGame.score.homeScore}-${bestGame.score.awayScore})`);
+      setHighlightedGameId(bestGame.game.id);
+    }
+  }, [games, liveScores]);
   
   // Backfill: trigger refresh on load if there are finished games without scores
   const backfillTriggeredRef = useRef(false);
