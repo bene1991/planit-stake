@@ -27,7 +27,8 @@ const METHOD_COLORS = [
 export function MethodTimelineChart({ data, methodNames }: MethodTimelineChartProps) {
   const formattedData = data.map((item) => ({
     ...item,
-    dateFormatted: format(new Date(item.date), 'dd/MM', { locale: ptBR }),
+    // Adiciona T12:00:00 para evitar shift de timezone
+    dateFormatted: format(new Date(`${item.date}T12:00:00`), 'dd/MM', { locale: ptBR }),
   }));
 
   if (data.length === 0 || methodNames.length === 0) {

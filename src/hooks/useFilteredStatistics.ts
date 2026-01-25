@@ -133,9 +133,9 @@ export const useFilteredStatistics = (
       if (game.methodOperations.length === 0) return false;
       if (!game.methodOperations.every((op) => op.result)) return false;
 
-      // Date filter
+      // Date filter - use T12:00:00 to avoid timezone shift
       if (filters.dateFrom && filters.dateTo) {
-        const gameDate = parseISO(game.date);
+        const gameDate = new Date(`${game.date}T12:00:00`);
         if (!isWithinInterval(gameDate, { start: filters.dateFrom, end: filters.dateTo })) {
           return false;
         }
@@ -189,7 +189,7 @@ export const useFilteredStatistics = (
         if (game.methodOperations.length === 0) return false;
         if (!game.methodOperations.every((op) => op.result)) return false;
 
-        const gameDate = parseISO(game.date);
+        const gameDate = new Date(`${game.date}T12:00:00`);
         return isWithinInterval(gameDate, { start: previousStart, end: previousEnd });
       });
     }

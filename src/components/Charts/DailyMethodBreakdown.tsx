@@ -106,7 +106,7 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
                       </Button>
                     </TableCell>
                     <TableCell className="font-medium py-2">
-                      {format(new Date(day.date), "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+                      {format(new Date(`${day.date}T12:00:00`), "dd/MM/yyyy (EEEE)", { locale: ptBR })}
                     </TableCell>
                     <TableCell className="text-center text-success py-2">{day.totalGreens}</TableCell>
                     <TableCell className="text-center text-destructive py-2">{day.totalReds}</TableCell>

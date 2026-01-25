@@ -99,9 +99,9 @@ export default function Performance() {
       if (game.methodOperations.length === 0) return false;
       if (!game.methodOperations.every((op) => op.result)) return false;
 
-      // Date filter
+      // Date filter - use T12:00:00 to avoid timezone shift
       if (filters.dateFrom && filters.dateTo) {
-        const gameDate = new Date(game.date);
+        const gameDate = new Date(`${game.date}T12:00:00`);
         if (gameDate < filters.dateFrom || gameDate > filters.dateTo) {
           return false;
         }
