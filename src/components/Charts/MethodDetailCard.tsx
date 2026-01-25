@@ -53,7 +53,8 @@ export function MethodDetailCard({
     .slice(-7) // Últimos 7 dias
     .map((d) => ({
       ...d,
-      dateFormatted: format(new Date(d.date), 'dd/MM', { locale: ptBR }),
+      // Adiciona T12:00:00 para evitar shift de timezone (UTC midnight -> dia anterior em Brasília)
+      dateFormatted: format(new Date(`${d.date}T12:00:00`), 'dd/MM', { locale: ptBR }),
     }));
 
   return (

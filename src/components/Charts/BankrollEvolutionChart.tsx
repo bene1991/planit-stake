@@ -63,7 +63,7 @@ export const BankrollEvolutionChart = ({ data }: BankrollEvolutionChartProps) =>
               <XAxis 
                 dataKey="date" 
                 tick={{ fontSize: 11 }}
-                tickFormatter={(value) => format(new Date(value), 'dd/MM', { locale: ptBR })}
+                tickFormatter={(value) => format(new Date(`${value}T12:00:00`), 'dd/MM', { locale: ptBR })}
                 className="text-muted-foreground"
               />
               <YAxis 
@@ -78,7 +78,7 @@ export const BankrollEvolutionChart = ({ data }: BankrollEvolutionChartProps) =>
                   border: '1px solid hsl(var(--border))',
                   borderRadius: '8px',
                 }}
-                labelFormatter={(value) => format(new Date(value), "dd 'de' MMMM", { locale: ptBR })}
+                labelFormatter={(value) => format(new Date(`${value}T12:00:00`), "dd 'de' MMMM", { locale: ptBR })}
                 formatter={(value: number, name: string) => {
                   const label = name === 'cumulativeStakes' ? 'Saldo Acumulado' : 'Variação do Dia';
                   return [
