@@ -83,8 +83,22 @@ export default function DailyPlanning() {
     refreshGames();
   }, [refreshGames]);
   
+  // Helper: check if a game is still pending (has methods without results)
+  const isGamePending = useCallback((game: Game) => {
+    // No methods = pending
+    if (game.methodOperations.length === 0) return true;
+    // At least one method without result = pending
+    return game.methodOperations.some(op => !op.result);
+  }, []);
+  
   // Goal detection callback - called by useLiveScores when a goal is detected
   const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game) => {
+    // IGNORE games that are already fully signaled (all methods have Green/Red)
+    if (!isGamePending(game)) {
+      console.log(`[DailyPlanning] Ignoring goal for completed game: ${game.homeTeam} vs ${game.awayTeam}`);
+      return;
+    }
+    
     console.log(`[DailyPlanning] ⚽ GOAL! ${team === 'home' ? game.homeTeam : game.awayTeam} scores! ${game.homeTeam} ${homeScore}-${awayScore} ${game.awayTeam}`);
     
     // Play celebration sound
@@ -115,7 +129,7 @@ export default function DailyPlanning() {
         }
       }).catch(err => console.error('[DailyPlanning] Push notification error:', err));
     }
-  }, [user]);
+  }, [user, isGamePending]);
   
   // Optimized live scores - single API call with live=all, refreshes every 20s
   // Goal detection is now centralized here to avoid race conditions
@@ -143,11 +157,17 @@ export default function DailyPlanning() {
     // Mark as done so we don't re-run
     initialHighlightDoneRef.current = true;
     
-    // Find the most recent live game with goals scored (prefer latest minute)
+    // Find the most recent PENDING live game with goals scored (prefer latest minute)
+    // Ignore games that are already fully signaled (all methods have Green/Red)
     let bestGame: { game: typeof games[0]; score: typeof liveScores extends Map<string, infer V> ? V : never } | null = null;
     
     for (const game of games) {
       if (!game.api_fixture_id) continue;
+      
+      // Skip games that are already fully signaled
+      const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
+      if (!isPending) continue;
+      
       const score = liveScores.get(game.api_fixture_id);
       if (!score) continue;
       
@@ -164,7 +184,7 @@ export default function DailyPlanning() {
     }
     
     if (bestGame) {
-      console.log('[DailyPlanning] Highlighting live game with goals on load:', bestGame.game.homeTeam, 'vs', bestGame.game.awayTeam, `(${bestGame.score.homeScore}-${bestGame.score.awayScore})`);
+      console.log('[DailyPlanning] Highlighting pending game with goals on load:', bestGame.game.homeTeam, 'vs', bestGame.game.awayTeam, `(${bestGame.score.homeScore}-${bestGame.score.awayScore})`);
       setHighlightedGameId(bestGame.game.id);
     }
   }, [games, liveScores]);
