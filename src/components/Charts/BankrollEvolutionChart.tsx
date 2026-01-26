@@ -82,14 +82,16 @@ export const BankrollEvolutionChart = ({ data }: BankrollEvolutionChartProps) =>
                 }}
                 labelFormatter={(value) => format(new Date(`${value}T12:00:00`), "dd 'de' MMMM", { locale: ptBR })}
                 formatter={(value: number, name: string) => {
-                  const label = name === 'cumulativeReais' ? 'Saldo Acumulado' : 'Variação do Dia';
+                  // Only show cumulativeReais, skip duplicate from Area
+                  if (name !== 'cumulativeReais') return null;
                   return [
                     <span key={name} className={value >= 0 ? 'text-emerald-500' : 'text-red-500'}>
                       {formatCurrency(value)}
                     </span>,
-                    label
+                    'Saldo Acumulado'
                   ];
                 }}
+                filterNull={true}
               />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" strokeOpacity={0.5} />
               <Area
