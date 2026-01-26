@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const STORAGE_KEY = 'api_football_requests';
-const DAILY_LIMIT = 100;
+const DAILY_LIMIT = 7500;
 
 interface RequestLog {
   date: string;
