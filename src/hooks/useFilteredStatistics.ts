@@ -50,7 +50,7 @@ interface DayBreakdown {
 
 interface MethodTimelineData {
   date: string;
-  [methodName: string]: number | string;
+  [methodName: string]: number | string; // now stores cumulative profit in R$
 }
 
 interface ComparisonStats {
@@ -65,8 +65,8 @@ interface ComparisonStats {
 
 export interface BankrollEvolutionData {
   date: string;
-  cumulativeStakes: number;
-  dailyChange: number;
+  cumulativeReais: number;
+  dailyChangeReais: number;
 }
 
 export interface OddRangeStats {
@@ -331,11 +331,44 @@ export const useFilteredStatistics = (
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Method timeline (cumulative balance per method per day)
+    // Method timeline (cumulative profit in R$ per method per day)
     const methodNames = methodDetailStats.map((m) => m.methodName);
     const allDates = [...new Set(filteredGames.map((g) => g.date))].sort(
       (a, b) => new Date(a).getTime() - new Date(b).getTime()
     );
+
+    // Build a map of daily profit per method (in R$)
+    const dailyMethodProfitMap = new Map<string, Map<string, number>>();
+    
+    filteredGames.forEach((game) => {
+      const ops = getFilteredOperations(game);
+      ops.forEach((op) => {
+        if (!op.result) return;
+        
+        const method = methods.find((m) => m.id === op.methodId);
+        if (!method) return;
+        
+        // Get profit in R$ (use actual profit if available, otherwise estimate)
+        let profitReais = 0;
+        if (op.profit !== undefined && op.profit !== null) {
+          profitReais = op.profit;
+        } else if (op.stakeValue && op.odd && op.odd > 0) {
+          // Estimate based on stake and odd
+          if (op.result === 'Green') {
+            profitReais = op.stakeValue * (op.odd - 1);
+          } else {
+            profitReais = -op.stakeValue;
+          }
+        }
+        
+        if (!dailyMethodProfitMap.has(game.date)) {
+          dailyMethodProfitMap.set(game.date, new Map());
+        }
+        const dayMap = dailyMethodProfitMap.get(game.date)!;
+        const current = dayMap.get(method.name) || 0;
+        dayMap.set(method.name, current + profitReais);
+      });
+    });
 
     const cumulativeBalances: Record<string, number> = {};
     methodNames.forEach((name) => {
@@ -343,14 +376,13 @@ export const useFilteredStatistics = (
     });
 
     const methodTimeline: MethodTimelineData[] = allDates.map((date) => {
-      const dayData = dailyBreakdown.find((d) => d.date === date);
       const entry: MethodTimelineData = { date };
+      const dayProfitMap = dailyMethodProfitMap.get(date);
 
       methodDetailStats.forEach((method) => {
-        const methodDayData = dayData?.methods.find((m) => m.methodId === method.methodId);
-        const dayBalance = methodDayData ? methodDayData.balance : 0;
-        cumulativeBalances[method.methodName] += dayBalance;
-        entry[method.methodName] = cumulativeBalances[method.methodName];
+        const dayProfit = dayProfitMap?.get(method.methodName) || 0;
+        cumulativeBalances[method.methodName] += dayProfit;
+        entry[method.methodName] = parseFloat(cumulativeBalances[method.methodName].toFixed(2));
       });
 
       return entry;
@@ -429,40 +461,44 @@ export const useFilteredStatistics = (
       };
     }).filter(r => r.total > 0);
 
-    // Calculate bankroll evolution (cumulative stakes per day)
-    const dailyProfitMap = new Map<string, number>();
+    // Calculate bankroll evolution (cumulative profit in R$ per day)
+    const dailyProfitReaisMap = new Map<string, number>();
     
     filteredGames.forEach((game) => {
       const ops = getFilteredOperations(game);
       ops.forEach((op) => {
         if (!op.result) return;
         
-        let profitStakes = 0;
-        if (op.profit !== undefined && op.profit !== null && op.stakeValue && op.stakeValue > 0) {
-          profitStakes = op.profit / op.stakeValue;
-        } else if (op.result === 'Green') {
-          profitStakes = op.odd && op.odd > 0 ? op.odd - 1 : 0;
-        } else if (op.result === 'Red') {
-          profitStakes = -1;
+        // Use actual profit in R$ if available
+        let profitReais = 0;
+        if (op.profit !== undefined && op.profit !== null) {
+          profitReais = op.profit;
+        } else if (op.stakeValue && op.odd && op.odd > 0) {
+          // Estimate based on stake and odd
+          if (op.result === 'Green') {
+            profitReais = op.stakeValue * (op.odd - 1);
+          } else {
+            profitReais = -op.stakeValue;
+          }
         }
         
-        const current = dailyProfitMap.get(game.date) || 0;
-        dailyProfitMap.set(game.date, current + profitStakes);
+        const current = dailyProfitReaisMap.get(game.date) || 0;
+        dailyProfitReaisMap.set(game.date, current + profitReais);
       });
     });
 
-    const sortedDates = Array.from(dailyProfitMap.keys()).sort(
+    const sortedDates = Array.from(dailyProfitReaisMap.keys()).sort(
       (a, b) => new Date(a).getTime() - new Date(b).getTime()
     );
 
     let cumulative = 0;
     const bankrollEvolution: BankrollEvolutionData[] = sortedDates.map((date) => {
-      const dailyChange = dailyProfitMap.get(date) || 0;
+      const dailyChange = dailyProfitReaisMap.get(date) || 0;
       cumulative += dailyChange;
       return {
         date,
-        cumulativeStakes: parseFloat(cumulative.toFixed(2)),
-        dailyChange: parseFloat(dailyChange.toFixed(2)),
+        cumulativeReais: parseFloat(cumulative.toFixed(2)),
+        dailyChangeReais: parseFloat(dailyChange.toFixed(2)),
       };
     });
 

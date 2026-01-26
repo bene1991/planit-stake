@@ -2,10 +2,11 @@ import { Card } from '@/components/ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatCurrency } from '@/utils/profitCalculator';
 
 interface MethodTimelineData {
   date: string;
-  [methodName: string]: number | string; // method cumulative balances
+  [methodName: string]: number | string; // method cumulative profit in R$
 }
 
 interface MethodTimelineChartProps {
@@ -45,12 +46,17 @@ export function MethodTimelineChart({ data, methodNames }: MethodTimelineChartPr
   return (
     <Card className="p-6 shadow-card">
       <h3 className="mb-4 text-lg font-bold">Evolução por Método</h3>
-      <p className="text-xs text-muted-foreground mb-4">Saldo acumulado (Greens - Reds) ao longo do tempo</p>
+      <p className="text-xs text-muted-foreground mb-4">Lucro acumulado em R$ ao longo do tempo</p>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={formattedData}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
           <XAxis dataKey="dateFormatted" className="text-xs" tick={{ fontSize: 11 }} />
-          <YAxis className="text-xs" tick={{ fontSize: 11 }} />
+          <YAxis 
+            className="text-xs" 
+            tick={{ fontSize: 11 }}
+            tickFormatter={(value) => formatCurrency(value).replace('R$', '').trim()}
+            width={70}
+          />
           <Tooltip
             content={({ active, payload, label }) => {
               if (active && payload && payload.length) {
@@ -64,9 +70,8 @@ export function MethodTimelineChart({ data, methodNames }: MethodTimelineChartPr
                           style={{ backgroundColor: entry.color }}
                         />
                         <span>{entry.name}:</span>
-                        <span className="font-bold">
-                          {(entry.value as number) > 0 ? '+' : ''}
-                          {entry.value}
+                        <span className={`font-bold ${(entry.value as number) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          {formatCurrency(entry.value as number)}
                         </span>
                       </div>
                     ))}
