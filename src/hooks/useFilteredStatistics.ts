@@ -348,16 +348,24 @@ export const useFilteredStatistics = (
         const method = methods.find((m) => m.id === op.methodId);
         if (!method) return;
         
-        // Get profit in R$ (use actual profit if available, otherwise estimate)
+        // Get profit in R$ - use same calculation as useOperationalStatus for consistency
         let profitReais = 0;
         if (op.profit !== undefined && op.profit !== null) {
           profitReais = op.profit;
-        } else if (op.stakeValue && op.odd && op.odd > 0) {
-          // Estimate based on stake and odd
-          if (op.result === 'Green') {
-            profitReais = op.stakeValue * (op.odd - 1);
-          } else {
-            profitReais = -op.stakeValue;
+        } else if (op.stakeValue && op.odd && op.odd > 0 && op.operationType) {
+          const commissionRate = op.commissionRate ?? 0.045;
+          if (op.operationType === 'Back') {
+            if (op.result === 'Green') {
+              profitReais = op.stakeValue * (op.odd - 1) * (1 - commissionRate);
+            } else {
+              profitReais = -op.stakeValue;
+            }
+          } else { // Lay
+            if (op.result === 'Green') {
+              profitReais = op.stakeValue * (1 - commissionRate);
+            } else {
+              profitReais = -op.stakeValue * (op.odd - 1);
+            }
           }
         }
         
@@ -462,6 +470,7 @@ export const useFilteredStatistics = (
     }).filter(r => r.total > 0);
 
     // Calculate bankroll evolution (cumulative profit in R$ per day)
+    // IMPORTANT: This must match the calculation in useOperationalStatus for consistency
     const dailyProfitReaisMap = new Map<string, number>();
     
     filteredGames.forEach((game) => {
@@ -473,12 +482,21 @@ export const useFilteredStatistics = (
         let profitReais = 0;
         if (op.profit !== undefined && op.profit !== null) {
           profitReais = op.profit;
-        } else if (op.stakeValue && op.odd && op.odd > 0) {
-          // Estimate based on stake and odd
-          if (op.result === 'Green') {
-            profitReais = op.stakeValue * (op.odd - 1);
-          } else {
-            profitReais = -op.stakeValue;
+        } else if (op.stakeValue && op.odd && op.odd > 0 && op.operationType) {
+          // Calculate profit based on operation type (same logic as useOperationalStatus)
+          const commissionRate = op.commissionRate ?? 0.045;
+          if (op.operationType === 'Back') {
+            if (op.result === 'Green') {
+              profitReais = op.stakeValue * (op.odd - 1) * (1 - commissionRate);
+            } else {
+              profitReais = -op.stakeValue;
+            }
+          } else { // Lay
+            if (op.result === 'Green') {
+              profitReais = op.stakeValue * (1 - commissionRate);
+            } else {
+              profitReais = -op.stakeValue * (op.odd - 1);
+            }
           }
         }
         
