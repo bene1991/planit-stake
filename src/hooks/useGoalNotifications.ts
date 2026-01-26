@@ -3,26 +3,33 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Game } from '@/types';
 import { playGoalSound } from '@/utils/soundManager';
+import { LiveScore } from './useLiveScores';
 
 interface ScoreSnapshot {
   homeScore: number;
   awayScore: number;
 }
 
-// Interval for background goal checking (20 seconds - uses live=all endpoint)
-const CHECK_INTERVAL = 20 * 1000;
-
 interface GoalNotificationsOptions {
   onGoalScored?: (gameId: string) => void;
 }
 
+/**
+ * Goal notifications hook - OPTIMIZED VERSION
+ * 
+ * This hook NO LONGER makes its own API calls.
+ * Instead, it receives live score data from useLiveScores via the checkForGoals method.
+ * This eliminates duplicate API consumption.
+ * 
+ * Usage:
+ * 1. Call setLiveGames() when your games list changes
+ * 2. Call checkForGoals(liveScores) whenever useLiveScores updates
+ */
 export function useGoalNotifications(options?: GoalNotificationsOptions) {
   const { user } = useAuth();
   const scoreSnapshotsRef = useRef<Map<string, ScoreSnapshot>>(new Map());
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const liveGamesRef = useRef<Game[]>();
+  const liveGamesRef = useRef<Game[]>([]);
   const onGoalScoredRef = useRef(options?.onGoalScored);
-  const isFetchingRef = useRef(false);
   
   // Keep callback ref updated
   useEffect(() => {
@@ -48,7 +55,7 @@ export function useGoalNotifications(options?: GoalNotificationsOptions) {
     newAwayScore: number,
     scoringTeam: 'home' | 'away'
   ) => {
-    // 🔊 TOCAR SOM DE TORCIDA IMEDIATAMENTE!
+    // 🔊 Play celebration sound immediately!
     console.log('[GoalNotifications] 🎉 GOOOOOL! Playing crowd celebration sound!');
     playGoalSound();
     
@@ -84,98 +91,65 @@ export function useGoalNotifications(options?: GoalNotificationsOptions) {
     }
   }, [user]);
 
-  // Check for goals using live=all endpoint (single API call for all games)
-  const checkGoalsInBackground = useCallback(async () => {
-    if (!user || liveGamesRef.current.length === 0 || isFetchingRef.current) return;
-    
-    // Check if goal notifications are enabled
+  /**
+   * Check for goals using data from useLiveScores
+   * NO API CALLS - uses data passed in from the centralized hook
+   */
+  const checkForGoals = useCallback((liveScores: Map<string, LiveScore>) => {
     if (!isGoalNotificationsEnabled()) {
-      console.log('[GoalNotifications] Goal notifications disabled, skipping check');
       return;
     }
 
     const gamesToCheck = liveGamesRef.current.filter(g => g.api_fixture_id);
     if (gamesToCheck.length === 0) return;
 
-    isFetchingRef.current = true;
-
-    try {
-      console.log('[GoalNotifications] Checking goals via live=all...');
+    let goalsDetected = 0;
+    
+    for (const game of gamesToCheck) {
+      const liveScore = liveScores.get(game.api_fixture_id!);
+      if (!liveScore) continue;
       
-      // Use live=all endpoint - 1 API call for all live games
-      const { data, error } = await supabase.functions.invoke('api-football', {
-        body: {
-          endpoint: 'fixtures',
-          params: { live: 'all' }
-        }
-      });
-
-      if (error) {
-        console.error('[GoalNotifications] Error fetching live fixtures:', error);
-        return;
-      }
-
-      const fixtures = data?.response || [];
-      const fixtureMap = new Map<string, any>();
+      const currentHomeScore = liveScore.homeScore ?? 0;
+      const currentAwayScore = liveScore.awayScore ?? 0;
       
-      for (const fixture of fixtures) {
-        const id = fixture.fixture?.id?.toString();
-        if (id) fixtureMap.set(id, fixture);
-      }
-
-      // Check each monitored game for goals
-      let goalsDetected = 0;
+      const snapshot = scoreSnapshotsRef.current.get(game.id);
+      const lastHomeScore = snapshot?.homeScore ?? 0;
+      const lastAwayScore = snapshot?.awayScore ?? 0;
       
-      for (const game of gamesToCheck) {
-        const fixture = fixtureMap.get(game.api_fixture_id!);
-        if (!fixture) continue;
-        
-        const currentHomeScore = fixture.goals?.home ?? 0;
-        const currentAwayScore = fixture.goals?.away ?? 0;
-        
-        const snapshot = scoreSnapshotsRef.current.get(game.id);
-        const lastHomeScore = snapshot?.homeScore ?? 0;
-        const lastAwayScore = snapshot?.awayScore ?? 0;
-        
-        // Detect home goal
-        if (currentHomeScore > lastHomeScore) {
-          goalsDetected++;
-          // Notify callback with gameId
-          onGoalScoredRef.current?.(game.id);
-          await sendGoalNotification(
-            game.homeTeam,
-            game.awayTeam,
-            currentHomeScore,
-            currentAwayScore,
-            'home'
-          );
-        }
-        
-        // Detect away goal
-        if (currentAwayScore > lastAwayScore) {
-          goalsDetected++;
-          // Notify callback with gameId
-          onGoalScoredRef.current?.(game.id);
-          await sendGoalNotification(
-            game.homeTeam,
-            game.awayTeam,
-            currentHomeScore,
-            currentAwayScore,
-            'away'
-          );
-        }
-        
-        // Update snapshot
-        updateScoreSnapshot(game.id, currentHomeScore, currentAwayScore);
+      // Detect home goal
+      if (currentHomeScore > lastHomeScore) {
+        goalsDetected++;
+        onGoalScoredRef.current?.(game.id);
+        sendGoalNotification(
+          game.homeTeam,
+          game.awayTeam,
+          currentHomeScore,
+          currentAwayScore,
+          'home'
+        );
       }
-
-      console.log(`[GoalNotifications] Checked ${gamesToCheck.length} games, found ${goalsDetected} new goals`);
-    } catch (error) {
-      console.error('[GoalNotifications] Exception:', error);
-    } finally {
-      isFetchingRef.current = false;
+      
+      // Detect away goal
+      if (currentAwayScore > lastAwayScore) {
+        goalsDetected++;
+        onGoalScoredRef.current?.(game.id);
+        sendGoalNotification(
+          game.homeTeam,
+          game.awayTeam,
+          currentHomeScore,
+          currentAwayScore,
+          'away'
+        );
+      }
+      
+      // Update snapshot
+      updateScoreSnapshot(game.id, currentHomeScore, currentAwayScore);
     }
-  }, [user, updateScoreSnapshot, isGoalNotificationsEnabled, sendGoalNotification]);
+
+    if (goalsDetected > 0) {
+      console.log(`[GoalNotifications] Detected ${goalsDetected} new goals`);
+    }
+  }, [isGoalNotificationsEnabled, sendGoalNotification, updateScoreSnapshot]);
 
   // Helper to check if a game should be monitored
   const isGameLiveOrStartingSoon = useCallback((game: Game): boolean => {
@@ -236,34 +210,12 @@ export function useGoalNotifications(options?: GoalNotificationsOptions) {
     }
   }, [isGameLiveOrStartingSoon]);
 
-  // Start background monitoring
-  const startMonitoring = useCallback(() => {
-    if (intervalRef.current) return;
-
-    console.log('[GoalNotifications] Starting background monitoring (20s interval)');
-    
-    // Check immediately
-    checkGoalsInBackground();
-
-    // Then check every 20 seconds
-    intervalRef.current = setInterval(checkGoalsInBackground, CHECK_INTERVAL);
-  }, [checkGoalsInBackground]);
-
-  // Stop background monitoring
-  const stopMonitoring = useCallback(() => {
-    if (intervalRef.current) {
-      console.log('[GoalNotifications] Stopping background monitoring');
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  // Handle visibility change - check when app comes back to foreground
+  // Handle visibility change - no longer needs to check for goals
+  // since useLiveScores handles the refresh
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // App came back to foreground, check for goals
-        checkGoalsInBackground();
+        console.log('[GoalNotifications] App visible - useLiveScores will handle refresh');
       }
     };
 
@@ -272,20 +224,13 @@ export function useGoalNotifications(options?: GoalNotificationsOptions) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [checkGoalsInBackground]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopMonitoring();
-    };
-  }, [stopMonitoring]);
+  }, []);
 
   return {
     setLiveGames,
     updateScoreSnapshot,
-    startMonitoring,
-    stopMonitoring,
-    checkGoalsInBackground,
+    checkForGoals,
+    // Legacy methods removed - no longer needed:
+    // startMonitoring, stopMonitoring, checkGoalsInBackground
   };
 }
