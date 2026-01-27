@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useState, useEffect } from 'react';
 import { Game, Method, MethodOperation } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, Check, AlertTriangle, Calculator } from 'lucide-react';
+import { X, Check, AlertTriangle, Calculator, DollarSign, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { calculateProfit, calculatePotentialProfit, formatCurrency } from '@/utils/profitCalculator';
@@ -246,6 +246,18 @@ export const GameMethodEditor = ({
                               {method.name}
                             </Label>
                             <div className="flex items-center gap-2">
+                              {/* Financial data status badge */}
+                              {isSelected && !data.result && (data.odd && data.stakeValue ? (
+                                <Badge className="text-[9px] bg-emerald-500/20 text-emerald-400 border-emerald-500/30 gap-0.5 px-1.5">
+                                  <DollarSign className="h-2.5 w-2.5" />
+                                  Completo
+                                </Badge>
+                              ) : (data.odd || data.stakeValue) ? (
+                                <Badge variant="secondary" className="text-[9px] bg-amber-500/20 text-amber-400 border-amber-500/30 gap-0.5 px-1.5">
+                                  <AlertCircle className="h-2.5 w-2.5" />
+                                  Incompleto
+                                </Badge>
+                              ) : null)}
                               <Badge variant="outline" className="text-xs">
                                 {method.percentage}% da banca
                               </Badge>

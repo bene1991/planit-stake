@@ -1,7 +1,7 @@
 import { Game, Method, GoalEvent } from "@/types";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronRight, Settings, Trash2, MoreVertical } from "lucide-react";
+import { Shield, Check, X, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -118,6 +118,13 @@ export function GameListItem({
 
   const getMethodName = (methodId: string) => {
     return methods.find(m => m.id === methodId)?.name || 'Método';
+  };
+
+  // Helper to check financial data status
+  const getFinancialStatus = (op: { odd?: number; stakeValue?: number }) => {
+    const hasOdd = op.odd && op.odd > 0;
+    const hasStake = op.stakeValue && op.stakeValue > 0;
+    return { hasOdd, hasStake, complete: hasOdd && hasStake, partial: (hasOdd || hasStake) && !(hasOdd && hasStake) };
   };
 
   // Use live score data if available, fallback to game data
@@ -373,21 +380,32 @@ export function GameListItem({
         {/* Methods pills row - always visible below teams */}
         {game.methodOperations.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-            {game.methodOperations.map((operation) => (
-              <span
-                key={operation.methodId}
-                className={cn(
-                  "text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5",
-                  operation.result === 'Green' && "bg-emerald-500/20 text-emerald-400",
-                  operation.result === 'Red' && "bg-red-500/20 text-red-400",
-                  !operation.result && "bg-muted text-muted-foreground"
-                )}
-              >
-                {getMethodName(operation.methodId)}
-                {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}
-                {operation.result === 'Red' && <X className="h-2.5 w-2.5" />}
-              </span>
-            ))}
+            {game.methodOperations.map((operation) => {
+              const financialStatus = getFinancialStatus(operation);
+              return (
+                <span
+                  key={operation.methodId}
+                  className={cn(
+                    "text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5",
+                    operation.result === 'Green' && "bg-emerald-500/20 text-emerald-400",
+                    operation.result === 'Red' && "bg-red-500/20 text-red-400",
+                    !operation.result && financialStatus.complete && "bg-emerald-500/10 text-muted-foreground border border-emerald-500/30",
+                    !operation.result && financialStatus.partial && "bg-amber-500/10 text-muted-foreground border border-amber-500/30",
+                    !operation.result && !financialStatus.complete && !financialStatus.partial && "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {getMethodName(operation.methodId)}
+                  {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}
+                  {operation.result === 'Red' && <X className="h-2.5 w-2.5" />}
+                  {!operation.result && financialStatus.complete && (
+                    <DollarSign className="h-2.5 w-2.5 text-emerald-400" />
+                  )}
+                  {!operation.result && financialStatus.partial && (
+                    <AlertCircle className="h-2.5 w-2.5 text-amber-400" />
+                  )}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -400,18 +418,27 @@ export function GameListItem({
             <div className="space-y-2">
               <span className="text-xs text-muted-foreground font-medium">Métodos</span>
               <div className="flex flex-wrap gap-2">
-                {game.methodOperations.map((operation) => (
+                {game.methodOperations.map((operation) => {
+                  const financialStatus = getFinancialStatus(operation);
+                  return (
                   <div key={operation.methodId} className="flex items-center gap-1.5">
-                    <span className={cn(
-                      "text-[10px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1",
-                      operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
-                      operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
-                      !operation.result && "bg-zinc-700 text-zinc-300"
-                    )}>
-                      {getMethodName(operation.methodId)}
-                      {operation.result === 'Green' && <Check className="h-3 w-3" />}
-                      {operation.result === 'Red' && <X className="h-3 w-3" />}
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className={cn(
+                        "text-[10px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1",
+                        operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
+                        operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
+                        !operation.result && "bg-zinc-700 text-zinc-300"
+                      )}>
+                        {getMethodName(operation.methodId)}
+                        {operation.result === 'Green' && <Check className="h-3 w-3" />}
+                        {operation.result === 'Red' && <X className="h-3 w-3" />}
+                      </span>
+                      {financialStatus.complete && (
+                        <span className="text-[9px] text-muted-foreground">
+                          R$ {operation.stakeValue?.toFixed(2)} @ {operation.odd?.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
                     
                     <div className="flex gap-1">
                       <button
@@ -438,7 +465,8 @@ export function GameListItem({
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
