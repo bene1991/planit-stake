@@ -30,6 +30,9 @@ interface DailyMethodData {
 interface MethodDetailStats extends MethodStats {
   dailyData: DailyMethodData[];
   previousWinRate?: number;
+  profitReais: number;
+  combinedScore: number;
+  activeDays: number;
 }
 
 interface DayBreakdown {
@@ -60,7 +63,13 @@ interface ComparisonStats {
   currentVolume: number;
   previousVolume: number;
   volumeChange: number;
-  bestMethod: { name: string; winRate: number } | null;
+  bestMethod: { 
+    name: string; 
+    winRate: number;
+    volume: number;
+    profitReais: number;
+    combinedScore: number;
+  } | null;
 }
 
 export interface BankrollEvolutionData {
@@ -206,8 +215,8 @@ export const useFilteredStatistics = (
     const previousTotal = previousOps.length;
     const previousWinRate = previousTotal > 0 ? (previousGreens / previousTotal) * 100 : 0;
 
-    // Calculate method-specific stats
-    const methodDetailStats: MethodDetailStats[] = methods
+    // Calculate method-specific stats with profit and combined score
+    const methodStatsRaw = methods
       .filter((m) => filters.selectedMethods.length === 0 || filters.selectedMethods.includes(m.id))
       .map((method) => {
         const methodOps = allFilteredOps.filter((op) => op.methodId === method.id);
@@ -215,6 +224,29 @@ export const useFilteredStatistics = (
         const methodReds = methodOps.filter((op) => op.result === 'Red').length;
         const methodTotal = methodOps.length;
         const methodWinRate = methodTotal > 0 ? (methodGreens / methodTotal) * 100 : 0;
+
+        // Calculate profit in R$ for this method
+        let profitReais = 0;
+        methodOps.forEach((op) => {
+          if (op.profit !== undefined && op.profit !== null) {
+            profitReais += op.profit;
+          } else if (op.stakeValue && op.odd && op.odd > 0 && op.operationType) {
+            const commissionRate = op.commissionRate ?? 0.045;
+            if (op.operationType === 'Back') {
+              if (op.result === 'Green') {
+                profitReais += op.stakeValue * (op.odd - 1) * (1 - commissionRate);
+              } else {
+                profitReais -= op.stakeValue;
+              }
+            } else { // Lay
+              if (op.result === 'Green') {
+                profitReais += op.stakeValue * (1 - commissionRate);
+              } else {
+                profitReais -= op.stakeValue * (op.odd - 1);
+              }
+            }
+          }
+        });
 
         // Daily data for this method
         const dailyMap = new Map<string, { greens: number; reds: number }>();
@@ -254,6 +286,13 @@ export const useFilteredStatistics = (
         const prevMethodTotal = prevMethodOps.length;
         const prevMethodWinRate = prevMethodTotal > 0 ? (prevMethodGreens / prevMethodTotal) * 100 : undefined;
 
+        // Calculate method breakeven based on average odd
+        const methodOpsWithOdd = methodOps.filter(op => op.odd && op.odd > 0);
+        const methodAvgOdd = methodOpsWithOdd.length > 0 
+          ? methodOpsWithOdd.reduce((sum, op) => sum + (op.odd || 0), 0) / methodOpsWithOdd.length
+          : 2.0;
+        const methodBreakeven = 100 / methodAvgOdd;
+
         return {
           methodId: method.id,
           methodName: method.name,
@@ -263,10 +302,69 @@ export const useFilteredStatistics = (
           winRate: parseFloat(methodWinRate.toFixed(1)),
           dailyData,
           previousWinRate: prevMethodWinRate !== undefined ? parseFloat(prevMethodWinRate.toFixed(1)) : undefined,
+          profitReais: parseFloat(profitReais.toFixed(2)),
+          activeDays: dailyMap.size,
+          breakeven: methodBreakeven,
         };
       })
-      .filter((s) => s.total > 0)
-      .sort((a, b) => b.winRate - a.winRate);
+      .filter((s) => s.total > 0);
+
+    // Calculate combined score for each method
+    const avgVolume = methodStatsRaw.length > 0 
+      ? methodStatsRaw.reduce((sum, m) => sum + m.total, 0) / methodStatsRaw.length 
+      : 1;
+    const totalActiveDays = new Set(filteredGames.map(g => g.date)).size;
+    const maxProfit = Math.max(...methodStatsRaw.map(m => Math.abs(m.profitReais)), 1);
+
+    const methodDetailStats: MethodDetailStats[] = methodStatsRaw.map((method) => {
+      // Win Rate Score (0-100) - 35% weight
+      const wrDiff = method.winRate - method.breakeven;
+      let wrScore: number;
+      if (method.winRate >= method.breakeven) {
+        wrScore = 50 + Math.min(50, wrDiff * 5);
+      } else {
+        wrScore = Math.max(0, 50 - Math.abs(wrDiff) * 5);
+      }
+
+      // Volume Score (0-100) - 25% weight
+      let volumeScore = Math.min(100, (method.total / avgVolume) * 50);
+      // Bonus for consistency (present in >50% of active days)
+      if (totalActiveDays > 0 && method.activeDays / totalActiveDays > 0.5) {
+        volumeScore = Math.min(100, volumeScore + 10);
+      }
+      // Penalty for very low volume (<5 operations)
+      if (method.total < 5) {
+        volumeScore = volumeScore * (method.total / 5);
+      }
+
+      // Profit Score (0-100) - 40% weight
+      const normalizedProfit = (method.profitReais / maxProfit) * 50;
+      let profitScore: number;
+      if (method.profitReais >= 0) {
+        profitScore = 50 + Math.min(50, normalizedProfit);
+      } else {
+        profitScore = Math.max(0, 50 + normalizedProfit);
+      }
+
+      // Combined Score with weights
+      const combinedScore = parseFloat(
+        ((wrScore * 0.35) + (volumeScore * 0.25) + (profitScore * 0.40)).toFixed(1)
+      );
+
+      return {
+        methodId: method.methodId,
+        methodName: method.methodName,
+        total: method.total,
+        greens: method.greens,
+        reds: method.reds,
+        winRate: method.winRate,
+        dailyData: method.dailyData,
+        previousWinRate: method.previousWinRate,
+        profitReais: method.profitReais,
+        combinedScore,
+        activeDays: method.activeDays,
+      };
+    }).sort((a, b) => b.combinedScore - a.combinedScore);
 
     // Daily breakdown
     const dayBreakdownMap = new Map<
@@ -396,9 +494,16 @@ export const useFilteredStatistics = (
       return entry;
     });
 
-    // Comparison stats
-    const bestMethod =
-      methodDetailStats.length > 0 ? { name: methodDetailStats[0].methodName, winRate: methodDetailStats[0].winRate } : null;
+    // Comparison stats - best method now based on combined score
+    const bestMethod = methodDetailStats.length > 0 
+      ? { 
+          name: methodDetailStats[0].methodName, 
+          winRate: methodDetailStats[0].winRate,
+          volume: methodDetailStats[0].total,
+          profitReais: methodDetailStats[0].profitReais,
+          combinedScore: methodDetailStats[0].combinedScore,
+        } 
+      : null;
 
     const comparison: ComparisonStats = {
       currentWinRate: overallStats.winRate,
