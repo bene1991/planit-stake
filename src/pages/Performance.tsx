@@ -506,7 +506,16 @@ export default function Performance() {
               <Trophy className="h-5 w-5 text-warning" />
             </div>
             {comparison.bestMethod && (
-              <p className="text-xs text-success mt-2">{comparison.bestMethod.winRate}% win rate</p>
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                    Score: {comparison.bestMethod.combinedScore}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  WR: {comparison.bestMethod.winRate}% • Vol: {comparison.bestMethod.volume} • {comparison.bestMethod.profitReais >= 0 ? '+' : ''}{comparison.bestMethod.profitReais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </p>
+              </div>
             )}
           </Card>
         </div>
