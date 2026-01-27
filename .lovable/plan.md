@@ -1,148 +1,102 @@
 
-## Plano: Dashboard Avançado de Análise IA - "Saúde da Banca"
+## Plano: Score Combinado para Determinar o Melhor Método
 
-### Objetivo
-Implementar um dashboard de análise avançada inspirado no "my bet space", com Score da Banca, métricas financeiras detalhadas, análise estruturada por IA (Pontos Positivos/Negativos/Sugestões), e "Raio X do Método".
+### Problema Atual
+Atualmente, o "Melhor Método" é determinado exclusivamente pelo **Win Rate** (taxa de acerto). Isso pode ser enganoso porque:
+- Um método com 100% WR em apenas 2 operações é considerado "melhor" que um com 85% WR em 100 operações
+- Não considera o lucro financeiro real
+- Ignora a consistência e volume de operações
 
-### O que já existe no seu sistema (e podemos aproveitar):
-- Edge function `analyze-performance` com Lovable AI
-- Componente `AIPerformanceAnalyzer` funcional com streaming
-- Hook `useFilteredStatistics` com dados completos (lucro, WR, ligas, times, faixas de odd)
-- Hook `useOperationalStatus` com cálculos de streak, drawdown, peak profit
-- Página Performance.tsx com muitas métricas já implementadas
+### Solução: Score Combinado (0-100)
 
-### Novas Funcionalidades
+Criar uma métrica ponderada que considera três fatores principais:
 
-#### 1. Score da Banca (0-100)
-Um score calculado automaticamente baseado em múltiplos fatores:
-- Win Rate relativo ao breakeven (peso 25%)
-- Profit vs Meta (peso 20%)
-- Consistência diária (peso 15%)
-- Drawdown atual vs máximo histórico (peso 15%)
-- Volume de operações (peso 10%)
-- Diversificação de ligas/métodos (peso 15%)
+| Fator | Peso | Justificativa |
+|-------|------|---------------|
+| **Win Rate relativo** | 35% | Taxa de acerto comparada ao breakeven |
+| **Volume de operações** | 25% | Significância estatística e consistência |
+| **Lucro total (R$)** | 40% | Resultado financeiro real |
 
-Classificação visual:
-- 80-100: Verde ("Excelente")
-- 60-79: Azul ("Bom")
-- 40-59: Amarelo ("Regular")
-- 20-39: Laranja ("Atenção")
-- 0-19: Vermelho ("Crítico")
+### Fórmula do Score
 
-#### 2. Cards de Métricas Avançadas
-Novos KPIs além dos existentes:
-- **Taxa de Recuperação REAL**: Lucro total / Prejuízo total
-- **Coeficiente de Ruína**: Baseado no drawdown máximo vs banca
-- **Run-up Máximo**: Maior sequência positiva em R$
-- **Drawdown Máximo**: Maior queda em R$ (já temos, melhorar UI)
-- **Maior Lucro / Maior Prejuízo**: Operações individuais extremas
+```
+Score = (WR_Score × 0.35) + (Volume_Score × 0.25) + (Profit_Score × 0.40)
+```
 
-#### 3. Análise IA Estruturada
-Modificar a edge function para retornar dados estruturados:
-- **Pontos Positivos**: Lista de 3-5 pontos fortes identificados
-- **Pontos Negativos**: Lista de 3-5 problemas identificados
-- **Sugestões**: Lista de 3-5 ações práticas recomendadas
-- **Resumo Geral**: Texto curto de 2-3 frases sobre a saúde geral
-- **Score Calculado pela IA**: 0-100 baseado nos dados
+**Componentes:**
 
-#### 4. "Raio X do Método"
-Quando um método específico é selecionado nos filtros:
-- Score específico do método (0-100)
-- Comparativo com performance geral
-- Pontos fortes/fracos daquele método
-- Gráficos específicos (dias, distribuição, média)
+1. **WR_Score (0-100)**:
+   - Se WR >= breakeven: `50 + min(50, (WR - breakeven) × 5)`
+   - Se WR < breakeven: `max(0, 50 - (breakeven - WR) × 5)`
 
-#### 5. Componentes Visuais Novos
-- **BankrollScoreCard**: Barra de progresso com score 0-100
-- **DonutChartCard**: Para visualizar maior lucro/prejuízo individual
-- **MethodSummaryStats**: Cards com Dias/Número/Maior/Média
-- **AIInsightsCards**: Cards separados para Positivos/Negativos/Sugestões
+2. **Volume_Score (0-100)**:
+   - Volume mínimo para consideração: 5 operações
+   - Normalizado: `min(100, (operações / média_operações) × 50)`
+   - Bonus para consistência: +10 se presente em >50% dos dias ativos
 
-### Implementação Técnica
+3. **Profit_Score (0-100)**:
+   - Lucro >= 0: `50 + min(50, lucro_normalizado)`
+   - Lucro < 0: `max(0, 50 + lucro_normalizado)`
+   - Normalização: baseada no maior lucro/prejuízo entre métodos
 
-#### Arquivos a Criar
+### Arquivos a Modificar
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `src/components/BankrollHealthScore.tsx` | Componente de score 0-100 com barra e classificação |
-| `src/components/AIStructuredAnalysis.tsx` | Cards de Pontos Positivos/Negativos/Sugestões |
-| `src/components/AdvancedMetricsCards.tsx` | Métricas avançadas (Taxa Recuperação, Coef. Ruína) |
-| `src/components/ProfitDonutCharts.tsx` | Gráficos donut Maior Lucro/Prejuízo |
-| `src/hooks/useBankrollHealth.ts` | Hook para calcular score e métricas avançadas |
+| Arquivo | Mudanças |
+|---------|----------|
+| `src/hooks/useFilteredStatistics.ts` | Calcular lucro e score por método, atualizar interface `bestMethod` |
+| `src/pages/Performance.tsx` | Exibir score no card "Melhor Método" |
 
-#### Arquivos a Modificar
+### Detalhes Técnicos
 
-| Arquivo | Mudança |
-|---------|---------|
-| `supabase/functions/analyze-performance/index.ts` | Usar tool calling para retornar análise estruturada (pontos +/-/sugestões) |
-| `src/components/AIPerformanceAnalyzer.tsx` | Atualizar para exibir análise estruturada em cards |
-| `src/pages/Performance.tsx` | Integrar novos componentes na UI |
-| `src/hooks/useFilteredStatistics.ts` | Adicionar cálculos de maior lucro/prejuízo individual |
-
-### Fluxo da Edge Function com Tool Calling
-
-A edge function usará tool calling do Lovable AI para obter output estruturado:
-
+#### 1. Nova Interface MethodDetailStats
 ```typescript
-body.tools = [{
-  type: "function",
-  function: {
-    name: "analyze_bankroll_health",
-    parameters: {
-      type: "object",
-      properties: {
-        score: { type: "number", description: "Score 0-100" },
-        classification: { type: "string", enum: ["Excelente", "Bom", "Regular", "Atenção", "Crítico"] },
-        summary: { type: "string", description: "Resumo 2-3 frases" },
-        positivePoints: { type: "array", items: { type: "string" } },
-        negativePoints: { type: "array", items: { type: "string" } },
-        suggestions: { type: "array", items: { type: "string" } }
-      }
-    }
-  }
-}];
+interface MethodDetailStats extends MethodStats {
+  // ... campos existentes ...
+  profitReais: number;      // Lucro total em R$
+  combinedScore: number;    // Score combinado 0-100
+  activeDays: number;       // Dias com operações
+}
 ```
 
-### UI Final Esperada
-
+#### 2. Nova Interface BestMethod
+```typescript
+bestMethod: { 
+  name: string; 
+  winRate: number;
+  volume: number;
+  profitReais: number;
+  combinedScore: number;
+} | null;
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  SCORE DA BANCA                                    [Analisar] │
-│  ██████████████████████░░░░░░  80  [Bom]                      │
-│  Última análise: 27/01/2026                                   │
-├──────────────────────────────────────────────────────────────┤
-│  📊 Resumo da IA:                                             │
-│  A banca apresenta saúde geral boa: lucro robusto sustentado  │
-│  por uma taxa de acerto consistente...                        │
-├─────────────────────┬─────────────────────┬──────────────────┤
-│  ✅ Pontos Positivos │  ⚠️ Pontos Negativos │  💡 Sugestões    │
-│  • Lucro consistente │  • Perdas em poucos  │  • Padronizar    │
-│  • Taxa de acerto    │    dias              │    stake         │
-│  • Alto volume       │  • Drawdown alto     │  • Reduzir       │
-│                      │                      │    exposição     │
-├─────────────────────┴─────────────────────┴──────────────────┤
-│  [Maior Lucro 7%]  [Resumo: Dias/Número]  [Maior Prejuízo 3%] │
-├──────────────────────────────────────────────────────────────┤
-│  Run-up    R$ 510   │  Drawdown   R$ 305  │  Tx Recup   1.22  │
-│  ████████░░░░░░░░░  │  █████████████░░░░  │  ████████░░  Boa  │
-└──────────────────────────────────────────────────────────────┘
+
+#### 3. Lógica de Cálculo
+- Calcular lucro em R$ por método (usando a lógica existente de `dailyMethodProfitMap`)
+- Calcular média de volume entre todos os métodos ativos
+- Normalizar todos os fatores para 0-100
+- Aplicar pesos e somar
+- Ordenar métodos por `combinedScore` (não mais por WR)
+
+### UI Atualizada
+
+O card "Melhor Método" mostrará:
+```
+┌─────────────────────────────┐
+│ 🏆 Melhor Método            │
+│ ─────────────────────────── │
+│ BTTS                        │
+│                             │
+│ Score: 78/100               │
+│ WR: 65% • Vol: 42 • +R$510  │
+└─────────────────────────────┘
 ```
 
 ### Benefícios
 
-1. **Visualização clara da saúde da banca** com score único
-2. **Análise estruturada** facilita leitura e ação
-3. **Métricas avançadas** para traders experientes
-4. **Contexto por método** quando filtrado
-5. **UI premium** inspirada no design escuro profissional
-6. **Aproveita 100%** da infraestrutura existente (Lovable AI, hooks, dados)
+1. **Decisão mais inteligente** - Considera múltiplos fatores
+2. **Evita falsos positivos** - Métodos com poucas operações não dominam
+3. **Foco no resultado real** - Lucro financeiro tem peso maior
+4. **Transparência** - Usuário vê os componentes do score
 
-### Ordem de Implementação
+### Volume Mínimo
 
-1. Criar hook `useBankrollHealth.ts` com cálculos de score e métricas
-2. Criar componente `BankrollHealthScore.tsx` com barra de progresso
-3. Atualizar edge function para usar tool calling e retornar dados estruturados
-4. Criar componente `AIStructuredAnalysis.tsx` com 3 cards
-5. Criar componentes de gráficos donut e métricas avançadas
-6. Integrar tudo na página Performance.tsx
-7. Ajustar responsividade e dark theme
+Métodos com menos de 5 operações receberão penalidade automática no score (volume_score muito baixo), evitando que apareçam como "melhor" apenas por sorte estatística.
