@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,11 +6,24 @@ import { Sparkles, Loader2, RefreshCw, Bot, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { FilteredStatisticsResult, LeagueStats, TeamStats } from '@/hooks/useFilteredStatistics';
 import { cn } from '@/lib/utils';
+import { BankrollHealthScore } from './BankrollHealthScore';
+import { AIStructuredAnalysis } from './AIStructuredAnalysis';
+import { useBankrollHealth } from '@/hooks/useBankrollHealth';
+import { Game } from '@/types';
 
 interface ActiveFilters {
   selectedMethods: string[];
   selectedLeagues: string[];
   result: 'all' | 'Green' | 'Red';
+}
+
+interface StructuredAnalysisData {
+  score: number;
+  classification: "Excelente" | "Bom" | "Regular" | "Atenção" | "Crítico";
+  summary: string;
+  positivePoints: string[];
+  negativePoints: string[];
+  suggestions: string[];
 }
 
 interface AIPerformanceAnalyzerProps {
@@ -22,6 +35,9 @@ interface AIPerformanceAnalyzerProps {
   activeFilters: ActiveFilters;
   methodNames: Record<string, string>;
   generalWinRate: number;
+  games: Game[];
+  stakeValueReais?: number;
+  targetMonthlyStakes?: number;
 }
 
 export function AIPerformanceAnalyzer({ 
@@ -33,10 +49,33 @@ export function AIPerformanceAnalyzer({
   activeFilters,
   methodNames,
   generalWinRate,
+  games,
+  stakeValueReais = 100,
+  targetMonthlyStakes = 30,
 }: AIPerformanceAnalyzerProps) {
   const [analysis, setAnalysis] = useState<string>('');
+  const [structuredAnalysis, setStructuredAnalysis] = useState<StructuredAnalysisData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastAnalysisDate, setLastAnalysisDate] = useState<Date | null>(null);
   const { toast } = useToast();
+
+  // Calculate health metrics
+  const totalProfit = useMemo(() => {
+    if (statistics.bankrollEvolution.length === 0) return 0;
+    const lastEntry = statistics.bankrollEvolution[statistics.bankrollEvolution.length - 1];
+    return lastEntry?.cumulativeReais || 0;
+  }, [statistics.bankrollEvolution]);
+
+  const healthMetrics = useBankrollHealth({
+    games,
+    totalProfit,
+    winRate: statistics.overallStats.winRate,
+    breakevenRate: statistics.breakevenRate,
+    targetMonthlyStakes,
+    stakeValueReais,
+    uniqueLeagues: leagueStats.length,
+    uniqueMethods: statistics.methodDetailStats.length,
+  });
 
   // Check if any filter is active
   const isFiltered = activeFilters.selectedMethods.length > 0 || 
@@ -71,6 +110,7 @@ export function AIPerformanceAnalyzer({
 
     setIsLoading(true);
     setAnalysis('');
+    setStructuredAnalysis(null);
 
     try {
       // Prepare data for AI
@@ -129,7 +169,6 @@ export function AIPerformanceAnalyzer({
           winRateChange: statistics.comparison.winRateChange,
           volumeChange: statistics.comparison.volumeChange,
         },
-        // NEW: Add filter context
         activeFilters: {
           methods: activeFilters.selectedMethods.map(id => methodNames[id] || id),
           leagues: activeFilters.selectedLeagues,
@@ -137,8 +176,19 @@ export function AIPerformanceAnalyzer({
         },
         isFiltered,
         generalWinRate,
+        // Advanced metrics for AI context
+        advancedMetrics: {
+          maxRunUp: healthMetrics.maxRunUp,
+          maxDrawdown: healthMetrics.maxDrawdown,
+          recoveryRate: healthMetrics.recoveryRate,
+          ruinCoefficient: healthMetrics.ruinCoefficient,
+          profitDays: healthMetrics.profitDays,
+          lossDays: healthMetrics.lossDays,
+          totalDays: healthMetrics.totalDays,
+        },
       };
 
+      // Call with structured output
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-performance`,
         {
@@ -147,7 +197,7 @@ export function AIPerformanceAnalyzer({
             'Content-Type': 'application/json',
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ performanceData }),
+          body: JSON.stringify({ performanceData, structuredOutput: true }),
         }
       );
 
@@ -156,66 +206,13 @@ export function AIPerformanceAnalyzer({
         throw new Error(errorData.error || 'Erro ao analisar desempenho');
       }
 
-      if (!response.body) {
-        throw new Error('Resposta vazia da IA');
-      }
-
-      // Stream the response
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let textBuffer = '';
-      let fullAnalysis = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        textBuffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
-          let line = textBuffer.slice(0, newlineIndex);
-          textBuffer = textBuffer.slice(newlineIndex + 1);
-
-          if (line.endsWith('\r')) line = line.slice(0, -1);
-          if (line.startsWith(':') || line.trim() === '') continue;
-          if (!line.startsWith('data: ')) continue;
-
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') break;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullAnalysis += content;
-              setAnalysis(fullAnalysis);
-            }
-          } catch {
-            textBuffer = line + '\n' + textBuffer;
-            break;
-          }
-        }
-      }
-
-      // Final flush
-      if (textBuffer.trim()) {
-        for (let raw of textBuffer.split('\n')) {
-          if (!raw) continue;
-          if (raw.endsWith('\r')) raw = raw.slice(0, -1);
-          if (raw.startsWith(':') || raw.trim() === '') continue;
-          if (!raw.startsWith('data: ')) continue;
-          const jsonStr = raw.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullAnalysis += content;
-              setAnalysis(fullAnalysis);
-            }
-          } catch { /* ignore */ }
-        }
+      const data = await response.json();
+      
+      if (data.analysis) {
+        setStructuredAnalysis(data.analysis);
+        setLastAnalysisDate(new Date());
+      } else {
+        throw new Error('Resposta inválida da IA');
       }
     } catch (error) {
       console.error('AI analysis error:', error);
@@ -227,96 +224,51 @@ export function AIPerformanceAnalyzer({
     } finally {
       setIsLoading(false);
     }
-  }, [statistics, leagueStats, teamStats, period, profit, activeFilters, methodNames, isFiltered, generalWinRate, toast]);
+  }, [statistics, leagueStats, teamStats, period, profit, activeFilters, methodNames, isFiltered, generalWinRate, healthMetrics, toast]);
 
-  // Simple markdown to HTML conversion
-  const renderMarkdown = (text: string) => {
-    return text
-      .replace(/## (.*?)(?=\n|$)/g, '<h3 class="text-base font-bold mt-4 mb-2 text-foreground">$1</h3>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/- (.*?)(?=\n|$)/g, '<li class="ml-4 text-sm">$1</li>')
-      .replace(/\n/g, '<br />');
-  };
+  // Calculate score - use AI score if available, otherwise use calculated score
+  const displayScore = structuredAnalysis?.score ?? healthMetrics.score;
+  const displayClassification = structuredAnalysis?.classification ?? healthMetrics.classification;
+  const displayClassificationColor = useMemo(() => {
+    const classification = displayClassification;
+    if (classification === "Excelente") return "text-emerald-500";
+    if (classification === "Bom") return "text-blue-500";
+    if (classification === "Regular") return "text-yellow-500";
+    if (classification === "Atenção") return "text-orange-500";
+    return "text-red-500";
+  }, [displayClassification]);
 
   return (
-    <Card className="shadow-card overflow-hidden">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Bot className="h-5 w-5 text-primary" />
-              Análise IA
-            </CardTitle>
-            {isFiltered && (
-              <Badge variant="outline" className="text-xs gap-1">
-                <Filter className="h-3 w-3" />
-                {getFilterDescription()}
-              </Badge>
-            )}
-          </div>
-          <Button
-            onClick={analyzePerformance}
-            disabled={isLoading}
-            size="sm"
-            className="gap-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Analisando...
-              </>
-            ) : analysis ? (
-              <>
-                <RefreshCw className="h-4 w-4" />
-                Atualizar
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" />
-                Analisar
-              </>
-            )}
-          </Button>
+    <div className="space-y-6">
+      {/* Score Card with Analyze Button */}
+      <BankrollHealthScore
+        score={displayScore}
+        classification={displayClassification}
+        classificationColor={displayClassificationColor}
+        isAnalyzing={isLoading}
+        lastAnalysisDate={lastAnalysisDate || undefined}
+        onAnalyze={analyzePerformance}
+        summary={structuredAnalysis?.summary}
+        previousScore={structuredAnalysis ? healthMetrics.score : undefined}
+      />
+
+      {/* Structured Analysis Cards */}
+      <AIStructuredAnalysis
+        positivePoints={structuredAnalysis?.positivePoints || []}
+        negativePoints={structuredAnalysis?.negativePoints || []}
+        suggestions={structuredAnalysis?.suggestions || []}
+        isLoading={isLoading}
+      />
+
+      {/* Filter Badge */}
+      {isFiltered && (
+        <div className="flex justify-center">
+          <Badge variant="outline" className="text-xs gap-1">
+            <Filter className="h-3 w-3" />
+            Análise filtrada: {getFilterDescription()}
+          </Badge>
         </div>
-      </CardHeader>
-      <CardContent>
-        {!analysis && !isLoading && (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Sparkles className="h-8 w-8 text-primary" />
-            </div>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              {isFiltered 
-                ? `Clique em "Analisar" para receber insights sobre ${getFilterDescription()}.`
-                : 'Clique em "Analisar" para receber insights personalizados sobre seu desempenho com base nos seus dados.'
-              }
-            </p>
-          </div>
-        )}
-
-        {isLoading && !analysis && (
-          <div className="flex flex-col items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-sm text-muted-foreground">
-              {isFiltered 
-                ? `Analisando ${getFilterDescription()}...`
-                : 'Analisando seus dados...'
-              }
-            </p>
-          </div>
-        )}
-
-        {analysis && (
-          <div 
-            className={cn(
-              "prose prose-sm dark:prose-invert max-w-none",
-              "text-sm leading-relaxed"
-            )}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(analysis) }}
-          />
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }

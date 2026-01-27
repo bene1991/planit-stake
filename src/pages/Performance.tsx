@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw, AlertCircle, DollarSign, Download, Target, BarChart3, Trophy, Minus, Percent } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw, AlertCircle, DollarSign, Download, Target, BarChart3, Trophy, Minus, Percent, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,9 @@ import { OddRangeStatsChart } from '@/components/Charts/OddRangeStatsChart';
 import { TeamStatsChart } from '@/components/Charts/TeamStatsChart';
 import { StatCard } from '@/components/StatCard';
 import { AIPerformanceAnalyzer } from '@/components/AIPerformanceAnalyzer';
+import { AdvancedMetricsCards } from '@/components/AdvancedMetricsCards';
+import { ProfitDonutCharts } from '@/components/ProfitDonutCharts';
+import { useBankrollHealth } from '@/hooks/useBankrollHealth';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -92,6 +95,13 @@ export default function Performance() {
   // Use original statistics for charts that don't need filtering
   const originalStatistics = useStatistics(games, bankroll.methods);
 
+  // Calculate total profit in R$ for health metrics - moved to after settings declaration
+  const totalProfitReais = useMemo(() => {
+    if (bankrollEvolution.length === 0) return 0;
+    const lastEntry = bankrollEvolution[bankrollEvolution.length - 1];
+    return lastEntry?.cumulativeReais || 0;
+  }, [bankrollEvolution]);
+
   // Calculate filtered games for LeagueStatsChart
   const filteredGames = useMemo(() => {
     return games.filter((game) => {
@@ -153,6 +163,24 @@ export default function Performance() {
     const value = parseFloat(stakeInput.replace(',', '.'));
     return isNaN(value) || value <= 0 ? settings.stakeValueReais : value;
   }, [stakeInput, settings.stakeValueReais]);
+
+  // Health metrics for advanced cards - must be after settings declaration
+  const healthMetrics = useBankrollHealth({
+    games: games.filter(g => {
+      if (filters.dateFrom && filters.dateTo) {
+        const gameDate = new Date(`${g.date}T12:00:00`);
+        return gameDate >= filters.dateFrom && gameDate <= filters.dateTo;
+      }
+      return true;
+    }),
+    totalProfit: totalProfitReais,
+    winRate: overallStats.winRate,
+    breakevenRate,
+    targetMonthlyStakes: settings.metaMensalStakes,
+    stakeValueReais: parsedStake,
+    uniqueLeagues: leagueStats.length,
+    uniqueMethods: methodDetailStats.length,
+  });
   
   const { metrics, loading: statusLoading } = useOperationalStatus(operationalFilters, parsedStake);
   const [editedSettings, setEditedSettings] = useState({
@@ -498,6 +526,30 @@ export default function Performance() {
         </Card>
       )}
 
+      {/* Advanced Metrics Cards - NEW */}
+      <AdvancedMetricsCards
+        maxRunUp={healthMetrics.maxRunUp}
+        maxDrawdown={healthMetrics.maxDrawdown}
+        recoveryRate={healthMetrics.recoveryRate}
+        ruinCoefficient={healthMetrics.ruinCoefficient}
+        maxProfit={healthMetrics.maxProfit}
+        maxLoss={healthMetrics.maxLoss}
+        stakeValueReais={parsedStake}
+      />
+
+      {/* Profit Distribution Donuts - NEW */}
+      <ProfitDonutCharts
+        profitDays={healthMetrics.profitDays}
+        lossDays={healthMetrics.lossDays}
+        totalDays={healthMetrics.totalDays}
+        avgDailyProfit={healthMetrics.avgDailyProfit}
+        avgOperationProfit={healthMetrics.avgOperationProfit}
+        totalOperations={overallStats.total}
+        maxProfit={healthMetrics.maxProfit}
+        maxLoss={healthMetrics.maxLoss}
+        totalProfit={totalProfitReais}
+      />
+
       {/* Bankroll Evolution Chart */}
       <BankrollEvolutionChart data={bankrollEvolution} />
 
@@ -550,36 +602,46 @@ export default function Performance() {
         <TeamStatsChart data={teamStats} games={filteredGames} methods={bankroll.methods} />
       )}
 
-      {/* AI Performance Analyzer */}
-      <AIPerformanceAnalyzer
-        statistics={{
-          overallStats,
-          methodDetailStats,
-          dailyBreakdown,
-          methodTimeline,
-          methodNames,
-          comparison,
-          leagues,
-          leagueStats,
-          averageOdd,
-          operationsWithOdd,
-          breakevenRate,
-          bankrollEvolution,
-          oddRangeStats,
-          teamStats,
-        }}
-        leagueStats={leagueStats}
-        teamStats={teamStats}
-        period={periodLabel}
-        profit={metrics.periodProfitStakes}
-        activeFilters={{
-          selectedMethods: filters.selectedMethods,
-          selectedLeagues: filters.selectedLeagues,
-          result: filters.result,
-        }}
-        methodNames={bankroll.methods.reduce((acc, m) => ({ ...acc, [m.id]: m.name }), {} as Record<string, string>)}
-        generalWinRate={originalStatistics.overallStats.winRate}
-      />
+      {/* AI Performance Analyzer - NEW ENHANCED VERSION */}
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <Brain className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-bold">Análise IA da Saúde da Banca</h2>
+        </div>
+        
+        <AIPerformanceAnalyzer
+          statistics={{
+            overallStats,
+            methodDetailStats,
+            dailyBreakdown,
+            methodTimeline,
+            methodNames,
+            comparison,
+            leagues,
+            leagueStats,
+            averageOdd,
+            operationsWithOdd,
+            breakevenRate,
+            bankrollEvolution,
+            oddRangeStats,
+            teamStats,
+          }}
+          leagueStats={leagueStats}
+          teamStats={teamStats}
+          period={periodLabel}
+          profit={metrics.periodProfitStakes}
+          activeFilters={{
+            selectedMethods: filters.selectedMethods,
+            selectedLeagues: filters.selectedLeagues,
+            result: filters.result,
+          }}
+          methodNames={bankroll.methods.reduce((acc, m) => ({ ...acc, [m.id]: m.name }), {} as Record<string, string>)}
+          generalWinRate={originalStatistics.overallStats.winRate}
+          games={filteredGames}
+          stakeValueReais={parsedStake}
+          targetMonthlyStakes={settings.metaMensalStakes}
+        />
+      </div>
 
       {/* Settings Collapsible */}
       <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>

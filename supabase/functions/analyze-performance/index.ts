@@ -1,8 +1,8 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 interface PerformanceData {
@@ -57,7 +57,6 @@ interface PerformanceData {
     winRateChange: number;
     volumeChange: number;
   };
-  // New filter context fields
   activeFilters?: {
     methods: string[];
     leagues: string[];
@@ -65,6 +64,25 @@ interface PerformanceData {
   };
   isFiltered?: boolean;
   generalWinRate?: number;
+  // New advanced metrics
+  advancedMetrics?: {
+    maxRunUp: number;
+    maxDrawdown: number;
+    recoveryRate: number;
+    ruinCoefficient: number;
+    profitDays: number;
+    lossDays: number;
+    totalDays: number;
+  };
+}
+
+interface StructuredAnalysis {
+  score: number;
+  classification: "Excelente" | "Bom" | "Regular" | "Atenção" | "Crítico";
+  summary: string;
+  positivePoints: string[];
+  negativePoints: string[];
+  suggestions: string[];
 }
 
 serve(async (req) => {
@@ -73,14 +91,16 @@ serve(async (req) => {
   }
 
   try {
-    const { performanceData } = await req.json() as { performanceData: PerformanceData };
+    const { performanceData, structuredOutput = false } = await req.json() as { 
+      performanceData: PerformanceData;
+      structuredOutput?: boolean;
+    };
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Build filter context for the prompt
     const hasFilters = performanceData.isFiltered;
     const filterMethods = performanceData.activeFilters?.methods || [];
     const filterLeagues = performanceData.activeFilters?.leagues || [];
@@ -94,10 +114,34 @@ ${filterLeagues.length > 0 ? `- Liga(s) selecionada(s): ${filterLeagues.join(', 
 ${filterResult !== 'all' ? `- Resultado filtrado: Apenas ${filterResult === 'Green' ? 'Greens' : 'Reds'}` : ''}
 ${performanceData.generalWinRate ? `- Win Rate geral (sem filtros): ${performanceData.generalWinRate}%` : ''}
 
-INSTRUÇÃO CRÍTICA: Você está analisando APENAS os dados filtrados acima. Sua análise deve ser 100% focada neste contexto específico. Compare com o desempenho geral quando disponível.`
+INSTRUÇÃO CRÍTICA: Você está analisando APENAS os dados filtrados acima.`
       : '';
 
-    const systemPrompt = `Você é um analista especializado em trading esportivo, especificamente em mercados de futebol como BTTS (Both Teams To Score), Over/Under gols, e operações de Back e Lay em exchanges.
+    const advancedMetricsContext = performanceData.advancedMetrics
+      ? `
+📈 MÉTRICAS AVANÇADAS:
+- Run-up Máximo: R$ ${performanceData.advancedMetrics.maxRunUp.toFixed(2)}
+- Drawdown Máximo: R$ ${performanceData.advancedMetrics.maxDrawdown.toFixed(2)}
+- Taxa de Recuperação: ${performanceData.advancedMetrics.recoveryRate.toFixed(2)}
+- Coeficiente de Ruína: ${(performanceData.advancedMetrics.ruinCoefficient * 100).toFixed(1)}%
+- Dias Positivos: ${performanceData.advancedMetrics.profitDays}
+- Dias Negativos: ${performanceData.advancedMetrics.lossDays}
+- Total de Dias: ${performanceData.advancedMetrics.totalDays}`
+      : '';
+
+    const systemPrompt = structuredOutput
+      ? `Você é um analista especializado em trading esportivo. Analise os dados e retorne uma análise estruturada usando a função analyze_bankroll_health.
+
+REGRAS:
+1. Score: 0-100 baseado em Win Rate, Profit, Consistência, Drawdown
+2. Classificação: Excelente (80+), Bom (60-79), Regular (40-59), Atenção (20-39), Crítico (0-19)
+3. Pontos Positivos: 3-5 aspectos fortes identificados nos dados
+4. Pontos Negativos: 3-5 problemas ou riscos identificados
+5. Sugestões: 3-5 ações práticas e específicas
+6. Resumo: 2-3 frases sobre a saúde geral da banca
+
+Use dados específicos nas análises (cite números). Seja direto e acionável.`
+      : `Você é um analista especializado em trading esportivo, especificamente em mercados de futebol como BTTS (Both Teams To Score), Over/Under gols, e operações de Back e Lay em exchanges.
 
 Sua função é analisar os dados de desempenho do trader e fornecer insights acionáveis, identificando padrões, pontos fortes, fraquezas e oportunidades de melhoria.
 
@@ -135,6 +179,7 @@ ${filterContextDescription}
 - Breakeven necessário: ${performanceData.breakevenRate}%
 - Variação WR vs período anterior: ${performanceData.comparison.winRateChange >= 0 ? '+' : ''}${performanceData.comparison.winRateChange}%
 - Variação volume: ${performanceData.comparison.volumeChange >= 0 ? '+' : ''}${performanceData.comparison.volumeChange}%
+${advancedMetricsContext}
 
 📈 PERFORMANCE POR MÉTODO:
 ${performanceData.methodStats.map(m => `- ${m.methodName}: ${m.winRate}% WR (${m.total} ops, ${m.greens}G/${m.reds}R)`).join('\n')}
@@ -156,20 +201,71 @@ ${performanceData.oddRangeStats.map(o => `- ${o.range}: ${o.winRate}% WR, ${o.pr
 
 Por favor, analise esses dados e me dê insights práticos para melhorar meu desempenho.`;
 
+    // Build request body
+    const requestBody: any = {
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    };
+
+    // Add tool calling for structured output
+    if (structuredOutput) {
+      requestBody.tools = [{
+        type: "function",
+        function: {
+          name: "analyze_bankroll_health",
+          description: "Retorna análise estruturada da saúde da banca",
+          parameters: {
+            type: "object",
+            properties: {
+              score: { 
+                type: "number", 
+                description: "Score de 0 a 100 baseado na análise geral" 
+              },
+              classification: { 
+                type: "string", 
+                enum: ["Excelente", "Bom", "Regular", "Atenção", "Crítico"],
+                description: "Classificação baseada no score"
+              },
+              summary: { 
+                type: "string", 
+                description: "Resumo de 2-3 frases sobre a saúde geral da banca" 
+              },
+              positivePoints: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "Lista de 3-5 pontos positivos identificados"
+              },
+              negativePoints: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "Lista de 3-5 pontos negativos ou riscos identificados"
+              },
+              suggestions: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "Lista de 3-5 sugestões práticas e acionáveis"
+              }
+            },
+            required: ["score", "classification", "summary", "positivePoints", "negativePoints", "suggestions"],
+            additionalProperties: false
+          }
+        }
+      }];
+      requestBody.tool_choice = { type: "function", function: { name: "analyze_bankroll_health" } };
+    } else {
+      requestBody.stream = true;
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        stream: true,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -193,6 +289,34 @@ Por favor, analise esses dados e me dê insights práticos para melhorar meu des
       });
     }
 
+    // Handle structured output (non-streaming)
+    if (structuredOutput) {
+      const data = await response.json();
+      
+      // Extract the tool call result
+      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall && toolCall.function?.arguments) {
+        try {
+          const analysis: StructuredAnalysis = JSON.parse(toolCall.function.arguments);
+          return new Response(JSON.stringify({ analysis }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        } catch (parseError) {
+          console.error("Failed to parse tool call arguments:", parseError);
+          return new Response(JSON.stringify({ error: "Erro ao processar resposta da IA" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+      
+      return new Response(JSON.stringify({ error: "Resposta da IA não contém análise estruturada" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Return streaming response for non-structured output
     return new Response(response.body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
