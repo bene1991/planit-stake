@@ -395,6 +395,11 @@ export function GameListItem({
                   )}
                 >
                   {getMethodName(operation.methodId)}
+                  {financialStatus.hasOdd && (
+                    <span className="text-[8px] sm:text-[9px] opacity-80">
+                      @{operation.odd?.toFixed(2)}
+                    </span>
+                  )}
                   {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}
                   {operation.result === 'Red' && <X className="h-2.5 w-2.5" />}
                   {!operation.result && financialStatus.complete && (
