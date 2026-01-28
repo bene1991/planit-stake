@@ -1,102 +1,156 @@
 
-## Plano: Score Combinado para Determinar o Melhor Método
+## Plano: Enriquecer Dados Enviados à IA para Análise Completa
 
-### Problema Atual
-Atualmente, o "Melhor Método" é determinado exclusivamente pelo **Win Rate** (taxa de acerto). Isso pode ser enganoso porque:
-- Um método com 100% WR em apenas 2 operações é considerado "melhor" que um com 85% WR em 100 operações
-- Não considera o lucro financeiro real
-- Ignora a consistência e volume de operações
+### Problema Identificado
+A IA está gerando análises focadas demais no **Win Rate** porque os dados que enviamos para ela são incompletos. Especificamente:
 
-### Solução: Score Combinado (0-100)
+1. **Dados de método incompletos**: Enviamos apenas WinRate, total, greens, reds - **não incluímos lucro em R$, score combinado, ou dias ativos**
+2. **Prompt do sistema superficial**: Não explicamos claramente os pesos e como a IA deve balancear os diferentes fatores
+3. **Contexto financeiro ausente**: A IA não recebe informações sobre maior lucro/prejuízo individual, stake médio, etc.
 
-Criar uma métrica ponderada que considera três fatores principais:
+### Solução
 
-| Fator | Peso | Justificativa |
-|-------|------|---------------|
-| **Win Rate relativo** | 35% | Taxa de acerto comparada ao breakeven |
-| **Volume de operações** | 25% | Significância estatística e consistência |
-| **Lucro total (R$)** | 40% | Resultado financeiro real |
+#### 1. Enriquecer os `methodStats` Enviados
+Adicionar campos críticos que já existem no sistema mas não estão sendo transmitidos:
 
-### Fórmula do Score
+| Campo Atual | Campos a Adicionar |
+|-------------|-------------------|
+| methodName | profitReais (lucro em R$) |
+| total | combinedScore (score 0-100) |
+| greens | activeDays (dias com operações) |
+| reds | breakeven (taxa mínima para lucro) |
+| winRate | previousWinRate (comparação) |
+
+#### 2. Reformular o Prompt do Sistema
+Atualizar as regras para a IA considerar com peso adequado:
 
 ```
-Score = (WR_Score × 0.35) + (Volume_Score × 0.25) + (Profit_Score × 0.40)
+CRITÉRIOS DE ANÁLISE (PESOS):
+1. LUCRO FINANCEIRO (40%): O resultado em R$ é o que importa no final
+2. WIN RATE vs BREAKEVEN (35%): Taxa de acerto relativa ao mínimo necessário
+3. VOLUME E CONSISTÊNCIA (25%): Número de operações e dias ativos
+
+REGRAS OBRIGATÓRIAS:
+- NÃO foque apenas em Win Rate - analise o LUCRO em R$ de cada método
+- Compare o combinedScore dos métodos, não apenas o WR
+- Considere métodos com alto volume como mais confiáveis estatisticamente
+- Valorize consistência: métodos presentes em muitos dias são mais estáveis
 ```
 
-**Componentes:**
-
-1. **WR_Score (0-100)**:
-   - Se WR >= breakeven: `50 + min(50, (WR - breakeven) × 5)`
-   - Se WR < breakeven: `max(0, 50 - (breakeven - WR) × 5)`
-
-2. **Volume_Score (0-100)**:
-   - Volume mínimo para consideração: 5 operações
-   - Normalizado: `min(100, (operações / média_operações) × 50)`
-   - Bonus para consistência: +10 se presente em >50% dos dias ativos
-
-3. **Profit_Score (0-100)**:
-   - Lucro >= 0: `50 + min(50, lucro_normalizado)`
-   - Lucro < 0: `max(0, 50 + lucro_normalizado)`
-   - Normalização: baseada no maior lucro/prejuízo entre métodos
+#### 3. Adicionar Contexto Financeiro Extra
+Enviar informações adicionais:
+- Lucro total em R$ (não apenas stakes)
+- Maior lucro individual e maior prejuízo individual
+- Stake médio utilizado
 
 ### Arquivos a Modificar
 
 | Arquivo | Mudanças |
 |---------|----------|
-| `src/hooks/useFilteredStatistics.ts` | Calcular lucro e score por método, atualizar interface `bestMethod` |
-| `src/pages/Performance.tsx` | Exibir score no card "Melhor Método" |
+| `src/components/AIPerformanceAnalyzer.tsx` | Enriquecer `methodStats` com profitReais, combinedScore, activeDays, breakeven |
+| `supabase/functions/analyze-performance/index.ts` | Atualizar interface e prompt do sistema com pesos explícitos |
 
 ### Detalhes Técnicos
 
-#### 1. Nova Interface MethodDetailStats
+#### Mudanças no AIPerformanceAnalyzer.tsx
+
 ```typescript
-interface MethodDetailStats extends MethodStats {
-  // ... campos existentes ...
-  profitReais: number;      // Lucro total em R$
-  combinedScore: number;    // Score combinado 0-100
-  activeDays: number;       // Dias com operações
-}
+// ANTES (incompleto)
+methodStats: statistics.methodDetailStats.map(m => ({
+  methodName: m.methodName,
+  total: m.total,
+  greens: m.greens,
+  reds: m.reds,
+  winRate: m.winRate,
+})),
+
+// DEPOIS (completo)
+methodStats: statistics.methodDetailStats.map(m => ({
+  methodName: m.methodName,
+  total: m.total,
+  greens: m.greens,
+  reds: m.reds,
+  winRate: m.winRate,
+  profitReais: m.profitReais,           // ✅ NOVO
+  combinedScore: m.combinedScore,        // ✅ NOVO
+  activeDays: m.activeDays,              // ✅ NOVO
+})),
+
+// Adicionar lucro total em R$
+totalProfitReais: totalProfit,           // ✅ NOVO
 ```
 
-#### 2. Nova Interface BestMethod
+#### Mudanças na Edge Function
+
+1. **Atualizar interface `PerformanceData`**:
 ```typescript
-bestMethod: { 
-  name: string; 
+methodStats: Array<{
+  methodName: string;
+  total: number;
+  greens: number;
+  reds: number;
   winRate: number;
-  volume: number;
-  profitReais: number;
-  combinedScore: number;
-} | null;
+  profitReais: number;      // NOVO
+  combinedScore: number;    // NOVO
+  activeDays: number;       // NOVO
+}>;
+totalProfitReais?: number;   // NOVO
 ```
 
-#### 3. Lógica de Cálculo
-- Calcular lucro em R$ por método (usando a lógica existente de `dailyMethodProfitMap`)
-- Calcular média de volume entre todos os métodos ativos
-- Normalizar todos os fatores para 0-100
-- Aplicar pesos e somar
-- Ordenar métodos por `combinedScore` (não mais por WR)
+2. **Atualizar prompt do sistema**:
+```typescript
+const systemPrompt = `Você é um analista especializado em trading esportivo...
 
-### UI Atualizada
+CRITÉRIOS DE ANÁLISE - USE ESTES PESOS:
+1. LUCRO FINANCEIRO (40%): O resultado em R$ é a métrica mais importante
+   - Analise o profitReais de cada método
+   - Valorize métodos lucrativos mesmo com WR médio
 
-O card "Melhor Método" mostrará:
+2. WIN RATE vs BREAKEVEN (35%): Taxa de acerto relativa ao mínimo
+   - Compare winRate com breakeven do método
+   - Métodos acima do breakeven são saudáveis
+
+3. VOLUME E CONSISTÊNCIA (25%): Significância estatística
+   - Métodos com +30 operações são mais confiáveis
+   - Métodos presentes em muitos dias (activeDays) são mais estáveis
+   - Use o combinedScore como referência
+
+REGRAS OBRIGATÓRIAS:
+- NÃO analise apenas Win Rate - o LUCRO em R$ é mais importante
+- Cite valores específicos em R$ nos pontos positivos/negativos
+- Compare combinedScore dos métodos ao ranquear performance
+- Valorize consistência: métodos em muitos dias são mais confiáveis
+`;
 ```
-┌─────────────────────────────┐
-│ 🏆 Melhor Método            │
-│ ─────────────────────────── │
-│ BTTS                        │
-│                             │
-│ Score: 78/100               │
-│ WR: 65% • Vol: 42 • +R$510  │
-└─────────────────────────────┘
+
+3. **Atualizar userPrompt** para mostrar lucro por método:
+```typescript
+📈 PERFORMANCE POR MÉTODO:
+${performanceData.methodStats.map(m => 
+  `- ${m.methodName}: ${m.winRate}% WR, ${m.profitReais >= 0 ? '+' : ''}R$${m.profitReais.toFixed(2)}, Score: ${m.combinedScore}/100 (${m.total} ops em ${m.activeDays} dias)`
+).join('\n')}
+
+💰 LUCRO TOTAL: R$ ${performanceData.totalProfitReais?.toFixed(2) || profit}
+```
+
+### Resultado Esperado
+
+**Antes (foco em WR):**
+```
+✅ Pontos Positivos
+• Excelente performance no método 'Valdomiro' com 83% de WR em 53 operações
+```
+
+**Depois (análise balanceada):**
+```
+✅ Pontos Positivos
+• Método 'Valdomiro' é o mais rentável com +R$892 de lucro (Score 87/100)
+• Win Rate de 83% está 34pp acima do breakeven necessário
+• Alta consistência: presente em 45 dos 52 dias operados
 ```
 
 ### Benefícios
-
-1. **Decisão mais inteligente** - Considera múltiplos fatores
-2. **Evita falsos positivos** - Métodos com poucas operações não dominam
-3. **Foco no resultado real** - Lucro financeiro tem peso maior
-4. **Transparência** - Usuário vê os componentes do score
-
-### Volume Mínimo
-
-Métodos com menos de 5 operações receberão penalidade automática no score (volume_score muito baixo), evitando que apareçam como "melhor" apenas por sorte estatística.
+1. **Análise mais precisa**: IA considera todos os fatores importantes
+2. **Foco no resultado real**: Lucro em R$ tem destaque adequado
+3. **Contexto completo**: Score combinado e consistência são mencionados
+4. **Dados acionáveis**: Informações específicas para tomada de decisão
