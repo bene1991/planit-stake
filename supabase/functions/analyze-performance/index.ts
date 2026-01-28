@@ -22,7 +22,11 @@ interface PerformanceData {
     greens: number;
     reds: number;
     winRate: number;
+    profitReais: number;
+    combinedScore: number;
+    activeDays: number;
   }>;
+  totalProfitReais?: number;
   topLeagues: Array<{
     league: string;
     winRate: number;
@@ -132,32 +136,57 @@ INSTRUÇÃO CRÍTICA: Você está analisando APENAS os dados filtrados acima.`
     const systemPrompt = structuredOutput
       ? `Você é um analista especializado em trading esportivo. Analise os dados e retorne uma análise estruturada usando a função analyze_bankroll_health.
 
-REGRAS:
-1. Score: 0-100 baseado em Win Rate, Profit, Consistência, Drawdown
-2. Classificação: Excelente (80+), Bom (60-79), Regular (40-59), Atenção (20-39), Crítico (0-19)
-3. Pontos Positivos: 3-5 aspectos fortes identificados nos dados
-4. Pontos Negativos: 3-5 problemas ou riscos identificados
-5. Sugestões: 3-5 ações práticas e específicas
-6. Resumo: 2-3 frases sobre a saúde geral da banca
+CRITÉRIOS DE ANÁLISE - USE ESTES PESOS:
+1. LUCRO FINANCEIRO (40%): O resultado em R$ é a métrica MAIS IMPORTANTE
+   - Analise o profitReais de cada método
+   - Valorize métodos lucrativos mesmo com WR médio
+   - Cite valores específicos em R$ nos pontos
 
-Use dados específicos nas análises (cite números). Seja direto e acionável.`
+2. WIN RATE vs BREAKEVEN (35%): Taxa de acerto relativa ao mínimo
+   - Compare winRate com o breakeven necessário
+   - Métodos acima do breakeven são saudáveis
+
+3. VOLUME E CONSISTÊNCIA (25%): Significância estatística
+   - Métodos com +30 operações são mais confiáveis
+   - Métodos presentes em muitos dias (activeDays) são mais estáveis
+   - Use o combinedScore como referência principal
+
+REGRAS OBRIGATÓRIAS:
+- NÃO foque apenas em Win Rate - o LUCRO em R$ é mais importante
+- Cite valores específicos em R$ nos pontos positivos/negativos
+- Compare combinedScore dos métodos ao ranquear performance
+- Valorize consistência: métodos presentes em muitos dias são mais confiáveis
+- Score: 0-100 baseado em Lucro (40%), WR vs Breakeven (35%), Volume/Consistência (25%)
+- Classificação: Excelente (80+), Bom (60-79), Regular (40-59), Atenção (20-39), Crítico (0-19)
+- Pontos Positivos: 3-5 aspectos fortes (mencione lucro R$, score, consistência)
+- Pontos Negativos: 3-5 problemas (mencione prejuízos R$, volume baixo, inconsistência)
+- Sugestões: 3-5 ações práticas e específicas
+- Resumo: 2-3 frases sobre a saúde geral da banca focando no resultado financeiro
+
+Use dados específicos nas análises (cite números em R$). Seja direto e acionável.`
       : `Você é um analista especializado em trading esportivo, especificamente em mercados de futebol como BTTS (Both Teams To Score), Over/Under gols, e operações de Back e Lay em exchanges.
 
 Sua função é analisar os dados de desempenho do trader e fornecer insights acionáveis, identificando padrões, pontos fortes, fraquezas e oportunidades de melhoria.
 
+CRITÉRIOS DE ANÁLISE - USE ESTES PESOS:
+1. LUCRO FINANCEIRO (40%): O resultado em R$ é a métrica MAIS IMPORTANTE
+2. WIN RATE vs BREAKEVEN (35%): Taxa de acerto relativa ao mínimo necessário
+3. VOLUME E CONSISTÊNCIA (25%): Número de operações e dias ativos
+
 REGRAS IMPORTANTES:
 1. Seja direto e objetivo - máximo 4-5 pontos principais
-2. Use dados específicos nas suas análises (cite números)
-3. Identifique padrões claros (ligas/times lucrativas vs problemáticas)
-4. Dê sugestões práticas e acionáveis
-5. Use emojis para destacar pontos importantes
-6. Considere a relação Win Rate vs Breakeven Rate
-7. Analise a qualidade das odds selecionadas
-8. Seja encorajador quando houver bons resultados
-9. Seja honesto sobre problemas, mas construtivo
-10. CRUCIAL: Se há filtros ativos, foque EXCLUSIVAMENTE nos dados filtrados
-11. Quando analisar um método específico, compare com o desempenho geral
-12. Mencione claramente no início da análise qual contexto está sendo analisado
+2. Use dados específicos nas suas análises (cite valores em R$)
+3. NÃO foque apenas em Win Rate - analise o LUCRO em R$ de cada método
+4. Use o combinedScore para ranquear métodos, não apenas WR
+5. Valorize métodos com alto volume (mais confiáveis estatisticamente)
+6. Valorize consistência: métodos presentes em muitos dias são mais estáveis
+7. Identifique padrões claros (métodos/ligas/times lucrativos vs problemáticos)
+8. Dê sugestões práticas e acionáveis
+9. Use emojis para destacar pontos importantes
+10. Considere a relação Win Rate vs Breakeven Rate
+11. Seja encorajador quando houver bons resultados
+12. Seja honesto sobre problemas, mas construtivo
+13. CRUCIAL: Se há filtros ativos, foque EXCLUSIVAMENTE nos dados filtrados
 
 FORMATO DA RESPOSTA:
 - Use markdown com headers (##)
@@ -165,7 +194,7 @@ FORMATO DA RESPOSTA:
 - Se houver filtro de método: "## Análise do Método [NOME]"
 - Se houver filtro de liga: "## Análise da Liga [NOME]"
 - Senão: "## Resumo Geral"
-- Seções: Resumo/Contexto, Pontos Fortes, Pontos de Atenção, Dicas Práticas`;
+- Seções: Resumo/Contexto, Pontos Fortes (cite R$), Pontos de Atenção, Dicas Práticas`;
 
     const userPrompt = `Analise meu desempenho de trading no período: ${performanceData.period}
 ${filterContextDescription}
@@ -181,8 +210,10 @@ ${filterContextDescription}
 - Variação volume: ${performanceData.comparison.volumeChange >= 0 ? '+' : ''}${performanceData.comparison.volumeChange}%
 ${advancedMetricsContext}
 
-📈 PERFORMANCE POR MÉTODO:
-${performanceData.methodStats.map(m => `- ${m.methodName}: ${m.winRate}% WR (${m.total} ops, ${m.greens}G/${m.reds}R)`).join('\n')}
+📈 PERFORMANCE POR MÉTODO (ordenado por Score Combinado):
+${performanceData.methodStats.map(m => `- ${m.methodName}: Score ${m.combinedScore}/100, ${m.winRate}% WR, ${m.profitReais >= 0 ? '+' : ''}R$${m.profitReais.toFixed(2)} (${m.total} ops em ${m.activeDays} dias)`).join('\n')}
+
+💰 LUCRO TOTAL: R$ ${performanceData.totalProfitReais?.toFixed(2) || '0.00'}
 
 🏆 TOP 3 LIGAS (por WR):
 ${performanceData.topLeagues.map(l => `- ${l.league}: ${l.winRate}% WR, ${l.profit >= 0 ? '+' : ''}${l.profit} stakes (${l.total} ops)`).join('\n')}

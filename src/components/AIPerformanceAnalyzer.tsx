@@ -126,6 +126,7 @@ export function AIPerformanceAnalyzer({
         period,
         overallStats: statistics.overallStats,
         profit,
+        totalProfitReais: totalProfit,
         averageOdd: statistics.averageOdd,
         breakevenRate: statistics.breakevenRate,
         methodStats: statistics.methodDetailStats.map(m => ({
@@ -134,6 +135,9 @@ export function AIPerformanceAnalyzer({
           greens: m.greens,
           reds: m.reds,
           winRate: m.winRate,
+          profitReais: m.profitReais,
+          combinedScore: m.combinedScore,
+          activeDays: m.activeDays,
         })),
         topLeagues: topLeagues.map(l => ({
           league: l.league,
