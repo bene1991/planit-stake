@@ -24,6 +24,7 @@ import { TeamStatsChart } from '@/components/Charts/TeamStatsChart';
 import { StatCard } from '@/components/StatCard';
 import { AIPerformanceAnalyzer } from '@/components/AIPerformanceAnalyzer';
 import { AdvancedMetricsCards } from '@/components/AdvancedMetricsCards';
+import { MethodsRankingTable } from '@/components/Charts/MethodsRankingTable';
 import { ProfitDonutCharts } from '@/components/ProfitDonutCharts';
 import { useBankrollHealth } from '@/hooks/useBankrollHealth';
 import { formatCurrency } from '@/utils/profitCalculator';
@@ -561,6 +562,9 @@ export default function Performance() {
 
       {/* Bankroll Evolution Chart */}
       <BankrollEvolutionChart data={bankrollEvolution} />
+
+      {/* Methods Ranking Table - NEW */}
+      <MethodsRankingTable methodStats={methodDetailStats} />
 
       {/* Method Detail Cards */}
       {methodDetailStats.length > 0 && (
