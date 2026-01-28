@@ -156,6 +156,9 @@ REGRAS OBRIGATÓRIAS:
 - Cite valores específicos em R$ nos pontos positivos/negativos
 - Compare combinedScore dos métodos ao ranquear performance
 - Valorize consistência: métodos presentes em muitos dias são mais confiáveis
+- CRÍTICO: Ao mencionar um método específico, use EXATAMENTE o WR% daquele método (não o geral)
+- CRÍTICO: Ao falar do WR geral, deixe CLARO que é "geral" ou "de todas as operações"
+- Nunca confunda métricas de um método específico com métricas gerais
 - Score: 0-100 baseado em Lucro (40%), WR vs Breakeven (35%), Volume/Consistência (25%)
 - Classificação: Excelente (80+), Bom (60-79), Regular (40-59), Atenção (20-39), Crítico (0-19)
 - Pontos Positivos: 3-5 aspectos fortes (mencione lucro R$, score, consistência)
