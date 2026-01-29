@@ -1,107 +1,97 @@
 
-## Plano: Corrigir Cálculo do Risco de Ruína para Usar Valor Real da Banca
+## Plano: Corrigir Redirecionamento Indesejado ao Navegar Entre Páginas
 
 ### Problema Identificado
 
-O cálculo do **Coeficiente de Ruína** está incorreto:
+No arquivo `src/contexts/AuthContext.tsx`, linha 30-32:
 
 ```typescript
-// ATUAL (errado) - linha 133 de useBankrollHealth.ts
-const bankrollEstimate = stakeValueReais * 100; // Assume 100 stakes = bankroll
-const ruinCoefficient = bankrollEstimate > 0 ? maxDrawdown / bankrollEstimate : 0;
+if (event === 'SIGNED_IN') {
+  navigate('/');
+}
 ```
 
-Isso significa que se a stake é R$100, o sistema assume que a banca é R$10.000, ignorando o valor real configurado pelo usuário na aba "Banca".
+O problema é que o Supabase dispara o evento `SIGNED_IN` em várias situações:
+1. Quando o usuário faz login (comportamento desejado)
+2. Quando o token é renovado automaticamente (indesejado)
+3. Quando você troca de aba e o Supabase revalida a sessão (indesejado)
+
+Isso causa o redirecionamento para `/` toda vez que qualquer uma dessas situações ocorre, mesmo que você esteja em `/performance`.
 
 ### Solução
 
-Passar o valor real da banca (`bankroll.total`) para o hook `useBankrollHealth` e usar esse valor no cálculo.
+Adicionar uma verificação para só redirecionar quando realmente for um novo login, não uma revalidação de sessão existente.
 
 ### Arquivos a Modificar
 
 | Arquivo | Mudanças |
 |---------|----------|
-| `src/hooks/useBankrollHealth.ts` | Adicionar prop `bankrollTotal` e usar no cálculo |
-| `src/pages/Performance.tsx` | Passar `bankroll.total` para o hook |
-| `src/components/AIPerformanceAnalyzer.tsx` | Passar `bankrollTotal` para o hook |
+| `src/contexts/AuthContext.tsx` | Adicionar lógica para distinguir login real de revalidação |
 
 ### Detalhes Técnicos
 
-#### 1. Atualizar Interface do Hook
+#### Opção Implementada: Usar ref para rastrear primeiro carregamento
 
 ```typescript
-// src/hooks/useBankrollHealth.ts
-interface UseBankrollHealthProps {
-  games: Game[];
-  totalProfit: number;
-  winRate: number;
-  breakevenRate: number;
-  targetMonthlyStakes?: number;
-  stakeValueReais?: number;
-  bankrollTotal?: number;        // NOVO: Valor real da banca
-  uniqueLeagues?: number;
-  uniqueMethods?: number;
-}
+// ANTES (problema)
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (event === 'SIGNED_IN') {
+        navigate('/');  // Isso roda SEMPRE que SIGNED_IN dispara
+      }
+    }
+  );
+  // ...
+}, [navigate]);
+
+// DEPOIS (corrigido)
+const hasInitialized = useRef(false);
+
+useEffect(() => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      // Só redireciona em login real, não em revalidação de sessão
+      if (event === 'SIGNED_IN' && hasInitialized.current) {
+        navigate('/');
+      }
+    }
+  );
+
+  // Verificar sessão existente
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    setSession(session);
+    setUser(session?.user ?? null);
+    setLoading(false);
+    hasInitialized.current = true;  // Marca como inicializado APÓS carregar sessão
+  });
+
+  return () => subscription.unsubscribe();
+}, [navigate]);
 ```
 
-#### 2. Atualizar Cálculo do Coeficiente de Ruína
+### Lógica
 
-```typescript
-// ANTES (estimativa)
-const bankrollEstimate = stakeValueReais * 100;
-const ruinCoefficient = bankrollEstimate > 0 ? maxDrawdown / bankrollEstimate : 0;
-
-// DEPOIS (valor real)
-const actualBankroll = bankrollTotal || (stakeValueReais * 100); // fallback se não tiver
-const ruinCoefficient = actualBankroll > 0 ? maxDrawdown / actualBankroll : 0;
-```
-
-#### 3. Atualizar Performance.tsx
-
-```typescript
-// Passar bankroll.total para o hook
-const healthMetrics = useBankrollHealth({
-  games: games.filter(g => { /* ... */ }),
-  totalProfit: totalProfitReais,
-  winRate: overallStats.winRate,
-  breakevenRate,
-  targetMonthlyStakes: settings.metaMensalStakes,
-  stakeValueReais: parsedStake,
-  bankrollTotal: bankroll.total,  // NOVO
-  uniqueLeagues: leagueStats.length,
-  uniqueMethods: methodDetailStats.length,
-});
-```
-
-#### 4. Atualizar AIPerformanceAnalyzer.tsx
-
-```typescript
-const healthMetrics = useBankrollHealth({
-  games,
-  totalProfit,
-  winRate: statistics.overallStats.winRate,
-  breakevenRate: statistics.breakevenRate,
-  targetMonthlyStakes,
-  stakeValueReais,
-  bankrollTotal,  // NOVO - precisa receber como prop
-  uniqueLeagues: leagueStats.length,
-  uniqueMethods: statistics.methodDetailStats.length,
-});
-```
-
-### Exemplo Prático
-
-| Cenário | Antes (Estimativa) | Depois (Real) |
-|---------|-------------------|---------------|
-| Stake: R$100, Banca Real: R$5.000 | Banca usada: R$10.000 | Banca usada: R$5.000 |
-| Drawdown Máximo: R$500 | Risco: 5% | Risco: 10% |
+1. `hasInitialized` começa como `false`
+2. Quando o app carrega, verifica a sessão existente via `getSession()`
+3. Durante esse carregamento, se `SIGNED_IN` disparar (revalidação), `hasInitialized` ainda é `false`, então não redireciona
+4. Após carregar a sessão, `hasInitialized` vira `true`
+5. A partir daí, se `SIGNED_IN` disparar, é um login real (usuário acabou de fazer login) e aí sim redireciona
 
 ### Resultado Esperado
 
-O card "Risco de Ruína" mostrará a porcentagem correta baseada no valor real da banca configurado pelo usuário, proporcionando uma análise de risco mais precisa e relevante.
+- **Login real**: Usuário é redirecionado para `/` (comportamento desejado)
+- **Revalidação de token**: Usuário permanece na página atual
+- **Troca de aba**: Usuário permanece na página atual
 
 ### Benefícios
 
-1. **Precisão**: Cálculo usa dados reais configurados pelo usuário
-2. **Consistência**: Integração entre aba "Desempenho" e "Banca"
-3. **Risco realista**: Percentual de ruína reflete a situação real do trader
+1. **Navegação estável**: Usuário não é mais redirecionado inesperadamente
+2. **UX melhorada**: Pode alternar entre páginas sem perder contexto
+3. **Login funciona**: O redirecionamento após login real ainda funciona
