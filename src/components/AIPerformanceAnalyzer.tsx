@@ -38,6 +38,7 @@ interface AIPerformanceAnalyzerProps {
   games: Game[];
   stakeValueReais?: number;
   targetMonthlyStakes?: number;
+  bankrollTotal?: number;
 }
 
 export function AIPerformanceAnalyzer({ 
@@ -52,6 +53,7 @@ export function AIPerformanceAnalyzer({
   games,
   stakeValueReais = 100,
   targetMonthlyStakes = 30,
+  bankrollTotal,
 }: AIPerformanceAnalyzerProps) {
   const [analysis, setAnalysis] = useState<string>('');
   const [structuredAnalysis, setStructuredAnalysis] = useState<StructuredAnalysisData | null>(null);
@@ -73,6 +75,7 @@ export function AIPerformanceAnalyzer({
     breakevenRate: statistics.breakevenRate,
     targetMonthlyStakes,
     stakeValueReais,
+    bankrollTotal,
     uniqueLeagues: leagueStats.length,
     uniqueMethods: statistics.methodDetailStats.length,
   });
