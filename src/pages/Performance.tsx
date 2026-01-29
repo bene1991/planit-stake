@@ -179,6 +179,7 @@ export default function Performance() {
     breakevenRate,
     targetMonthlyStakes: settings.metaMensalStakes,
     stakeValueReais: parsedStake,
+    bankrollTotal: bankroll.total,
     uniqueLeagues: leagueStats.length,
     uniqueMethods: methodDetailStats.length,
   });
@@ -653,6 +654,7 @@ export default function Performance() {
           games={filteredGames}
           stakeValueReais={parsedStake}
           targetMonthlyStakes={settings.metaMensalStakes}
+          bankrollTotal={bankroll.total}
         />
       </div>
 

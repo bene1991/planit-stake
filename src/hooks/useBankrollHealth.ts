@@ -40,6 +40,7 @@ interface UseBankrollHealthProps {
   breakevenRate: number;
   targetMonthlyStakes?: number;
   stakeValueReais?: number;
+  bankrollTotal?: number;
   uniqueLeagues?: number;
   uniqueMethods?: number;
 }
@@ -51,6 +52,7 @@ export function useBankrollHealth({
   breakevenRate,
   targetMonthlyStakes = 30,
   stakeValueReais = 100,
+  bankrollTotal,
   uniqueLeagues = 1,
   uniqueMethods = 1,
 }: UseBankrollHealthProps): BankrollHealthMetrics {
@@ -130,8 +132,8 @@ export function useBankrollHealth({
 
     // Calculate metrics
     const recoveryRate = totalLossSum > 0 ? totalProfitSum / totalLossSum : totalProfitSum > 0 ? 10 : 0;
-    const bankrollEstimate = stakeValueReais * 100; // Assume 100 stakes = bankroll
-    const ruinCoefficient = bankrollEstimate > 0 ? maxDrawdown / bankrollEstimate : 0;
+    const actualBankroll = bankrollTotal || (stakeValueReais * 100); // Use real bankroll, fallback to estimate
+    const ruinCoefficient = actualBankroll > 0 ? maxDrawdown / actualBankroll : 0;
     const totalDays = sortedDates.length;
     const avgDailyProfit = totalDays > 0 ? totalProfit / totalDays : 0;
     const avgOperationProfit = allOperations.length > 0 ? totalProfit / allOperations.length : 0;
@@ -209,5 +211,5 @@ export function useBankrollHealth({
       avgDailyProfit,
       avgOperationProfit,
     };
-  }, [games, totalProfit, winRate, breakevenRate, targetMonthlyStakes, stakeValueReais, uniqueLeagues, uniqueMethods]);
+  }, [games, totalProfit, winRate, breakevenRate, targetMonthlyStakes, stakeValueReais, bankrollTotal, uniqueLeagues, uniqueMethods]);
 }
