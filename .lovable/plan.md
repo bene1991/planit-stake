@@ -1,97 +1,116 @@
 
-## Plano: Corrigir Redirecionamento Indesejado ao Navegar Entre Páginas
+
+## Plano: Corrigir Métricas Avançadas para Respeitar Filtro de Método
 
 ### Problema Identificado
 
-No arquivo `src/contexts/AuthContext.tsx`, linha 30-32:
+As métricas de saúde da banca (Drawdown Máximo, Maior Lucro, Maior Prejuízo, etc.) **não respeitam o filtro de método selecionado**. Isso acontece em dois pontos:
 
-```typescript
-if (event === 'SIGNED_IN') {
-  navigate('/');
-}
-```
-
-O problema é que o Supabase dispara o evento `SIGNED_IN` em várias situações:
-1. Quando o usuário faz login (comportamento desejado)
-2. Quando o token é renovado automaticamente (indesejado)
-3. Quando você troca de aba e o Supabase revalida a sessão (indesejado)
-
-Isso causa o redirecionamento para `/` toda vez que qualquer uma dessas situações ocorre, mesmo que você esteja em `/performance`.
+| Local | Problema |
+|-------|----------|
+| `Performance.tsx` linha 169-176 | Filtra jogos apenas por data, ignora `filters.selectedMethods` |
+| `useBankrollHealth.ts` linha 63-77 | Extrai TODAS as operações sem filtrar por método |
 
 ### Solução
 
-Adicionar uma verificação para só redirecionar quando realmente for um novo login, não uma revalidação de sessão existente.
+Adicionar suporte ao filtro de método no hook `useBankrollHealth`:
+
+1. Adicionar nova prop `selectedMethods?: string[]` na interface
+2. Ao extrair operações, filtrar apenas as que pertencem aos métodos selecionados
+3. Atualizar `Performance.tsx` para passar `filters.selectedMethods`
+4. Atualizar `AIPerformanceAnalyzer.tsx` para passar os métodos selecionados
 
 ### Arquivos a Modificar
 
-| Arquivo | Mudanças |
-|---------|----------|
-| `src/contexts/AuthContext.tsx` | Adicionar lógica para distinguir login real de revalidação |
+| Arquivo | Mudança |
+|---------|---------|
+| `src/hooks/useBankrollHealth.ts` | Adicionar prop e lógica de filtro por método |
+| `src/pages/Performance.tsx` | Passar `selectedMethods` para o hook |
+| `src/components/AIPerformanceAnalyzer.tsx` | Passar `selectedMethods` para o hook |
 
 ### Detalhes Técnicos
 
-#### Opção Implementada: Usar ref para rastrear primeiro carregamento
+#### 1. Atualizar Interface do Hook
 
 ```typescript
-// ANTES (problema)
-useEffect(() => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (event === 'SIGNED_IN') {
-        navigate('/');  // Isso roda SEMPRE que SIGNED_IN dispara
-      }
-    }
-  );
-  // ...
-}, [navigate]);
-
-// DEPOIS (corrigido)
-const hasInitialized = useRef(false);
-
-useEffect(() => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    (event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      // Só redireciona em login real, não em revalidação de sessão
-      if (event === 'SIGNED_IN' && hasInitialized.current) {
-        navigate('/');
-      }
-    }
-  );
-
-  // Verificar sessão existente
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    setSession(session);
-    setUser(session?.user ?? null);
-    setLoading(false);
-    hasInitialized.current = true;  // Marca como inicializado APÓS carregar sessão
-  });
-
-  return () => subscription.unsubscribe();
-}, [navigate]);
+// src/hooks/useBankrollHealth.ts
+interface UseBankrollHealthProps {
+  games: Game[];
+  totalProfit: number;
+  winRate: number;
+  breakevenRate: number;
+  targetMonthlyStakes?: number;
+  stakeValueReais?: number;
+  bankrollTotal?: number;
+  uniqueLeagues?: number;
+  uniqueMethods?: number;
+  selectedMethods?: string[];  // NOVO: IDs dos métodos selecionados
+}
 ```
 
-### Lógica
+#### 2. Filtrar Operações por Método
 
-1. `hasInitialized` começa como `false`
-2. Quando o app carrega, verifica a sessão existente via `getSession()`
-3. Durante esse carregamento, se `SIGNED_IN` disparar (revalidação), `hasInitialized` ainda é `false`, então não redireciona
-4. Após carregar a sessão, `hasInitialized` vira `true`
-5. A partir daí, se `SIGNED_IN` disparar, é um login real (usuário acabou de fazer login) e aí sim redireciona
+```typescript
+// ANTES (sem filtro de método)
+games.forEach(game => {
+  game.methodOperations?.forEach(op => {
+    if (op.result) {
+      allOperations.push({ ... });
+    }
+  });
+});
+
+// DEPOIS (com filtro de método)
+games.forEach(game => {
+  game.methodOperations?.forEach(op => {
+    if (!op.result) return;
+    
+    // Filtrar por método se houver seleção
+    if (selectedMethods && selectedMethods.length > 0) {
+      if (!selectedMethods.includes(op.methodId)) return;
+    }
+    
+    allOperations.push({ ... });
+  });
+});
+```
+
+#### 3. Atualizar Performance.tsx
+
+```typescript
+const healthMetrics = useBankrollHealth({
+  games: games.filter(g => {
+    if (filters.dateFrom && filters.dateTo) {
+      const gameDate = new Date(`${g.date}T12:00:00`);
+      return gameDate >= filters.dateFrom && gameDate <= filters.dateTo;
+    }
+    return true;
+  }),
+  totalProfit: totalProfitReais,
+  winRate: overallStats.winRate,
+  breakevenRate,
+  targetMonthlyStakes: settings.metaMensalStakes,
+  stakeValueReais: parsedStake,
+  bankrollTotal: bankroll.total,
+  uniqueLeagues: leagueStats.length,
+  uniqueMethods: methodDetailStats.length,
+  selectedMethods: filters.selectedMethods,  // NOVO
+});
+```
 
 ### Resultado Esperado
 
-- **Login real**: Usuário é redirecionado para `/` (comportamento desejado)
-- **Revalidação de token**: Usuário permanece na página atual
-- **Troca de aba**: Usuário permanece na página atual
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| Drawdown Máximo | Sempre mostra de todos os métodos | Mostra apenas do(s) método(s) filtrado(s) |
+| Maior Lucro | Sempre mostra de todos os métodos | Mostra apenas do(s) método(s) filtrado(s) |
+| Maior Prejuízo | Sempre mostra de todos os métodos | Mostra apenas do(s) método(s) filtrado(s) |
+| Taxa de Recuperação | Sempre mostra de todos os métodos | Mostra apenas do(s) método(s) filtrado(s) |
+| Risco de Ruína | Sempre mostra de todos os métodos | Mostra apenas do(s) método(s) filtrado(s) |
 
 ### Benefícios
 
-1. **Navegação estável**: Usuário não é mais redirecionado inesperadamente
-2. **UX melhorada**: Pode alternar entre páginas sem perder contexto
-3. **Login funciona**: O redirecionamento após login real ainda funciona
+1. **Consistência**: Todas as métricas respeitam os mesmos filtros
+2. **Análise precisa**: Usuário pode analisar drawdown de um método específico
+3. **Decisões melhores**: Identificar quais métodos têm maior risco
+
