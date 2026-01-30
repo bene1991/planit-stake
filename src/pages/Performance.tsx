@@ -182,6 +182,7 @@ export default function Performance() {
     bankrollTotal: bankroll.total,
     uniqueLeagues: leagueStats.length,
     uniqueMethods: methodDetailStats.length,
+    selectedMethods: filters.selectedMethods,
   });
   
   const { metrics, loading: statusLoading } = useOperationalStatus(operationalFilters, parsedStake);
@@ -655,6 +656,7 @@ export default function Performance() {
           stakeValueReais={parsedStake}
           targetMonthlyStakes={settings.metaMensalStakes}
           bankrollTotal={bankroll.total}
+          selectedMethods={filters.selectedMethods}
         />
       </div>
 

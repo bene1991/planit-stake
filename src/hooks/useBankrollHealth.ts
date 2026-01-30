@@ -43,6 +43,7 @@ interface UseBankrollHealthProps {
   bankrollTotal?: number;
   uniqueLeagues?: number;
   uniqueMethods?: number;
+  selectedMethods?: string[];
 }
 
 export function useBankrollHealth({
@@ -55,24 +56,30 @@ export function useBankrollHealth({
   bankrollTotal,
   uniqueLeagues = 1,
   uniqueMethods = 1,
+  selectedMethods,
 }: UseBankrollHealthProps): BankrollHealthMetrics {
   return useMemo(() => {
-    // Extract all operations with results
+    // Extract all operations with results, filtered by selected methods
     const allOperations: MethodOperationWithGame[] = [];
     
     games.forEach(game => {
       game.methodOperations?.forEach(op => {
-        if (op.result) {
-          allOperations.push({
-            result: op.result,
-            profit: op.profit,
-            stakeValue: op.stakeValue,
-            odd: op.odd,
-            methodId: op.methodId,
-            gameDate: game.date,
-            league: game.league,
-          });
+        if (!op.result) return;
+        
+        // Filter by method if selection exists
+        if (selectedMethods && selectedMethods.length > 0) {
+          if (!selectedMethods.includes(op.methodId)) return;
         }
+        
+        allOperations.push({
+          result: op.result,
+          profit: op.profit,
+          stakeValue: op.stakeValue,
+          odd: op.odd,
+          methodId: op.methodId,
+          gameDate: game.date,
+          league: game.league,
+        });
       });
     });
 
@@ -211,5 +218,5 @@ export function useBankrollHealth({
       avgDailyProfit,
       avgOperationProfit,
     };
-  }, [games, totalProfit, winRate, breakevenRate, targetMonthlyStakes, stakeValueReais, bankrollTotal, uniqueLeagues, uniqueMethods]);
+  }, [games, totalProfit, winRate, breakevenRate, targetMonthlyStakes, stakeValueReais, bankrollTotal, uniqueLeagues, uniqueMethods, selectedMethods]);
 }

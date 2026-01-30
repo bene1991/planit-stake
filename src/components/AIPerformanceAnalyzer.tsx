@@ -39,6 +39,7 @@ interface AIPerformanceAnalyzerProps {
   stakeValueReais?: number;
   targetMonthlyStakes?: number;
   bankrollTotal?: number;
+  selectedMethods?: string[];
 }
 
 export function AIPerformanceAnalyzer({ 
@@ -54,6 +55,7 @@ export function AIPerformanceAnalyzer({
   stakeValueReais = 100,
   targetMonthlyStakes = 30,
   bankrollTotal,
+  selectedMethods,
 }: AIPerformanceAnalyzerProps) {
   const [analysis, setAnalysis] = useState<string>('');
   const [structuredAnalysis, setStructuredAnalysis] = useState<StructuredAnalysisData | null>(null);
@@ -78,6 +80,7 @@ export function AIPerformanceAnalyzer({
     bankrollTotal,
     uniqueLeagues: leagueStats.length,
     uniqueMethods: statistics.methodDetailStats.length,
+    selectedMethods,
   });
 
   // Check if any filter is active
