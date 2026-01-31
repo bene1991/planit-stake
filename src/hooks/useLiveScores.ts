@@ -36,8 +36,9 @@ export interface GoalDetectedCallback {
   (gameId: string, team: 'home' | 'away', homeScore: number, awayScore: number, game: Game): void;
 }
 
-// Refresh interval: 20 seconds
-const REFRESH_INTERVAL = 20 * 1000;
+// Refresh interval: 20 seconds when live games, 120 seconds when idle
+const REFRESH_INTERVAL_ACTIVE = 20 * 1000;
+const REFRESH_INTERVAL_IDLE = 120 * 1000;
 
 // Minimum interval between calls (throttle protection)
 const MIN_CALL_INTERVAL = 10 * 1000;
@@ -213,41 +214,19 @@ export function useLiveScores(
         }
       }
       
-      // Fetch events for games with goals (max 5 to save credits)
-      console.log(`[useLiveScores] Games with goals to fetch events: ${fixturesWithGoals.length}`, fixturesWithGoals);
+      // DISABLED: Fetching events for games with goals - saves ~540 credits/hour
+      // The placar (score) is already shown from live=all response
+      // Goal scorers are nice-to-have but not essential
+      console.log(`[useLiveScores] Skipping event fetch for ${fixturesWithGoals.length} games with goals (API optimization)`);
       
+      /* DISABLED TO SAVE API CREDITS
       for (const fixtureInfo of fixturesWithGoals.slice(0, 1)) {
-        try {
-          console.log(`[useLiveScores] Fetching events for fixture ${fixtureInfo.id}...`);
-          const { data: detailsData, error: detailsError } = await supabase.functions.invoke('get-fixture-details', {
-            body: { fixture_id: parseInt(fixtureInfo.id) }
-          });
-          
-          if (detailsError) {
-            console.warn(`[useLiveScores] Error fetching events for fixture ${fixtureInfo.id}:`, detailsError);
-            continue;
-          }
-          
-          console.log(`[useLiveScores] Got key_events for fixture ${fixtureInfo.id}:`, detailsData?.key_events?.length || 0);
-          
-          if (detailsData?.key_events?.length) {
-            const existingScore = newScores.get(fixtureInfo.id);
-            if (existingScore) {
-              const goalEvents = detailsData.key_events.filter((e: { type: string }) => e.type === 'goal');
-              console.log(`[useLiveScores] Adding ${goalEvents.length} goal events to fixture ${fixtureInfo.id}`);
-              newScores.set(fixtureInfo.id, {
-                ...existingScore,
-                events: goalEvents,
-              });
-            }
-          }
-        } catch (err) {
-          console.warn(`[useLiveScores] Failed to fetch events for fixture ${fixtureInfo.id}:`, err);
-        }
+        // ... event fetching code removed
       }
+      */
       
-      // Check for games marked as "Live" in DB but not in live=all response
-      // These games likely just finished - fetch individually to get final score
+      // DISABLED: Individual fetch for games that left live=all - saves credits
+      // These games likely just finished but live=all should catch them on next cycle
       const liveGamesNotInResponse = games.filter(g => 
         g.api_fixture_id && 
         g.status === 'Live' && 
@@ -255,105 +234,40 @@ export function useLiveScores(
         !persistedScoresRef.current.has(g.id)
       );
       
-      // Fetch these games individually (max 3 per cycle to save credits)
-      for (const game of liveGamesNotInResponse.slice(0, 1)) {
-        try {
-          console.log(`[useLiveScores] Game ${game.homeTeam} vs ${game.awayTeam} not in live=all, fetching individually...`);
-          
-          const { data: fixtureData } = await supabase.functions.invoke('api-football', {
-            body: {
-              endpoint: 'fixtures',
-              params: { id: game.api_fixture_id }
-            }
-          });
-          
-          const fixture = fixtureData?.response?.[0];
-          if (fixture) {
-            const status = fixture.fixture?.status?.short ?? 'NS';
-            const homeGoals = fixture.goals?.home ?? 0;
-            const awayGoals = fixture.goals?.away ?? 0;
-            
-            newScores.set(game.api_fixture_id!, {
-              fixtureId: parseInt(game.api_fixture_id!),
-              homeScore: homeGoals,
-              awayScore: awayGoals,
-              elapsed: fixture.fixture?.status?.elapsed ?? null,
-              status: status,
-              statusLong: fixture.fixture?.status?.long ?? 'Not Started',
-              homeTeamId: fixture.teams?.home?.id,
-              awayTeamId: fixture.teams?.away?.id,
-            });
-            
-            // If finished, persist the score
-            if (FINISHED_STATUSES.includes(status)) {
-              persistedScoresRef.current.add(game.id);
-              
-              console.log(`[useLiveScores] Persisting final score for ${game.homeTeam} vs ${game.awayTeam}: ${homeGoals}-${awayGoals}`);
-              
-              supabase
-                .from('games')
-                .update({
-                  final_score_home: homeGoals,
-                  final_score_away: awayGoals,
-                  status: 'Finished'
-                })
-                .eq('id', game.id)
-                .then(({ error }) => {
-                  if (error) {
-                    console.error('[useLiveScores] Failed to persist score:', error);
-                    persistedScoresRef.current.delete(game.id);
-                  } else {
-                    console.log(`[useLiveScores] Score persisted for game ${game.id}`);
-                    onScorePersisted?.(game.id, homeGoals, awayGoals);
-                  }
-                });
-            }
-          }
-        } catch (err) {
-          console.warn(`[useLiveScores] Failed to fetch fixture ${game.api_fixture_id}:`, err);
-        }
+      if (liveGamesNotInResponse.length > 0) {
+        console.log(`[useLiveScores] ${liveGamesNotInResponse.length} live games not in response - will retry next cycle (API optimization)`);
       }
       
-      // For games not in live=all response, fetch individually if they might be starting soon
+      /* DISABLED TO SAVE API CREDITS - games will be caught on next live=all cycle or backfill
+      for (const game of liveGamesNotInResponse.slice(0, 1)) {
+        // ... individual fetch code removed
+      }
+      */
+      
+      // DISABLED: Fetching games starting soon - saves credits
+      // These will appear in live=all once they actually start
       const pendingGames = games.filter(g => 
         g.api_fixture_id && 
         g.status === 'Pending' && 
         !newScores.has(g.api_fixture_id)
       );
       
-      // Check if any pending game is about to start (within 5 minutes)
       const now = new Date();
       const gamesStartingSoon = pendingGames.filter(g => {
         const gameTime = new Date(`${g.date}T${g.time}`);
         const diffMs = gameTime.getTime() - now.getTime();
-        return diffMs > -60000 && diffMs < 5 * 60 * 1000; // -1 to +5 min window
+        return diffMs > -60000 && diffMs < 5 * 60 * 1000;
       });
       
-      // Fetch individual fixture data for games starting soon (max 3 to save credits)
-      for (const game of gamesStartingSoon.slice(0, 1)) {
-        try {
-          const { data: fixtureData } = await supabase.functions.invoke('api-football', {
-            body: {
-              endpoint: 'fixtures',
-              params: { id: game.api_fixture_id }
-            }
-          });
-          
-          const fixture = fixtureData?.response?.[0];
-          if (fixture) {
-            newScores.set(game.api_fixture_id!, {
-              fixtureId: parseInt(game.api_fixture_id!),
-              homeScore: fixture.goals?.home ?? 0,
-              awayScore: fixture.goals?.away ?? 0,
-              elapsed: fixture.fixture?.status?.elapsed ?? null,
-              status: fixture.fixture?.status?.short ?? 'NS',
-              statusLong: fixture.fixture?.status?.long ?? 'Not Started',
-            });
-          }
-        } catch (err) {
-          console.warn(`[useLiveScores] Failed to fetch fixture ${game.api_fixture_id}:`, err);
-        }
+      if (gamesStartingSoon.length > 0) {
+        console.log(`[useLiveScores] ${gamesStartingSoon.length} games starting soon - waiting for live=all (API optimization)`);
       }
+      
+      /* DISABLED TO SAVE API CREDITS - games will appear in live=all when they start
+      for (const game of gamesStartingSoon.slice(0, 1)) {
+        // ... fetch code removed
+      }
+      */
       
       // BACKFILL: Fetch scores for finished games that have no score in DB
       if (gamesNeedingBackfill.length > 0) {
@@ -435,16 +349,20 @@ export function useLiveScores(
   // Start/stop interval based on whether there are games to monitor
   // CRITICAL: fetchLiveScores removed from deps to prevent infinite loop!
   useEffect(() => {
+    // Determine refresh interval based on active live games
+    const hasLiveGames = games.some(g => g.status === 'Live');
+    const refreshInterval = hasLiveGames ? REFRESH_INTERVAL_ACTIVE : REFRESH_INTERVAL_IDLE;
+    
     if (hasGamesToMonitor) {
-      console.log('[useLiveScores] Starting 20s interval for', fixtureIds.length, 'games');
+      console.log(`[useLiveScores] Starting ${refreshInterval/1000}s interval for ${fixtureIds.length} games (${hasLiveGames ? 'ACTIVE' : 'IDLE'} mode)`);
       
       // Fetch immediately using ref
       fetchLiveScoresRef.current?.();
       
-      // Then every 20 seconds using ref
+      // Dynamic interval based on live games
       intervalRef.current = setInterval(() => {
         fetchLiveScoresRef.current?.();
-      }, REFRESH_INTERVAL);
+      }, refreshInterval);
       
       return () => {
         if (intervalRef.current) {
@@ -460,7 +378,7 @@ export function useLiveScores(
       }
     }
     // REMOVED: fetchLiveScores from dependencies to prevent race condition!
-  }, [hasGamesToMonitor, fixtureIds.length]);
+  }, [hasGamesToMonitor, fixtureIds.length, games]);
   
   // Cleanup on unmount
   useEffect(() => {

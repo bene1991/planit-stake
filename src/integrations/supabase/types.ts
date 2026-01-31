@@ -487,6 +487,84 @@ export type Database = {
         }
         Relationships: []
       }
+      monthly_reports: {
+        Row: {
+          ai_negative_points: Json | null
+          ai_positive_points: Json | null
+          ai_score: number | null
+          ai_suggestions: Json | null
+          ai_summary: string | null
+          best_day_profit: number | null
+          best_method_name: string | null
+          best_method_profit: number | null
+          closed_at: string | null
+          created_at: string | null
+          greens: number
+          id: string
+          max_drawdown: number
+          max_green_streak: number
+          max_red_streak: number
+          owner_id: string
+          profit_money: number
+          profit_stakes: number
+          reds: number
+          total_operations: number
+          win_rate: number
+          worst_day_profit: number | null
+          year_month: string
+        }
+        Insert: {
+          ai_negative_points?: Json | null
+          ai_positive_points?: Json | null
+          ai_score?: number | null
+          ai_suggestions?: Json | null
+          ai_summary?: string | null
+          best_day_profit?: number | null
+          best_method_name?: string | null
+          best_method_profit?: number | null
+          closed_at?: string | null
+          created_at?: string | null
+          greens?: number
+          id?: string
+          max_drawdown?: number
+          max_green_streak?: number
+          max_red_streak?: number
+          owner_id: string
+          profit_money?: number
+          profit_stakes?: number
+          reds?: number
+          total_operations?: number
+          win_rate?: number
+          worst_day_profit?: number | null
+          year_month: string
+        }
+        Update: {
+          ai_negative_points?: Json | null
+          ai_positive_points?: Json | null
+          ai_score?: number | null
+          ai_suggestions?: Json | null
+          ai_summary?: string | null
+          best_day_profit?: number | null
+          best_method_name?: string | null
+          best_method_profit?: number | null
+          closed_at?: string | null
+          created_at?: string | null
+          greens?: number
+          id?: string
+          max_drawdown?: number
+          max_green_streak?: number
+          max_red_streak?: number
+          owner_id?: string
+          profit_money?: number
+          profit_stakes?: number
+          reds?: number
+          total_operations?: number
+          win_rate?: number
+          worst_day_profit?: number | null
+          year_month?: string
+        }
+        Relationships: []
+      }
       operational_settings: {
         Row: {
           commission_rate: number | null
