@@ -14,6 +14,7 @@ import { Layout } from "./components/Layout";
 import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
 import Performance from "./pages/Performance";
+import MonthlyReport from "./pages/MonthlyReport";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -54,6 +55,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><Performance /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/monthly-report"
+          element={
+            <ProtectedRoute>
+              <Layout><MonthlyReport /></Layout>
             </ProtectedRoute>
           }
         />

@@ -16,18 +16,18 @@ const cache = new Map<string, CacheEntry>();
 
 // Cache TTL configuration (in milliseconds) - OPTIMIZED to reduce API consumption
 const CACHE_TTL = {
-  live: 30 * 1000,           // 30 seconds for live games (was 15s)
-  fixtures_date: 5 * 60 * 1000,  // 5 minutes for fixtures by date (was 2 min)
-  fixtures_id: 30 * 1000,    // 30 seconds for specific fixture (was 15s)
-  statistics: 30 * 1000,     // 30 seconds for statistics (was 15s)
-  events: 30 * 1000,         // 30 seconds for events (was 15s)
+  live: 40 * 1000,           // 40 seconds for live games (was 30s) - saves credits
+  fixtures_date: 10 * 60 * 1000,  // 10 minutes for fixtures by date (was 5 min)
+  fixtures_id: 60 * 1000,    // 60 seconds for specific fixture (was 30s)
+  statistics: 60 * 1000,     // 60 seconds for statistics (was 30s)
+  events: 60 * 1000,         // 60 seconds for events (was 30s)
   leagues: 24 * 60 * 60 * 1000,  // 24 hours for leagues
   teams: 24 * 60 * 60 * 1000,    // 24 hours for teams
   standings: 60 * 60 * 1000,     // 1 hour for standings
-  odds: 5 * 60 * 1000,       // 5 minutes for pre-match odds
-  odds_live: 60 * 1000,      // 60 seconds for live odds (was 30s)
+  odds: 10 * 60 * 1000,      // 10 minutes for pre-match odds (was 5 min)
+  odds_live: 120 * 1000,     // 120 seconds for live odds (was 60s)
   bookmakers: 24 * 60 * 60 * 1000, // 24 hours for bookmakers list
-  default: 2 * 60 * 1000,    // 2 minutes default (was 1 min)
+  default: 5 * 60 * 1000,    // 5 minutes default (was 2 min)
 };
 
 function getCacheKey(endpoint: string, params: Record<string, unknown>): string {
