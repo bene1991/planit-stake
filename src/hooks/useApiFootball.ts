@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { emitApiUsageUpdate } from './useApiRequestTracker';
 
 // Cache global para fixtures por data (evita requests duplicados)
 export interface FixturesCacheEntry {
@@ -188,6 +189,12 @@ export function useApiFootball<T>(
       if (result.errors && Object.keys(result.errors).length > 0) {
         const errorMsg = Object.values(result.errors).join(', ');
         console.warn('API-Football errors:', errorMsg);
+      }
+
+      // Emit API usage event if rate limit data is present
+      const rateLimit = (result as unknown as { _rateLimit?: { used: number; limit: number; remaining: number } })._rateLimit;
+      if (rateLimit?.used !== undefined && rateLimit?.limit) {
+        emitApiUsageUpdate(rateLimit.used, rateLimit.limit, rateLimit.remaining);
       }
 
       setData(result.response);

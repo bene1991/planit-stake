@@ -195,6 +195,11 @@ serve(async (req) => {
 
     const data = await response.json();
 
+    // Extract rate limit headers from API-Football response
+    const rateLimitLimit = parseInt(response.headers.get('x-ratelimit-requests-limit') || '0', 10);
+    const rateLimitRemaining = parseInt(response.headers.get('x-ratelimit-requests-remaining') || '0', 10);
+    const rateLimitUsed = rateLimitLimit > 0 ? rateLimitLimit - rateLimitRemaining : 0;
+
     if (!response.ok) {
       console.error('API-Football error:', JSON.stringify(data));
       throw new Error(`API-Football error: ${data.message || response.statusText}`);
@@ -206,9 +211,11 @@ serve(async (req) => {
       // Still return the data, let frontend handle the errors
     }
 
-    // Log rate limit info
-    if (data.paging) {
-      console.log(`[RATE LIMIT] Current: ${data.paging.current}/${data.paging.total}`);
+    // Log rate limit info from headers (real API usage)
+    if (rateLimitLimit > 0) {
+      console.log(`[RATE LIMIT] Used: ${rateLimitUsed}/${rateLimitLimit}, Remaining: ${rateLimitRemaining}`);
+    } else if (data.paging) {
+      console.log(`[RATE LIMIT] Paging: ${data.paging.current}/${data.paging.total}`);
     }
 
     // Cache the result
@@ -216,8 +223,18 @@ serve(async (req) => {
     setCache(cacheKey, data, ttl);
     console.log(`[CACHED] ${cacheKey} for ${ttl/1000}s`);
 
+    // Include rate limit data in response for frontend tracking
+    const responseData = {
+      ...data,
+      _rateLimit: rateLimitLimit > 0 ? {
+        limit: rateLimitLimit,
+        remaining: rateLimitRemaining,
+        used: rateLimitUsed
+      } : null
+    };
+
     return new Response(
-      JSON.stringify(data),
+      JSON.stringify(responseData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

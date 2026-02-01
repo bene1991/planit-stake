@@ -1,11 +1,11 @@
-import { Activity, AlertTriangle } from 'lucide-react';
+import { Activity, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApiRequestTracker } from '@/hooks/useApiRequestTracker';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
 
 export function ApiRequestIndicator() {
-  const { requestCount, dailyLimit, percentage, remaining } = useApiRequestTracker();
+  const { requestCount, dailyLimit, percentage, remaining, isFromApi } = useApiRequestTracker();
 
   const getColor = () => {
     if (percentage >= 90) return 'text-destructive';
@@ -54,15 +54,28 @@ export function ApiRequestIndicator() {
                     : 'hsl(var(--primary))'
               }}
             />
-            <div className="text-xs text-muted-foreground">
-              <p>{requestCount.toLocaleString()} de {dailyLimit.toLocaleString()} requisições usadas</p>
-              <p>{remaining.toLocaleString()} restantes hoje</p>
+          <div className="text-xs text-muted-foreground">
+            <p>{requestCount.toLocaleString()} de {dailyLimit.toLocaleString()} requisições usadas</p>
+            <p>{remaining.toLocaleString()} restantes hoje</p>
+            <div className="flex items-center gap-1 mt-1">
+              {isFromApi ? (
+                <>
+                  <Wifi className="h-3 w-3 text-green-500" />
+                  <span className="text-green-600 dark:text-green-400">Sincronizado com API</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3 w-3 text-yellow-500" />
+                  <span className="text-yellow-600 dark:text-yellow-400">Estimativa local</span>
+                </>
+              )}
             </div>
-            {percentage >= 70 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                ⚠️ Considere aumentar o intervalo de atualização
-              </p>
-            )}
+          </div>
+          {percentage >= 70 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              ⚠️ Considere aumentar o intervalo de atualização
+            </p>
+          )}
           </div>
         </TooltipContent>
       </Tooltip>
