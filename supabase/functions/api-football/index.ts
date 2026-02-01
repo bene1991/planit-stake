@@ -14,6 +14,9 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
+// Store the latest rate limit data globally (persists across requests)
+let lastRateLimit: { limit: number; remaining: number; used: number } | null = null;
+
 // Cache TTL configuration (in milliseconds) - OPTIMIZED to reduce API consumption
 const CACHE_TTL = {
   live: 40 * 1000,           // 40 seconds for live games (was 30s) - saves credits
@@ -158,11 +161,13 @@ serve(async (req) => {
     const cachedData = getFromCache(cacheKey);
     if (cachedData) {
       console.log(`[CACHE HIT] ${cacheKey}`);
+      // Include last known rate limit even for cached responses
       return new Response(
         JSON.stringify({ 
           ...cachedData as object, 
           _cached: true,
-          _cacheKey: cacheKey 
+          _cacheKey: cacheKey,
+          _rateLimit: lastRateLimit
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -211,9 +216,15 @@ serve(async (req) => {
       // Still return the data, let frontend handle the errors
     }
 
-    // Log rate limit info from headers (real API usage)
+    // Log rate limit info from headers (real API usage) and store globally
     if (rateLimitLimit > 0) {
       console.log(`[RATE LIMIT] Used: ${rateLimitUsed}/${rateLimitLimit}, Remaining: ${rateLimitRemaining}`);
+      // Store globally so cache hits can also return rate limit data
+      lastRateLimit = {
+        limit: rateLimitLimit,
+        remaining: rateLimitRemaining,
+        used: rateLimitUsed
+      };
     } else if (data.paging) {
       console.log(`[RATE LIMIT] Paging: ${data.paging.current}/${data.paging.total}`);
     }
