@@ -1,178 +1,139 @@
 
-## Plano: Otimização de API + Página de Fechamento Mensal
+## Diagnóstico Completo: Consumo de API-Football
 
-### Diagnóstico do Consumo de API
+### Problema Principal: Múltiplas Fontes de Consumo Simultâneas
 
-Após análise detalhada do código, identifiquei os seguintes pontos de consumo:
+O sistema atual tem **VÁRIAS camadas de refresh rodando em paralelo**, o que explica o esgotamento rápido dos créditos:
 
-| Chamada | Frequência | Créditos/hora | Observação |
-|---------|------------|---------------|------------|
-| `live=all` (scores) | A cada 20s | ~180/hora | **Principal** - necessário |
-| `get-fixture-details` | 1 por ciclo (jogos com gols) | ~180/hora | **Problema** - 3 chamadas API cada! |
-| Backfill (jogos finalizados) | 1 por ciclo | ~180/hora | Desnecessário se já finalizado |
-| Jogos começando em breve | 1 por ciclo | ~180/hora | Pode ser removido |
-| ApiGameBrowser (por data) | Manual | Variável | OK - cache 10 min |
+| Fonte | Intervalo | Créditos/hora | Localização |
+|-------|-----------|---------------|-------------|
+| `useLiveScores` (DailyPlanning) | 20s (live) / 120s (idle) | ~180/hora | `DailyPlanning.tsx` linha 4 |
+| `useLiveFixtures` (LiveGames) | 30s fixo | ~120/hora | `LiveGames.tsx` linha 28 |
+| `useFixtureStatistics` (LiveGames) | 30s fixo | ~120/hora | `LiveGames.tsx` linha 41 |
+| `useFixtureEvents` (LiveGames) | 30s fixo | ~120/hora | `LiveGames.tsx` linha 42 |
+| `useOptimizedLiveStats` (internamente) | 10 min | ~6/hora | Usado em expandir stats |
+| Backfill (jogos finalizados) | 1 por ciclo | ~180/hora | `useLiveScores.ts` linha 276 |
 
-#### Problema Principal Identificado
+**Total estimado quando páginas estão abertas: ~720+ créditos/hora**
 
-O `get-fixture-details` faz **3 chamadas API em paralelo** por fixture (linha 392-401):
-```typescript
-const [fixtureRes, statsRes, eventsRes] = await Promise.all([
-  fetch(`.../fixtures?id=${fixtureIdNum}`),      // 1 crédito
-  fetch(`.../fixtures/statistics?fixture=...`),  // 1 crédito  
-  fetch(`.../fixtures/events?fixture=...`),      // 1 crédito
-]);
-```
+### Pontos Críticos Identificados
 
-Com 90 jogos e atualização a cada 20s, se apenas 1 jogo tiver gol por ciclo:
-- `live=all`: 180/hora
-- `get-fixture-details`: 3 × 180 = **540/hora** (por 1 jogo com gol)
+1. **LiveGames.tsx faz 3 requests a cada 30s** (linha 28, 41, 42)
+   - `live=all` (todos jogos ao vivo)
+   - `fixtures/statistics` (estatísticas do jogo selecionado)
+   - `fixtures/events` (eventos do jogo selecionado)
+   - = 360 créditos/hora só nessa página
 
-**Total potencial: 720+ créditos/hora** - esgota 7500 em ~10 horas
+2. **DailyPlanning.tsx usa `useLiveScores`** que também chama `live=all`
+   - Duplicação com LiveGames se ambas estão abertas
 
----
+3. **Backfill consome 1 crédito por ciclo** (a cada 20s)
+   - Com muitos jogos finalizados sem score = muitos créditos
 
-### Soluções de Otimização
-
-#### 1. Desativar Busca de Detalhes Automática
-O sistema já mostra placar pelo `live=all`. A busca de eventos (artilheiros) é extra e consome muito.
-
-**Ação**: Remover a chamada `get-fixture-details` do loop de `useLiveScores` (linhas 219-247)
-
-#### 2. Eliminar Fetches Individuais Desnecessários
-- **Jogos que saíram do live=all** (linha 259): Limitar a 0 por ciclo
-- **Jogos começando em breve** (linha 333): Limitar a 0 por ciclo
-- **Backfill** (linha 362): Manter apenas 1 por ciclo (essencial)
-
-#### 3. Intervalo Dinâmico Mais Agressivo
-Quando não há jogos ao vivo, aumentar intervalo para 120s (não apenas 60s)
-
-#### 4. Cache Mais Longo no Edge
-Aumentar TTL do cache do `live=all` de 30s para 40s
+4. **Intervalo configurável (useRefreshInterval) não é respeitado** por todas as fontes
+   - Somente `useLiveScores` usa o intervalo dinâmico
+   - `LiveGames.tsx` ignora e usa 30s fixo
 
 ---
 
-### Estimativa Após Otimização
+## Plano de Economia Extrema (SEM CUSTO ADICIONAL)
 
-| Chamada | Frequência | Créditos/hora |
-|---------|------------|---------------|
-| `live=all` | A cada 20s | ~180/hora |
-| Backfill | 1 por ciclo | ~180/hora |
-| **Total** | | **~360/hora** |
+### Fase 1: Centralizar Requests de Live Games
 
-Com 7500 créditos: **~20 horas de operação** (dia inteiro garantido)
+**Objetivo**: Eliminar duplicação entre `useLiveScores` e `useLiveFixtures`
 
----
+| Arquivo | Mudança |
+|---------|---------|
+| `src/pages/LiveGames.tsx` | Usar o cache global do `useLiveScores` em vez de `useLiveFixtures` próprio |
+| `src/hooks/useLiveScores.ts` | Exportar todos os fixtures (não só os monitorados) para reuso |
 
-### Parte 2: Página de Fechamento Mensal
+### Fase 2: Desabilitar Auto-fetch de Estatísticas na LiveGames
 
-Nova página `/monthly-report` com:
+As estatísticas detalhadas (`statistics` e `events`) consomem 2 créditos por fetch:
 
-#### Funcionalidades
+| Arquivo | Mudança |
+|---------|---------|
+| `src/pages/LiveGames.tsx` linha 41-42 | Remover `refetchInterval: 30000` → só buscar sob demanda |
 
-1. **Seletor de Mês/Ano**
-   - Dropdown para escolher período
-   - Botão "Fechar Mês" para gerar relatório final
+### Fase 3: Aumentar Intervalos e Respeitar Configuração
 
-2. **Resumo Estatístico Completo**
-   - Total de operações
-   - Greens / Reds
-   - Win Rate geral
-   - Lucro em R$ e Stakes
-   - Drawdown máximo do mês
-   - Maior sequência de greens/reds
+| Arquivo | Mudança |
+|---------|---------|
+| `src/pages/LiveGames.tsx` | Usar `useRefreshInterval()` em vez de 30s fixo |
+| `src/hooks/useLiveScores.ts` | Aumentar `REFRESH_INTERVAL_ACTIVE` de 20s para 30s |
 
-3. **Comparativo com Mês Anterior**
-   - Evolução do lucro
-   - Mudança no win rate
-   - Volume de operações
+### Fase 4: Modo de Economia Extrema (Novo)
 
-4. **Ranking de Métodos do Mês**
-   - Tabela com performance de cada método
-   - Ordenado por lucro ou win rate
+Criar um **modo de economia** que o usuário pode ativar quando créditos estão baixos:
 
-5. **Análise IA do Mês** (novo)
-   - Resumo narrativo gerado pela IA
-   - Pontos positivos e negativos
-   - Recomendações para o próximo mês
-   - Score de saúde da banca no período
+| Funcionalidade | Comportamento Normal | Modo Economia |
+|----------------|---------------------|---------------|
+| Refresh de placares | 20-30s | 60s |
+| Stats automáticas | Sim | Desabilitado |
+| Backfill | 1 por ciclo | Desabilitado |
+| LiveGames page | Ativo | Apenas manual |
 
-6. **Histórico de Fechamentos**
-   - Lista de meses anteriores fechados
-   - Possibilidade de revisar qualquer mês
+### Fase 5: Cache Agressivo no Edge Function
 
-#### Nova Tabela no Banco
-
-```sql
-CREATE TABLE monthly_reports (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id UUID NOT NULL,
-  year_month TEXT NOT NULL,  -- "2026-01"
-  total_operations INTEGER,
-  greens INTEGER,
-  reds INTEGER,
-  win_rate NUMERIC,
-  profit_money NUMERIC,
-  profit_stakes NUMERIC,
-  max_drawdown NUMERIC,
-  max_green_streak INTEGER,
-  max_red_streak INTEGER,
-  ai_score NUMERIC,
-  ai_summary TEXT,
-  ai_positive_points JSONB,
-  ai_negative_points JSONB,
-  ai_suggestions JSONB,
-  closed_at TIMESTAMPTZ DEFAULT now(),
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- RLS
-ALTER TABLE monthly_reports ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can manage own reports" ON monthly_reports
-  FOR ALL USING (auth.uid() = owner_id);
-
--- Índice único por usuário/mês
-CREATE UNIQUE INDEX idx_monthly_reports_owner_month 
-  ON monthly_reports(owner_id, year_month);
-```
+| Arquivo | Mudança |
+|---------|---------|
+| `supabase/functions/api-football/index.ts` | Aumentar TTL de `live` de 40s para 60s |
 
 ---
 
-### Arquivos a Modificar/Criar
+## Estimativa de Economia
+
+| Cenário | Antes | Depois | Economia |
+|---------|-------|--------|----------|
+| DailyPlanning aberto | ~180/hora | ~60/hora | 67% |
+| LiveGames aberto | ~360/hora | ~60/hora | 83% |
+| Ambos abertos | ~540/hora | ~90/hora | 83% |
+| Modo economia | N/A | ~30/hora | 95% |
+
+**Com 7500 créditos:**
+- Antes: ~10-14 horas
+- Depois (normal): ~80+ horas (3+ dias)
+- Depois (economia): ~250 horas (10+ dias)
+
+---
+
+## Arquivos a Modificar
 
 | Arquivo | Ação |
 |---------|------|
-| `src/hooks/useLiveScores.ts` | Remover chamadas extras de API |
-| `supabase/functions/api-football/index.ts` | Aumentar TTL do cache |
-| `src/pages/MonthlyReport.tsx` | **Novo** - Página de fechamento |
-| `src/hooks/useMonthlyReport.ts` | **Novo** - Lógica de relatórios |
-| `src/components/MonthlyReportCard.tsx` | **Novo** - Card de resumo |
-| `src/components/MonthlyAIAnalysis.tsx` | **Novo** - Análise IA do mês |
-| `src/App.tsx` | Adicionar rota `/monthly-report` |
-| `src/components/Sidebar.tsx` | Adicionar link no menu |
-| `src/components/BottomNav.tsx` | Avaliar se adiciona atalho |
-| Migração SQL | Criar tabela `monthly_reports` |
+| `src/pages/LiveGames.tsx` | Remover auto-refresh de stats/events, usar intervalo configurável |
+| `src/hooks/useLiveScores.ts` | Aumentar intervalo mínimo para 30s, adicionar modo economia |
+| `src/hooks/useRefreshInterval.ts` | Adicionar opção de 180s (3 min) para economia extrema |
+| `supabase/functions/api-football/index.ts` | Aumentar cache de live para 60s |
+| `src/components/ApiRequestIndicator.tsx` | Mostrar aviso quando créditos < 1000 |
+| `src/components/RefreshIntervalSettings.tsx` | Adicionar toggle de "Modo Economia" |
 
 ---
 
-### Fluxo de Uso
+## Nova Opção: Modo Economia
 
+```typescript
+// useRefreshInterval.ts - Adicionar modo economia
+export const ECONOMY_MODE_KEY = 'vt-economy-mode';
+
+// Quando ativo:
+// - Intervalo mínimo = 60s
+// - Stats automáticas = desabilitado
+// - Backfill = desabilitado (até próximo reset)
 ```
-Usuário -> Página Fechamento Mensal -> Seleciona Janeiro 2026
-                                    -> Vê estatísticas calculadas em tempo real
-                                    -> Clica "Analisar com IA"
-                                    -> Recebe insights detalhados
-                                    -> Clica "Fechar Mês"
-                                    -> Relatório é salvo permanentemente
-                                    -> Aparece na lista de histórico
+
+Interface na página de Conta:
+```
+☐ Modo Economia (ativa quando créditos < 1000)
+  └─ Reduz consumo em 80% desabilitando atualizações automáticas
 ```
 
 ---
 
-### Benefícios
+## Benefícios
 
-1. **Economia de API**: De ~720/hora para ~360/hora = **50% menos consumo**
-2. **Durabilidade**: 7500 créditos duram 20+ horas (dia inteiro)
-3. **Registro Histórico**: Meses fechados ficam salvos para consulta
-4. **Insights Mensais**: IA analisa padrões de longo prazo
-5. **Accountability**: Força análise reflexiva ao final de cada mês
+1. **Sem custo adicional** - só otimização de código
+2. **Durabilidade extrema** - 7500 créditos duram 3+ dias em uso normal
+3. **Controle do usuário** - pode ativar modo economia quando necessário
+4. **Cache inteligente** - menos chamadas à API com mesmo resultado
+5. **Indicador visual** - aviso quando créditos estão baixos
