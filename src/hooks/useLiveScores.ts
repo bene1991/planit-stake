@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Game } from '@/types';
+import { emitApiUsageUpdate } from './useApiRequestTracker';
 
 export interface LiveScoreEvent {
   minute: number;
@@ -122,6 +123,11 @@ export function useLiveScores(
         console.error('[useLiveScores] API errors:', data.errors);
         setError(Object.values(data.errors).join(', '));
         return;
+      }
+      
+      // Emit API usage event if rate limit data is present
+      if (data?._rateLimit?.used !== undefined && data?._rateLimit?.limit) {
+        emitApiUsageUpdate(data._rateLimit.used, data._rateLimit.limit, data._rateLimit.remaining);
       }
       
       const fixtures = data?.response || [];
