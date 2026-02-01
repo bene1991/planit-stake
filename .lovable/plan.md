@@ -1,139 +1,192 @@
 
-## Diagnóstico Completo: Consumo de API-Football
+## Plano: Correção do Contador de Requisições API
 
-### Problema Principal: Múltiplas Fontes de Consumo Simultâneas
+### Problema Identificado
 
-O sistema atual tem **VÁRIAS camadas de refresh rodando em paralelo**, o que explica o esgotamento rápido dos créditos:
+O contador no site mostra **0/7.5k** enquanto a API-Football registra **97 requisições** porque as principais funções que fazem chamadas à API **não estão chamando `trackRequest()`**.
 
-| Fonte | Intervalo | Créditos/hora | Localização |
-|-------|-----------|---------------|-------------|
-| `useLiveScores` (DailyPlanning) | 20s (live) / 120s (idle) | ~180/hora | `DailyPlanning.tsx` linha 4 |
-| `useLiveFixtures` (LiveGames) | 30s fixo | ~120/hora | `LiveGames.tsx` linha 28 |
-| `useFixtureStatistics` (LiveGames) | 30s fixo | ~120/hora | `LiveGames.tsx` linha 41 |
-| `useFixtureEvents` (LiveGames) | 30s fixo | ~120/hora | `LiveGames.tsx` linha 42 |
-| `useOptimizedLiveStats` (internamente) | 10 min | ~6/hora | Usado em expandir stats |
-| Backfill (jogos finalizados) | 1 por ciclo | ~180/hora | `useLiveScores.ts` linha 276 |
+### Análise Detalhada
 
-**Total estimado quando páginas estão abertas: ~720+ créditos/hora**
+| Hook/Componente | Chama `trackRequest`? | Frequência |
+|-----------------|----------------------|------------|
+| `useLiveScores.ts` | **NÃO** | A cada 20s (principal consumidor) |
+| `useApiFootball.ts` | **NÃO** | A cada 30s (página LiveGames) |
+| `useFixtureOdds.ts` | **NÃO** | Sob demanda |
+| `useFixtureSearch.ts` | **NÃO** | Sob demanda |
+| `useGoalPersistence.ts` | SIM | Jogos finalizados |
+| `useOptimizedLiveStats.ts` | SIM | Stats detalhadas |
 
-### Pontos Críticos Identificados
-
-1. **LiveGames.tsx faz 3 requests a cada 30s** (linha 28, 41, 42)
-   - `live=all` (todos jogos ao vivo)
-   - `fixtures/statistics` (estatísticas do jogo selecionado)
-   - `fixtures/events` (eventos do jogo selecionado)
-   - = 360 créditos/hora só nessa página
-
-2. **DailyPlanning.tsx usa `useLiveScores`** que também chama `live=all`
-   - Duplicação com LiveGames se ambas estão abertas
-
-3. **Backfill consome 1 crédito por ciclo** (a cada 20s)
-   - Com muitos jogos finalizados sem score = muitos créditos
-
-4. **Intervalo configurável (useRefreshInterval) não é respeitado** por todas as fontes
-   - Somente `useLiveScores` usa o intervalo dinâmico
-   - `LiveGames.tsx` ignora e usa 30s fixo
+A maioria das requisições vem de `useLiveScores` e `useApiFootball`, que **não rastreiam** o consumo.
 
 ---
 
-## Plano de Economia Extrema (SEM CUSTO ADICIONAL)
+### Solução: Centralizar Tracking na Edge Function
 
-### Fase 1: Centralizar Requests de Live Games
+Em vez de adicionar `trackRequest` em cada hook (difícil de manter), a solução ideal é **retornar o consumo real da API-Football** diretamente pela Edge Function.
 
-**Objetivo**: Eliminar duplicação entre `useLiveScores` e `useLiveFixtures`
+A API-Football retorna headers com informações de quota:
+- `x-ratelimit-requests-limit`: limite diário
+- `x-ratelimit-requests-remaining`: requisições restantes
 
-| Arquivo | Mudança |
-|---------|---------|
-| `src/pages/LiveGames.tsx` | Usar o cache global do `useLiveScores` em vez de `useLiveFixtures` próprio |
-| `src/hooks/useLiveScores.ts` | Exportar todos os fixtures (não só os monitorados) para reuso |
+#### Opção 1: Tracking na Edge Function (Recomendado)
 
-### Fase 2: Desabilitar Auto-fetch de Estatísticas na LiveGames
+Modificar `api-football/index.ts` para retornar os headers de rate limit:
 
-As estatísticas detalhadas (`statistics` e `events`) consomem 2 créditos por fetch:
+```typescript
+// Adicionar ao response da edge function
+const rateLimitData = {
+  limit: response.headers.get('x-ratelimit-requests-limit'),
+  remaining: response.headers.get('x-ratelimit-requests-remaining'),
+  used: limit ? limit - remaining : null
+};
 
-| Arquivo | Mudança |
-|---------|---------|
-| `src/pages/LiveGames.tsx` linha 41-42 | Remover `refetchInterval: 30000` → só buscar sob demanda |
+return new Response(
+  JSON.stringify({ ...data, _rateLimit: rateLimitData }),
+  { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+);
+```
 
-### Fase 3: Aumentar Intervalos e Respeitar Configuração
+Então o frontend lê `_rateLimit.remaining` do response e atualiza o contador.
 
-| Arquivo | Mudança |
-|---------|---------|
-| `src/pages/LiveGames.tsx` | Usar `useRefreshInterval()` em vez de 30s fixo |
-| `src/hooks/useLiveScores.ts` | Aumentar `REFRESH_INTERVAL_ACTIVE` de 20s para 30s |
+#### Opção 2: Adicionar `trackRequest` em todos os hooks
 
-### Fase 4: Modo de Economia Extrema (Novo)
+Modificar cada hook que chama a API para incluir tracking:
 
-Criar um **modo de economia** que o usuário pode ativar quando créditos estão baixos:
+**`useLiveScores.ts`** - Adicionar:
+```typescript
+import { useApiRequestTracker } from './useApiRequestTracker';
+// ...
+const { trackRequest } = useApiRequestTracker();
+// Após cada chamada bem-sucedida:
+trackRequest(1); // live=all
+trackRequest(1); // backfill
+```
 
-| Funcionalidade | Comportamento Normal | Modo Economia |
-|----------------|---------------------|---------------|
-| Refresh de placares | 20-30s | 60s |
-| Stats automáticas | Sim | Desabilitado |
-| Backfill | 1 por ciclo | Desabilitado |
-| LiveGames page | Ativo | Apenas manual |
-
-### Fase 5: Cache Agressivo no Edge Function
-
-| Arquivo | Mudança |
-|---------|---------|
-| `supabase/functions/api-football/index.ts` | Aumentar TTL de `live` de 40s para 60s |
-
----
-
-## Estimativa de Economia
-
-| Cenário | Antes | Depois | Economia |
-|---------|-------|--------|----------|
-| DailyPlanning aberto | ~180/hora | ~60/hora | 67% |
-| LiveGames aberto | ~360/hora | ~60/hora | 83% |
-| Ambos abertos | ~540/hora | ~90/hora | 83% |
-| Modo economia | N/A | ~30/hora | 95% |
-
-**Com 7500 créditos:**
-- Antes: ~10-14 horas
-- Depois (normal): ~80+ horas (3+ dias)
-- Depois (economia): ~250 horas (10+ dias)
+**`useApiFootball.ts`** - Adicionar:
+```typescript
+import { useApiRequestTracker } from './useApiRequestTracker';
+// ...
+// Dentro de useApiFootball:
+const { trackRequest } = useApiRequestTracker();
+// Após fetchData bem-sucedido:
+trackRequest(1);
+```
 
 ---
 
-## Arquivos a Modificar
+### Solução Recomendada: Combinar Ambas
+
+1. **Edge Function** retorna dados de rate limit da API real
+2. **Frontend** usa esses dados para exibir o consumo real
+3. Como fallback, manter `trackRequest` local para estimativa quando offline
+
+### Arquivos a Modificar
 
 | Arquivo | Ação |
 |---------|------|
-| `src/pages/LiveGames.tsx` | Remover auto-refresh de stats/events, usar intervalo configurável |
-| `src/hooks/useLiveScores.ts` | Aumentar intervalo mínimo para 30s, adicionar modo economia |
-| `src/hooks/useRefreshInterval.ts` | Adicionar opção de 180s (3 min) para economia extrema |
-| `supabase/functions/api-football/index.ts` | Aumentar cache de live para 60s |
-| `src/components/ApiRequestIndicator.tsx` | Mostrar aviso quando créditos < 1000 |
-| `src/components/RefreshIntervalSettings.tsx` | Adicionar toggle de "Modo Economia" |
+| `supabase/functions/api-football/index.ts` | Extrair e retornar headers de rate limit |
+| `src/hooks/useApiRequestTracker.ts` | Adicionar `setFromApi(remaining)` para sincronizar com dados reais |
+| `src/hooks/useLiveScores.ts` | Ler `_rateLimit` do response e sincronizar contador |
+| `src/hooks/useApiFootball.ts` | Ler `_rateLimit` do response e sincronizar contador |
+| `src/components/ApiRequestIndicator.tsx` | Mostrar aviso se dados são estimados vs. reais |
 
 ---
 
-## Nova Opção: Modo Economia
+### Mudanças Específicas
+
+#### 1. Edge Function (`api-football/index.ts`)
 
 ```typescript
-// useRefreshInterval.ts - Adicionar modo economia
-export const ECONOMY_MODE_KEY = 'vt-economy-mode';
+// Extrair headers de rate limit
+const limit = parseInt(response.headers.get('x-ratelimit-requests-limit') || '0', 10);
+const remaining = parseInt(response.headers.get('x-ratelimit-requests-remaining') || '0', 10);
 
-// Quando ativo:
-// - Intervalo mínimo = 60s
-// - Stats automáticas = desabilitado
-// - Backfill = desabilitado (até próximo reset)
+// Log para debug
+console.log(`[RATE LIMIT] Used: ${limit - remaining}/${limit}, Remaining: ${remaining}`);
+
+// Incluir no response
+return new Response(
+  JSON.stringify({ 
+    ...data, 
+    _rateLimit: { 
+      limit, 
+      remaining, 
+      used: limit - remaining 
+    } 
+  }),
+  { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+);
 ```
 
-Interface na página de Conta:
+#### 2. Hook `useApiRequestTracker.ts`
+
+```typescript
+// Adicionar função para sincronizar com API real
+const syncFromApi = useCallback((used: number, limit: number) => {
+  if (used > 0 && limit > 0) {
+    setRequestCount(used);
+    saveCount(used);
+    // Atualizar limite se diferente
+    if (limit !== DAILY_LIMIT) {
+      console.log(`[Tracker] API limit: ${limit}, local: ${DAILY_LIMIT}`);
+    }
+  }
+}, [saveCount]);
+
+return {
+  // ... existente
+  syncFromApi,
+};
 ```
-☐ Modo Economia (ativa quando créditos < 1000)
-  └─ Reduz consumo em 80% desabilitando atualizações automáticas
+
+#### 3. Hook `useLiveScores.ts`
+
+```typescript
+// Após receber response da API:
+if (data?._rateLimit?.used) {
+  // Emitir evento global para sincronizar contador
+  window.dispatchEvent(new CustomEvent('api-usage-update', {
+    detail: { used: data._rateLimit.used, limit: data._rateLimit.limit }
+  }));
+}
 ```
 
 ---
 
-## Benefícios
+### Benefícios
 
-1. **Sem custo adicional** - só otimização de código
-2. **Durabilidade extrema** - 7500 créditos duram 3+ dias em uso normal
-3. **Controle do usuário** - pode ativar modo economia quando necessário
-4. **Cache inteligente** - menos chamadas à API com mesmo resultado
-5. **Indicador visual** - aviso quando créditos estão baixos
+1. **Contador preciso** - Sincronizado com dados reais da API
+2. **Não depende de localStorage** - Dados vêm do servidor
+3. **Funciona em múltiplos dispositivos** - Mesmo valor para todos
+4. **Debug facilitado** - Logs na edge function mostram consumo real
+5. **Retrocompatível** - Fallback para estimativa local se API não retornar dados
+
+---
+
+### Fluxo de Dados
+
+```
+Edge Function
+     │
+     ▼ (extrai x-ratelimit headers)
+  Response com _rateLimit
+     │
+     ▼ (useLiveScores lê _rateLimit)
+  Emite evento 'api-usage-update'
+     │
+     ▼ (useApiRequestTracker escuta evento)
+  Atualiza contador e localStorage
+     │
+     ▼ (ApiRequestIndicator re-renderiza)
+  UI mostra valor correto: 97/7.5k
+```
+
+---
+
+### Ordem de Implementação
+
+1. Modificar Edge Function para extrair e retornar rate limit
+2. Atualizar `useApiRequestTracker` para aceitar dados da API
+3. Modificar `useLiveScores` para emitir eventos de uso
+4. Modificar `useApiFootball` para emitir eventos de uso
+5. Testar sincronização do contador
