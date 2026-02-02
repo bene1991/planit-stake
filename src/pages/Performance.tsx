@@ -34,6 +34,7 @@ import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
 import { useStatistics } from '@/hooks/useStatistics';
+import { PDFExportButton } from '@/components/PDFExportButton';
 
 const statusConfig: Record<OperationalStatusType, { color: string; bg: string; icon: React.ElementType; border: string }> = {
   'NORMAL': { 
@@ -308,10 +309,22 @@ export default function Performance() {
             <RefreshCw className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
-          <Button size="sm" onClick={handleExport}>
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">CSV</span>
           </Button>
+          <PDFExportButton
+            games={filteredGames}
+            methods={bankroll.methods}
+            filters={filters}
+            stats={{
+              total: overallStats.total,
+              greens: overallStats.greens,
+              reds: overallStats.reds,
+              winRate: overallStats.winRate,
+              profitReais: totalProfitReais,
+            }}
+          />
         </div>
       </div>
 
