@@ -50,6 +50,38 @@ const getMethodName = (methodId: string, methods: Method[]): string => {
   return method?.name || 'Desconhecido';
 };
 
+const calculateProfitForPDF = (
+  result: 'Green' | 'Red',
+  stakeValue: number,
+  odd: number,
+  operationType: 'Back' | 'Lay',
+  existingProfit?: number,
+  commissionRate: number = 0.045
+): number => {
+  // Use existing profit if available
+  if (existingProfit !== undefined && existingProfit !== null) {
+    return existingProfit;
+  }
+
+  if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1) {
+    return 0;
+  }
+
+  if (operationType === 'Back') {
+    if (result === 'Green') {
+      return stakeValue * (odd - 1) * (1 - commissionRate);
+    } else {
+      return -stakeValue;
+    }
+  } else { // Lay
+    if (result === 'Green') {
+      return stakeValue * (1 - commissionRate);
+    } else {
+      return -stakeValue * (odd - 1);
+    }
+  }
+};
+
 const buildOperationsData = (games: Game[], methods: Method[], filters: StatisticsFilters): OperationRow[] => {
   const rows: OperationRow[] = [];
 
@@ -81,6 +113,20 @@ const buildOperationsData = (games: Game[], methods: Method[], filters: Statisti
         return;
       }
 
+      const stakeValue = op.stakeValue || 0;
+      const odd = op.odd || 0;
+      const operationType = op.operationType || 'Back';
+      const commissionRate = op.commissionRate || 0.045;
+
+      const profit = calculateProfitForPDF(
+        op.result,
+        stakeValue,
+        odd,
+        operationType,
+        op.profit,
+        commissionRate
+      );
+
       rows.push({
         date: formatDatePDF(game.date),
         time: game.time || '--:--',
@@ -88,11 +134,11 @@ const buildOperationsData = (games: Game[], methods: Method[], filters: Statisti
         homeTeam: game.homeTeam,
         awayTeam: game.awayTeam,
         methodName: getMethodName(op.methodId, methods),
-        operationType: op.operationType || 'Back',
-        stake: op.stakeValue ? formatCurrencyPDF(op.stakeValue) : '-',
-        odd: op.odd?.toFixed(2) || '-',
+        operationType: operationType,
+        stake: stakeValue ? formatCurrencyPDF(stakeValue) : '-',
+        odd: odd?.toFixed(2) || '-',
         result: op.result,
-        profit: op.profit || 0,
+        profit: profit,
       });
     });
   });
@@ -229,7 +275,7 @@ export function exportOperationsToPDF(options: PDFExportOptions): void {
   } else {
     autoTable(doc, {
       startY: tableStartY,
-      head: [['Data', 'Hora', 'Liga', 'Time Casa', 'Time Fora', 'Método', 'Tipo', 'Stake', 'Odd', 'Res', 'Lucro']],
+      head: [['Data', 'Hora', 'Liga', 'Time Casa', 'Time Fora', 'Método', 'Tipo', 'Stake', 'Odd', 'Resultado', 'Lucro']],
       body: operations.map((op) => [
         op.date,
         op.time,
@@ -240,7 +286,7 @@ export function exportOperationsToPDF(options: PDFExportOptions): void {
         op.operationType,
         op.stake,
         op.odd,
-        op.result === 'Green' ? '✓' : '✗',
+        op.result === 'Green' ? 'GREEN' : 'RED',
         formatCurrencyPDF(op.profit),
       ]),
       theme: 'striped',
@@ -258,15 +304,15 @@ export function exportOperationsToPDF(options: PDFExportOptions): void {
       columnStyles: {
         0: { cellWidth: 22 }, // Data
         1: { cellWidth: 14 }, // Hora
-        2: { cellWidth: 35 }, // Liga
-        3: { cellWidth: 30 }, // Time Casa
-        4: { cellWidth: 30 }, // Time Fora
-        5: { cellWidth: 25 }, // Método
-        6: { cellWidth: 14 }, // Tipo
-        7: { cellWidth: 22 }, // Stake
-        8: { cellWidth: 14 }, // Odd
-        9: { cellWidth: 12 }, // Res
-        10: { cellWidth: 25 }, // Lucro
+        2: { cellWidth: 32 }, // Liga
+        3: { cellWidth: 28 }, // Time Casa
+        4: { cellWidth: 28 }, // Time Fora
+        5: { cellWidth: 22 }, // Método
+        6: { cellWidth: 12 }, // Tipo
+        7: { cellWidth: 20 }, // Stake
+        8: { cellWidth: 12 }, // Odd
+        9: { cellWidth: 16 }, // Resultado
+        10: { cellWidth: 22 }, // Lucro
       },
       alternateRowStyles: {
         fillColor: [250, 250, 250],
