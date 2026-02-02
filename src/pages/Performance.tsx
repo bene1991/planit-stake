@@ -34,7 +34,7 @@ import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
 import { useStatistics } from '@/hooks/useStatistics';
-import { PDFExportButton } from '@/components/PDFExportButton';
+import { ReportExportButton } from '@/components/ReportExportButton';
 
 const statusConfig: Record<OperationalStatusType, { color: string; bg: string; icon: React.ElementType; border: string }> = {
   'NORMAL': { 
@@ -313,7 +313,7 @@ export default function Performance() {
             <Download className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">CSV</span>
           </Button>
-          <PDFExportButton
+          <ReportExportButton
             games={filteredGames}
             methods={bankroll.methods}
             filters={filters}
