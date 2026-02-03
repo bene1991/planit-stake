@@ -1,47 +1,53 @@
 
-## Relatório de Operações em PDF
+
+## Ranking de Ligas por Método
 
 ### O Que Será Criado
 
-Um sistema completo de exportação de relatórios em PDF com filtros avançados, contendo informações detalhadas de cada operação (times, stake, odd, resultado) em um layout profissional.
+Um novo componente que mostra **ranking de melhores e piores ligas para cada método específico**, permitindo identificar onde cada estratégia funciona melhor ou pior.
 
 ---
 
 ### Funcionalidade
 
-O usuário poderá na página de **Desempenho**:
-1. Aplicar filtros (período, método, liga, resultado)
-2. Clicar em "Exportar PDF"
-3. Receber um PDF profissional com:
-   - Cabeçalho com logo e período
-   - Resumo estatístico (total operações, win rate, lucro)
-   - Tabela detalhada de todas as operações
+Na página de **Desempenho**, abaixo do gráfico de ligas atual:
+1. Respeita os filtros de **período**, **método** e **liga** aplicados
+2. Mostra para cada método:
+   - Top 3 Melhores Ligas (maior win rate + lucro)
+   - Top 3 Piores Ligas (menor win rate + prejuízo)
+3. Inclui estatísticas detalhadas (win rate, operações, lucro)
 
 ---
 
-### Estrutura do PDF
+### Estrutura Visual
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│  📊 ViniTrader - Relatório de Operações                      │
+│  🏆 Ranking de Ligas por Método                              │
 │  Período: 01/01/2026 - 31/01/2026                            │
-│  Método: BTTS | Liga: Premier League                         │
 ├──────────────────────────────────────────────────────────────┤
-│  RESUMO                                                       │
-│  ┌──────────┬──────────┬──────────┬──────────┐               │
-│  │ Total    │ Greens   │ Reds     │ Win Rate │               │
-│  │ 45       │ 32       │ 13       │ 71.1%    │               │
-│  └──────────┴──────────┴──────────┴──────────┘               │
-│  Lucro Período: +R$ 1.250,00                                 │
-├──────────────────────────────────────────────────────────────┤
-│  DETALHAMENTO DAS OPERAÇÕES                                   │
-│  ┌────────┬───────┬───────────────────┬───────┬──────┬─────┐ │
-│  │ Data   │ Hora  │ Jogo              │ Stake │ Odd  │ Res │ │
-│  ├────────┼───────┼───────────────────┼───────┼──────┼─────┤ │
-│  │ 15/01  │ 14:00 │ Arsenal x Chelsea │ R$100 │ 2.10 │ ✓   │ │
-│  │ 15/01  │ 16:30 │ Liverpool x Man U │ R$100 │ 2.25 │ ✓   │ │
-│  │ 16/01  │ 12:00 │ Everton x Wolves  │ R$100 │ 2.15 │ ✗   │ │
-│  └────────┴───────┴───────────────────┴───────┴──────┴─────┘ │
+│                                                              │
+│  ⚽ BTTS                                                      │
+│  ┌─────────────────────────────┬─────────────────────────────┐
+│  │ 🏆 MELHORES                 │ ⚠️ PIORES                   │
+│  ├─────────────────────────────┼─────────────────────────────┤
+│  │ 1. Premier League           │ 1. Serie B Brasil           │
+│  │    85% WR • 12 ops • +2.5st │    35% WR • 8 ops • -3.2st  │
+│  │ 2. La Liga                  │ 2. Ligue 2                  │
+│  │    78% WR • 9 ops • +1.8st  │    40% WR • 5 ops • -2.0st  │
+│  │ 3. Serie A                  │ 3. Championship             │
+│  │    72% WR • 15 ops • +1.2st │    45% WR • 10 ops • -1.5st │
+│  └─────────────────────────────┴─────────────────────────────┘
+│                                                              │
+│  🎯 Over 1.5 HT                                              │
+│  ┌─────────────────────────────┬─────────────────────────────┐
+│  │ 🏆 MELHORES                 │ ⚠️ PIORES                   │
+│  ├─────────────────────────────┼─────────────────────────────┤
+│  │ 1. Bundesliga               │ 1. Eredivisie               │
+│  │    80% WR • 10 ops • +2.0st │    30% WR • 6 ops • -2.8st  │
+│  │ ...                         │ ...                         │
+│  └─────────────────────────────┴─────────────────────────────┘
+│                                                              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,133 +57,78 @@ O usuário poderá na página de **Desempenho**:
 
 | Arquivo | Ação |
 |---------|------|
-| `package.json` | Adicionar `jspdf` e `jspdf-autotable` |
-| `src/utils/exportToPDF.ts` | Novo - função de geração de PDF |
-| `src/components/PDFExportButton.tsx` | Novo - botão com modal de opções |
-| `src/pages/Performance.tsx` | Adicionar botão de exportação PDF |
+| `vite.config.ts` | Aumentar limite do PWA para corrigir erro de build |
+| `src/hooks/useFilteredStatistics.ts` | Adicionar cálculo de `leagueStatsByMethod` |
+| `src/components/Charts/LeagueRankingByMethod.tsx` | Novo componente de ranking |
+| `src/pages/Performance.tsx` | Adicionar componente na página |
 
 ---
 
 ### Detalhes Técnicos
 
-#### 1. Dependências
-```json
-{
-  "jspdf": "^2.5.2",
-  "jspdf-autotable": "^3.8.4"
-}
-```
+#### 1. Correção do Erro de Build (PWA)
 
-**jsPDF** é a biblioteca mais popular para geração de PDF no navegador, leve (~300KB) e sem dependências de backend.
-
-#### 2. Função de Exportação (`exportToPDF.ts`)
+Adicionar `maximumFileSizeToCacheInBytes` na configuração do PWA:
 
 ```typescript
-interface PDFExportOptions {
-  games: Game[];
-  methods: Method[];
-  filters: StatisticsFilters;
-  stats: {
+injectManifest: {
+  globPatterns: ["**/*.{js,css,html,ico,png,svg,mp3}"],
+  maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+},
+```
+
+#### 2. Nova Estrutura de Dados
+
+```typescript
+interface LeagueStatsByMethod {
+  methodId: string;
+  methodName: string;
+  leagues: {
+    league: string;
     total: number;
     greens: number;
     reds: number;
     winRate: number;
-    profitReais: number;
-  };
-}
-
-export function exportOperationsToPDF(options: PDFExportOptions) {
-  // Criar documento
-  // Adicionar cabeçalho com logo/título
-  // Adicionar resumo estatístico
-  // Adicionar tabela com autoTable
-  // Salvar arquivo
+    profit: number; // em stakes
+  }[];
+  bestLeagues: LeagueStats[];  // Top 3 por winRate + lucro
+  worstLeagues: LeagueStats[]; // Bottom 3 por winRate + prejuízo
 }
 ```
 
-#### 3. Colunas da Tabela
+#### 3. Lógica de Ranking
 
-| Coluna | Dados |
-|--------|-------|
-| Data | `game.date` formatado DD/MM/YYYY |
-| Hora | `game.time` |
-| Liga | `game.league` |
-| Time Casa | `game.homeTeam` |
-| Time Fora | `game.awayTeam` |
-| Método | `method.name` |
-| Tipo | Back / Lay |
-| Stake | `R$ X,XX` |
-| Odd | `X.XX` |
-| Resultado | Green ✓ / Red ✗ |
-| Lucro | `R$ ±X,XX` |
+Para cada método:
+1. Agrupar operações por liga
+2. Calcular win rate e lucro (em stakes) por liga
+3. Ordenar por **score combinado**: `winRate * 0.6 + normalizedProfit * 0.4`
+4. Top 3 = melhores, Bottom 3 = piores
+5. Filtrar ligas com mínimo 3 operações (para relevância estatística)
 
-#### 4. Formatação
+#### 4. Componente Visual
 
-- **Verde** para operações Green
-- **Vermelho** para operações Red
-- **Zebra stripes** nas linhas (alternando cinza claro)
-- **Fonte**: Helvetica (padrão do jsPDF)
-- **Tamanho A4** orientação paisagem (mais espaço para colunas)
-
----
-
-### Interface do Botão
-
-Na página de Desempenho, ao lado do botão CSV existente:
-
-```
-[📄 Atualizar] [📥 CSV] [📄 PDF ▼]
-                         ├── Relatório Completo
-                         ├── Apenas Resumo
-                         └── Por Método
-```
-
-Ou versão simples:
-```
-[📄 PDF]
-```
-Que exporta diretamente com os filtros atuais.
-
----
-
-### Fluxo de Exportação
-
-```text
-Usuário aplica filtros
-       │
-       ▼
-Clica em "PDF"
-       │
-       ▼
-Sistema coleta:
-  - Games filtrados
-  - Métodos
-  - Stats calculados
-       │
-       ▼
-Gera PDF com jsPDF
-       │
-       ▼
-Download automático:
-  relatorio_YYYY-MM-DD.pdf
-```
+- Cards colapsáveis por método
+- Cores: Verde para melhores, Vermelho para piores
+- Badges com Win Rate e Lucro
+- Indicador de volume (operações)
+- Responsivo: em mobile, melhores/piores empilhados
 
 ---
 
 ### Benefícios
 
-1. **Profissional** - Layout organizado para análise/compartilhamento
-2. **Filtrado** - Respeita todos os filtros aplicados
-3. **Completo** - Todas as informações financeiras importantes
-4. **Offline** - Gerado 100% no navegador, sem servidor
-5. **Rápido** - Download imediato após clique
+1. **Insights específicos** - Ver onde cada método brilha ou falha
+2. **Decisões melhores** - Saber quais ligas evitar para cada estratégia
+3. **Filtrado** - Respeita todos os filtros aplicados
+4. **Acionável** - Identificar oportunidades de melhoria
 
 ---
 
 ### Ordem de Implementação
 
-1. Instalar jspdf e jspdf-autotable
-2. Criar função `exportOperationsToPDF`
-3. Criar componente `PDFExportButton`
+1. Corrigir erro de build do PWA (aumentar limite de cache)
+2. Adicionar cálculo `leagueStatsByMethod` no hook
+3. Criar componente `LeagueRankingByMethod`
 4. Integrar na página de Desempenho
-5. Testar com diferentes filtros e volumes de dados
+5. Testar com diferentes filtros
+
