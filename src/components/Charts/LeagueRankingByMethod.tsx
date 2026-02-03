@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Trophy, AlertTriangle, ChevronDown, Target } from 'lucide-react';
+import { Trophy, ChevronDown, Target, TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MethodLeagueRanking, LeagueMethodStats } from '@/hooks/useLeagueRankingByMethod';
 import { useState } from 'react';
@@ -11,35 +11,53 @@ interface LeagueRankingByMethodProps {
   periodLabel: string;
 }
 
-function LeagueItem({ league, position, type }: { league: LeagueMethodStats; position: number; type: 'best' | 'worst' }) {
+function LeagueRow({ league, position, totalCount }: { league: LeagueMethodStats; position: number; totalCount: number }) {
   const isPositive = league.profit >= 0;
   
+  // Determine if this is in top third (best), bottom third (worst), or middle
+  const topThreshold = Math.ceil(totalCount / 3);
+  const bottomThreshold = totalCount - Math.ceil(totalCount / 3);
+  
+  const isBest = position <= topThreshold;
+  const isWorst = position > bottomThreshold;
+  
   return (
-    <div className="flex items-start gap-3 py-2">
+    <div className={cn(
+      "flex items-center gap-3 py-2 px-3 rounded-lg transition-colors",
+      isBest && "bg-success/5 border-l-2 border-success",
+      isWorst && "bg-destructive/5 border-l-2 border-destructive",
+      !isBest && !isWorst && "bg-secondary/30"
+    )}>
       <span className={cn(
-        "font-bold text-lg w-6 shrink-0",
-        type === 'best' ? 'text-success' : 'text-destructive'
+        "font-bold text-sm w-6 shrink-0 text-center",
+        isBest && "text-success",
+        isWorst && "text-destructive",
+        !isBest && !isWorst && "text-muted-foreground"
       )}>
-        {position}.
+        {position}
       </span>
+      
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate" title={league.league}>
+        <p className="font-medium text-sm truncate" title={league.league}>
           {league.league}
         </p>
-        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
-          <Badge variant="outline" className="text-xs">
-            {league.winRate}% WR
-          </Badge>
-          <span className="text-muted-foreground">
-            {league.total} ops
-          </span>
-          <span className={cn(
-            "font-semibold",
-            isPositive ? 'text-success' : 'text-destructive'
-          )}>
-            {isPositive ? '+' : ''}{league.profit}st
-          </span>
-        </div>
+      </div>
+      
+      <div className="flex items-center gap-2 shrink-0">
+        <Badge variant="outline" className="text-xs font-mono">
+          {league.winRate}%
+        </Badge>
+        <span className="text-xs text-muted-foreground w-12 text-center">
+          {league.total} ops
+        </span>
+        <span className={cn(
+          "text-xs font-semibold w-16 text-right",
+          isPositive ? 'text-success' : 'text-destructive'
+        )}>
+          {isPositive ? '+' : ''}{league.profit}st
+        </span>
+        {isBest && <TrendingUp className="h-3 w-3 text-success" />}
+        {isWorst && <TrendingDown className="h-3 w-3 text-destructive" />}
       </div>
     </div>
   );
@@ -47,6 +65,11 @@ function LeagueItem({ league, position, type }: { league: LeagueMethodStats; pos
 
 function MethodRankingCard({ ranking }: { ranking: MethodLeagueRanking }) {
   const [isOpen, setIsOpen] = useState(true);
+  
+  const totalProfit = ranking.allLeagues.reduce((sum, l) => sum + l.profit, 0);
+  const avgWinRate = ranking.allLeagues.length > 0
+    ? ranking.allLeagues.reduce((sum, l) => sum + l.winRate, 0) / ranking.allLeagues.length
+    : 0;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -56,64 +79,47 @@ function MethodRankingCard({ ranking }: { ranking: MethodLeagueRanking }) {
             <Target className="h-4 w-4 text-primary" />
             <span className="font-semibold">{ranking.methodName}</span>
             <Badge variant="secondary" className="text-xs">
-              {ranking.bestLeagues.length + ranking.worstLeagues.length} ligas
+              {ranking.allLeagues.length} ligas
             </Badge>
           </div>
-          <ChevronDown className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
-            isOpen && "rotate-180"
-          )} />
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              Média: {avgWinRate.toFixed(1)}%
+            </span>
+            <span className={cn(
+              "text-xs font-semibold",
+              totalProfit >= 0 ? 'text-success' : 'text-destructive'
+            )}>
+              {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)}st
+            </span>
+            <ChevronDown className={cn(
+              "h-4 w-4 text-muted-foreground transition-transform",
+              isOpen && "rotate-180"
+            )} />
+          </div>
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-          {/* Best Leagues */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-success">
-              <Trophy className="h-4 w-4" />
-              MELHORES
-            </div>
-            <div className="space-y-1 divide-y divide-border/50">
-              {ranking.bestLeagues.length > 0 ? (
-                ranking.bestLeagues.map((league, idx) => (
-                  <LeagueItem
-                    key={league.league}
-                    league={league}
-                    position={idx + 1}
-                    type="best"
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground py-2">
-                  Sem dados suficientes
-                </p>
-              )}
-            </div>
+        <div className="mt-2 space-y-1">
+          {/* Header */}
+          <div className="flex items-center gap-3 py-1 px-3 text-xs text-muted-foreground font-medium">
+            <span className="w-6 text-center">#</span>
+            <span className="flex-1">Liga</span>
+            <span className="w-12 text-center">WR</span>
+            <span className="w-12 text-center">Vol</span>
+            <span className="w-16 text-right">Lucro</span>
+            <span className="w-3"></span>
           </div>
-
-          {/* Worst Leagues */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
-              <AlertTriangle className="h-4 w-4" />
-              PIORES
-            </div>
-            <div className="space-y-1 divide-y divide-border/50">
-              {ranking.worstLeagues.length > 0 ? (
-                ranking.worstLeagues.map((league, idx) => (
-                  <LeagueItem
-                    key={league.league}
-                    league={league}
-                    position={idx + 1}
-                    type="worst"
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground py-2">
-                  Sem dados suficientes
-                </p>
-              )}
-            </div>
-          </div>
+          
+          {/* Leagues */}
+          {ranking.allLeagues.map((league, idx) => (
+            <LeagueRow
+              key={league.league}
+              league={league}
+              position={idx + 1}
+              totalCount={ranking.allLeagues.length}
+            />
+          ))}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -133,7 +139,7 @@ export function LeagueRankingByMethod({ rankings, periodLabel }: LeagueRankingBy
           Ranking de Ligas por Método
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Melhores e piores ligas para cada método • {periodLabel}
+          Todas as ligas ordenadas por performance (mínimo 3 operações) • {periodLabel}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

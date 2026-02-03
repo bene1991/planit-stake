@@ -16,8 +16,7 @@ export interface LeagueMethodStats {
 export interface MethodLeagueRanking {
   methodId: string;
   methodName: string;
-  bestLeagues: LeagueMethodStats[];
-  worstLeagues: LeagueMethodStats[];
+  allLeagues: LeagueMethodStats[]; // All leagues sorted by score (best to worst)
 }
 
 const calculateProfitInStakes = (op: MethodOperation): number => {
@@ -104,7 +103,7 @@ export const useLeagueRankingByMethod = (
             reds: data.reds,
             winRate: parseFloat(winRate.toFixed(1)),
             profit: parseFloat(data.profit.toFixed(2)),
-            score: 0, // will calculate next
+            score: 0,
           };
         })
         .filter((l) => l.total >= 3); // Minimum 3 operations for statistical relevance
@@ -113,8 +112,7 @@ export const useLeagueRankingByMethod = (
         return {
           methodId: method.id,
           methodName: method.name,
-          bestLeagues: [],
-          worstLeagues: [],
+          allLeagues: [],
         };
       }
 
@@ -127,22 +125,15 @@ export const useLeagueRankingByMethod = (
         l.score = parseFloat(((l.winRate * 0.6) + (normalizedProfit * 0.4)).toFixed(1));
       });
 
-      // Sort by score descending for best
-      const sortedByScore = [...leagueStats].sort((a, b) => b.score - a.score);
-      
-      // Best 3 leagues (highest score)
-      const bestLeagues = sortedByScore.slice(0, 3);
-      
-      // Worst 3 leagues (lowest score)
-      const worstLeagues = [...leagueStats].sort((a, b) => a.score - b.score).slice(0, 3);
+      // Sort by score descending (best first)
+      const sortedLeagues = [...leagueStats].sort((a, b) => b.score - a.score);
 
       return {
         methodId: method.id,
         methodName: method.name,
-        bestLeagues,
-        worstLeagues,
+        allLeagues: sortedLeagues,
       };
-    }).filter((r) => r.bestLeagues.length > 0 || r.worstLeagues.length > 0);
+    }).filter((r) => r.allLeagues.length > 0);
 
     return rankings;
   }, [games, methods, filters]);
