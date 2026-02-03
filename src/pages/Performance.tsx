@@ -35,6 +35,8 @@ import { ptBR } from 'date-fns/locale';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
 import { useStatistics } from '@/hooks/useStatistics';
 import { ReportExportButton } from '@/components/ReportExportButton';
+import { LeagueRankingByMethod } from '@/components/Charts/LeagueRankingByMethod';
+import { useLeagueRankingByMethod } from '@/hooks/useLeagueRankingByMethod';
 
 const statusConfig: Record<OperationalStatusType, { color: string; bg: string; icon: React.ElementType; border: string }> = {
   'NORMAL': { 
@@ -96,6 +98,9 @@ export default function Performance() {
 
   // Use original statistics for charts that don't need filtering
   const originalStatistics = useStatistics(games, bankroll.methods);
+
+  // League ranking by method
+  const leagueRankingByMethod = useLeagueRankingByMethod(games, bankroll.methods, filters);
 
   // Calculate total profit in R$ for health metrics - moved to after settings declaration
   const totalProfitReais = useMemo(() => {
@@ -624,6 +629,9 @@ export default function Performance() {
 
       {/* League Stats */}
       <LeagueStatsChart data={leagueStats} games={filteredGames} methods={bankroll.methods} />
+
+      {/* League Ranking by Method - NEW */}
+      <LeagueRankingByMethod rankings={leagueRankingByMethod} periodLabel={periodLabel} />
 
       {/* Team Stats */}
       {teamStats.length > 0 && (
