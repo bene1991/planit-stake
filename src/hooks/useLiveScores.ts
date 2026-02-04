@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Game } from '@/types';
 import { emitApiUsageUpdate } from './useApiRequestTracker';
+import { usePageVisibility } from './usePageVisibility';
 
 export interface LiveScoreEvent {
   minute: number;
@@ -56,6 +57,9 @@ export function useLiveScores(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
+  
+  // Page visibility - pause polling when tab is hidden
+  const isPageVisible = usePageVisibility();
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
@@ -352,9 +356,21 @@ export function useLiveScores(
     fetchLiveScoresRef.current = fetchLiveScores;
   }, [fetchLiveScores]);
   
-  // Start/stop interval based on whether there are games to monitor
+  // Start/stop interval based on whether there are games to monitor AND page visibility
   // CRITICAL: fetchLiveScores removed from deps to prevent infinite loop!
   useEffect(() => {
+    // Clear any existing interval first
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    // If page is not visible, pause all API calls
+    if (!isPageVisible) {
+      console.log('[useLiveScores] Page hidden - PAUSING API polling to save credits');
+      return;
+    }
+    
     // Determine refresh interval based on active live games
     const hasLiveGames = games.some(g => g.status === 'Live');
     const refreshInterval = hasLiveGames ? REFRESH_INTERVAL_ACTIVE : REFRESH_INTERVAL_IDLE;
@@ -376,15 +392,9 @@ export function useLiveScores(
           intervalRef.current = null;
         }
       };
-    } else {
-      // No games to monitor, clear interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
     }
     // REMOVED: fetchLiveScores from dependencies to prevent race condition!
-  }, [hasGamesToMonitor, fixtureIds.length, games]);
+  }, [hasGamesToMonitor, fixtureIds.length, games, isPageVisible]);
   
   // Cleanup on unmount
   useEffect(() => {

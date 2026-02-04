@@ -224,8 +224,9 @@ export function useApiFootball<T>(
 
 // Specialized hooks
 
-export function useLiveFixtures(refetchInterval = 30000) {
-  return useApiFootball<ApiFootballFixture>('fixtures', { live: 'all' }, { refetchInterval });
+// Default to 60s interval to save API credits
+export function useLiveFixtures(refetchInterval = 60000) {
+  return useApiFootball<ApiFootballFixture>('fixtures', { live: 'all' }, { refetchInterval, enabled: refetchInterval > 0 });
 }
 
 export function useFixturesByDate(date: string, enabled = true) {

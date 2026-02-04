@@ -25,7 +25,8 @@ import {
 
 export default function LiveGames() {
   const [activeTab, setActiveTab] = useState<'my-games' | 'all-games'>('my-games');
-  const { data: liveFixtures, loading, error, refetch, cached } = useLiveFixtures(30000);
+  // OPTIMIZATION: Removed auto-refresh (was 30s) - now manual only to save API credits
+  const { data: liveFixtures, loading, error, refetch, cached } = useLiveFixtures(0);
   const [selectedFixtureId, setSelectedFixtureId] = useState<number | null>(null);
   
   // Auto-select first fixture
@@ -37,9 +38,9 @@ export default function LiveGames() {
 
   const selectedFixture = liveFixtures?.find(f => f.fixture.id === selectedFixtureId);
   
-  // Fetch statistics and events for selected fixture
-  const { data: statsData } = useFixtureStatistics(selectedFixtureId?.toString(), 30000);
-  const { data: eventsData } = useFixtureEvents(selectedFixtureId?.toString(), 30000);
+  // Fetch statistics and events for selected fixture (MANUAL ONLY - no auto-refresh)
+  const { data: statsData } = useFixtureStatistics(selectedFixtureId?.toString(), 0);
+  const { data: eventsData } = useFixtureEvents(selectedFixtureId?.toString(), 0);
   
   const stats = parseStatistics(statsData || null);
 
@@ -337,7 +338,7 @@ export default function LiveGames() {
       {/* Footer */}
       <div className="text-center text-xs lg:text-sm text-muted-foreground flex items-center justify-center gap-2">
         <RefreshCw className="h-3 w-3 lg:h-4 lg:w-4" />
-        Atualização automática a cada 30 segundos
+        Clique em "Atualizar" para buscar dados atualizados
       </div>
     </div>
   );
