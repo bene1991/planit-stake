@@ -22,29 +22,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasInitialized = useRef(false);
 
   useEffect(() => {
-    // Set up auth state listener
+    // Check for existing session first
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+      hasInitialized.current = true;
+    });
+
+    // Set up auth state listener - NO navigation on token refresh
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Only redirect on real login, not session revalidation
-        if (event === 'SIGNED_IN' && hasInitialized.current) {
+        // Only redirect on explicit login from auth page, not refreshes
+        if (event === 'SIGNED_IN' && !hasInitialized.current) {
+          hasInitialized.current = true;
           navigate('/');
         }
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      hasInitialized.current = true; // Mark as initialized AFTER loading session
-    });
-
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
