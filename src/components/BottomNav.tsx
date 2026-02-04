@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, BarChart3, Wallet } from "lucide-react";
+import { Home, BarChart3, Wallet, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BottomNav = () => {
@@ -9,6 +9,7 @@ export const BottomNav = () => {
     { to: "/", label: "Início", icon: Home },
     { to: "/performance", label: "Desempenho", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
+    { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
   ];
 
   const isActive = (path: string) => location.pathname === path;
