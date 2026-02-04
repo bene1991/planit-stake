@@ -1,134 +1,143 @@
 
 
-## Ranking de Ligas por Método
+## Diagnóstico: Consumo Excessivo de API (1069 créditos)
 
-### O Que Será Criado
+### Problemas Identificados
 
-Um novo componente que mostra **ranking de melhores e piores ligas para cada método específico**, permitindo identificar onde cada estratégia funciona melhor ou pior.
+O sistema está fazendo chamadas à API de **MÚLTIPLOS lugares simultaneamente**, resultando em consumo exponencial:
 
----
+| Fonte | Intervalo | Créditos/Hora | Multiplicador |
+|-------|-----------|---------------|---------------|
+| `useLiveScores` (DailyPlanning) | 20s | ~180 | x1 por jogo Live |
+| `useLiveFixtures` (LiveGames) | 30s | ~120 | Global |
+| `useFixture` (MyLiveGames - cada card) | 60s | ~60 | **x N jogos** |
+| `useFixtureStatistics` (MyLiveGames) | 30s | ~120 | Jogo selecionado |
+| `useFixtureEvents` (LiveGames) | 30s | ~120 | Jogo selecionado |
+| Backfill de jogos finalizados | On-demand | ~10-50 | Variável |
 
-### Funcionalidade
+**Exemplo com 5 jogos vinculados:**
+- LiveGames: 120 + 120 + 120 = 360/hora
+- MyLiveGames cards: 60 x 5 = 300/hora  
+- DailyPlanning: 180/hora
+- **Total: ~840/hora** (mais backfill e buscas)
 
-Na página de **Desempenho**, abaixo do gráfico de ligas atual:
-1. Respeita os filtros de **período**, **método** e **liga** aplicados
-2. Mostra para cada método:
-   - Top 3 Melhores Ligas (maior win rate + lucro)
-   - Top 3 Piores Ligas (menor win rate + prejuízo)
-3. Inclui estatísticas detalhadas (win rate, operações, lucro)
-
----
-
-### Estrutura Visual
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  🏆 Ranking de Ligas por Método                              │
-│  Período: 01/01/2026 - 31/01/2026                            │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ⚽ BTTS                                                      │
-│  ┌─────────────────────────────┬─────────────────────────────┐
-│  │ 🏆 MELHORES                 │ ⚠️ PIORES                   │
-│  ├─────────────────────────────┼─────────────────────────────┤
-│  │ 1. Premier League           │ 1. Serie B Brasil           │
-│  │    85% WR • 12 ops • +2.5st │    35% WR • 8 ops • -3.2st  │
-│  │ 2. La Liga                  │ 2. Ligue 2                  │
-│  │    78% WR • 9 ops • +1.8st  │    40% WR • 5 ops • -2.0st  │
-│  │ 3. Serie A                  │ 3. Championship             │
-│  │    72% WR • 15 ops • +1.2st │    45% WR • 10 ops • -1.5st │
-│  └─────────────────────────────┴─────────────────────────────┘
-│                                                              │
-│  🎯 Over 1.5 HT                                              │
-│  ┌─────────────────────────────┬─────────────────────────────┐
-│  │ 🏆 MELHORES                 │ ⚠️ PIORES                   │
-│  ├─────────────────────────────┼─────────────────────────────┤
-│  │ 1. Bundesliga               │ 1. Eredivisie               │
-│  │    80% WR • 10 ops • +2.0st │    30% WR • 6 ops • -2.8st  │
-│  │ ...                         │ ...                         │
-│  └─────────────────────────────┴─────────────────────────────┘
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
+**Em 1.5 horas = ~1260 créditos** (explica os 1069)
 
 ---
 
-### Arquivos a Criar/Modificar
+### Solução: Centralização + Cache Inteligente
 
-| Arquivo | Ação |
-|---------|------|
-| `vite.config.ts` | Aumentar limite do PWA para corrigir erro de build |
-| `src/hooks/useFilteredStatistics.ts` | Adicionar cálculo de `leagueStatsByMethod` |
-| `src/components/Charts/LeagueRankingByMethod.tsx` | Novo componente de ranking |
-| `src/pages/Performance.tsx` | Adicionar componente na página |
-
----
-
-### Detalhes Técnicos
-
-#### 1. Correção do Erro de Build (PWA)
-
-Adicionar `maximumFileSizeToCacheInBytes` na configuração do PWA:
+#### 1. Desabilitar auto-refresh em páginas que não estão visíveis
 
 ```typescript
-injectManifest: {
-  globPatterns: ["**/*.{js,css,html,ico,png,svg,mp3}"],
-  maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
-},
+// Usar Page Visibility API para pausar refresh quando aba não está visível
+const isPageVisible = usePageVisibility();
+const shouldFetch = isPageVisible && hasActiveGames;
 ```
 
-#### 2. Nova Estrutura de Dados
+#### 2. Eliminar chamadas individuais por jogo no MyLiveGames
+
+Atualmente cada `GameCard` faz sua própria chamada `useFixture()` a cada 60s.
+Com 10 jogos = 10 chamadas/minuto = 600/hora APENAS para cards!
+
+**Solução:** Usar o cache global de `useLiveScores` para todos os cards.
+
+#### 3. Desabilitar auto-refresh na página "Todos os Jogos"
+
+A aba "Todos" (LiveGames) faz `useLiveFixtures(30000)` + stats + events constantemente.
+Mudar para **refresh manual apenas**.
+
+#### 4. Unificar fonte de dados
+
+Criar um **contexto global** `LiveScoresContext` que:
+- Faz UMA chamada `live=all` a cada 30-60s
+- Distribui dados para todos os componentes
+- Pausa quando página não está visível
+
+---
+
+### Arquivos a Modificar
+
+| Arquivo | Mudança |
+|---------|---------|
+| `src/hooks/usePageVisibility.ts` | **CRIAR** - Hook para detectar visibilidade da aba |
+| `src/hooks/useLiveScores.ts` | Adicionar pausa quando página não está visível |
+| `src/pages/LiveGames.tsx` | Desabilitar auto-refresh, usar refresh manual |
+| `src/components/LiveStats/MyLiveGames.tsx` | Remover `useFixture` individual dos cards, usar cache global |
+| `src/hooks/useApiFootball.ts` | Aumentar intervalo padrão para 60s |
+
+---
+
+### Resultado Esperado
+
+| Cenário | Antes | Depois |
+|---------|-------|--------|
+| Página aberta, 5 jogos | ~840/hora | ~60/hora |
+| Página minimizada | ~840/hora | **0/hora** |
+| Navegando entre páginas | Acumula | Pausa automática |
+
+**Economia estimada:** 90-95% de redução no consumo de créditos
+
+---
+
+### Detalhes da Implementação
+
+#### Hook usePageVisibility
 
 ```typescript
-interface LeagueStatsByMethod {
-  methodId: string;
-  methodName: string;
-  leagues: {
-    league: string;
-    total: number;
-    greens: number;
-    reds: number;
-    winRate: number;
-    profit: number; // em stakes
-  }[];
-  bestLeagues: LeagueStats[];  // Top 3 por winRate + lucro
-  worstLeagues: LeagueStats[]; // Bottom 3 por winRate + prejuízo
+export function usePageVisibility() {
+  const [isVisible, setIsVisible] = useState(!document.hidden);
+  
+  useEffect(() => {
+    const handler = () => setIsVisible(!document.hidden);
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+  
+  return isVisible;
 }
 ```
 
-#### 3. Lógica de Ranking
+#### Modificação no useLiveScores
 
-Para cada método:
-1. Agrupar operações por liga
-2. Calcular win rate e lucro (em stakes) por liga
-3. Ordenar por **score combinado**: `winRate * 0.6 + normalizedProfit * 0.4`
-4. Top 3 = melhores, Bottom 3 = piores
-5. Filtrar ligas com mínimo 3 operações (para relevância estatística)
+```typescript
+// Adicionar verificação de visibilidade
+const isPageVisible = usePageVisibility();
 
-#### 4. Componente Visual
+useEffect(() => {
+  if (!isPageVisible || !hasGamesToMonitor) {
+    // Pausar quando página não está visível
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    return;
+  }
+  // ... resto do código
+}, [isPageVisible, hasGamesToMonitor, ...]);
+```
 
-- Cards colapsáveis por método
-- Cores: Verde para melhores, Vermelho para piores
-- Badges com Win Rate e Lucro
-- Indicador de volume (operações)
-- Responsivo: em mobile, melhores/piores empilhados
+#### Remoção de chamadas individuais no MyLiveGames
 
----
+```typescript
+// ANTES: Cada card fazia sua própria chamada
+function GameCard({ game }) {
+  const { data: fixtureData } = useFixture(game.api_fixture_id, 60000); // ❌
+}
 
-### Benefícios
-
-1. **Insights específicos** - Ver onde cada método brilha ou falha
-2. **Decisões melhores** - Saber quais ligas evitar para cada estratégia
-3. **Filtrado** - Respeita todos os filtros aplicados
-4. **Acionável** - Identificar oportunidades de melhoria
+// DEPOIS: Usar dados do cache global
+function GameCard({ game, liveScores }) {
+  const score = liveScores.get(game.api_fixture_id); // ✅
+}
+```
 
 ---
 
 ### Ordem de Implementação
 
-1. Corrigir erro de build do PWA (aumentar limite de cache)
-2. Adicionar cálculo `leagueStatsByMethod` no hook
-3. Criar componente `LeagueRankingByMethod`
-4. Integrar na página de Desempenho
-5. Testar com diferentes filtros
+1. Criar hook `usePageVisibility`
+2. Integrar visibilidade no `useLiveScores` para pausar refresh
+3. Remover auto-refresh de 30s no `LiveGames.tsx`
+4. Refatorar `MyLiveGames` para usar cache global ao invés de chamadas individuais
+5. Aumentar intervalo padrão de 30s para 60s
 
