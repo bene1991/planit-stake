@@ -72,12 +72,16 @@ export function MyLiveGames() {
 
   const selectedGame = allGames.find(g => g.id === selectedGameId);
   
-  // Fetch live data for selected game (only if linked)
+  // Fetch live data for selected game ONLY (no auto-refresh to save API credits)
+  // Stats are fetched only when user explicitly selects a game and clicks refresh
   const { data: fixtureData, refetch: refetchFixture } = useFixture(
     selectedGame?.api_fixture_id || undefined,
-    30000
+    0 // DISABLED AUTO-REFRESH - manual only
   );
-  const { data: statsData } = useFixtureStatistics(selectedGame?.api_fixture_id || undefined, 30000);
+  const { data: statsData } = useFixtureStatistics(
+    selectedGame?.api_fixture_id || undefined, 
+    0 // DISABLED AUTO-REFRESH - manual only
+  );
   
   const liveFixture = fixtureData?.[0];
   const stats = parseStatistics(statsData || null);
@@ -319,7 +323,8 @@ export function MyLiveGames() {
   );
 }
 
-// Game Card component
+// Game Card component - NO LONGER MAKES INDIVIDUAL API CALLS
+// Scores come from useLiveScores global cache (passed via parent)
 function GameCard({ 
   game, 
   isSelected, 
@@ -329,9 +334,15 @@ function GameCard({
   isSelected: boolean; 
   onClick: () => void;
 }) {
-  const { data: fixtureData } = useFixture(game.api_fixture_id || undefined, 60000);
-  const liveFixture = fixtureData?.[0];
-  const statusInfo = liveFixture ? getStatusDisplay(liveFixture.fixture.status) : null;
+  // REMOVED: Individual useFixture call that was consuming 60 credits/hour PER CARD
+  // const { data: fixtureData } = useFixture(game.api_fixture_id || undefined, 60000);
+  
+  // For now, show basic info without live data - the selected game will have full data
+  const statusInfo = game.status === 'Live' 
+    ? { isLive: true, label: 'Ao Vivo' } 
+    : game.status === 'Finished' 
+      ? { isLive: false, label: 'Encerrado' }
+      : { isLive: false, label: 'Pendente' };
 
   return (
     <Card 
@@ -353,7 +364,6 @@ function GameCard({
             )}
           >
             {statusInfo.isLive && <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse mr-1" />}
-            {liveFixture?.fixture.status.elapsed ? `${liveFixture.fixture.status.elapsed}' ` : ''}
             {statusInfo.label}
           </Badge>
         )}
@@ -364,28 +374,32 @@ function GameCard({
           <div className="flex items-center justify-end gap-2">
             <span className="text-sm font-medium truncate">{game.homeTeam}</span>
             <Avatar className="h-6 w-6">
-              <AvatarImage src={liveFixture?.teams.home.logo || game.homeTeamLogo} />
+              <AvatarImage src={game.homeTeamLogo} />
               <AvatarFallback className="text-[8px]">{game.homeTeam.slice(0, 2)}</AvatarFallback>
             </Avatar>
           </div>
         </div>
         
-        <div className="flex items-center gap-1 font-bold">
-          <span>{liveFixture?.goals.home ?? '-'}</span>
-          <span className="text-muted-foreground">:</span>
-          <span>{liveFixture?.goals.away ?? '-'}</span>
+        <div className="flex items-center gap-1 font-bold text-muted-foreground">
+          <span>-</span>
+          <span>:</span>
+          <span>-</span>
         </div>
         
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={liveFixture?.teams.away.logo || game.awayTeamLogo} />
+              <AvatarImage src={game.awayTeamLogo} />
               <AvatarFallback className="text-[8px]">{game.awayTeam.slice(0, 2)}</AvatarFallback>
             </Avatar>
             <span className="text-sm font-medium truncate">{game.awayTeam}</span>
           </div>
         </div>
       </div>
+      
+      <p className="text-[10px] text-muted-foreground text-center mt-2">
+        Clique para ver estatísticas
+      </p>
     </Card>
   );
 }
