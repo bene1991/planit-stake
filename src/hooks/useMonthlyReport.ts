@@ -189,10 +189,14 @@ export function useMonthlyReport(
         ? Math.min(...dailyProfits.map(d => d.profit))
         : 0;
 
-      // Method ranking
-      const methodStats = new Map<string, { profit: number; greens: number; total: number }>();
+      // Method ranking - only include known methods
+      const methodStats = new Map<string, { profit: number; greens: number; total: number; methodName: string }>();
       operations.forEach(op => {
-        const current = methodStats.get(op.methodId) || { profit: 0, greens: 0, total: 0 };
+        // Find the method - skip if not found (unknown)
+        const method = methods.find(m => m.id === op.methodId);
+        if (!method) return; // Skip unknown methods
+        
+        const current = methodStats.get(op.methodId) || { profit: 0, greens: 0, total: 0, methodName: method.name };
         current.profit += op.profit;
         current.total++;
         if (op.result === 'Green') current.greens++;
@@ -200,18 +204,16 @@ export function useMonthlyReport(
       });
 
       const methodRanking = Array.from(methodStats.entries())
-        .map(([methodId, stats]) => {
-          const method = methods.find(m => m.id === methodId);
-          return {
-            name: method?.name || 'Desconhecido',
-            profit: stats.profit,
-            winRate: stats.total > 0 ? (stats.greens / stats.total) * 100 : 0,
-            operations: stats.total
-          };
-        })
+        .map(([, stats]) => ({
+          name: stats.methodName,
+          profit: stats.profit,
+          winRate: stats.total > 0 ? (stats.greens / stats.total) * 100 : 0,
+          operations: stats.total
+        }))
         .sort((a, b) => b.profit - a.profit);
 
-      const bestMethod = methodRanking[0];
+      // Best method = highest profit (even if negative, it's the "least bad")
+      const bestMethod = methodRanking.length > 0 ? methodRanking[0] : null;
 
       setStats({
         totalOperations: total,
