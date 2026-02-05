@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Home, BarChart3, Wallet, CalendarDays } from "lucide-react";
+import { Menu, Home, BarChart3, Wallet, CalendarDays, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +18,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { to: "/performance", label: "Desempenho", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
     { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
+    { to: "/btts", label: "BTTS", icon: Target },
   ];
 
   const isActive = (path: string) => location.pathname === path;

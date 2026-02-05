@@ -357,63 +357,57 @@ export function useMonthlyReport(
     setIsLoadingAI(true);
     
     try {
-      const prompt = `Analise o desempenho de um trader de apostas esportivas no mês de ${formatMonthYear(selectedMonth)}:
-
-ESTATÍSTICAS DO MÊS:
-- Total de operações: ${stats.totalOperations}
-- Greens: ${stats.greens} | Reds: ${stats.reds}
-- Win Rate: ${stats.winRate.toFixed(1)}%
-- Lucro: R$ ${stats.profitMoney.toFixed(2)} (${stats.profitStakes.toFixed(2)} stakes)
-- Drawdown Máximo: R$ ${stats.maxDrawdown.toFixed(2)}
-- Maior sequência de greens: ${stats.maxGreenStreak}
-- Maior sequência de reds: ${stats.maxRedStreak}
-- Melhor dia: R$ ${stats.bestDayProfit.toFixed(2)}
-- Pior dia: R$ ${stats.worstDayProfit.toFixed(2)}
-- Melhor método: ${stats.bestMethodName} (R$ ${stats.bestMethodProfit.toFixed(2)})
-
-RANKING DE MÉTODOS:
-${stats.methodRanking.map((m, i) => `${i + 1}. ${m.name}: R$ ${m.profit.toFixed(2)} | WR: ${m.winRate.toFixed(1)}% | ${m.operations} ops`).join('\n')}
-
-Forneça uma análise estruturada com:
-1. Score geral (0-100)
-2. Resumo executivo (2-3 frases)
-3. 3 pontos positivos
-4. 3 pontos negativos ou alertas
-5. 3 sugestões para o próximo mês
-
-Responda APENAS em JSON válido:
-{
-  "score": number,
-  "summary": "string",
-  "positivePoints": ["string", "string", "string"],
-  "negativePoints": ["string", "string", "string"],
-  "suggestions": ["string", "string", "string"]
-}`;
+      // Build the performanceData structure expected by the edge function
+      const performanceData = {
+        period: formatMonthYear(selectedMonth),
+        overallStats: {
+          total: stats.totalOperations,
+          greens: stats.greens,
+          reds: stats.reds,
+          winRate: parseFloat(stats.winRate.toFixed(1)),
+        },
+        profit: stats.profitStakes,
+        totalProfitReais: stats.profitMoney,
+        averageOdd: 2.0,
+        breakevenRate: 50,
+        methodStats: stats.methodRanking.map(m => ({
+          methodName: m.name,
+          total: m.operations,
+          greens: Math.round(m.operations * m.winRate / 100),
+          reds: m.operations - Math.round(m.operations * m.winRate / 100),
+          winRate: parseFloat(m.winRate.toFixed(1)),
+          profitReais: m.profit,
+          combinedScore: Math.round((m.winRate * 0.4) + (m.profit > 0 ? 30 : 0) + (m.operations > 10 ? 30 : m.operations * 3)),
+          activeDays: Math.ceil(m.operations / 3),
+        })),
+        topLeagues: [],
+        bottomLeagues: [],
+        topTeams: [],
+        bottomTeams: [],
+        oddRangeStats: [],
+        comparison: { winRateChange: 0, volumeChange: 0 },
+        isFiltered: false,
+        generalWinRate: parseFloat(stats.winRate.toFixed(1)),
+        advancedMetrics: {
+          maxRunUp: Math.max(stats.bestDayProfit, 0),
+          maxDrawdown: stats.maxDrawdown,
+          recoveryRate: stats.maxDrawdown > 0 ? (stats.profitMoney / stats.maxDrawdown) : 1,
+          ruinCoefficient: stats.maxRedStreak > 0 ? (stats.maxRedStreak / stats.totalOperations) : 0,
+          profitDays: stats.dailyProfits.filter(d => d.profit > 0).length,
+          lossDays: stats.dailyProfits.filter(d => d.profit < 0).length,
+          totalDays: stats.dailyProfits.length,
+        }
+      };
 
       const { data, error } = await supabase.functions.invoke('analyze-performance', {
-        body: { prompt }
+        body: { performanceData, structuredOutput: true }
       });
 
       if (error) throw error;
 
-      // Parse the AI response
-      let analysis;
-      try {
-        const content = data.analysis || data.content || data;
-        if (typeof content === 'string') {
-          // Extract JSON from the response
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            analysis = JSON.parse(jsonMatch[0]);
-          }
-        } else {
-          analysis = content;
-        }
-      } catch (parseError) {
-        console.error('Error parsing AI response:', parseError);
-        throw new Error('Failed to parse AI analysis');
-      }
-
+      // Parse the structured AI response
+      const analysis = data.analysis;
+      
       if (analysis) {
         setAIAnalysis({
           score: analysis.score || 50,
