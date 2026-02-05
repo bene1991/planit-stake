@@ -1,133 +1,169 @@
 
 
-## Diagnóstico: Consumo Excessivo de API (1069 créditos)
+## Correções e Nova Ferramenta BTTS
 
-### Problemas Identificados
+### Problema 1: Erro na Análise de IA do Fechamento Mensal
 
-O sistema está fazendo chamadas à API de **MÚLTIPLOS lugares simultaneamente**, resultando em consumo exponencial:
+**Diagnóstico:**
+O erro `TypeError: Cannot read properties of undefined (reading 'isFiltered')` ocorre porque:
+- A edge function `analyze-performance` espera receber `performanceData` com a estrutura completa (incluindo `isFiltered`, `activeFilters`, etc.)
+- O hook `useMonthlyReport.ts` está enviando apenas `{ prompt }` ao invés de `{ performanceData, structuredOutput: true }`
 
-| Fonte | Intervalo | Créditos/Hora | Multiplicador |
-|-------|-----------|---------------|---------------|
-| `useLiveScores` (DailyPlanning) | 20s | ~180 | x1 por jogo Live |
-| `useLiveFixtures` (LiveGames) | 30s | ~120 | Global |
-| `useFixture` (MyLiveGames - cada card) | 60s | ~60 | **x N jogos** |
-| `useFixtureStatistics` (MyLiveGames) | 30s | ~120 | Jogo selecionado |
-| `useFixtureEvents` (LiveGames) | 30s | ~120 | Jogo selecionado |
-| Backfill de jogos finalizados | On-demand | ~10-50 | Variável |
-
-**Exemplo com 5 jogos vinculados:**
-- LiveGames: 120 + 120 + 120 = 360/hora
-- MyLiveGames cards: 60 x 5 = 300/hora  
-- DailyPlanning: 180/hora
-- **Total: ~840/hora** (mais backfill e buscas)
-
-**Em 1.5 horas = ~1260 créditos** (explica os 1069)
+**Solução:**
+Modificar o `useMonthlyReport.ts` para enviar os dados no formato correto que a edge function espera.
 
 ---
 
-### Solução: Centralização + Cache Inteligente
+### Problema 2: Ferramenta para BTTS (Ambas Marcam)
 
-#### 1. Desabilitar auto-refresh em páginas que não estão visíveis
+O sistema já possui:
+- Tabela `btts_entries` para registrar operações BTTS
+- Tabela `btts_health_settings` para configurações de saúde
+- Tabela `btts_league_quarantine` para quarentena de ligas
+- Edge function `the-odds-api` para buscar odds BTTS
+- Hook `useTheOddsBtts.ts` para consumir a API
+
+**O que falta:** Uma página/interface dedicada para gerenciar operações BTTS.
+
+---
+
+### Arquivos a Modificar/Criar
+
+| Arquivo | Ação |
+|---------|------|
+| `src/hooks/useMonthlyReport.ts` | Corrigir formato de envio para a edge function |
+| `src/pages/BttsTracker.tsx` | **CRIAR** - Página dedicada para BTTS |
+| `src/hooks/useBttsEntries.ts` | **CRIAR** - Hook para CRUD de operações BTTS |
+| `src/components/BttsEntryForm.tsx` | **CRIAR** - Formulário para adicionar entradas |
+| `src/components/BttsStatsCard.tsx` | **CRIAR** - Card com estatísticas BTTS |
+| `src/components/BttsQuarantineManager.tsx` | **CRIAR** - Gerenciador de quarentena de ligas |
+| `src/App.tsx` | Adicionar rota `/btts` |
+| `src/components/Layout.tsx` | Adicionar link na navegação |
+| `src/components/BottomNav.tsx` | Adicionar ícone na barra mobile |
+
+---
+
+### Correção da Análise Mensal
 
 ```typescript
-// Usar Page Visibility API para pausar refresh quando aba não está visível
-const isPageVisible = usePageVisibility();
-const shouldFetch = isPageVisible && hasActiveGames;
+// useMonthlyReport.ts - ANTES (incorreto)
+const { data, error } = await supabase.functions.invoke('analyze-performance', {
+  body: { prompt }
+});
+
+// DEPOIS (correto)
+const performanceData = {
+  period: formatMonthYear(selectedMonth),
+  overallStats: {
+    total: stats.totalOperations,
+    greens: stats.greens,
+    reds: stats.reds,
+    winRate: stats.winRate,
+  },
+  profit: stats.profitStakes,
+  totalProfitReais: stats.profitMoney,
+  averageOdd: 2.0, // default
+  breakevenRate: 50,
+  methodStats: stats.methodRanking.map(m => ({
+    methodName: m.name,
+    total: m.operations,
+    greens: Math.round(m.operations * m.winRate / 100),
+    reds: m.operations - Math.round(m.operations * m.winRate / 100),
+    winRate: m.winRate,
+    profitReais: m.profit,
+    combinedScore: 50,
+    activeDays: 10,
+  })),
+  topLeagues: [],
+  bottomLeagues: [],
+  topTeams: [],
+  bottomTeams: [],
+  oddRangeStats: [],
+  comparison: { winRateChange: 0, volumeChange: 0 },
+  isFiltered: false,
+  generalWinRate: stats.winRate,
+};
+
+const { data, error } = await supabase.functions.invoke('analyze-performance', {
+  body: { performanceData, structuredOutput: true }
+});
 ```
 
-#### 2. Eliminar chamadas individuais por jogo no MyLiveGames
+---
 
-Atualmente cada `GameCard` faz sua própria chamada `useFixture()` a cada 60s.
-Com 10 jogos = 10 chamadas/minuto = 600/hora APENAS para cards!
+### Nova Ferramenta BTTS - Funcionalidades
 
-**Solução:** Usar o cache global de `useLiveScores` para todos os cards.
-
-#### 3. Desabilitar auto-refresh na página "Todos os Jogos"
-
-A aba "Todos" (LiveGames) faz `useLiveFixtures(30000)` + stats + events constantemente.
-Mudar para **refresh manual apenas**.
-
-#### 4. Unificar fonte de dados
-
-Criar um **contexto global** `LiveScoresContext` que:
-- Faz UMA chamada `live=all` a cada 30-60s
-- Distribui dados para todos os componentes
-- Pausa quando página não está visível
+```text
+┌──────────────────────────────────────────────────────────────┐
+│  🎯 BTTS Tracker                                             │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  📊 Estatísticas Rápidas                                     │
+│  ┌─────────────┬─────────────┬─────────────┬─────────────┐   │
+│  │ Win Rate    │ Lucro Total │ ROI         │ Operações   │   │
+│  │ 68.5%       │ +R$ 850     │ +12.3%      │ 45          │   │
+│  └─────────────┴─────────────┴─────────────┴─────────────┘   │
+│                                                              │
+│  ➕ Nova Entrada BTTS                                        │
+│  ┌──────────────────────────────────────────────────────────┐│
+│  │ Liga: [Premier League    ▼]  Data: [05/02/2026]         ││
+│  │ Casa: [Liverpool        ]    Fora: [Chelsea            ]││
+│  │ Odd: [2.05             ]    Stake: [R$ 100            ]││
+│  │ Resultado: ◉ Green ○ Red                                 ││
+│  │                                        [Salvar]          ││
+│  └──────────────────────────────────────────────────────────┘│
+│                                                              │
+│  📋 Histórico de Entradas                                    │
+│  ┌──────────────────────────────────────────────────────────┐│
+│  │ 04/02 | Liverpool x Chelsea    | 2.05 | ✅ +R$105       ││
+│  │ 03/02 | Arsenal x Man United   | 2.15 | ❌ -R$100       ││
+│  │ 02/02 | Everton x Newcastle    | 2.25 | ✅ +R$125       ││
+│  └──────────────────────────────────────────────────────────┘│
+│                                                              │
+│  ⚠️ Ligas em Quarentena                                      │
+│  ┌──────────────────────────────────────────────────────────┐│
+│  │ Serie B Brasil - Até 15/02/2026 (3 reds seguidos)       ││
+│  │ [Remover Quarentena]                                     ││
+│  └──────────────────────────────────────────────────────────┘│
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-### Arquivos a Modificar
-
-| Arquivo | Mudança |
-|---------|---------|
-| `src/hooks/usePageVisibility.ts` | **CRIAR** - Hook para detectar visibilidade da aba |
-| `src/hooks/useLiveScores.ts` | Adicionar pausa quando página não está visível |
-| `src/pages/LiveGames.tsx` | Desabilitar auto-refresh, usar refresh manual |
-| `src/components/LiveStats/MyLiveGames.tsx` | Remover `useFixture` individual dos cards, usar cache global |
-| `src/hooks/useApiFootball.ts` | Aumentar intervalo padrão para 60s |
-
----
-
-### Resultado Esperado
-
-| Cenário | Antes | Depois |
-|---------|-------|--------|
-| Página aberta, 5 jogos | ~840/hora | ~60/hora |
-| Página minimizada | ~840/hora | **0/hora** |
-| Navegando entre páginas | Acumula | Pausa automática |
-
-**Economia estimada:** 90-95% de redução no consumo de créditos
-
----
-
-### Detalhes da Implementação
-
-#### Hook usePageVisibility
+### Hook useBttsEntries
 
 ```typescript
-export function usePageVisibility() {
-  const [isVisible, setIsVisible] = useState(!document.hidden);
-  
-  useEffect(() => {
-    const handler = () => setIsVisible(!document.hidden);
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
-  }, []);
-  
-  return isVisible;
+interface BttsEntry {
+  id: string;
+  date: string;
+  time: string;
+  league: string;
+  homeTeam: string;
+  awayTeam: string;
+  odd: number;
+  stakeValue: number;
+  result: 'Green' | 'Red';
+  profit: number;
+  method: string;
 }
-```
 
-#### Modificação no useLiveScores
-
-```typescript
-// Adicionar verificação de visibilidade
-const isPageVisible = usePageVisibility();
-
-useEffect(() => {
-  if (!isPageVisible || !hasGamesToMonitor) {
-    // Pausar quando página não está visível
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    return;
-  }
-  // ... resto do código
-}, [isPageVisible, hasGamesToMonitor, ...]);
-```
-
-#### Remoção de chamadas individuais no MyLiveGames
-
-```typescript
-// ANTES: Cada card fazia sua própria chamada
-function GameCard({ game }) {
-  const { data: fixtureData } = useFixture(game.api_fixture_id, 60000); // ❌
-}
-
-// DEPOIS: Usar dados do cache global
-function GameCard({ game, liveScores }) {
-  const score = liveScores.get(game.api_fixture_id); // ✅
+interface UseBttsEntriesResult {
+  entries: BttsEntry[];
+  loading: boolean;
+  stats: {
+    total: number;
+    greens: number;
+    reds: number;
+    winRate: number;
+    profit: number;
+    roi: number;
+  };
+  addEntry: (entry: Omit<BttsEntry, 'id' | 'profit'>) => Promise<void>;
+  deleteEntry: (id: string) => Promise<void>;
+  quarantine: LeagueQuarantine[];
+  addQuarantine: (league: string, days: number, reason: string) => Promise<void>;
+  removeQuarantine: (id: string) => Promise<void>;
 }
 ```
 
@@ -135,9 +171,19 @@ function GameCard({ game, liveScores }) {
 
 ### Ordem de Implementação
 
-1. Criar hook `usePageVisibility`
-2. Integrar visibilidade no `useLiveScores` para pausar refresh
-3. Remover auto-refresh de 30s no `LiveGames.tsx`
-4. Refatorar `MyLiveGames` para usar cache global ao invés de chamadas individuais
-5. Aumentar intervalo padrão de 30s para 60s
+1. **Corrigir erro da análise mensal** - Ajustar formato de dados no `useMonthlyReport.ts`
+2. **Criar hook `useBttsEntries`** - CRUD para operações BTTS
+3. **Criar página `BttsTracker`** - Interface principal
+4. **Criar componentes auxiliares** - Form, Stats, Quarantine
+5. **Adicionar navegação** - Rotas e links na sidebar/bottomnav
+
+---
+
+### Benefícios da Ferramenta BTTS
+
+1. **Rastreamento dedicado** - Separar BTTS das outras operações
+2. **Estatísticas específicas** - Win rate, ROI, lucro focado em BTTS
+3. **Quarentena de ligas** - Pausar ligas com resultados ruins
+4. **Histórico organizado** - Ver todas as entradas BTTS em um lugar
+5. **Fácil entrada** - Formulário otimizado para adicionar operações
 
