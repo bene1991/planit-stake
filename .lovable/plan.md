@@ -1,121 +1,141 @@
 
 
-## Melhoria Geral de Todas as Abas
+## Analise de Dominancia em Tempo Real na Aba Planejamento
 
-### Diagnostico Completo
+### Visao Geral
 
-Analisei todas as 5 abas ativas + paginas auxiliares e encontrei os seguintes problemas:
+Adicionar uma camada de inteligencia ao `GameCardCompact` que analisa os dados ja disponibilizados pelo `useFixtureCache` (posse, chutes, escanteios, etc.) para calcular um indice de dominancia e classificar o estado dos dados de cada jogo ao vivo.
 
----
-
-### 1. CODIGO MORTO (para remover)
-
-| Arquivo | Motivo |
-|---------|--------|
-| `src/components/Sidebar.tsx` | Nao e importado em lugar nenhum |
-| `src/pages/LiveGames.tsx` | Nao esta nas rotas do `App.tsx` |
-| `src/components/LiveStats/MyLiveGames.tsx` | So era usado pelo LiveGames |
-| `src/components/LiveStats/AttackMomentum.tsx` | Idem |
-| `src/components/LiveStats/PressureChart.tsx` | Idem |
-| `src/components/LiveStats/StatsComparison.tsx` | Idem |
-| `src/components/LiveStats/EventTimeline.tsx` | Idem |
-| `src/components/LiveStats/FixtureLinker.tsx` | Idem |
-| `src/hooks/useFixtureSearch.ts` | Usado apenas em contextos removidos |
-| `src/hooks/useOptimizedLiveStats.ts` | Idem |
+Nenhuma nova chamada de API sera necessaria - tudo sera calculado a partir dos dados que ja existem no sistema (`normalized_stats`, `key_events`, `momentum_series` do `fixture_cache`).
 
 ---
 
-### 2. REDUNDANCIAS ENTRE ABAS
+### Arquivos a Criar
 
-**Desempenho vs Analise de Metodo:**
-- Desempenho tem "Detalhamento por Metodo" (cards com win rate, greens, reds por metodo)
-- Desempenho tem `MethodComparisonChart` (grafico de barras comparando metodos)
-- Desempenho tem `MethodsRankingTable` (tabela ranking metodos)
-- Analise de Metodo tem scores, fases, graficos por metodo
-- **Acao:** Remover "Detalhamento por Metodo" e `MethodComparisonChart` do Desempenho. Manter `MethodsRankingTable` como resumo rapido com link para "ver analise completa" na aba Analise.
+| Arquivo | Descricao |
+|---------|-----------|
+| `src/hooks/useDominanceAnalysis.ts` | Hook que recebe `FixtureCacheData` e calcula dominancia, estado dos dados e alertas |
+| `src/components/DominanceIndicator.tsx` | Componente visual que exibe o badge de status de dados + barra de dominancia + alertas |
 
-**Desempenho vs Fechamento Mensal:**
-- Ambos tem AI analysis (AIPerformanceAnalyzer + MonthlyAIAnalysis)
-- Ambos calculam win rate, greens, reds, ranking de metodos
-- **Acao:** Cada um tem proposito distinto (periodo filtrado vs mensal fechado), manter ambos mas remover duplicidade de componentes. Desempenho = analise em tempo real. Mensal = snapshot historico.
+### Arquivos a Editar
 
-**DailyPlanning - Historico:**
-- O historico colapsavel mostra jogos finalizados com stats basicas (greens/reds/winrate)
-- Isso sobrepoe parcialmente a aba Desempenho
-- **Acao:** Simplificar historico para mostrar apenas a lista, sem resumo de stats (ja existe em Desempenho)
-
----
-
-### 3. MELHORIAS POR ABA
-
-#### Aba Inicio (DailyPlanning)
-- Remover card de "Resumo do Periodo" do historico (redundante com Desempenho)
-- Remover botao "Recalcular" do historico (confuso, ja existe em Desempenho)
-- Adicionar um **resumo do dia** no topo: lucro do dia, operacoes do dia, win rate do dia em 3 mini-cards
-
-#### Aba Desempenho (Performance)
-- Remover secao "Detalhamento por Metodo" (cards individuais) - coberto pela aba Analise
-- Remover `MethodComparisonChart` - coberto pela aba Analise
-- Manter `MethodsRankingTable` mas adicionar link "Ver analise detalhada" que leva para /method-analysis
-- Mover "Configuracoes" (meta mensal, stop diario, comissao) para a pagina de Conta - nao faz sentido em Desempenho
-- Resultado: pagina mais enxuta focada em visao geral (KPIs, graficos temporais, ligas, times)
-
-#### Aba Banca (BankrollManagement)
-- Pagina esta simples e objetiva, manter
-- Adicionar um resumo visual: barra de progresso mostrando alocacao total (soma dos %) e quanto resta
-- Adicionar indicador visual de alocacao por metodo (mini donut ou barra colorida)
-
-#### Aba Mensal (MonthlyReport)
-- Esta bem estruturada, manter
-- Sem mudancas significativas
-
-#### Aba Analise (MethodAnalysis)
-- Esta bem construida, manter como esta
-- Sem mudancas necessarias
-
-#### Pagina de Conta (Account)
-- Receber as configuracoes operacionais (meta mensal, stop, comissao, stake) que estavam em Desempenho
-- Organizar melhor em secoes com separadores visuais
-
----
-
-### 4. NAVEGACAO
-
-A BottomNav mobile so mostra 4 itens: Inicio, Desempenho, Banca, Analise. O "Mensal" so aparece no menu desktop. Isso e intencional conforme o design anterior, mas vou adicionar o Mensal como 5o item na BottomNav para dar acesso mobile.
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/components/GameCardCompact.tsx` | Integrar `useDominanceAnalysis` + `DominanceIndicator` dentro do card, apenas para jogos ao vivo |
 
 ---
 
 ### Detalhes Tecnicos
 
-#### Arquivos a Deletar
+#### Hook `useDominanceAnalysis`
+
+Recebe os dados do `useFixtureCache` e retorna:
+
+```typescript
+interface DominanceResult {
+  // Estado dos dados
+  dataStatus: 'ok' | 'limited' | 'unavailable';
+  dataStatusMessage: string;
+  
+  // Indice de dominancia (0-100, >50 = casa domina)
+  dominanceIndex: number | null; // null quando sem dados
+  dominantTeam: 'home' | 'away' | 'balanced' | null;
+  dominanceLabel: string; // "Casa domina", "Equilibrado", etc.
+  
+  // Alertas inteligentes
+  alerts: DominanceAlert[];
+}
+
+interface DominanceAlert {
+  type: 'momentum_shift' | 'high_pressure' | 'defensive_lock' | 'danger_zone';
+  message: string;
+  severity: 'info' | 'warning' | 'critical';
+}
 ```
-src/components/Sidebar.tsx
-src/pages/LiveGames.tsx
-src/components/LiveStats/MyLiveGames.tsx
-src/components/LiveStats/AttackMomentum.tsx
-src/components/LiveStats/PressureChart.tsx
-src/components/LiveStats/StatsComparison.tsx
-src/components/LiveStats/EventTimeline.tsx
-src/components/LiveStats/FixtureLinker.tsx
-src/hooks/useFixtureSearch.ts
-src/hooks/useOptimizedLiveStats.ts
+
+**Logica de classificacao dos dados:**
+
+1. **Dados OK**: `minute_now > 0` E (`shots_total_home + shots_total_away >= 2` OU `possession_home > 0`)
+2. **Dados Limitados**: `minute_now > 0` mas stats insuficientes (ex: so tem posse, sem chutes)
+3. **Sem Dados**: `minute_now === 0` OU stats completamente zeradas para jogo ao vivo OU `fixtureCache === null`
+
+**Calculo do Live Dominance Index (LDI):**
+
+Formula ponderada usando os dados disponíveis:
+- Posse de bola: peso 20%
+- Chutes totais: peso 25%
+- Chutes no gol: peso 30%
+- Escanteios: peso 15%
+- Chutes bloqueados: peso 10%
+
+O LDI resulta em um valor de 0 a 100 onde:
+- 0-35: Time visitante domina fortemente
+- 35-45: Visitante com leve vantagem
+- 45-55: Equilibrado
+- 55-65: Casa com leve vantagem
+- 65-100: Casa domina fortemente
+
+**Alertas automaticos baseados nos dados:**
+- "Pressao alta da casa" quando LDI > 70 por mais de 5 minutos
+- "Momentum invertido" quando shots_on muda de dominante (detectado via momentum_series)
+- "Jogo travado" quando ambos times tem poucos chutes e muitas faltas
+- "Zona de perigo" quando um time tem muitos chutes no gol mas sem gol
+
+---
+
+#### Componente `DominanceIndicator`
+
+Exibido dentro do `GameCardCompact`, entre o placar e as stats:
+
+**Quando dados OK:**
+```
+[Casa domina] ████████░░░░ 68 LDI
+⚠ Pressao alta da casa - 8 chutes no gol vs 2
 ```
 
-#### Arquivos a Editar
+**Quando dados limitados:**
+```
+🟡 Dados limitados - analise parcial
+[Equilibrado] ██████░░░░░░ 52 LDI
+```
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/pages/Performance.tsx` | Remover secao "Detalhamento por Metodo", remover `MethodComparisonChart`, remover Collapsible de configuracoes, adicionar link na `MethodsRankingTable` para /method-analysis |
-| `src/pages/DailyPlanning.tsx` | Adicionar 3 mini-cards de resumo do dia no topo, simplificar historico (remover card de resumo e botao recalcular) |
-| `src/pages/BankrollManagement.tsx` | Adicionar barra de progresso de alocacao total |
-| `src/pages/Account.tsx` | Adicionar secao de configuracoes operacionais (meta, stop, comissao, stake) |
-| `src/components/BottomNav.tsx` | Adicionar item "Mensal" (CalendarDays) como 5o item |
+**Quando sem dados:**
+```
+🔴 Dados ao vivo indisponiveis no momento. Analise suspensa.
+```
 
-#### Ordem de Implementacao
-1. Deletar arquivos mortos (LiveGames, Sidebar, LiveStats)
-2. Limpar Performance (remover secoes redundantes)
-3. Mover configuracoes operacionais para Account
-4. Simplificar historico do DailyPlanning + adicionar resumo do dia
-5. Melhorar BankrollManagement com barra de alocacao
-6. Atualizar BottomNav com Mensal
+Visual:
+- Badge colorido (verde/amarelo/vermelho) para status dos dados
+- Barra horizontal bicolor mostrando dominancia (verde = casa, violeta = fora)
+- Texto descritivo do time dominante
+- Lista de alertas com icones e cores por severidade
+
+---
+
+#### Integracao no GameCardCompact
+
+O `DominanceIndicator` sera inserido logo apos o placar e gols, antes do `MatchStatsOverview`, apenas quando o jogo estiver ao vivo:
+
+```
+[Placar 2-1]
+[Gols: Player 45', Player 62']
+[--- DominanceIndicator ---]  <-- NOVO
+[MatchStatsOverview]
+[OddsDisplay]
+[Notes]
+[Footer]
+[Methods]
+```
+
+Quando o jogo nao esta ao vivo (Not Started / Finished), o indicador nao aparece.
+
+Quando os dados voltam (ex: cache atualizado com stats), o indicador reativa automaticamente pois reage ao estado do `fixtureCache`.
+
+---
+
+### Ordem de Implementacao
+
+1. Criar `useDominanceAnalysis.ts` com toda a logica de calculo
+2. Criar `DominanceIndicator.tsx` com a interface visual
+3. Integrar ambos no `GameCardCompact.tsx`
 
