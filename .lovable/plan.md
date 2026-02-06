@@ -1,102 +1,132 @@
 
 
-## Modo Maratona: Creditos Durando o Dia Todo
+## Tres Validacoes Estatisticas para Analise de Metodo
 
-### Problema Atual
+### Resumo
 
-Existem dois problemas de consumo:
+Adicionar tres camadas de validacao (Robustez, Estabilidade Temporal, Dependencia de Variancia) calculadas no hook `useMethodAnalysis`, exibidas como selos nos cards e detalhadas na view de detalhe. A IA (edge function `analyze-method`) recebera os dados das validacoes e gerara uma frase de diagnostico integrada.
 
-1. **`useLiveScores` ignora o intervalo configuravel** - O hook usa 20s hardcoded (`REFRESH_INTERVAL_ACTIVE = 20 * 1000`), mesmo que o usuario configure 60s ou 120s nas configuracoes. A configuracao do `useRefreshInterval` so e usada no `useAutoRefresh` do countdown visual.
+### Arquitetura
 
-2. **`useFixtureCache` faz 1 chamada/minuto POR jogo ao vivo** - Com 10 jogos ao vivo, sao 600 creditos/hora so de detalhes.
+Toda a logica das 3 validacoes sera calculada no frontend (hook `useMethodAnalysis`), pois os dados necessarios ja estao disponiveis localmente (operacoes, ligas, odds, datas, lucros). A IA apenas interpreta os resultados.
 
-### Estimativa de Consumo Atual (dia de muitos jogos, ~16h)
+---
 
-| Fonte | Calculo | Creditos |
-|-------|---------|----------|
-| `useLiveScores` (live=all, 20s) | 3/min x 960min | ~2880 |
-| `useFixtureCache` (10 jogos medios ao vivo) | 10/min x 960min | ~9600 |
-| Backfills | ~50 jogos | ~50 |
-| **TOTAL** | | **~12.530** |
+### Validacao 1 -- Robustez do Metodo
 
-Limite diario: **7.500 creditos**. Nao sobrevive nem 10 horas.
+**Logica (no hook):**
+- Agrupar operacoes por liga e faixa de odds (ja existem em `contextAnalysis`)
+- Calcular o desvio padrao do Win Rate entre os contextos com 5+ operacoes
+- Se desvio < 10%: Robusto
+- Se desvio 10-20%: Sensivel a Contexto
+- Se desvio > 20%: Fragil
 
-### Solucao: 3 Otimizacoes
+**Saida:** `{ label: 'Robusto' | 'Sensivel' | 'Fragil', score: number, details: string }`
 
-#### 1. Conectar `useLiveScores` ao intervalo configuravel
+---
 
-**Arquivo:** `src/hooks/useLiveScores.ts`
+### Validacao 2 -- Estabilidade Temporal
 
-Aceitar o intervalo do usuario como parametro e usar no lugar do hardcoded 20s:
+**Logica (no hook):**
+- Comparar Win Rate e ROI das ultimas 30 operacoes vs historico total
+- Se diferenca < 5pp: Estavel
+- Se diferenca 5-15pp: Oscilante
+- Se diferenca > 15pp (negativa): Em Deterioracao
 
-```
-export function useLiveScores(
-  games: Game[],
-  onScorePersisted?: ...,
-  onGoalDetected?: ...,
-  activeIntervalMs?: number   // NOVO
-)
-```
+**Saida:** `{ label: 'Estavel' | 'Oscilante' | 'Deterioracao', recentWinRate: number, recentRoi: number }`
 
-O `REFRESH_INTERVAL_ACTIVE` sera substituido por `activeIntervalMs` (default 30000 se nao informado).
+---
 
-**Arquivo:** `src/pages/DailyPlanning.tsx`
+### Validacao 3 -- Dependencia de Variancia
 
-Passar o `intervalMs` do `useRefreshInterval` para o `useLiveScores`:
+**Logica (no hook):**
+- Ordenar operacoes por lucro decrescente
+- Calcular % do lucro total vindo do top 10% das operacoes
+- Se top10% < 40% do lucro: Distribuido
+- Se top10% entre 40-70%: Concentrado
+- Se top10% > 70%: Evento Raro
 
-```
-const { intervalMs } = useRefreshInterval();
-const { ... } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs);
-```
+**Saida:** `{ label: 'Distribuido' | 'Concentrado' | 'EventoRaro', topPercentContribution: number }`
 
-#### 2. Desabilitar auto-refresh do `useFixtureCache` para jogos ao vivo
+---
 
-O `useFixtureCache` ja busca dados iniciais para jogos ao vivo (isso e necessario para o LDI). Mas o auto-refresh de 60s e redundante porque o `useLiveScores` ja atualiza os placares centralizadamente.
+### Integracao com Status do Metodo
 
-**Arquivo:** `src/hooks/useFixtureCache.ts`
+Na funcao `determinePhase`, adicionar regra:
+- Metodo com 51+ ops, edge positivo, MAS marcado como "Fragil" ou "Deterioracao" nao pode ser "Validado" -- permanece "Sinal Fraco"
+- Metodo "Robusto" + "Estavel" + "Distribuido" reforça "Validado"
 
-Remover o `setInterval` de auto-refresh (linhas do `LIVE_REFRESH_INTERVAL`). Os dados de dominancia serao atualizados apenas quando o usuario expandir o card manualmente ou quando o cache invalidar naturalmente.
+---
 
-Isso elimina ~600 creditos/hora com 10 jogos simultaneos.
-
-#### 3. Modo Auto-Economia baseado em creditos restantes
-
-**Arquivo:** `src/hooks/useLiveScores.ts`
-
-Ler os creditos restantes do `_rateLimit` que ja vem na resposta da API e ajustar automaticamente:
-
-```
-Creditos > 5000: intervalo normal do usuario
-Creditos 2000-5000: minimo 60s (ignora configuracoes menores)
-Creditos 500-2000: forca 120s
-Creditos < 500: forca 300s (5 min) + log de alerta
-```
-
-Isso sera um "piso" que so entra em acao quando os creditos ficam baixos, sem interferir no uso normal.
-
-### Estimativa Apos Otimizacoes (intervalo 60s, 16h)
-
-| Fonte | Calculo | Creditos |
-|-------|---------|----------|
-| `useLiveScores` (live=all, 60s) | 1/min x 960min | ~960 |
-| `useFixtureCache` (sem auto-refresh) | ~50 buscas iniciais | ~150 |
-| Backfills | ~50 jogos | ~50 |
-| Auto-economia (ultimas horas) | Reducao extra | -100 |
-| **TOTAL** | | **~1.060** |
-
-Com margem enorme! Mesmo com 30s configurado: ~1.970 creditos. Sobra para o dia todo.
-
-### Arquivos a Editar
+### Alteracoes por Arquivo
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `src/hooks/useLiveScores.ts` | Aceitar `activeIntervalMs`, implementar auto-economia por creditos |
-| `src/hooks/useFixtureCache.ts` | Remover auto-refresh por intervalo (manter fetch inicial + `refetch` manual) |
-| `src/pages/DailyPlanning.tsx` | Passar `intervalMs` para `useLiveScores` |
+| `src/hooks/useMethodAnalysis.ts` | Adicionar interface `MethodValidations`, 3 funcoes de calculo, incluir no retorno de `MethodAnalysisData`, ajustar `determinePhase` |
+| `src/components/MethodAnalysis/MethodAnalysisCard.tsx` | Exibir 3 selos compactos abaixo dos scores (ex: "Robusto", "Estavel", "Lucro Distribuido") |
+| `src/components/MethodAnalysis/MethodAnalysisDetail.tsx` | Adicionar card de "Validacoes Avancadas" com detalhes das 3 classificacoes e explicacoes |
+| `supabase/functions/analyze-method/index.ts` | Incluir dados das validacoes no prompt da IA para que a recomendacao considere robustez, estabilidade e variancia |
+
+---
+
+### Detalhes Tecnicos
+
+#### Nova interface em `useMethodAnalysis.ts`
+
+```text
+interface MethodValidations {
+  robustness: {
+    label: 'Robusto' | 'Sensivel' | 'Fragil';
+    stdDev: number;
+    contextCount: number;
+  };
+  stability: {
+    label: 'Estavel' | 'Oscilante' | 'Deterioracao';
+    recentWinRate: number;
+    recentRoi: number;
+    deltaWinRate: number;
+    deltaRoi: number;
+  };
+  variance: {
+    label: 'Distribuido' | 'Concentrado' | 'EventoRaro';
+    topPercentContribution: number;
+  };
+}
+```
+
+Este campo `validations` sera adicionado a `MethodAnalysisData`.
+
+#### Selos no Card (MethodAnalysisCard)
+
+Tres badges pequenos em uma linha horizontal abaixo da sequencia atual:
+
+```text
+[check Robusto] [relogio Estavel] [check Lucro Distribuido]
+```
+
+Cores: verde para positivo, amarelo para medio, vermelho para negativo. Sem ocupar espaco extra significativo.
+
+#### Detalhes na View (MethodAnalysisDetail)
+
+Um novo Card "Validacoes Avancadas" entre os Alertas e a Recomendacao da IA, com 3 colunas mostrando cada validacao com icone, classificacao e uma linha de detalhe.
+
+#### Edge Function (analyze-method)
+
+Adicionar ao prompt do usuario as classificacoes:
+
+```text
+VALIDACOES:
+- Robustez: Fragil (desvio padrao 25% entre contextos)
+- Estabilidade: Em Deterioracao (WR recente 45% vs historico 62%)
+- Variancia: Concentrado (top 10% = 55% do lucro)
+```
+
+A IA ja tem a funcao `provide_recommendation` -- ela naturalmente incorporara esses dados na explicacao.
 
 ### Ordem de Implementacao
 
-1. Editar `useLiveScores.ts` - aceitar intervalo e auto-economia
-2. Editar `useFixtureCache.ts` - remover auto-refresh
-3. Editar `DailyPlanning.tsx` - conectar intervalo configuravel
+1. `useMethodAnalysis.ts` -- adicionar calculos e interface
+2. `MethodAnalysisCard.tsx` -- adicionar selos
+3. `MethodAnalysisDetail.tsx` -- adicionar card de validacoes
+4. `analyze-method/index.ts` -- enriquecer prompt com validacoes
 
