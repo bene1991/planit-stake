@@ -423,7 +423,7 @@ export function GameListItem({
         )}
 
         {/* Dominance Indicator - Live games only, always visible */}
-        {isLive && game.api_fixture_id && (
+        {game.api_fixture_id && (
           <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
             <DominanceIndicator result={dominance} ldiHistory={ldiHistory} />
           </div>
