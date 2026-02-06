@@ -1,58 +1,66 @@
 
 
-## Modo de Teste para Analise de Dominancia
+## Otimizacao: Limitar Busca de Dados para Jogos Finalizados
 
 ### Problema
 
-O indicador de dominancia so aparece para jogos ao vivo (`isLive`), mas neste momento os unicos jogos com dados estatisticos reais no cache ja terminaram. Precisamos de uma forma de visualizar e validar o indicador usando dados reais existentes.
+Com a mudanca anterior (remover `isLive &&`), todos os jogos com `api_fixture_id` na lista agora disparam `useFixtureCache`, que chama a edge function `get-fixture-details`.
 
-### Solucao
+- **Jogos ja cacheados:** Impacto minimo (apenas chamada a edge function, sem consumo de API-Football)
+- **Jogos nunca buscados:** 3 creditos da API-Football por jogo (fixture + stats + events)
+- **Risco real:** Se o usuario tem 50+ jogos finalizados na lista e nenhum esta no cache, sao 150+ creditos consumidos de uma vez
 
-Remover temporariamente a restricao de "apenas ao vivo" no `GameListItem`, permitindo que jogos finalizados com `api_fixture_id` e dados no cache tambem exibam o indicador de dominancia. Isso funciona como modo de teste permanente e tambem agrega valor real -- o usuario pode ver a dominancia de jogos passados.
+### Solucao Proposta
 
-### Abordagem
+Mostrar o `DominanceIndicator` para jogos finalizados **apenas se ja houver dados no cache**, sem disparar novas buscas para jogos antigos que nunca foram monitorados ao vivo.
 
-Em vez de um "modo demo" temporario, faz mais sentido mostrar o indicador para **qualquer jogo que tenha dados no cache**, independente do status. Jogos "Not Started" sem dados simplesmente nao mostram nada (como ja funciona). Jogos finalizados com dados mostram a analise pos-jogo.
+### Abordagem Tecnica
 
-### Arquivo a Editar
+#### Opcao: Fetch condicional no `useFixtureCache`
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/components/GameListItem.tsx` | Remover a condicao `isLive &&` do render do `DominanceIndicator`, mantendo apenas a verificacao de `api_fixture_id` existir |
+Adicionar um parametro `fetchOnMount` ao hook `useFixtureCache`:
 
-### Detalhe Tecnico
+- `fetchOnMount: true` (padrao para jogos ao vivo) - Busca dados imediatamente ao montar
+- `fetchOnMount: false` (para jogos finalizados) - Nao busca automaticamente, so mostra se ja tiver cache
 
-Mudanca minima no `GameListItem.tsx`:
+#### Arquivo a editar: `src/hooks/useFixtureCache.ts`
 
-**Antes:**
+Adicionar parametro opcional `autoFetch`:
+
 ```
-{isLive && game.api_fixture_id && (
-  <DominanceIndicator ... />
-)}
-```
-
-**Depois:**
-```
-{game.api_fixture_id && (
-  <DominanceIndicator ... />
-)}
+function useFixtureCache(
+  fixtureId: number | string | null | undefined,
+  autoFetch: boolean = true  // novo parametro
+): UseFixtureCacheResult
 ```
 
-O proprio `useDominanceAnalysis` ja lida com todos os cenarios:
-- Jogo sem dados: mostra "Aguardando estatisticas..." ou "Liga sem cobertura"
-- Jogo com dados: mostra LDI, barra, sparkline e alertas
-- Jogo finalizado com dados: mostra a analise completa (validacao visual)
+Quando `autoFetch = false`:
+- Nao dispara `fetchDetails()` no `useEffect` inicial
+- Nao configura auto-refresh
+- Retorna `{ data: null, loading: false, error: null, refetch }`
+- O usuario pode clicar para carregar manualmente via `refetch()`
 
-### Jogo para Teste
+#### Arquivo a editar: `src/components/GameListItem.tsx`
 
-**RED Star FC 93 vs PAU** (France - Ligue 2)
-- fixture_id: 1396831
-- Posse: 53% x 47%
-- Chutes: 11 x 1 (2 no gol)
-- Escanteios: 5 x 0
-- Esperado: LDI alto para a casa (~70+), alertas de pressao alta
+Passar `autoFetch` baseado no status do jogo:
+
+```
+const isLive = game.status === 'Live';
+const fixtureCache = useFixtureCache(
+  game.api_fixture_id,
+  isLive  // so busca automaticamente se estiver ao vivo
+);
+```
+
+Para jogos finalizados:
+- Se ja tiver cache (buscado enquanto estava ao vivo): mostra o indicador normalmente
+- Se nao tiver cache: nao mostra nada (sem custo)
+- Opcionalmente: adicionar botao "Carregar analise" para buscar sob demanda
 
 ### Resultado
 
-Apos a mudanca, o indicador aparecera nesse jogo finalizado com todos os dados visuais (barra de dominancia, valor LDI, tooltips). Isso permite validar que tudo funciona corretamente e tambem agrega valor para jogos passados.
+- **Jogos ao vivo:** Comportamento identico ao atual (busca automatica + refresh)
+- **Jogos finalizados com cache:** Mostra a analise pos-jogo sem custo adicional
+- **Jogos finalizados sem cache:** Nao consome creditos desnecessariamente
+- **Creditos API:** Zero impacto adicional comparado ao comportamento original
 
