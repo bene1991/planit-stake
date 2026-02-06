@@ -2,7 +2,7 @@ import { Game, Method, GoalEvent } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, Trash2, Trophy, Settings } from "lucide-react";
+import { Shield, Check, X, Trash2, Trophy, Settings, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -13,7 +13,9 @@ import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useFixtureOdds } from "@/hooks/useFixtureOdds";
 import { OddsDisplay } from "@/components/OddsDisplay";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
-import { DominanceIndicator } from "@/components/DominanceIndicator";
+import { LiveDominanceDisplay } from "@/components/LiveDominanceDisplay";
+import { useLdiHistory } from "@/hooks/useLdiHistory";
+import { useLiveMomentAI } from "@/hooks/useLiveMomentAI";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -52,6 +54,11 @@ export function GameCardCompact({
   // Fetch cached stats and momentum for this fixture
   const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id);
   const dominance = useDominanceAnalysis(fixtureCache);
+  const ldiHistory = useLdiHistory(
+    game.api_fixture_id ? Number(game.api_fixture_id) : undefined,
+    fixtureCache?.minute_now,
+    dominance.dominanceIndex
+  );
 
   // Default empty stats for display when no cache data
   const emptyStats = {
@@ -123,6 +130,18 @@ export function GameCardCompact({
   const apiAwayScore = fixtureData?.fixture?.goals?.away;
   const persistedHomeScore = game.finalScoreHome;
   const persistedAwayScore = game.finalScoreAway;
+  
+  // AI moment text for live games
+  const { text: aiMomentText } = useLiveMomentAI(
+    game.status === 'Live',
+    game.homeTeam,
+    game.awayTeam,
+    apiHomeScore ?? persistedHomeScore ?? null,
+    apiAwayScore ?? persistedAwayScore ?? null,
+    dominance,
+    fixtureCache,
+    ldiHistory
+  );
   
   // Priority: API data > persisted scores
   const homeScore = apiHomeScore ?? persistedHomeScore ?? '-';
@@ -340,10 +359,21 @@ export function GameCardCompact({
           </div>
         )}
 
-        {/* Dominance Indicator - Live games only */}
+        {/* Live Dominance Display + AI Moment */}
         {isLive && game.api_fixture_id && (
-          <div className="mt-3 pt-2 border-t border-border/20">
-            <DominanceIndicator result={dominance} />
+          <div className="mt-3 pt-2 border-t border-border/20 space-y-1.5">
+            <LiveDominanceDisplay 
+              result={dominance} 
+              homeTeam={game.homeTeam} 
+              awayTeam={game.awayTeam} 
+              ldiHistory={ldiHistory} 
+            />
+            {aiMomentText && (
+              <div className="flex items-start gap-1 px-2 py-1 rounded bg-muted/50">
+                <Sparkles className="h-3 w-3 text-primary flex-shrink-0 mt-0.5" />
+                <span className="text-[10px] sm:text-[11px] text-muted-foreground italic leading-tight">{aiMomentText}</span>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,7 +1,7 @@
 import { Game, Method, GoalEvent } from "@/types";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle } from "lucide-react";
+import { Shield, Check, X, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -9,8 +9,9 @@ import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
-import { DominanceIndicator } from "@/components/DominanceIndicator";
+import { LiveDominanceDisplay } from "@/components/LiveDominanceDisplay";
 import { useLdiHistory } from "@/hooks/useLdiHistory";
+import { useLiveMomentAI } from "@/hooks/useLiveMomentAI";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +75,18 @@ export function GameListItem({
     game.api_fixture_id ? Number(game.api_fixture_id) : undefined,
     fixtureCache?.minute_now,
     dominance.dominanceIndex
+  );
+  
+  // AI moment text - only for live games with data
+  const { text: aiMomentText, loading: aiLoading } = useLiveMomentAI(
+    isLiveForFetch && game.status === 'Live',
+    game.homeTeam,
+    game.awayTeam,
+    liveScore?.homeScore ?? game.finalScoreHome ?? null,
+    liveScore?.awayScore ?? game.finalScoreAway ?? null,
+    dominance,
+    fixtureCache,
+    ldiHistory
   );
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
@@ -423,10 +436,32 @@ export function GameListItem({
           </div>
         )}
 
-        {/* Dominance Indicator - Live games only, always visible */}
-        {game.api_fixture_id && (
+        {/* Live Dominance + AI Moment - for live games */}
+        {isLive && game.api_fixture_id && (
+          <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14 space-y-1">
+            <LiveDominanceDisplay 
+              result={dominance} 
+              homeTeam={game.homeTeam} 
+              awayTeam={game.awayTeam} 
+              ldiHistory={ldiHistory} 
+            />
+            {aiMomentText && (
+              <div className="flex items-start gap-1 px-2 py-1 rounded bg-muted/50">
+                <Sparkles className="h-3 w-3 text-primary flex-shrink-0 mt-0.5" />
+                <span className="text-[10px] sm:text-[11px] text-muted-foreground italic leading-tight">{aiMomentText}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {/* Dominance for non-live games with cached data */}
+        {!isLive && game.api_fixture_id && dominance.dominanceIndex !== null && (
           <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-            <DominanceIndicator result={dominance} ldiHistory={ldiHistory} />
+            <LiveDominanceDisplay 
+              result={dominance} 
+              homeTeam={game.homeTeam} 
+              awayTeam={game.awayTeam} 
+              ldiHistory={ldiHistory} 
+            />
           </div>
         )}
       </div>

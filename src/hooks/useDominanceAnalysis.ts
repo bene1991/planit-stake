@@ -9,10 +9,14 @@ export interface DominanceAlert {
   severity: 'info' | 'warning' | 'critical';
 }
 
+export type MomentumTrend = 'rising' | 'stable' | 'falling';
+
 export interface DominanceResult {
   dataStatus: DataStatus;
   dataStatusMessage: string;
   dominanceIndex: number | null;
+  homeLdi: number | null;
+  awayLdi: number | null;
   dominantTeam: 'home' | 'away' | 'balanced' | null;
   dominanceLabel: string;
   alerts: DominanceAlert[];
@@ -188,6 +192,8 @@ export function useDominanceAnalysis(cache: FixtureCacheData | null): DominanceR
         dataStatus: status,
         dataStatusMessage: message,
         dominanceIndex: null,
+        homeLdi: null,
+        awayLdi: null,
         dominantTeam: null,
         dominanceLabel: '',
         alerts: [],
@@ -202,6 +208,8 @@ export function useDominanceAnalysis(cache: FixtureCacheData | null): DominanceR
       dataStatus: status,
       dataStatusMessage: message,
       dominanceIndex: ldi,
+      homeLdi: ldi,
+      awayLdi: 100 - ldi,
       dominantTeam: team,
       dominanceLabel: label,
       alerts,
