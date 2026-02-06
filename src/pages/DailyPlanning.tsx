@@ -8,7 +8,6 @@ import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useGoalSoundTrigger } from "@/hooks/useGoalSoundTrigger";
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
-import { rebuildStats } from "@/utils/rebuildStats";
 import { playGoalSound } from "@/utils/soundManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,7 +47,6 @@ export default function DailyPlanning() {
   
   const [showApiBrowser, setShowApiBrowser] = useState(false);
   
-  const [rebuildingStats, setRebuildingStats] = useState(false);
   const [showMethodSelector, setShowMethodSelector] = useState(false);
   const [selectedDailyGames, setSelectedDailyGames] = useState<string[]>([]);
   const [addingToPlanning, setAddingToPlanning] = useState(false);
@@ -277,20 +275,6 @@ export default function DailyPlanning() {
     toast.success('Dados exportados com sucesso!');
   };
 
-  const handleRebuildStats = async () => {
-    setRebuildingStats(true);
-    try {
-      const result = await rebuildStats();
-      await refreshGames();
-      toast.success('Estatísticas recalculadas!', {
-        description: `${result.greens}G • ${result.reds}R • ${result.winRate}% win rate`,
-      });
-    } catch (error: any) {
-      toast.error('Erro ao recalcular: ' + (error.message || 'Erro desconhecido'));
-    } finally {
-      setRebuildingStats(false);
-    }
-  };
 
   const handleEditGameMethods = (game: Game) => {
     setSelectedGameForEdit(game);
@@ -462,15 +446,6 @@ export default function DailyPlanning() {
     });
   }, [finalizedGames, historyPeriod, customDateFrom, customDateTo]);
 
-  // Stats do histórico
-  const historyStats = useMemo(() => {
-    const allOps = filteredHistory.flatMap((g) => g.methodOperations);
-    const greens = allOps.filter((op) => op.result === 'Green').length;
-    const reds = allOps.filter((op) => op.result === 'Red').length;
-    const total = greens + reds;
-    const winRate = total > 0 ? (greens / total) * 100 : 0;
-    return { totalGames: filteredHistory.length, greens, reds, winRate: winRate.toFixed(1) };
-  }, [filteredHistory]);
 
   // Agrupar histórico por data
   const groupedHistory = useMemo(() => {
@@ -524,8 +499,41 @@ export default function DailyPlanning() {
   }
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-4 pb-24 lg:pb-8">
       <DataMigration />
+
+      {/* Resumo do Dia */}
+      {(() => {
+        const todayGames = games.filter(g => g.date === todayDate);
+        const todayOps = todayGames.flatMap(g => g.methodOperations).filter(op => op.result);
+        const todayGreens = todayOps.filter(op => op.result === 'Green').length;
+        const todayReds = todayOps.filter(op => op.result === 'Red').length;
+        const todayTotal = todayGreens + todayReds;
+        const todayWinRate = todayTotal > 0 ? ((todayGreens / todayTotal) * 100).toFixed(1) : '0.0';
+        const todayProfit = todayOps.reduce((sum, op) => sum + (op.profit || 0), 0);
+        
+        if (todayTotal === 0 && todayGames.length === 0) return null;
+        
+        return (
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Lucro Hoje</p>
+              <p className={cn("text-lg font-bold", todayProfit >= 0 ? "text-emerald-500" : "text-red-500")}>
+                {todayProfit >= 0 ? '+' : ''}{todayProfit.toFixed(2)} st
+              </p>
+            </Card>
+            <Card className="p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Operações</p>
+              <p className="text-lg font-bold">{todayTotal}</p>
+              <p className="text-[10px] text-muted-foreground">{todayGreens}G / {todayReds}R</p>
+            </Card>
+            <Card className="p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate</p>
+              <p className="text-lg font-bold">{todayWinRate}%</p>
+            </Card>
+          </div>
+        );
+      })()}
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -716,35 +724,6 @@ export default function DailyPlanning() {
                   </Popover>
                 </div>
               )}
-            </div>
-          </Card>
-
-          {/* Resumo */}
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">Resumo do Período</h3>
-              <Button onClick={handleRebuildStats} disabled={rebuildingStats} variant="outline" size="sm" className="h-8">
-                <RefreshCw className={cn('h-3 w-3 mr-2', rebuildingStats && 'animate-spin')} />
-                Recalcular
-              </Button>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Jogos</p>
-                <p className="text-xl font-bold">{historyStats.totalGames}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Greens</p>
-                <p className="text-xl font-bold text-primary">{historyStats.greens}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Reds</p>
-                <p className="text-xl font-bold text-destructive">{historyStats.reds}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Win Rate</p>
-                <p className="text-xl font-bold">{historyStats.winRate}%</p>
-              </div>
             </div>
           </Card>
 

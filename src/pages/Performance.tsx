@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, Settings, RefreshCw, AlertCircle, DollarSign, Download, Target, BarChart3, Trophy, Minus, Percent, Brain } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, RefreshCw, AlertCircle, DollarSign, Download, Trophy, Minus, Percent, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useOperationalStatus, OperationalStatusType } from '@/hooks/useOperationalStatus';
 import { useOperationalSettings } from '@/hooks/useOperationalSettings';
 import { useSupabaseGames } from '@/hooks/useSupabaseGames';
@@ -14,8 +13,6 @@ import { useFilteredStatistics } from '@/hooks/useFilteredStatistics';
 import { StatisticsFilterBar, StatisticsFilters } from '@/components/StatisticsFilterBar';
 import { GreenVsRedChart } from '@/components/Charts/GreenVsRedChart';
 import { LeagueStatsChart } from '@/components/Charts/LeagueStatsChart';
-import { MethodComparisonChart } from '@/components/Charts/MethodComparisonChart';
-import { MethodDetailCard } from '@/components/Charts/MethodDetailCard';
 import { DailyMethodBreakdown } from '@/components/Charts/DailyMethodBreakdown';
 import { MethodTimelineChart } from '@/components/Charts/MethodTimelineChart';
 import { BankrollEvolutionChart } from '@/components/Charts/BankrollEvolutionChart';
@@ -162,7 +159,6 @@ export default function Performance() {
   }), [filters]);
 
   const { settings, updateSettings } = useOperationalSettings();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [stakeInput, setStakeInput] = useState(settings.stakeValueReais.toString());
   
   // Parse stake input for real-time updates
@@ -192,12 +188,6 @@ export default function Performance() {
   });
   
   const { metrics, loading: statusLoading } = useOperationalStatus(operationalFilters, parsedStake);
-  const [editedSettings, setEditedSettings] = useState({
-    metaMensalStakes: settings.metaMensalStakes,
-    stopDiarioStakes: settings.stopDiarioStakes,
-    devolucaoMaximaPercent: settings.devolucaoMaximaPercent,
-    commissionRate: settings.commissionRate * 100
-  });
 
   // Sync stake input when settings load
   useEffect(() => {
@@ -220,20 +210,6 @@ export default function Performance() {
     }
   };
 
-  const handleSaveSettings = async () => {
-    try {
-      await updateSettings({
-        metaMensalStakes: editedSettings.metaMensalStakes,
-        stopDiarioStakes: editedSettings.stopDiarioStakes,
-        devolucaoMaximaPercent: editedSettings.devolucaoMaximaPercent,
-        commissionRate: editedSettings.commissionRate / 100
-      });
-      toast.success('Configurações salvas!');
-      setSettingsOpen(false);
-    } catch {
-      toast.error('Erro ao salvar configurações');
-    }
-  };
 
   const handleRefresh = async () => {
     await refreshGames();
@@ -583,33 +559,15 @@ export default function Performance() {
       {/* Bankroll Evolution Chart */}
       <BankrollEvolutionChart data={bankrollEvolution} />
 
-      {/* Methods Ranking Table - NEW */}
-      <MethodsRankingTable methodStats={methodDetailStats} />
-
-      {/* Method Detail Cards */}
-      {methodDetailStats.length > 0 && (
-        <div>
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-primary" />
-            Detalhamento por Método
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {methodDetailStats.map((method) => (
-              <MethodDetailCard
-                key={method.methodId}
-                methodId={method.methodId}
-                methodName={method.methodName}
-                total={method.total}
-                greens={method.greens}
-                reds={method.reds}
-                winRate={method.winRate}
-                dailyData={method.dailyData}
-                previousWinRate={method.previousWinRate}
-              />
-            ))}
-          </div>
+      {/* Methods Ranking Table */}
+      <div className="space-y-2">
+        <MethodsRankingTable methodStats={methodDetailStats} />
+        <div className="flex justify-end">
+          <a href="/method-analysis" className="text-sm text-primary hover:underline font-medium">
+            Ver análise detalhada dos métodos →
+          </a>
         </div>
-      )}
+      </div>
 
       {/* Method Timeline */}
       {methodTimeline.length > 0 && methodNames.length > 0 && (
@@ -624,8 +582,6 @@ export default function Performance() {
         <GreenVsRedChart greens={overallStats.greens} reds={overallStats.reds} />
         <OddRangeStatsChart data={oddRangeStats} />
       </div>
-
-      <MethodComparisonChart data={methodDetailStats} />
 
       {/* League Stats */}
       <LeagueStatsChart data={leagueStats} games={filteredGames} methods={bankroll.methods} />
@@ -681,80 +637,6 @@ export default function Performance() {
         />
       </div>
 
-      {/* Settings Collapsible */}
-      <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-secondary/30 transition-colors">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Configurações
-                <Badge variant="outline" className="ml-auto">
-                  {settingsOpen ? 'Fechar' : 'Editar'}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="metaMensal">Meta mensal (stakes)</Label>
-                  <Input
-                    id="metaMensal"
-                    type="number"
-                    value={editedSettings.metaMensalStakes}
-                    onChange={(e) => setEditedSettings(prev => ({ 
-                      ...prev, 
-                      metaMensalStakes: Number(e.target.value) 
-                    }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="stopDiario">Stop diário (stakes)</Label>
-                  <Input
-                    id="stopDiario"
-                    type="number"
-                    value={editedSettings.stopDiarioStakes}
-                    onChange={(e) => setEditedSettings(prev => ({ 
-                      ...prev, 
-                      stopDiarioStakes: Number(e.target.value) 
-                    }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="devolucao">Devolução máxima (%)</Label>
-                  <Input
-                    id="devolucao"
-                    type="number"
-                    value={editedSettings.devolucaoMaximaPercent}
-                    onChange={(e) => setEditedSettings(prev => ({ 
-                      ...prev, 
-                      devolucaoMaximaPercent: Number(e.target.value) 
-                    }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="comissao">Comissão da casa (%)</Label>
-                  <Input
-                    id="comissao"
-                    type="number"
-                    step="0.1"
-                    value={editedSettings.commissionRate}
-                    onChange={(e) => setEditedSettings(prev => ({ 
-                      ...prev, 
-                      commissionRate: Number(e.target.value) 
-                    }))}
-                  />
-                </div>
-              </div>
-              <Button onClick={handleSaveSettings} className="w-full">
-                Salvar Configurações
-              </Button>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
     </div>
   );
 }
