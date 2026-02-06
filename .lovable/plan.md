@@ -1,52 +1,45 @@
 
 
-## Tooltips nos Selos de Validacao
+## Tooltips nos Scores de Confiança, Risco e Edge
 
 ### O que muda
 
-Adicionar tooltips (hover) em cada um dos 3 selos de validacao (Robustez, Estabilidade, Variancia) nos cards da Analise de Metodo, explicando o que cada classificacao significa.
+Adicionar tooltips explicativos nos 3 scores (Confiança, Risco, Edge) no card de cada método na aba Análise de Método. Ao passar o mouse, o usuário verá uma explicação do que aquela pontuação significa para aquele método específico.
 
 ### Arquivo a editar
 
 **`src/components/MethodAnalysis/MethodAnalysisCard.tsx`**
 
-- Importar `Tooltip, TooltipTrigger, TooltipContent, TooltipProvider` de `@/components/ui/tooltip`
-- Adicionar prop `tooltip` ao componente `ValidationBadge`
-- Envolver cada badge com `Tooltip` + `TooltipTrigger` + `TooltipContent`
-- Envolver o bloco dos 3 badges com `TooltipProvider`
+### Tooltips por score
 
-### Textos dos tooltips
+| Score | Explicação |
+|-------|-----------|
+| Confiança | "Mede a confiabilidade estatística do método. Quanto maior, mais dados consistentes sustentam os resultados. Baseado em volume de operações e estabilidade dos resultados." |
+| Risco | "Indica o nível de risco do método. Quanto maior, mais volatilidade e drawdowns foram observados. Considere o tamanho das sequências negativas e a variação das odds." |
+| Edge | "Representa a vantagem real do método sobre o mercado. Positivo significa que o Win Rate supera o breakeven das odds. Negativo indica que o mercado está vencendo." |
 
-| Selo | Tooltip |
-|------|---------|
-| Robusto | "O metodo funciona bem em diferentes ligas e faixas de odds, sem depender de cenarios especificos." |
-| Sensivel | "O desempenho varia conforme o contexto (liga, odds). Funciona melhor em cenarios especificos." |
-| Fragil | "O metodo depende fortemente de condicoes especificas. Fora do cenario ideal, o desempenho cai muito." |
-| Estavel | "O desempenho recente e consistente com o historico. O metodo mantem sua performance ao longo do tempo." |
-| Oscilante | "Ha variacao entre o desempenho recente e o historico. Requer acompanhamento." |
-| Deterioracao | "O desempenho das ultimas 30 operacoes caiu significativamente em relacao ao historico." |
-| Distribuido | "O lucro e bem distribuido entre as operacoes. Nao depende de poucos acertos grandes." |
-| Concentrado | "Boa parte do lucro vem de poucas operacoes. Risco moderado de variancia." |
-| Evento Raro | "O lucro depende de poucos eventos de alto retorno. Sem eles, o metodo seria negativo." |
+### Implementação
 
-### Detalhes tecnicos
+- Envolver cada bloco de score (Confiança, Risco, Edge) com `Tooltip` / `TooltipTrigger` / `TooltipContent`
+- Reutilizar o `TooltipProvider` já existente no componente (dos selos de validação) movendo-o para envolver todo o card
+- Adicionar `cursor-help` nos labels dos scores para indicar que há informação extra
 
-O componente `ValidationBadge` recebera uma nova prop `tooltip: string` e ficara assim:
+### Detalhes técnicos
+
+Cada seção de score (linhas 92-113) será envolvida assim:
 
 ```text
-function ValidationBadge({ icon, label, level, tooltip }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={...}>{icon}{label}</span>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[220px] text-center">
-        <p className="text-xs">{tooltip}</p>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
+<Tooltip>
+  <TooltipTrigger asChild>
+    <div className="space-y-2 cursor-help">
+      ... score existente ...
+    </div>
+  </TooltipTrigger>
+  <TooltipContent side="top" className="max-w-[240px]">
+    <p className="text-xs">Texto explicativo</p>
+  </TooltipContent>
+</Tooltip>
 ```
 
-Cada chamada de `ValidationBadge` passara o texto correspondente a classificacao atual. O bloco dos badges sera envolvido por `<TooltipProvider delayDuration={300}>`.
+O `TooltipProvider` será movido para envolver todo o conteúdo do card, servindo tanto aos scores quanto aos selos de validação existentes.
 
