@@ -1,141 +1,78 @@
 
+## Melhoria na Deteccao de Ausencia de Dados da API
 
-## Analise de Dominancia em Tempo Real na Aba Planejamento
+### Diagnostico
 
-### Visao Geral
+O sistema esta funcionando corretamente. Os 3 jogos ao vivo atuais sao de ligas com cobertura estatistica limitada na API-Football:
 
-Adicionar uma camada de inteligencia ao `GameCardCompact` que analisa os dados ja disponibilizados pelo `useFixtureCache` (posse, chutes, escanteios, etc.) para calcular um indice de dominancia e classificar o estado dos dados de cada jogo ao vivo.
+- **Portugal - Segunda Liga** (Chaves vs Penafiel) - min 90
+- **Chile - Copa Chile** (Magallanes vs Deportes Santa Cruz) - min 50
+- **Uruguay - Primera Division** (Albion FC vs Liverpool Montevideo) - min 11
 
-Nenhuma nova chamada de API sera necessaria - tudo sera calculado a partir dos dados que ja existem no sistema (`normalized_stats`, `key_events`, `momentum_series` do `fixture_cache`).
+A API retorna o placar e minuto do jogo, mas `stats_raw: []` e `events_raw: []` - ou seja, **nao fornece estatisticas detalhadas** (posse, chutes, escanteios) para essas competicoes. Isso e uma limitacao conhecida da API-Football para ligas menores.
+
+O indicador 🔴 esta correto ao sinalizar ausencia de dados. Porem, a mensagem pode ser melhorada.
 
 ---
 
-### Arquivos a Criar
+### Melhorias Propostas
 
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/hooks/useDominanceAnalysis.ts` | Hook que recebe `FixtureCacheData` e calcula dominancia, estado dos dados e alertas |
-| `src/components/DominanceIndicator.tsx` | Componente visual que exibe o badge de status de dados + barra de dominancia + alertas |
+#### 1. Mensagem mais especifica no `useDominanceAnalysis`
 
-### Arquivos a Editar
+Diferenciar dois cenarios:
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/components/GameCardCompact.tsx` | Integrar `useDominanceAnalysis` + `DominanceIndicator` dentro do card, apenas para jogos ao vivo |
+| Cenario | Condicao | Mensagem |
+|---------|----------|----------|
+| Jogo sem cobertura | `minute_now > 10` E stats zeradas | "Liga sem cobertura estatistica detalhada" |
+| Dados pendentes | `minute_now <= 10` E stats zeradas | "Aguardando estatisticas..." |
+| Cache nao carregado | `fixtureCache === null` | "Carregando dados..." |
+
+Isso evita que o usuario pense que ha um bug quando na verdade a API simplesmente nao cobre aquela liga.
+
+#### 2. Icone e visual ajustados
+
+- Cenario "sem cobertura": Mostrar icone de info (em vez de erro) com texto explicativo
+- Cenario "dados pendentes": Mostrar loading spinner
+- Cenario "sem dados": Manter 🔴 atual
 
 ---
 
 ### Detalhes Tecnicos
 
-#### Hook `useDominanceAnalysis`
+#### Arquivo a editar: `src/hooks/useDominanceAnalysis.ts`
 
-Recebe os dados do `useFixtureCache` e retorna:
+Na funcao `analyzeDataStatus`, adicionar logica para detectar "sem cobertura":
 
-```typescript
-interface DominanceResult {
-  // Estado dos dados
-  dataStatus: 'ok' | 'limited' | 'unavailable';
-  dataStatusMessage: string;
-  
-  // Indice de dominancia (0-100, >50 = casa domina)
-  dominanceIndex: number | null; // null quando sem dados
-  dominantTeam: 'home' | 'away' | 'balanced' | null;
-  dominanceLabel: string; // "Casa domina", "Equilibrado", etc.
-  
-  // Alertas inteligentes
-  alerts: DominanceAlert[];
-}
+```text
+Se fixtureCache existe E minute_now > 10 E stats totalmente zeradas:
+  -> status: 'no_coverage'
+  -> mensagem: "Liga sem cobertura estatistica detalhada"
 
-interface DominanceAlert {
-  type: 'momentum_shift' | 'high_pressure' | 'defensive_lock' | 'danger_zone';
-  message: string;
-  severity: 'info' | 'warning' | 'critical';
-}
+Se fixtureCache existe E minute_now <= 10 E stats zeradas:
+  -> status: 'unavailable' (pode ser que ainda nao comecou)
+  -> mensagem: "Aguardando estatisticas..."
+
+Se fixtureCache === null:
+  -> status: 'unavailable'
+  -> mensagem: "Carregando dados..."
 ```
 
-**Logica de classificacao dos dados:**
+#### Arquivo a editar: `src/components/DominanceIndicator.tsx`
 
-1. **Dados OK**: `minute_now > 0` E (`shots_total_home + shots_total_away >= 2` OU `possession_home > 0`)
-2. **Dados Limitados**: `minute_now > 0` mas stats insuficientes (ex: so tem posse, sem chutes)
-3. **Sem Dados**: `minute_now === 0` OU stats completamente zeradas para jogo ao vivo OU `fixtureCache === null`
+Ajustar o render para o novo status `no_coverage`:
+- Usar badge cinza (neutro) em vez de vermelho
+- Mostrar icone de informacao (Info) em vez de alerta
+- Texto: "Esta liga nao possui cobertura estatistica detalhada na API"
 
-**Calculo do Live Dominance Index (LDI):**
+#### Arquivo a editar: `src/components/GameListItem.tsx`
 
-Formula ponderada usando os dados disponíveis:
-- Posse de bola: peso 20%
-- Chutes totais: peso 25%
-- Chutes no gol: peso 30%
-- Escanteios: peso 15%
-- Chutes bloqueados: peso 10%
-
-O LDI resulta em um valor de 0 a 100 onde:
-- 0-35: Time visitante domina fortemente
-- 35-45: Visitante com leve vantagem
-- 45-55: Equilibrado
-- 55-65: Casa com leve vantagem
-- 65-100: Casa domina fortemente
-
-**Alertas automaticos baseados nos dados:**
-- "Pressao alta da casa" quando LDI > 70 por mais de 5 minutos
-- "Momentum invertido" quando shots_on muda de dominante (detectado via momentum_series)
-- "Jogo travado" quando ambos times tem poucos chutes e muitas faltas
-- "Zona de perigo" quando um time tem muitos chutes no gol mas sem gol
+Nenhuma mudanca necessaria - ja consome o resultado do hook corretamente.
 
 ---
 
-#### Componente `DominanceIndicator`
+### Resultado Esperado
 
-Exibido dentro do `GameCardCompact`, entre o placar e as stats:
-
-**Quando dados OK:**
-```
-[Casa domina] ████████░░░░ 68 LDI
-⚠ Pressao alta da casa - 8 chutes no gol vs 2
-```
-
-**Quando dados limitados:**
-```
-🟡 Dados limitados - analise parcial
-[Equilibrado] ██████░░░░░░ 52 LDI
-```
-
-**Quando sem dados:**
-```
-🔴 Dados ao vivo indisponiveis no momento. Analise suspensa.
-```
-
-Visual:
-- Badge colorido (verde/amarelo/vermelho) para status dos dados
-- Barra horizontal bicolor mostrando dominancia (verde = casa, violeta = fora)
-- Texto descritivo do time dominante
-- Lista de alertas com icones e cores por severidade
-
----
-
-#### Integracao no GameCardCompact
-
-O `DominanceIndicator` sera inserido logo apos o placar e gols, antes do `MatchStatsOverview`, apenas quando o jogo estiver ao vivo:
-
-```
-[Placar 2-1]
-[Gols: Player 45', Player 62']
-[--- DominanceIndicator ---]  <-- NOVO
-[MatchStatsOverview]
-[OddsDisplay]
-[Notes]
-[Footer]
-[Methods]
-```
-
-Quando o jogo nao esta ao vivo (Not Started / Finished), o indicador nao aparece.
-
-Quando os dados voltam (ex: cache atualizado com stats), o indicador reativa automaticamente pois reage ao estado do `fixtureCache`.
-
----
-
-### Ordem de Implementacao
-
-1. Criar `useDominanceAnalysis.ts` com toda a logica de calculo
-2. Criar `DominanceIndicator.tsx` com a interface visual
-3. Integrar ambos no `GameCardCompact.tsx`
-
+Para jogos de ligas menores (Uruguay, Chile, Portugal Segunda Liga, etc.):
+- O usuario vera uma mensagem **informativa neutra** explicando que a liga nao tem cobertura
+- Nao parecera um erro ou falha do sistema
+- Para jogos de grandes ligas (Serie A, Premier League, La Liga), o indicador aparecera normalmente com os dados de dominancia
