@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,39 @@ export default function BankrollManagement() {
           </div>
         </div>
       </Card>
+
+      {/* Barra de Alocação Total */}
+      {bankroll.methods.length > 0 && (
+        <Card className="p-4 shadow-card">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">Alocação Total</h3>
+            <span className={cn("text-sm font-bold", totalAllocated > 100 ? "text-destructive" : totalAllocated === 100 ? "text-emerald-500" : "text-muted-foreground")}>
+              {totalAllocated.toFixed(1)}%
+            </span>
+          </div>
+          <div className="w-full h-3 rounded-full bg-secondary overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all duration-500", totalAllocated > 100 ? "bg-destructive" : totalAllocated === 100 ? "bg-emerald-500" : "bg-primary")}
+              style={{ width: `${Math.min(totalAllocated, 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            {remainingPercentage > 0 ? `${remainingPercentage.toFixed(1)}% disponível` : totalAllocated === 100 ? 'Totalmente alocado' : 'Excedeu o limite'}
+          </p>
+          {/* Mini allocation bars per method */}
+          <div className="mt-3 space-y-1.5">
+            {bankroll.methods.map((method) => (
+              <div key={method.id} className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground w-24 truncate">{method.name}</span>
+                <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                  <div className="h-full rounded-full bg-primary/70" style={{ width: `${method.percentage}%` }} />
+                </div>
+                <span className="text-[11px] font-medium w-10 text-right">{method.percentage}%</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-6 shadow-card">
         <h2 className="mb-4 text-xl font-bold">Adicionar Método</h2>

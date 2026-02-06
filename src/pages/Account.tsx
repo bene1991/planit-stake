@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLogo } from '@/contexts/LogoContext';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
-import { User, KeyRound, Palette, Link, Database, Loader2, Trophy } from 'lucide-react';
+import { User, KeyRound, Palette, Link, Database, Loader2, Trophy, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { VTLogo } from '@/components/VTLogo';
 import { LogoVariant } from '@/hooks/useLogoVariant';
@@ -21,6 +21,7 @@ import { fixLeagueNames } from '@/utils/fixLeagueNames';
 import { LeagueManager } from '@/components/LeagueManager';
 import { useSupabaseGames } from '@/hooks/useSupabaseGames';
 import { RefreshIntervalSettings } from '@/components/RefreshIntervalSettings';
+import { useOperationalSettings } from '@/hooks/useOperationalSettings';
 
 export default function Account() {
   const { user } = useAuth();
@@ -33,6 +34,42 @@ export default function Account() {
   const [fixingLeagues, setFixingLeagues] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [showLeagueManager, setShowLeagueManager] = useState(false);
+  
+  const { settings: opSettings, updateSettings: updateOpSettings } = useOperationalSettings();
+  const [editedOpSettings, setEditedOpSettings] = useState({
+    metaMensalStakes: 30,
+    stopDiarioStakes: 3,
+    devolucaoMaximaPercent: 50,
+    commissionRate: 4.5,
+    stakeValueReais: 100,
+  });
+
+  useEffect(() => {
+    if (opSettings) {
+      setEditedOpSettings({
+        metaMensalStakes: opSettings.metaMensalStakes,
+        stopDiarioStakes: opSettings.stopDiarioStakes,
+        devolucaoMaximaPercent: opSettings.devolucaoMaximaPercent,
+        commissionRate: opSettings.commissionRate * 100,
+        stakeValueReais: opSettings.stakeValueReais,
+      });
+    }
+  }, [opSettings]);
+
+  const handleSaveOpSettings = async () => {
+    try {
+      await updateOpSettings({
+        metaMensalStakes: editedOpSettings.metaMensalStakes,
+        stopDiarioStakes: editedOpSettings.stopDiarioStakes,
+        devolucaoMaximaPercent: editedOpSettings.devolucaoMaximaPercent,
+        commissionRate: editedOpSettings.commissionRate / 100,
+        stakeValueReais: editedOpSettings.stakeValueReais,
+      });
+      toast.success('Configurações salvas!');
+    } catch {
+      toast.error('Erro ao salvar configurações');
+    }
+  };
 
   const logoVariants: { value: LogoVariant; label: string; description: string }[] = [
     { value: 'chart', label: 'Gráfico Ascendente', description: 'Logo com linha de tendência' },
@@ -244,6 +281,68 @@ export default function Account() {
             </Button>
           </form>
         </div>
+      </Card>
+
+      {/* Configurações Operacionais */}
+      <Card className="p-6 shadow-card">
+        <div className="mb-4 flex items-center gap-2">
+          <Settings className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-bold">Configurações Operacionais</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Defina suas metas, limites de risco e parâmetros de operação
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="opStake">Valor da Stake (R$)</Label>
+            <Input
+              id="opStake"
+              type="number"
+              value={editedOpSettings.stakeValueReais}
+              onChange={(e) => setEditedOpSettings(prev => ({ ...prev, stakeValueReais: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="opMeta">Meta mensal (stakes)</Label>
+            <Input
+              id="opMeta"
+              type="number"
+              value={editedOpSettings.metaMensalStakes}
+              onChange={(e) => setEditedOpSettings(prev => ({ ...prev, metaMensalStakes: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="opStop">Stop diário (stakes)</Label>
+            <Input
+              id="opStop"
+              type="number"
+              value={editedOpSettings.stopDiarioStakes}
+              onChange={(e) => setEditedOpSettings(prev => ({ ...prev, stopDiarioStakes: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="opDevol">Devolução máxima (%)</Label>
+            <Input
+              id="opDevol"
+              type="number"
+              value={editedOpSettings.devolucaoMaximaPercent}
+              onChange={(e) => setEditedOpSettings(prev => ({ ...prev, devolucaoMaximaPercent: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="opComissao">Comissão da casa (%)</Label>
+            <Input
+              id="opComissao"
+              type="number"
+              step="0.1"
+              value={editedOpSettings.commissionRate}
+              onChange={(e) => setEditedOpSettings(prev => ({ ...prev, commissionRate: Number(e.target.value) }))}
+            />
+          </div>
+        </div>
+        <Button onClick={handleSaveOpSettings} className="w-full mt-4">
+          Salvar Configurações
+        </Button>
       </Card>
 
       <RefreshIntervalSettings />
