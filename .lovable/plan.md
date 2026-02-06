@@ -1,114 +1,58 @@
 
-## Historico LDI Sparkline + Tooltips Explicativos
 
-### Visao Geral
+## Modo de Teste para Analise de Dominancia
 
-Duas melhorias no indicador de dominancia:
+### Problema
 
-1. **Sparkline do LDI** - Mini-grafico mostrando a evolucao do indice ao longo do jogo, construido acumulando snapshots do LDI a cada atualizacao do cache
-2. **Tooltips explicativos** - Ao tocar/hover no valor LDI ou na barra, o usuario ve uma explicacao do que cada faixa significa
+O indicador de dominancia so aparece para jogos ao vivo (`isLive`), mas neste momento os unicos jogos com dados estatisticos reais no cache ja terminaram. Precisamos de uma forma de visualizar e validar o indicador usando dados reais existentes.
 
----
+### Solucao
 
-### Arquivos a Criar
+Remover temporariamente a restricao de "apenas ao vivo" no `GameListItem`, permitindo que jogos finalizados com `api_fixture_id` e dados no cache tambem exibam o indicador de dominancia. Isso funciona como modo de teste permanente e tambem agrega valor real -- o usuario pode ver a dominancia de jogos passados.
 
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/hooks/useLdiHistory.ts` | Hook que acumula snapshots `{ minute, ldi }` em um ref a cada mudanca do cache, retornando o array para o sparkline |
-| `src/components/LdiSparkline.tsx` | Componente SVG puro que desenha a linha do historico LDI (sem dependencia de recharts para manter leve) |
+### Abordagem
 
-### Arquivos a Editar
+Em vez de um "modo demo" temporario, faz mais sentido mostrar o indicador para **qualquer jogo que tenha dados no cache**, independente do status. Jogos "Not Started" sem dados simplesmente nao mostram nada (como ja funciona). Jogos finalizados com dados mostram a analise pos-jogo.
+
+### Arquivo a Editar
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `src/components/GameListItem.tsx` | Integrar `useLdiHistory` e passar o historico para `DominanceIndicator` |
-| `src/components/DominanceIndicator.tsx` | Adicionar sparkline + tooltips |
+| `src/components/GameListItem.tsx` | Remover a condicao `isLive &&` do render do `DominanceIndicator`, mantendo apenas a verificacao de `api_fixture_id` existir |
 
----
+### Detalhe Tecnico
 
-### Detalhes Tecnicos
+Mudanca minima no `GameListItem.tsx`:
 
-#### Hook `useLdiHistory`
-
-```typescript
-interface LdiSnapshot {
-  minute: number;
-  ldi: number;
-}
-
-function useLdiHistory(
-  fixtureId: number | undefined,
-  minuteNow: number | undefined,
-  ldi: number | null
-): LdiSnapshot[]
+**Antes:**
+```
+{isLive && game.api_fixture_id && (
+  <DominanceIndicator ... />
+)}
 ```
 
-- Usa `useRef` para manter array de snapshots entre renders
-- A cada mudanca de `minuteNow` ou `ldi`, adiciona um novo ponto se o minuto mudou (evita duplicatas)
-- Limpa o historico se o `fixtureId` mudar (novo jogo)
-- Retorna o array completo para render
-- O historico e local (em memoria) - se o usuario recarrega a pagina, comeca do zero, o que e aceitavel para dados ao vivo
-
-#### Componente `LdiSparkline`
-
-Componente SVG inline, sem dependencia externa:
-
-- Recebe `data: LdiSnapshot[]` e dimensoes (`width=120, height=24`)
-- Desenha polyline com os pontos mapeados (eixo X = minuto, eixo Y = LDI 0-100)
-- Linha central tracejada em 50 (equilibrio)
-- Cor da linha: gradiente de emerald (casa) a violet (visitante) baseado no ultimo valor
-- Mostra apenas quando ha pelo menos 2 pontos
-- Tamanho compacto para caber no card sem poluir
-
-Visual aproximado:
-```text
-     ╭──╮
-────╯    ╰──── (linha LDI)
-- - - - - - -  (linha 50, equilibrio)
+**Depois:**
+```
+{game.api_fixture_id && (
+  <DominanceIndicator ... />
+)}
 ```
 
-#### Tooltips no DominanceIndicator
+O proprio `useDominanceAnalysis` ja lida com todos os cenarios:
+- Jogo sem dados: mostra "Aguardando estatisticas..." ou "Liga sem cobertura"
+- Jogo com dados: mostra LDI, barra, sparkline e alertas
+- Jogo finalizado com dados: mostra a analise completa (validacao visual)
 
-Usar o componente `Tooltip` ja existente (`@/components/ui/tooltip`):
+### Jogo para Teste
 
-1. **Tooltip no valor LDI** (ex: "68 LDI"):
-   - Conteudo: Tabela com as faixas
-   ```
-   Live Dominance Index
-   65-100: Casa domina
-   55-64:  Casa com vantagem
-   45-54:  Equilibrado
-   35-44:  Visitante com vantagem
-   0-34:   Visitante domina
-   ```
+**RED Star FC 93 vs PAU** (France - Ligue 2)
+- fixture_id: 1396831
+- Posse: 53% x 47%
+- Chutes: 11 x 1 (2 no gol)
+- Escanteios: 5 x 0
+- Esperado: LDI alto para a casa (~70+), alertas de pressao alta
 
-2. **Tooltip na barra de dominancia**:
-   - Conteudo: "Verde = Casa | Violeta = Visitante"
+### Resultado
 
-3. **Tooltip no sparkline**:
-   - Conteudo: "Evolucao do LDI ao longo do jogo"
+Apos a mudanca, o indicador aparecera nesse jogo finalizado com todos os dados visuais (barra de dominancia, valor LDI, tooltips). Isso permite validar que tudo funciona corretamente e tambem agrega valor para jogos passados.
 
-Todos envolvidos em `TooltipProvider` + `Tooltip` + `TooltipTrigger` + `TooltipContent`.
-
-#### Integracao no GameListItem
-
-Adicionar o hook `useLdiHistory` passando `fixtureCache?.minute_now` e `dominance.dominanceIndex`, e repassar o array `ldiHistory` para o `DominanceIndicator` via nova prop.
-
-#### Layout atualizado do DominanceIndicator
-
-```text
-[Status] [Casa domina] [68 LDI (tooltip)]  [sparkline ~~~~]
-[═══════════════════ barra (tooltip) ══════════════════════]
-[alertas...]
-```
-
-O sparkline fica na mesma linha do label/LDI, alinhado a direita, ocupando ~120px de largura.
-
----
-
-### Ordem de Implementacao
-
-1. Criar `useLdiHistory.ts`
-2. Criar `LdiSparkline.tsx`
-3. Editar `DominanceIndicator.tsx` (adicionar sparkline + tooltips)
-4. Editar `GameListItem.tsx` (integrar useLdiHistory)
