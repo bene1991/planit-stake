@@ -8,6 +8,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
+import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
+import { DominanceIndicator } from "@/components/DominanceIndicator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,7 +67,7 @@ export function GameListItem({
   
   // Fetch fixture cache for live goals (only for games with fixture ID)
   const { data: fixtureCache } = useFixtureCache(game.api_fixture_id);
-  
+  const dominance = useDominanceAnalysis(fixtureCache);
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
@@ -413,8 +415,14 @@ export function GameListItem({
             })}
           </div>
         )}
-      </div>
 
+        {/* Dominance Indicator - Live games only, always visible */}
+        {isLive && game.api_fixture_id && (
+          <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
+            <DominanceIndicator result={dominance} />
+          </div>
+        )}
+      </div>
       {/* Expanded Content */}
       <CollapsibleContent>
         <div className="bg-muted/20 border-b border-border/30 p-3 space-y-3">
