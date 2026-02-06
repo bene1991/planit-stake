@@ -1,189 +1,121 @@
 
 
-## Correções e Nova Ferramenta BTTS
+## Melhoria Geral de Todas as Abas
 
-### Problema 1: Erro na Análise de IA do Fechamento Mensal
+### Diagnostico Completo
 
-**Diagnóstico:**
-O erro `TypeError: Cannot read properties of undefined (reading 'isFiltered')` ocorre porque:
-- A edge function `analyze-performance` espera receber `performanceData` com a estrutura completa (incluindo `isFiltered`, `activeFilters`, etc.)
-- O hook `useMonthlyReport.ts` está enviando apenas `{ prompt }` ao invés de `{ performanceData, structuredOutput: true }`
-
-**Solução:**
-Modificar o `useMonthlyReport.ts` para enviar os dados no formato correto que a edge function espera.
+Analisei todas as 5 abas ativas + paginas auxiliares e encontrei os seguintes problemas:
 
 ---
 
-### Problema 2: Ferramenta para BTTS (Ambas Marcam)
+### 1. CODIGO MORTO (para remover)
 
-O sistema já possui:
-- Tabela `btts_entries` para registrar operações BTTS
-- Tabela `btts_health_settings` para configurações de saúde
-- Tabela `btts_league_quarantine` para quarentena de ligas
-- Edge function `the-odds-api` para buscar odds BTTS
-- Hook `useTheOddsBtts.ts` para consumir a API
-
-**O que falta:** Uma página/interface dedicada para gerenciar operações BTTS.
-
----
-
-### Arquivos a Modificar/Criar
-
-| Arquivo | Ação |
-|---------|------|
-| `src/hooks/useMonthlyReport.ts` | Corrigir formato de envio para a edge function |
-| `src/pages/BttsTracker.tsx` | **CRIAR** - Página dedicada para BTTS |
-| `src/hooks/useBttsEntries.ts` | **CRIAR** - Hook para CRUD de operações BTTS |
-| `src/components/BttsEntryForm.tsx` | **CRIAR** - Formulário para adicionar entradas |
-| `src/components/BttsStatsCard.tsx` | **CRIAR** - Card com estatísticas BTTS |
-| `src/components/BttsQuarantineManager.tsx` | **CRIAR** - Gerenciador de quarentena de ligas |
-| `src/App.tsx` | Adicionar rota `/btts` |
-| `src/components/Layout.tsx` | Adicionar link na navegação |
-| `src/components/BottomNav.tsx` | Adicionar ícone na barra mobile |
+| Arquivo | Motivo |
+|---------|--------|
+| `src/components/Sidebar.tsx` | Nao e importado em lugar nenhum |
+| `src/pages/LiveGames.tsx` | Nao esta nas rotas do `App.tsx` |
+| `src/components/LiveStats/MyLiveGames.tsx` | So era usado pelo LiveGames |
+| `src/components/LiveStats/AttackMomentum.tsx` | Idem |
+| `src/components/LiveStats/PressureChart.tsx` | Idem |
+| `src/components/LiveStats/StatsComparison.tsx` | Idem |
+| `src/components/LiveStats/EventTimeline.tsx` | Idem |
+| `src/components/LiveStats/FixtureLinker.tsx` | Idem |
+| `src/hooks/useFixtureSearch.ts` | Usado apenas em contextos removidos |
+| `src/hooks/useOptimizedLiveStats.ts` | Idem |
 
 ---
 
-### Correção da Análise Mensal
+### 2. REDUNDANCIAS ENTRE ABAS
 
-```typescript
-// useMonthlyReport.ts - ANTES (incorreto)
-const { data, error } = await supabase.functions.invoke('analyze-performance', {
-  body: { prompt }
-});
+**Desempenho vs Analise de Metodo:**
+- Desempenho tem "Detalhamento por Metodo" (cards com win rate, greens, reds por metodo)
+- Desempenho tem `MethodComparisonChart` (grafico de barras comparando metodos)
+- Desempenho tem `MethodsRankingTable` (tabela ranking metodos)
+- Analise de Metodo tem scores, fases, graficos por metodo
+- **Acao:** Remover "Detalhamento por Metodo" e `MethodComparisonChart` do Desempenho. Manter `MethodsRankingTable` como resumo rapido com link para "ver analise completa" na aba Analise.
 
-// DEPOIS (correto)
-const performanceData = {
-  period: formatMonthYear(selectedMonth),
-  overallStats: {
-    total: stats.totalOperations,
-    greens: stats.greens,
-    reds: stats.reds,
-    winRate: stats.winRate,
-  },
-  profit: stats.profitStakes,
-  totalProfitReais: stats.profitMoney,
-  averageOdd: 2.0, // default
-  breakevenRate: 50,
-  methodStats: stats.methodRanking.map(m => ({
-    methodName: m.name,
-    total: m.operations,
-    greens: Math.round(m.operations * m.winRate / 100),
-    reds: m.operations - Math.round(m.operations * m.winRate / 100),
-    winRate: m.winRate,
-    profitReais: m.profit,
-    combinedScore: 50,
-    activeDays: 10,
-  })),
-  topLeagues: [],
-  bottomLeagues: [],
-  topTeams: [],
-  bottomTeams: [],
-  oddRangeStats: [],
-  comparison: { winRateChange: 0, volumeChange: 0 },
-  isFiltered: false,
-  generalWinRate: stats.winRate,
-};
+**Desempenho vs Fechamento Mensal:**
+- Ambos tem AI analysis (AIPerformanceAnalyzer + MonthlyAIAnalysis)
+- Ambos calculam win rate, greens, reds, ranking de metodos
+- **Acao:** Cada um tem proposito distinto (periodo filtrado vs mensal fechado), manter ambos mas remover duplicidade de componentes. Desempenho = analise em tempo real. Mensal = snapshot historico.
 
-const { data, error } = await supabase.functions.invoke('analyze-performance', {
-  body: { performanceData, structuredOutput: true }
-});
+**DailyPlanning - Historico:**
+- O historico colapsavel mostra jogos finalizados com stats basicas (greens/reds/winrate)
+- Isso sobrepoe parcialmente a aba Desempenho
+- **Acao:** Simplificar historico para mostrar apenas a lista, sem resumo de stats (ja existe em Desempenho)
+
+---
+
+### 3. MELHORIAS POR ABA
+
+#### Aba Inicio (DailyPlanning)
+- Remover card de "Resumo do Periodo" do historico (redundante com Desempenho)
+- Remover botao "Recalcular" do historico (confuso, ja existe em Desempenho)
+- Adicionar um **resumo do dia** no topo: lucro do dia, operacoes do dia, win rate do dia em 3 mini-cards
+
+#### Aba Desempenho (Performance)
+- Remover secao "Detalhamento por Metodo" (cards individuais) - coberto pela aba Analise
+- Remover `MethodComparisonChart` - coberto pela aba Analise
+- Manter `MethodsRankingTable` mas adicionar link "Ver analise detalhada" que leva para /method-analysis
+- Mover "Configuracoes" (meta mensal, stop diario, comissao) para a pagina de Conta - nao faz sentido em Desempenho
+- Resultado: pagina mais enxuta focada em visao geral (KPIs, graficos temporais, ligas, times)
+
+#### Aba Banca (BankrollManagement)
+- Pagina esta simples e objetiva, manter
+- Adicionar um resumo visual: barra de progresso mostrando alocacao total (soma dos %) e quanto resta
+- Adicionar indicador visual de alocacao por metodo (mini donut ou barra colorida)
+
+#### Aba Mensal (MonthlyReport)
+- Esta bem estruturada, manter
+- Sem mudancas significativas
+
+#### Aba Analise (MethodAnalysis)
+- Esta bem construida, manter como esta
+- Sem mudancas necessarias
+
+#### Pagina de Conta (Account)
+- Receber as configuracoes operacionais (meta mensal, stop, comissao, stake) que estavam em Desempenho
+- Organizar melhor em secoes com separadores visuais
+
+---
+
+### 4. NAVEGACAO
+
+A BottomNav mobile so mostra 4 itens: Inicio, Desempenho, Banca, Analise. O "Mensal" so aparece no menu desktop. Isso e intencional conforme o design anterior, mas vou adicionar o Mensal como 5o item na BottomNav para dar acesso mobile.
+
+---
+
+### Detalhes Tecnicos
+
+#### Arquivos a Deletar
+```
+src/components/Sidebar.tsx
+src/pages/LiveGames.tsx
+src/components/LiveStats/MyLiveGames.tsx
+src/components/LiveStats/AttackMomentum.tsx
+src/components/LiveStats/PressureChart.tsx
+src/components/LiveStats/StatsComparison.tsx
+src/components/LiveStats/EventTimeline.tsx
+src/components/LiveStats/FixtureLinker.tsx
+src/hooks/useFixtureSearch.ts
+src/hooks/useOptimizedLiveStats.ts
 ```
 
----
+#### Arquivos a Editar
 
-### Nova Ferramenta BTTS - Funcionalidades
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/pages/Performance.tsx` | Remover secao "Detalhamento por Metodo", remover `MethodComparisonChart`, remover Collapsible de configuracoes, adicionar link na `MethodsRankingTable` para /method-analysis |
+| `src/pages/DailyPlanning.tsx` | Adicionar 3 mini-cards de resumo do dia no topo, simplificar historico (remover card de resumo e botao recalcular) |
+| `src/pages/BankrollManagement.tsx` | Adicionar barra de progresso de alocacao total |
+| `src/pages/Account.tsx` | Adicionar secao de configuracoes operacionais (meta, stop, comissao, stake) |
+| `src/components/BottomNav.tsx` | Adicionar item "Mensal" (CalendarDays) como 5o item |
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  🎯 BTTS Tracker                                             │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  📊 Estatísticas Rápidas                                     │
-│  ┌─────────────┬─────────────┬─────────────┬─────────────┐   │
-│  │ Win Rate    │ Lucro Total │ ROI         │ Operações   │   │
-│  │ 68.5%       │ +R$ 850     │ +12.3%      │ 45          │   │
-│  └─────────────┴─────────────┴─────────────┴─────────────┘   │
-│                                                              │
-│  ➕ Nova Entrada BTTS                                        │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │ Liga: [Premier League    ▼]  Data: [05/02/2026]         ││
-│  │ Casa: [Liverpool        ]    Fora: [Chelsea            ]││
-│  │ Odd: [2.05             ]    Stake: [R$ 100            ]││
-│  │ Resultado: ◉ Green ○ Red                                 ││
-│  │                                        [Salvar]          ││
-│  └──────────────────────────────────────────────────────────┘│
-│                                                              │
-│  📋 Histórico de Entradas                                    │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │ 04/02 | Liverpool x Chelsea    | 2.05 | ✅ +R$105       ││
-│  │ 03/02 | Arsenal x Man United   | 2.15 | ❌ -R$100       ││
-│  │ 02/02 | Everton x Newcastle    | 2.25 | ✅ +R$125       ││
-│  └──────────────────────────────────────────────────────────┘│
-│                                                              │
-│  ⚠️ Ligas em Quarentena                                      │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │ Serie B Brasil - Até 15/02/2026 (3 reds seguidos)       ││
-│  │ [Remover Quarentena]                                     ││
-│  └──────────────────────────────────────────────────────────┘│
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-### Hook useBttsEntries
-
-```typescript
-interface BttsEntry {
-  id: string;
-  date: string;
-  time: string;
-  league: string;
-  homeTeam: string;
-  awayTeam: string;
-  odd: number;
-  stakeValue: number;
-  result: 'Green' | 'Red';
-  profit: number;
-  method: string;
-}
-
-interface UseBttsEntriesResult {
-  entries: BttsEntry[];
-  loading: boolean;
-  stats: {
-    total: number;
-    greens: number;
-    reds: number;
-    winRate: number;
-    profit: number;
-    roi: number;
-  };
-  addEntry: (entry: Omit<BttsEntry, 'id' | 'profit'>) => Promise<void>;
-  deleteEntry: (id: string) => Promise<void>;
-  quarantine: LeagueQuarantine[];
-  addQuarantine: (league: string, days: number, reason: string) => Promise<void>;
-  removeQuarantine: (id: string) => Promise<void>;
-}
-```
-
----
-
-### Ordem de Implementação
-
-1. **Corrigir erro da análise mensal** - Ajustar formato de dados no `useMonthlyReport.ts`
-2. **Criar hook `useBttsEntries`** - CRUD para operações BTTS
-3. **Criar página `BttsTracker`** - Interface principal
-4. **Criar componentes auxiliares** - Form, Stats, Quarantine
-5. **Adicionar navegação** - Rotas e links na sidebar/bottomnav
-
----
-
-### Benefícios da Ferramenta BTTS
-
-1. **Rastreamento dedicado** - Separar BTTS das outras operações
-2. **Estatísticas específicas** - Win rate, ROI, lucro focado em BTTS
-3. **Quarentena de ligas** - Pausar ligas com resultados ruins
-4. **Histórico organizado** - Ver todas as entradas BTTS em um lugar
-5. **Fácil entrada** - Formulário otimizado para adicionar operações
+#### Ordem de Implementacao
+1. Deletar arquivos mortos (LiveGames, Sidebar, LiveStats)
+2. Limpar Performance (remover secoes redundantes)
+3. Mover configuracoes operacionais para Account
+4. Simplificar historico do DailyPlanning + adicionar resumo do dia
+5. Melhorar BankrollManagement com barra de alocacao
+6. Atualizar BottomNav com Mensal
 
