@@ -1,4 +1,4 @@
-import { ChevronRight, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { ChevronRight, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Clock, XCircle, Shield, Timer, BarChart2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -122,7 +122,41 @@ export function MethodAnalysisCard({ data, onClick }: MethodAnalysisCardProps) {
             Sequência atual: {stats.currentStreak.count} {stats.currentStreak.type === 'green' ? 'greens' : 'reds'}
           </span>
         </div>
+
+        {/* Validation Badges */}
+        {data.validations && (
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <ValidationBadge
+              icon={<Shield className="h-3 w-3" />}
+              label={data.validations.robustness.label === 'Robusto' ? 'Robusto' : data.validations.robustness.label === 'Sensivel' ? 'Sensível' : 'Frágil'}
+              level={data.validations.robustness.label === 'Robusto' ? 'good' : data.validations.robustness.label === 'Sensivel' ? 'warn' : 'bad'}
+            />
+            <ValidationBadge
+              icon={<Timer className="h-3 w-3" />}
+              label={data.validations.stability.label === 'Estavel' ? 'Estável' : data.validations.stability.label === 'Oscilante' ? 'Oscilante' : 'Deterioração'}
+              level={data.validations.stability.label === 'Estavel' ? 'good' : data.validations.stability.label === 'Oscilante' ? 'warn' : 'bad'}
+            />
+            <ValidationBadge
+              icon={<BarChart2 className="h-3 w-3" />}
+              label={data.validations.variance.label === 'Distribuido' ? 'Distribuído' : data.validations.variance.label === 'Concentrado' ? 'Concentrado' : 'Evento Raro'}
+              level={data.validations.variance.label === 'Distribuido' ? 'good' : data.validations.variance.label === 'Concentrado' ? 'warn' : 'bad'}
+            />
+          </div>
+        )}
       </div>
     </Card>
+  );
+}
+
+function ValidationBadge({ icon, label, level }: { icon: React.ReactNode; label: string; level: 'good' | 'warn' | 'bad' }) {
+  const colors = {
+    good: 'bg-green-500/10 text-green-600 border-green-500/30',
+    warn: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
+    bad: 'bg-red-500/10 text-red-600 border-red-500/30',
+  };
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border", colors[level])}>
+      {icon}{label}
+    </span>
   );
 }

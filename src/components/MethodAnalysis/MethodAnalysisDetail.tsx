@@ -1,6 +1,7 @@
 import { 
   TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Clock, XCircle,
-  Target, Activity, BarChart3, Sparkles, Info, AlertTriangle, CheckCircle, XOctagon
+  Target, Activity, BarChart3, Sparkles, Info, AlertTriangle, CheckCircle, XOctagon,
+  Shield, Timer, BarChart2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -235,6 +236,43 @@ export function MethodAnalysisDetail({ data, aiRecommendation, aiLoading }: Meth
         </Card>
       )}
 
+      {/* Advanced Validations */}
+      {data.validations && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Validações Avançadas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <ValidationDetailCard
+                icon={<Shield className="h-5 w-5" />}
+                title="Robustez"
+                label={data.validations.robustness.label === 'Robusto' ? 'Robusto' : data.validations.robustness.label === 'Sensivel' ? 'Sensível a Contexto' : 'Frágil'}
+                level={data.validations.robustness.label === 'Robusto' ? 'good' : data.validations.robustness.label === 'Sensivel' ? 'warn' : 'bad'}
+                detail={`Desvio padrão: ${data.validations.robustness.stdDev.toFixed(1)}% (${data.validations.robustness.contextCount} contextos)`}
+              />
+              <ValidationDetailCard
+                icon={<Timer className="h-5 w-5" />}
+                title="Estabilidade"
+                label={data.validations.stability.label === 'Estavel' ? 'Estável' : data.validations.stability.label === 'Oscilante' ? 'Oscilante' : 'Em Deterioração'}
+                level={data.validations.stability.label === 'Estavel' ? 'good' : data.validations.stability.label === 'Oscilante' ? 'warn' : 'bad'}
+                detail={`WR recente: ${data.validations.stability.recentWinRate.toFixed(1)}% (${data.validations.stability.deltaWinRate >= 0 ? '+' : ''}${data.validations.stability.deltaWinRate.toFixed(1)}pp)`}
+              />
+              <ValidationDetailCard
+                icon={<BarChart2 className="h-5 w-5" />}
+                title="Variância"
+                label={data.validations.variance.label === 'Distribuido' ? 'Lucro Distribuído' : data.validations.variance.label === 'Concentrado' ? 'Lucro Concentrado' : 'Evento Raro'}
+                level={data.validations.variance.label === 'Distribuido' ? 'good' : data.validations.variance.label === 'Concentrado' ? 'warn' : 'bad'}
+                detail={`Top 10% ops = ${data.validations.variance.topPercentContribution.toFixed(0)}% do lucro`}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* AI Recommendation */}
       <Card className="border-primary/30 bg-primary/5">
         <CardHeader>
@@ -388,6 +426,24 @@ export function MethodAnalysisDetail({ data, aiRecommendation, aiLoading }: Meth
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function ValidationDetailCard({ icon, title, label, level, detail }: {
+  icon: React.ReactNode; title: string; label: string; level: 'good' | 'warn' | 'bad'; detail: string;
+}) {
+  const colors = {
+    good: 'bg-green-500/10 border-green-500/30 text-green-600',
+    warn: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-600',
+    bad: 'bg-red-500/10 border-red-500/30 text-red-600',
+  };
+  return (
+    <div className={cn("p-4 rounded-lg border flex flex-col items-center text-center gap-2", colors[level])}>
+      {icon}
+      <p className="text-xs text-muted-foreground">{title}</p>
+      <p className="font-semibold">{label}</p>
+      <p className="text-xs opacity-80">{detail}</p>
     </div>
   );
 }

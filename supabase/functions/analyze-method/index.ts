@@ -81,6 +81,18 @@ REGRAS IMPORTANTES:
 
 Retorne usando a função provide_recommendation.`;
 
+    // Build validations section for prompt
+    const validations = (methodData as any).validations;
+    let validationsPrompt = '';
+    if (validations) {
+      validationsPrompt = `
+🔬 VALIDAÇÕES AVANÇADAS:
+- Robustez: ${validations.robustness.label} (desvio padrão ${validations.robustness.stdDev.toFixed(1)}% entre ${validations.robustness.contextCount} contextos)
+- Estabilidade: ${validations.stability.label} (WR recente ${validations.stability.recentWinRate.toFixed(1)}% vs histórico, delta ${validations.stability.deltaWinRate >= 0 ? '+' : ''}${validations.stability.deltaWinRate.toFixed(1)}pp)
+- Variância: ${validations.variance.label} (top 10% das ops = ${validations.variance.topPercentContribution.toFixed(0)}% do lucro)
+`;
+    }
+
     const userPrompt = `Analise o método "${methodData.methodName}":
 
 📊 CLASSIFICAÇÃO ATUAL: ${methodData.phase}
@@ -120,7 +132,7 @@ ${methodData.alerts.length > 0 ? `
 ⚠️ ALERTAS ATIVOS:
 ${methodData.alerts.map(a => `- [${a.type.toUpperCase()}] ${a.title}: ${a.message}`).join('\n')}
 ` : ''}
-
+${validationsPrompt}
 Com base nesses dados, qual a sua recomendação?`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
