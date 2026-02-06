@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface NormalizedStats {
@@ -50,17 +50,12 @@ interface UseFixtureCacheResult {
   refetch: () => void;
 }
 
-// Status codes that indicate a live game
-const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'LIVE'];
-
-// Refresh interval for live games (1 minute)
-const LIVE_REFRESH_INTERVAL = 60000;
-
+// Status codes that indicate a live game (kept for reference)
+// const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'LIVE'];
 export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchDetails = useCallback(async (retryCount = 0) => {
     if (!fixtureId) return;
@@ -115,25 +110,9 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
     }
   }, [fixtureId, fetchDetails, autoFetch]);
 
-  // Auto-refresh for live games
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    if (autoFetch && data && LIVE_STATUSES.includes(data.status)) {
-      intervalRef.current = setInterval(() => {
-        fetchDetails();
-      }, LIVE_REFRESH_INTERVAL);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [data?.status, fetchDetails]);
+  // Auto-refresh removed to save API credits.
+  // useLiveScores handles centralized score updates.
+  // Users can manually refetch via refetch().
 
   return { data, loading, error, refetch };
 }

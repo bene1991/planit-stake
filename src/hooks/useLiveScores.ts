@@ -38,8 +38,8 @@ export interface GoalDetectedCallback {
   (gameId: string, team: 'home' | 'away', homeScore: number, awayScore: number, game: Game): void;
 }
 
-// Refresh interval: 20 seconds when live games, 120 seconds when idle
-const REFRESH_INTERVAL_ACTIVE = 20 * 1000;
+// Default intervals (used as fallback)
+const DEFAULT_ACTIVE_INTERVAL = 30 * 1000;
 const REFRESH_INTERVAL_IDLE = 120 * 1000;
 
 // Minimum interval between calls (throttle protection)
@@ -51,7 +51,8 @@ const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
 export function useLiveScores(
   games: Game[], 
   onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void,
-  onGoalDetected?: GoalDetectedCallback
+  onGoalDetected?: GoalDetectedCallback,
+  activeIntervalMs?: number
 ): UseLiveScoresResult {
   const [scores, setScores] = useState<Map<string, LiveScore>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -65,7 +66,7 @@ export function useLiveScores(
   const isFetchingRef = useRef(false);
   const persistedScoresRef = useRef<Set<string>>(new Set());
   const lastCallTimeRef = useRef<number>(0);
-  
+  const remainingCreditsRef = useRef<number | null>(null);
   // Internal snapshot for goal detection - stores previous scores before update
   const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
   
@@ -132,6 +133,7 @@ export function useLiveScores(
       // Emit API usage event if rate limit data is present
       if (data?._rateLimit?.used !== undefined && data?._rateLimit?.limit) {
         emitApiUsageUpdate(data._rateLimit.used, data._rateLimit.limit, data._rateLimit.remaining);
+        remainingCreditsRef.current = data._rateLimit.remaining ?? null;
       }
       
       const fixtures = data?.response || [];
@@ -371,20 +373,38 @@ export function useLiveScores(
       return;
     }
     
-    // Determine refresh interval based on active live games
+    // Determine refresh interval: user setting + credit-based floor
     const hasLiveGames = games.some(g => g.status === 'Live');
-    const refreshInterval = hasLiveGames ? REFRESH_INTERVAL_ACTIVE : REFRESH_INTERVAL_IDLE;
+    const userInterval = activeIntervalMs || DEFAULT_ACTIVE_INTERVAL;
+    
+    // Auto-economy: raise floor when credits are low
+    const remaining = remainingCreditsRef.current;
+    let creditFloor = userInterval;
+    if (remaining !== null) {
+      if (remaining < 500) {
+        creditFloor = 300 * 1000; // 5 min
+        console.warn(`[useLiveScores] ⚠️ CREDITS LOW (${remaining}) - forcing 5min interval`);
+      } else if (remaining < 2000) {
+        creditFloor = 120 * 1000;
+      } else if (remaining < 5000) {
+        creditFloor = 60 * 1000;
+      }
+    }
+    
+    const effectiveInterval = hasLiveGames 
+      ? Math.max(userInterval, creditFloor) 
+      : REFRESH_INTERVAL_IDLE;
     
     if (hasGamesToMonitor) {
-      console.log(`[useLiveScores] Starting ${refreshInterval/1000}s interval for ${fixtureIds.length} games (${hasLiveGames ? 'ACTIVE' : 'IDLE'} mode)`);
+      console.log(`[useLiveScores] Starting ${effectiveInterval/1000}s interval (user=${userInterval/1000}s, credits=${remaining ?? 'unknown'}, ${hasLiveGames ? 'ACTIVE' : 'IDLE'})`);
       
       // Fetch immediately using ref
       fetchLiveScoresRef.current?.();
       
-      // Dynamic interval based on live games
+      // Dynamic interval based on credits and user setting
       intervalRef.current = setInterval(() => {
         fetchLiveScoresRef.current?.();
-      }, refreshInterval);
+      }, effectiveInterval);
       
       return () => {
         if (intervalRef.current) {
@@ -394,7 +414,7 @@ export function useLiveScores(
       };
     }
     // REMOVED: fetchLiveScores from dependencies to prevent race condition!
-  }, [hasGamesToMonitor, fixtureIds.length, games, isPageVisible]);
+  }, [hasGamesToMonitor, fixtureIds.length, games, isPageVisible, activeIntervalMs]);
   
   // Cleanup on unmount
   useEffect(() => {
