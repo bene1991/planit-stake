@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { FixtureCacheData, MomentumPoint } from './useFixtureCache';
 
-export type DataStatus = 'ok' | 'limited' | 'unavailable';
+export type DataStatus = 'ok' | 'limited' | 'unavailable' | 'no_coverage';
 
 export interface DominanceAlert {
   type: 'momentum_shift' | 'high_pressure' | 'defensive_lock' | 'danger_zone';
@@ -25,13 +25,20 @@ function calcRatio(home: number, away: number): number {
 }
 
 function classifyData(cache: FixtureCacheData | null): { status: DataStatus; message: string } {
-  if (!cache || !cache.minute_now || cache.minute_now === 0) {
-    return { status: 'unavailable', message: 'Dados ao vivo indisponíveis no momento. Análise suspensa.' };
+  if (!cache) {
+    return { status: 'unavailable', message: 'Carregando dados...' };
+  }
+
+  if (!cache.minute_now || cache.minute_now === 0) {
+    return { status: 'unavailable', message: 'Aguardando início do jogo...' };
   }
 
   const s = cache.normalized_stats;
   if (!s) {
-    return { status: 'unavailable', message: 'Estatísticas não disponíveis para este jogo.' };
+    if (cache.minute_now > 10) {
+      return { status: 'no_coverage', message: 'Liga sem cobertura estatística detalhada' };
+    }
+    return { status: 'unavailable', message: 'Aguardando estatísticas...' };
   }
 
   const hasShots = (s.home.shots_total + s.away.shots_total) >= 2;
@@ -46,7 +53,12 @@ function classifyData(cache: FixtureCacheData | null): { status: DataStatus; mes
     return { status: 'limited', message: 'Dados limitados — análise parcial' };
   }
 
-  return { status: 'unavailable', message: 'Estatísticas ainda não recebidas. Análise suspensa.' };
+  // Has normalized_stats object but all values are zero
+  if (cache.minute_now > 10) {
+    return { status: 'no_coverage', message: 'Liga sem cobertura estatística detalhada' };
+  }
+
+  return { status: 'unavailable', message: 'Aguardando estatísticas...' };
 }
 
 function calcLDI(cache: FixtureCacheData): number {
@@ -171,7 +183,7 @@ export function useDominanceAnalysis(cache: FixtureCacheData | null): DominanceR
   return useMemo(() => {
     const { status, message } = classifyData(cache);
 
-    if (status === 'unavailable' || !cache?.normalized_stats) {
+    if (status === 'unavailable' || status === 'no_coverage' || !cache?.normalized_stats) {
       return {
         dataStatus: status,
         dataStatusMessage: message,

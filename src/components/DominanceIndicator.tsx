@@ -1,6 +1,6 @@
 import { DominanceResult } from '@/hooks/useDominanceAnalysis';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, TrendingUp, ShieldAlert, Flame, RefreshCw } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShieldAlert, Flame, RefreshCw, Info, Loader2 } from 'lucide-react';
 
 interface DominanceIndicatorProps {
   result: DominanceResult;
@@ -22,12 +22,22 @@ const severityStyles = {
 export function DominanceIndicator({ result }: DominanceIndicatorProps) {
   const { dataStatus, dataStatusMessage, dominanceIndex, dominanceLabel, alerts } = result;
 
-  // Unavailable: show warning only
+  // No coverage: neutral info badge
+  if (dataStatus === 'no_coverage') {
+    return (
+      <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 border border-border">
+        <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        <span className="text-[11px] text-muted-foreground font-medium">{dataStatusMessage}</span>
+      </div>
+    );
+  }
+
+  // Unavailable: show loading or waiting state
   if (dataStatus === 'unavailable') {
     return (
-      <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
-        <span className="text-sm">🔴</span>
-        <span className="text-[11px] text-destructive font-medium">{dataStatusMessage}</span>
+      <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 border border-border">
+        <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin flex-shrink-0" />
+        <span className="text-[11px] text-muted-foreground font-medium">{dataStatusMessage}</span>
       </div>
     );
   }
