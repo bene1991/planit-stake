@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.elevenlabs-sfx]
 verify_jwt = false
+
+[functions.analyze-method]
+verify_jwt = false

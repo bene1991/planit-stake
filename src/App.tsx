@@ -15,7 +15,7 @@ import BankrollManagement from "./pages/BankrollManagement";
 import DailyPlanning from "./pages/DailyPlanning";
 import Performance from "./pages/Performance";
 import MonthlyReport from "./pages/MonthlyReport";
-import BttsTracker from "./pages/BttsTracker";
+import MethodAnalysis from "./pages/MethodAnalysis";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
@@ -68,10 +68,10 @@ const AppContent = () => {
           }
         />
         <Route
-          path="/btts"
+          path="/method-analysis"
           element={
             <ProtectedRoute>
-              <Layout><BttsTracker /></Layout>
+              <Layout><MethodAnalysis /></Layout>
             </ProtectedRoute>
           }
         />
