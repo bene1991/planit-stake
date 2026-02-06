@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.analyze-method]
 verify_jwt = false
+
+[functions.analyze-live-moment]
+verify_jwt = false
