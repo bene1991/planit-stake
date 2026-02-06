@@ -1,78 +1,114 @@
 
-## Melhoria na Deteccao de Ausencia de Dados da API
+## Historico LDI Sparkline + Tooltips Explicativos
 
-### Diagnostico
+### Visao Geral
 
-O sistema esta funcionando corretamente. Os 3 jogos ao vivo atuais sao de ligas com cobertura estatistica limitada na API-Football:
+Duas melhorias no indicador de dominancia:
 
-- **Portugal - Segunda Liga** (Chaves vs Penafiel) - min 90
-- **Chile - Copa Chile** (Magallanes vs Deportes Santa Cruz) - min 50
-- **Uruguay - Primera Division** (Albion FC vs Liverpool Montevideo) - min 11
-
-A API retorna o placar e minuto do jogo, mas `stats_raw: []` e `events_raw: []` - ou seja, **nao fornece estatisticas detalhadas** (posse, chutes, escanteios) para essas competicoes. Isso e uma limitacao conhecida da API-Football para ligas menores.
-
-O indicador 🔴 esta correto ao sinalizar ausencia de dados. Porem, a mensagem pode ser melhorada.
+1. **Sparkline do LDI** - Mini-grafico mostrando a evolucao do indice ao longo do jogo, construido acumulando snapshots do LDI a cada atualizacao do cache
+2. **Tooltips explicativos** - Ao tocar/hover no valor LDI ou na barra, o usuario ve uma explicacao do que cada faixa significa
 
 ---
 
-### Melhorias Propostas
+### Arquivos a Criar
 
-#### 1. Mensagem mais especifica no `useDominanceAnalysis`
+| Arquivo | Descricao |
+|---------|-----------|
+| `src/hooks/useLdiHistory.ts` | Hook que acumula snapshots `{ minute, ldi }` em um ref a cada mudanca do cache, retornando o array para o sparkline |
+| `src/components/LdiSparkline.tsx` | Componente SVG puro que desenha a linha do historico LDI (sem dependencia de recharts para manter leve) |
 
-Diferenciar dois cenarios:
+### Arquivos a Editar
 
-| Cenario | Condicao | Mensagem |
-|---------|----------|----------|
-| Jogo sem cobertura | `minute_now > 10` E stats zeradas | "Liga sem cobertura estatistica detalhada" |
-| Dados pendentes | `minute_now <= 10` E stats zeradas | "Aguardando estatisticas..." |
-| Cache nao carregado | `fixtureCache === null` | "Carregando dados..." |
-
-Isso evita que o usuario pense que ha um bug quando na verdade a API simplesmente nao cobre aquela liga.
-
-#### 2. Icone e visual ajustados
-
-- Cenario "sem cobertura": Mostrar icone de info (em vez de erro) com texto explicativo
-- Cenario "dados pendentes": Mostrar loading spinner
-- Cenario "sem dados": Manter 🔴 atual
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/components/GameListItem.tsx` | Integrar `useLdiHistory` e passar o historico para `DominanceIndicator` |
+| `src/components/DominanceIndicator.tsx` | Adicionar sparkline + tooltips |
 
 ---
 
 ### Detalhes Tecnicos
 
-#### Arquivo a editar: `src/hooks/useDominanceAnalysis.ts`
+#### Hook `useLdiHistory`
 
-Na funcao `analyzeDataStatus`, adicionar logica para detectar "sem cobertura":
+```typescript
+interface LdiSnapshot {
+  minute: number;
+  ldi: number;
+}
 
-```text
-Se fixtureCache existe E minute_now > 10 E stats totalmente zeradas:
-  -> status: 'no_coverage'
-  -> mensagem: "Liga sem cobertura estatistica detalhada"
-
-Se fixtureCache existe E minute_now <= 10 E stats zeradas:
-  -> status: 'unavailable' (pode ser que ainda nao comecou)
-  -> mensagem: "Aguardando estatisticas..."
-
-Se fixtureCache === null:
-  -> status: 'unavailable'
-  -> mensagem: "Carregando dados..."
+function useLdiHistory(
+  fixtureId: number | undefined,
+  minuteNow: number | undefined,
+  ldi: number | null
+): LdiSnapshot[]
 ```
 
-#### Arquivo a editar: `src/components/DominanceIndicator.tsx`
+- Usa `useRef` para manter array de snapshots entre renders
+- A cada mudanca de `minuteNow` ou `ldi`, adiciona um novo ponto se o minuto mudou (evita duplicatas)
+- Limpa o historico se o `fixtureId` mudar (novo jogo)
+- Retorna o array completo para render
+- O historico e local (em memoria) - se o usuario recarrega a pagina, comeca do zero, o que e aceitavel para dados ao vivo
 
-Ajustar o render para o novo status `no_coverage`:
-- Usar badge cinza (neutro) em vez de vermelho
-- Mostrar icone de informacao (Info) em vez de alerta
-- Texto: "Esta liga nao possui cobertura estatistica detalhada na API"
+#### Componente `LdiSparkline`
 
-#### Arquivo a editar: `src/components/GameListItem.tsx`
+Componente SVG inline, sem dependencia externa:
 
-Nenhuma mudanca necessaria - ja consome o resultado do hook corretamente.
+- Recebe `data: LdiSnapshot[]` e dimensoes (`width=120, height=24`)
+- Desenha polyline com os pontos mapeados (eixo X = minuto, eixo Y = LDI 0-100)
+- Linha central tracejada em 50 (equilibrio)
+- Cor da linha: gradiente de emerald (casa) a violet (visitante) baseado no ultimo valor
+- Mostra apenas quando ha pelo menos 2 pontos
+- Tamanho compacto para caber no card sem poluir
+
+Visual aproximado:
+```text
+     ╭──╮
+────╯    ╰──── (linha LDI)
+- - - - - - -  (linha 50, equilibrio)
+```
+
+#### Tooltips no DominanceIndicator
+
+Usar o componente `Tooltip` ja existente (`@/components/ui/tooltip`):
+
+1. **Tooltip no valor LDI** (ex: "68 LDI"):
+   - Conteudo: Tabela com as faixas
+   ```
+   Live Dominance Index
+   65-100: Casa domina
+   55-64:  Casa com vantagem
+   45-54:  Equilibrado
+   35-44:  Visitante com vantagem
+   0-34:   Visitante domina
+   ```
+
+2. **Tooltip na barra de dominancia**:
+   - Conteudo: "Verde = Casa | Violeta = Visitante"
+
+3. **Tooltip no sparkline**:
+   - Conteudo: "Evolucao do LDI ao longo do jogo"
+
+Todos envolvidos em `TooltipProvider` + `Tooltip` + `TooltipTrigger` + `TooltipContent`.
+
+#### Integracao no GameListItem
+
+Adicionar o hook `useLdiHistory` passando `fixtureCache?.minute_now` e `dominance.dominanceIndex`, e repassar o array `ldiHistory` para o `DominanceIndicator` via nova prop.
+
+#### Layout atualizado do DominanceIndicator
+
+```text
+[Status] [Casa domina] [68 LDI (tooltip)]  [sparkline ~~~~]
+[═══════════════════ barra (tooltip) ══════════════════════]
+[alertas...]
+```
+
+O sparkline fica na mesma linha do label/LDI, alinhado a direita, ocupando ~120px de largura.
 
 ---
 
-### Resultado Esperado
+### Ordem de Implementacao
 
-Para jogos de ligas menores (Uruguay, Chile, Portugal Segunda Liga, etc.):
-- O usuario vera uma mensagem **informativa neutra** explicando que a liga nao tem cobertura
-- Nao parecera um erro ou falha do sistema
-- Para jogos de grandes ligas (Serie A, Premier League, La Liga), o indicador aparecera normalmente com os dados de dominancia
+1. Criar `useLdiHistory.ts`
+2. Criar `LdiSparkline.tsx`
+3. Editar `DominanceIndicator.tsx` (adicionar sparkline + tooltips)
+4. Editar `GameListItem.tsx` (integrar useLdiHistory)
