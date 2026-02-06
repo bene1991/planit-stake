@@ -1,66 +1,102 @@
 
 
-## Otimizacao: Limitar Busca de Dados para Jogos Finalizados
+## Modo Maratona: Creditos Durando o Dia Todo
 
-### Problema
+### Problema Atual
 
-Com a mudanca anterior (remover `isLive &&`), todos os jogos com `api_fixture_id` na lista agora disparam `useFixtureCache`, que chama a edge function `get-fixture-details`.
+Existem dois problemas de consumo:
 
-- **Jogos ja cacheados:** Impacto minimo (apenas chamada a edge function, sem consumo de API-Football)
-- **Jogos nunca buscados:** 3 creditos da API-Football por jogo (fixture + stats + events)
-- **Risco real:** Se o usuario tem 50+ jogos finalizados na lista e nenhum esta no cache, sao 150+ creditos consumidos de uma vez
+1. **`useLiveScores` ignora o intervalo configuravel** - O hook usa 20s hardcoded (`REFRESH_INTERVAL_ACTIVE = 20 * 1000`), mesmo que o usuario configure 60s ou 120s nas configuracoes. A configuracao do `useRefreshInterval` so e usada no `useAutoRefresh` do countdown visual.
 
-### Solucao Proposta
+2. **`useFixtureCache` faz 1 chamada/minuto POR jogo ao vivo** - Com 10 jogos ao vivo, sao 600 creditos/hora so de detalhes.
 
-Mostrar o `DominanceIndicator` para jogos finalizados **apenas se ja houver dados no cache**, sem disparar novas buscas para jogos antigos que nunca foram monitorados ao vivo.
+### Estimativa de Consumo Atual (dia de muitos jogos, ~16h)
 
-### Abordagem Tecnica
+| Fonte | Calculo | Creditos |
+|-------|---------|----------|
+| `useLiveScores` (live=all, 20s) | 3/min x 960min | ~2880 |
+| `useFixtureCache` (10 jogos medios ao vivo) | 10/min x 960min | ~9600 |
+| Backfills | ~50 jogos | ~50 |
+| **TOTAL** | | **~12.530** |
 
-#### Opcao: Fetch condicional no `useFixtureCache`
+Limite diario: **7.500 creditos**. Nao sobrevive nem 10 horas.
 
-Adicionar um parametro `fetchOnMount` ao hook `useFixtureCache`:
+### Solucao: 3 Otimizacoes
 
-- `fetchOnMount: true` (padrao para jogos ao vivo) - Busca dados imediatamente ao montar
-- `fetchOnMount: false` (para jogos finalizados) - Nao busca automaticamente, so mostra se ja tiver cache
+#### 1. Conectar `useLiveScores` ao intervalo configuravel
 
-#### Arquivo a editar: `src/hooks/useFixtureCache.ts`
+**Arquivo:** `src/hooks/useLiveScores.ts`
 
-Adicionar parametro opcional `autoFetch`:
-
-```
-function useFixtureCache(
-  fixtureId: number | string | null | undefined,
-  autoFetch: boolean = true  // novo parametro
-): UseFixtureCacheResult
-```
-
-Quando `autoFetch = false`:
-- Nao dispara `fetchDetails()` no `useEffect` inicial
-- Nao configura auto-refresh
-- Retorna `{ data: null, loading: false, error: null, refetch }`
-- O usuario pode clicar para carregar manualmente via `refetch()`
-
-#### Arquivo a editar: `src/components/GameListItem.tsx`
-
-Passar `autoFetch` baseado no status do jogo:
+Aceitar o intervalo do usuario como parametro e usar no lugar do hardcoded 20s:
 
 ```
-const isLive = game.status === 'Live';
-const fixtureCache = useFixtureCache(
-  game.api_fixture_id,
-  isLive  // so busca automaticamente se estiver ao vivo
-);
+export function useLiveScores(
+  games: Game[],
+  onScorePersisted?: ...,
+  onGoalDetected?: ...,
+  activeIntervalMs?: number   // NOVO
+)
 ```
 
-Para jogos finalizados:
-- Se ja tiver cache (buscado enquanto estava ao vivo): mostra o indicador normalmente
-- Se nao tiver cache: nao mostra nada (sem custo)
-- Opcionalmente: adicionar botao "Carregar analise" para buscar sob demanda
+O `REFRESH_INTERVAL_ACTIVE` sera substituido por `activeIntervalMs` (default 30000 se nao informado).
 
-### Resultado
+**Arquivo:** `src/pages/DailyPlanning.tsx`
 
-- **Jogos ao vivo:** Comportamento identico ao atual (busca automatica + refresh)
-- **Jogos finalizados com cache:** Mostra a analise pos-jogo sem custo adicional
-- **Jogos finalizados sem cache:** Nao consome creditos desnecessariamente
-- **Creditos API:** Zero impacto adicional comparado ao comportamento original
+Passar o `intervalMs` do `useRefreshInterval` para o `useLiveScores`:
+
+```
+const { intervalMs } = useRefreshInterval();
+const { ... } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs);
+```
+
+#### 2. Desabilitar auto-refresh do `useFixtureCache` para jogos ao vivo
+
+O `useFixtureCache` ja busca dados iniciais para jogos ao vivo (isso e necessario para o LDI). Mas o auto-refresh de 60s e redundante porque o `useLiveScores` ja atualiza os placares centralizadamente.
+
+**Arquivo:** `src/hooks/useFixtureCache.ts`
+
+Remover o `setInterval` de auto-refresh (linhas do `LIVE_REFRESH_INTERVAL`). Os dados de dominancia serao atualizados apenas quando o usuario expandir o card manualmente ou quando o cache invalidar naturalmente.
+
+Isso elimina ~600 creditos/hora com 10 jogos simultaneos.
+
+#### 3. Modo Auto-Economia baseado em creditos restantes
+
+**Arquivo:** `src/hooks/useLiveScores.ts`
+
+Ler os creditos restantes do `_rateLimit` que ja vem na resposta da API e ajustar automaticamente:
+
+```
+Creditos > 5000: intervalo normal do usuario
+Creditos 2000-5000: minimo 60s (ignora configuracoes menores)
+Creditos 500-2000: forca 120s
+Creditos < 500: forca 300s (5 min) + log de alerta
+```
+
+Isso sera um "piso" que so entra em acao quando os creditos ficam baixos, sem interferir no uso normal.
+
+### Estimativa Apos Otimizacoes (intervalo 60s, 16h)
+
+| Fonte | Calculo | Creditos |
+|-------|---------|----------|
+| `useLiveScores` (live=all, 60s) | 1/min x 960min | ~960 |
+| `useFixtureCache` (sem auto-refresh) | ~50 buscas iniciais | ~150 |
+| Backfills | ~50 jogos | ~50 |
+| Auto-economia (ultimas horas) | Reducao extra | -100 |
+| **TOTAL** | | **~1.060** |
+
+Com margem enorme! Mesmo com 30s configurado: ~1.970 creditos. Sobra para o dia todo.
+
+### Arquivos a Editar
+
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/hooks/useLiveScores.ts` | Aceitar `activeIntervalMs`, implementar auto-economia por creditos |
+| `src/hooks/useFixtureCache.ts` | Remover auto-refresh por intervalo (manter fetch inicial + `refetch` manual) |
+| `src/pages/DailyPlanning.tsx` | Passar `intervalMs` para `useLiveScores` |
+
+### Ordem de Implementacao
+
+1. Editar `useLiveScores.ts` - aceitar intervalo e auto-economia
+2. Editar `useFixtureCache.ts` - remover auto-refresh
+3. Editar `DailyPlanning.tsx` - conectar intervalo configuravel
 
