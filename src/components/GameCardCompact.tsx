@@ -12,6 +12,8 @@ import { MatchStatsOverview } from "@/components/MatchStatsOverview";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useFixtureOdds } from "@/hooks/useFixtureOdds";
 import { OddsDisplay } from "@/components/OddsDisplay";
+import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
+import { DominanceIndicator } from "@/components/DominanceIndicator";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -49,6 +51,7 @@ export function GameCardCompact({
 
   // Fetch cached stats and momentum for this fixture
   const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id);
+  const dominance = useDominanceAnalysis(fixtureCache);
 
   // Default empty stats for display when no cache data
   const emptyStats = {
@@ -334,6 +337,13 @@ export function GameCardCompact({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Dominance Indicator - Live games only */}
+        {isLive && game.api_fixture_id && (
+          <div className="mt-3 pt-2 border-t border-border/20">
+            <DominanceIndicator result={dominance} />
           </div>
         )}
 
