@@ -19,12 +19,32 @@ export interface MethodScores {
   edge: number; // -100 to +100 (positive = advantage)
 }
 
+export interface MethodValidations {
+  robustness: {
+    label: 'Robusto' | 'Sensivel' | 'Fragil';
+    stdDev: number;
+    contextCount: number;
+  };
+  stability: {
+    label: 'Estavel' | 'Oscilante' | 'Deterioracao';
+    recentWinRate: number;
+    recentRoi: number;
+    deltaWinRate: number;
+    deltaRoi: number;
+  };
+  variance: {
+    label: 'Distribuido' | 'Concentrado' | 'EventoRaro';
+    topPercentContribution: number;
+  };
+}
+
 export interface MethodAnalysisData {
   methodId: string;
   methodName: string;
   phase: MethodPhase;
   scores: MethodScores;
   alerts: MethodAlert[];
+  validations: MethodValidations | null;
   stats: {
     totalOperations: number;
     greens: number;
@@ -59,17 +79,73 @@ function calculateBreakevenRate(avgOdd: number): number {
 }
 
 // Determine method phase based on operations and performance
-function determinePhase(totalOps: number, winRate: number, breakevenRate: number, roi: number): MethodPhase {
+function determinePhase(
+  totalOps: number, winRate: number, breakevenRate: number, roi: number,
+  validations: MethodValidations | null
+): MethodPhase {
   if (totalOps < 21) return 'Em Validação';
   if (totalOps < 51) {
-    // Sinal Fraco - still gathering data but can give early signals
     if (winRate < breakevenRate - 15) return 'Reprovado';
     return 'Sinal Fraco';
   }
-  // 51+ operations - can make more confident assessment
-  if (winRate >= breakevenRate && roi > 0) return 'Validado';
   if (winRate < breakevenRate - 10 || roi < -15) return 'Reprovado';
+  if (winRate >= breakevenRate && roi > 0) {
+    // Fragil or Deterioracao blocks Validado
+    if (validations && (validations.robustness.label === 'Fragil' || validations.stability.label === 'Deterioracao')) {
+      return 'Sinal Fraco';
+    }
+    return 'Validado';
+  }
   return 'Sinal Fraco';
+}
+
+// Calculate robustness validation
+function calculateRobustness(
+  byLeague: Array<{ operations: number; winRate: number }>,
+  byOddRange: Array<{ operations: number; winRate: number }>
+): MethodValidations['robustness'] {
+  const contexts = [...byLeague, ...byOddRange].filter(c => c.operations >= 5);
+  if (contexts.length < 2) return { label: 'Robusto', stdDev: 0, contextCount: contexts.length };
+  const mean = contexts.reduce((s, c) => s + c.winRate, 0) / contexts.length;
+  const stdDev = Math.sqrt(contexts.reduce((s, c) => s + Math.pow(c.winRate - mean, 2), 0) / contexts.length);
+  const label = stdDev < 10 ? 'Robusto' : stdDev <= 20 ? 'Sensivel' : 'Fragil';
+  return { label, stdDev, contextCount: contexts.length };
+}
+
+// Calculate stability validation
+function calculateStability(
+  operations: Array<{ result: string | null; profit: number | null }>,
+  totalWinRate: number, totalRoi: number, stakeValue: number
+): MethodValidations['stability'] {
+  const recent = operations.slice(-30);
+  if (recent.length < 10) return { label: 'Estavel', recentWinRate: totalWinRate, recentRoi: totalRoi, deltaWinRate: 0, deltaRoi: 0 };
+  const recentGreens = recent.filter(o => o.result === 'Green').length;
+  const recentWinRate = (recentGreens / recent.length) * 100;
+  const recentStaked = recent.length * stakeValue;
+  const recentProfit = recent.reduce((s, o) => s + (o.profit || 0), 0);
+  const recentRoi = recentStaked > 0 ? (recentProfit / recentStaked) * 100 : 0;
+  const deltaWinRate = recentWinRate - totalWinRate;
+  const deltaRoi = recentRoi - totalRoi;
+  const absDelta = Math.abs(deltaWinRate);
+  let label: MethodValidations['stability']['label'] = 'Estavel';
+  if (absDelta > 15 && deltaWinRate < 0) label = 'Deterioracao';
+  else if (absDelta > 5) label = 'Oscilante';
+  return { label, recentWinRate, recentRoi, deltaWinRate, deltaRoi };
+}
+
+// Calculate variance dependence
+function calculateVariance(
+  operations: Array<{ profit: number | null }>
+): MethodValidations['variance'] {
+  const profits = operations.map(o => o.profit || 0);
+  const totalProfit = profits.reduce((s, p) => s + p, 0);
+  if (totalProfit <= 0) return { label: 'Distribuido', topPercentContribution: 0 };
+  const sorted = [...profits].sort((a, b) => b - a);
+  const top10Count = Math.max(1, Math.ceil(sorted.length * 0.1));
+  const top10Profit = sorted.slice(0, top10Count).reduce((s, p) => s + Math.max(0, p), 0);
+  const topPercentContribution = (top10Profit / totalProfit) * 100;
+  const label = topPercentContribution < 40 ? 'Distribuido' : topPercentContribution <= 70 ? 'Concentrado' : 'EventoRaro';
+  return { label, topPercentContribution };
 }
 
 // Calculate confidence score based on sample size and consistency
@@ -301,8 +377,10 @@ export function useMethodAnalysis() {
       const riskScore = calculateRiskScore(maxDrawdown, avgOdd, winRate, breakevenRate);
       const edgeScore = calculateEdgeScore(winRate, breakevenRate, roi);
 
-      // Determine phase
-      const phase = determinePhase(totalOperations, winRate, breakevenRate, roi);
+      // Validations will be calculated after context analysis
+
+      // Determine phase (preliminary, will be recalculated after validations)
+      const phase = determinePhase(totalOperations, winRate, breakevenRate, roi, null);
 
       // Generate alerts
       const alerts = generateAlerts(
@@ -372,6 +450,17 @@ export function useMethodAnalysis() {
         };
       }).filter(r => r.operations > 0);
 
+      // Calculate validations (need at least 10 operations)
+      const opsForValidation = methodOperations.map(o => ({ result: o.result || '', profit: o.profit || 0 }));
+      const validations: MethodValidations | null = totalOperations >= 10 ? {
+        robustness: calculateRobustness(byLeague, byOddRange),
+        stability: calculateStability(opsForValidation, winRate, roi, stakeValueReais),
+        variance: calculateVariance(opsForValidation),
+      } : null;
+
+      // Re-determine phase with validations
+      const phaseWithValidations = determinePhase(totalOperations, winRate, breakevenRate, roi, validations);
+
       // Get first and last operation dates
       const firstOperationDate = methodOperations.length > 0 ? methodOperations[0].date : null;
       const lastOperationDate = methodOperations.length > 0 ? methodOperations[methodOperations.length - 1].date : null;
@@ -379,13 +468,14 @@ export function useMethodAnalysis() {
       return {
         methodId: method.id,
         methodName: method.name,
-        phase,
+        phase: phaseWithValidations,
         scores: {
           confidence: confidenceScore,
           risk: riskScore,
           edge: edgeScore
         },
         alerts,
+        validations,
         stats: {
           totalOperations,
           greens,
