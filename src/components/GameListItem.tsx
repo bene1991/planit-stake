@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
 import { DominanceIndicator } from "@/components/DominanceIndicator";
+import { useLdiHistory } from "@/hooks/useLdiHistory";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +69,11 @@ export function GameListItem({
   // Fetch fixture cache for live goals (only for games with fixture ID)
   const { data: fixtureCache } = useFixtureCache(game.api_fixture_id);
   const dominance = useDominanceAnalysis(fixtureCache);
+  const ldiHistory = useLdiHistory(
+    game.api_fixture_id ? Number(game.api_fixture_id) : undefined,
+    fixtureCache?.minute_now,
+    dominance.dominanceIndex
+  );
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
@@ -419,7 +425,7 @@ export function GameListItem({
         {/* Dominance Indicator - Live games only, always visible */}
         {isLive && game.api_fixture_id && (
           <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-            <DominanceIndicator result={dominance} />
+            <DominanceIndicator result={dominance} ldiHistory={ldiHistory} />
           </div>
         )}
       </div>
