@@ -1,132 +1,52 @@
 
 
-## Tres Validacoes Estatisticas para Analise de Metodo
+## Tooltips nos Selos de Validacao
 
-### Resumo
+### O que muda
 
-Adicionar tres camadas de validacao (Robustez, Estabilidade Temporal, Dependencia de Variancia) calculadas no hook `useMethodAnalysis`, exibidas como selos nos cards e detalhadas na view de detalhe. A IA (edge function `analyze-method`) recebera os dados das validacoes e gerara uma frase de diagnostico integrada.
+Adicionar tooltips (hover) em cada um dos 3 selos de validacao (Robustez, Estabilidade, Variancia) nos cards da Analise de Metodo, explicando o que cada classificacao significa.
 
-### Arquitetura
+### Arquivo a editar
 
-Toda a logica das 3 validacoes sera calculada no frontend (hook `useMethodAnalysis`), pois os dados necessarios ja estao disponiveis localmente (operacoes, ligas, odds, datas, lucros). A IA apenas interpreta os resultados.
+**`src/components/MethodAnalysis/MethodAnalysisCard.tsx`**
 
----
+- Importar `Tooltip, TooltipTrigger, TooltipContent, TooltipProvider` de `@/components/ui/tooltip`
+- Adicionar prop `tooltip` ao componente `ValidationBadge`
+- Envolver cada badge com `Tooltip` + `TooltipTrigger` + `TooltipContent`
+- Envolver o bloco dos 3 badges com `TooltipProvider`
 
-### Validacao 1 -- Robustez do Metodo
+### Textos dos tooltips
 
-**Logica (no hook):**
-- Agrupar operacoes por liga e faixa de odds (ja existem em `contextAnalysis`)
-- Calcular o desvio padrao do Win Rate entre os contextos com 5+ operacoes
-- Se desvio < 10%: Robusto
-- Se desvio 10-20%: Sensivel a Contexto
-- Se desvio > 20%: Fragil
+| Selo | Tooltip |
+|------|---------|
+| Robusto | "O metodo funciona bem em diferentes ligas e faixas de odds, sem depender de cenarios especificos." |
+| Sensivel | "O desempenho varia conforme o contexto (liga, odds). Funciona melhor em cenarios especificos." |
+| Fragil | "O metodo depende fortemente de condicoes especificas. Fora do cenario ideal, o desempenho cai muito." |
+| Estavel | "O desempenho recente e consistente com o historico. O metodo mantem sua performance ao longo do tempo." |
+| Oscilante | "Ha variacao entre o desempenho recente e o historico. Requer acompanhamento." |
+| Deterioracao | "O desempenho das ultimas 30 operacoes caiu significativamente em relacao ao historico." |
+| Distribuido | "O lucro e bem distribuido entre as operacoes. Nao depende de poucos acertos grandes." |
+| Concentrado | "Boa parte do lucro vem de poucas operacoes. Risco moderado de variancia." |
+| Evento Raro | "O lucro depende de poucos eventos de alto retorno. Sem eles, o metodo seria negativo." |
 
-**Saida:** `{ label: 'Robusto' | 'Sensivel' | 'Fragil', score: number, details: string }`
+### Detalhes tecnicos
 
----
-
-### Validacao 2 -- Estabilidade Temporal
-
-**Logica (no hook):**
-- Comparar Win Rate e ROI das ultimas 30 operacoes vs historico total
-- Se diferenca < 5pp: Estavel
-- Se diferenca 5-15pp: Oscilante
-- Se diferenca > 15pp (negativa): Em Deterioracao
-
-**Saida:** `{ label: 'Estavel' | 'Oscilante' | 'Deterioracao', recentWinRate: number, recentRoi: number }`
-
----
-
-### Validacao 3 -- Dependencia de Variancia
-
-**Logica (no hook):**
-- Ordenar operacoes por lucro decrescente
-- Calcular % do lucro total vindo do top 10% das operacoes
-- Se top10% < 40% do lucro: Distribuido
-- Se top10% entre 40-70%: Concentrado
-- Se top10% > 70%: Evento Raro
-
-**Saida:** `{ label: 'Distribuido' | 'Concentrado' | 'EventoRaro', topPercentContribution: number }`
-
----
-
-### Integracao com Status do Metodo
-
-Na funcao `determinePhase`, adicionar regra:
-- Metodo com 51+ ops, edge positivo, MAS marcado como "Fragil" ou "Deterioracao" nao pode ser "Validado" -- permanece "Sinal Fraco"
-- Metodo "Robusto" + "Estavel" + "Distribuido" reforça "Validado"
-
----
-
-### Alteracoes por Arquivo
-
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/hooks/useMethodAnalysis.ts` | Adicionar interface `MethodValidations`, 3 funcoes de calculo, incluir no retorno de `MethodAnalysisData`, ajustar `determinePhase` |
-| `src/components/MethodAnalysis/MethodAnalysisCard.tsx` | Exibir 3 selos compactos abaixo dos scores (ex: "Robusto", "Estavel", "Lucro Distribuido") |
-| `src/components/MethodAnalysis/MethodAnalysisDetail.tsx` | Adicionar card de "Validacoes Avancadas" com detalhes das 3 classificacoes e explicacoes |
-| `supabase/functions/analyze-method/index.ts` | Incluir dados das validacoes no prompt da IA para que a recomendacao considere robustez, estabilidade e variancia |
-
----
-
-### Detalhes Tecnicos
-
-#### Nova interface em `useMethodAnalysis.ts`
+O componente `ValidationBadge` recebera uma nova prop `tooltip: string` e ficara assim:
 
 ```text
-interface MethodValidations {
-  robustness: {
-    label: 'Robusto' | 'Sensivel' | 'Fragil';
-    stdDev: number;
-    contextCount: number;
-  };
-  stability: {
-    label: 'Estavel' | 'Oscilante' | 'Deterioracao';
-    recentWinRate: number;
-    recentRoi: number;
-    deltaWinRate: number;
-    deltaRoi: number;
-  };
-  variance: {
-    label: 'Distribuido' | 'Concentrado' | 'EventoRaro';
-    topPercentContribution: number;
-  };
+function ValidationBadge({ icon, label, level, tooltip }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={...}>{icon}{label}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[220px] text-center">
+        <p className="text-xs">{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 ```
 
-Este campo `validations` sera adicionado a `MethodAnalysisData`.
-
-#### Selos no Card (MethodAnalysisCard)
-
-Tres badges pequenos em uma linha horizontal abaixo da sequencia atual:
-
-```text
-[check Robusto] [relogio Estavel] [check Lucro Distribuido]
-```
-
-Cores: verde para positivo, amarelo para medio, vermelho para negativo. Sem ocupar espaco extra significativo.
-
-#### Detalhes na View (MethodAnalysisDetail)
-
-Um novo Card "Validacoes Avancadas" entre os Alertas e a Recomendacao da IA, com 3 colunas mostrando cada validacao com icone, classificacao e uma linha de detalhe.
-
-#### Edge Function (analyze-method)
-
-Adicionar ao prompt do usuario as classificacoes:
-
-```text
-VALIDACOES:
-- Robustez: Fragil (desvio padrao 25% entre contextos)
-- Estabilidade: Em Deterioracao (WR recente 45% vs historico 62%)
-- Variancia: Concentrado (top 10% = 55% do lucro)
-```
-
-A IA ja tem a funcao `provide_recommendation` -- ela naturalmente incorporara esses dados na explicacao.
-
-### Ordem de Implementacao
-
-1. `useMethodAnalysis.ts` -- adicionar calculos e interface
-2. `MethodAnalysisCard.tsx` -- adicionar selos
-3. `MethodAnalysisDetail.tsx` -- adicionar card de validacoes
-4. `analyze-method/index.ts` -- enriquecer prompt com validacoes
+Cada chamada de `ValidationBadge` passara o texto correspondente a classificacao atual. O bloco dos badges sera envolvido por `<TooltipProvider delayDuration={300}>`.
 
