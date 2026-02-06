@@ -129,15 +129,14 @@ export default function DailyPlanning() {
     }
   }, [user, isGamePending]);
   
-  // Optimized live scores - single API call with live=all, refreshes every 20s
-  // Goal detection is now centralized here to avoid race conditions
+  // Optimized live scores - uses configurable interval + auto-economy
   const { 
     getScoreForGame, 
     refresh: refreshLiveScores, 
     loading: scoresLoading,
     lastRefresh,
     scores: liveScores 
-  } = useLiveScores(games, handleScorePersisted, handleGoalDetected);
+  } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs);
   
   // Listen for goal sound triggers from Service Worker
   useGoalSoundTrigger();
