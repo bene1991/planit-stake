@@ -32,10 +32,19 @@ function calcTrend(history: LdiSnapshot[]): { home: MomentumTrend; away: Momentu
   return { home: homeTrend, away: awayTrend };
 }
 
-function getClassification(ldi: number): string {
-  if (ldi >= 60) return 'Dominando';
-  if (ldi >= 40) return 'Equilibrado';
-  return 'Sendo dominado';
+function getTooltipText(ldi: number, teamName: string): { title: string; description: string } {
+  if (ldi >= 60) return {
+    title: `${teamName} — LDI ${ldi}/100`,
+    description: `${teamName} domina o jogo. Controla posse, finaliza mais e pressiona o adversário.`,
+  };
+  if (ldi >= 40) return {
+    title: `${teamName} — LDI ${ldi}/100`,
+    description: `Jogo equilibrado para ${teamName}. Nenhum time tem domínio claro.`,
+  };
+  return {
+    title: `${teamName} — LDI ${ldi}/100`,
+    description: `${teamName} está sendo dominado. Adversário controla as ações do jogo.`,
+  };
 }
 
 const TrendIcon = ({ trend }: { trend: MomentumTrend }) => {
@@ -70,13 +79,13 @@ export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = 
   if (homeLdi === null || awayLdi === null || dominanceIndex === null) return null;
 
   const trends = calcTrend(ldiHistory);
-  const homeClass = getClassification(homeLdi);
-  const awayClass = getClassification(awayLdi);
+  const homeTooltip = getTooltipText(homeLdi, homeTeam);
+  const awayTooltip = getTooltipText(awayLdi, awayTeam);
 
   // Truncate team names
   const shortHome = homeTeam.length > 12 ? homeTeam.slice(0, 12) + '…' : homeTeam;
   const shortAway = awayTeam.length > 12 ? awayTeam.slice(0, 12) + '…' : awayTeam;
-
+  
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-1">
@@ -94,8 +103,10 @@ export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = 
                 <TrendIcon trend={trends.home} />
               </div>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              <p className="text-[10px]">{homeClass} • LDI {homeLdi}/100</p>
+            <TooltipContent side="top" className="max-w-[260px]">
+              <p className="text-[10px] font-semibold mb-0.5">{homeTooltip.title}</p>
+              <p className="text-[10px] text-muted-foreground">{homeTooltip.description}</p>
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5 italic">Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.</p>
             </TooltipContent>
           </Tooltip>
 
@@ -125,24 +136,33 @@ export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = 
                 <span className="text-[10px] sm:text-[11px] font-medium truncate max-w-[80px] sm:max-w-[100px]">{shortAway}</span>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              <p className="text-[10px]">{awayClass} • LDI {awayLdi}/100</p>
+            <TooltipContent side="top" className="max-w-[260px]">
+              <p className="text-[10px] font-semibold mb-0.5">{awayTooltip.title}</p>
+              <p className="text-[10px] text-muted-foreground">{awayTooltip.description}</p>
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5 italic">Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.</p>
             </TooltipContent>
           </Tooltip>
         </div>
 
         {/* Dominance bar */}
-        <div className="relative h-1.5 w-full rounded-full overflow-hidden bg-muted">
-          <div
-            className="absolute inset-y-0 left-0 rounded-full bg-emerald-500 transition-all duration-700"
-            style={{ width: `${dominanceIndex}%` }}
-          />
-          <div
-            className="absolute inset-y-0 right-0 rounded-full bg-violet-500 transition-all duration-700"
-            style={{ width: `${100 - dominanceIndex}%` }}
-          />
-          <div className="absolute inset-y-0 left-1/2 w-px bg-background/60" />
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="relative h-1.5 w-full rounded-full overflow-hidden bg-muted cursor-help">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-emerald-500 transition-all duration-700"
+                style={{ width: `${dominanceIndex}%` }}
+              />
+              <div
+                className="absolute inset-y-0 right-0 rounded-full bg-violet-500 transition-all duration-700"
+                style={{ width: `${100 - dominanceIndex}%` }}
+              />
+              <div className="absolute inset-y-0 left-1/2 w-px bg-background/60" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-[240px]">
+            <p className="text-[10px]">Barra de dominância: verde = controle da casa, roxo = controle do visitante. Quanto maior a faixa, maior o domínio.</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
     </TooltipProvider>
   );
