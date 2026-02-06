@@ -56,7 +56,7 @@ const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'LIVE'];
 // Refresh interval for live games (1 minute)
 const LIVE_REFRESH_INTERVAL = 60000;
 
-export function useFixtureCache(fixtureId: number | string | null | undefined): UseFixtureCacheResult {
+export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,12 +108,12 @@ export function useFixtureCache(fixtureId: number | string | null | undefined): 
     fetchDetails();
   }, [fetchDetails]);
 
-  // Initial fetch
+  // Initial fetch (only if autoFetch is enabled)
   useEffect(() => {
-    if (fixtureId) {
+    if (fixtureId && autoFetch) {
       fetchDetails();
     }
-  }, [fixtureId, fetchDetails]);
+  }, [fixtureId, fetchDetails, autoFetch]);
 
   // Auto-refresh for live games
   useEffect(() => {
@@ -122,7 +122,7 @@ export function useFixtureCache(fixtureId: number | string | null | undefined): 
       intervalRef.current = null;
     }
 
-    if (data && LIVE_STATUSES.includes(data.status)) {
+    if (autoFetch && data && LIVE_STATUSES.includes(data.status)) {
       intervalRef.current = setInterval(() => {
         fetchDetails();
       }, LIVE_REFRESH_INTERVAL);

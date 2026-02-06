@@ -66,8 +66,9 @@ export function GameListItem({
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
   
-  // Fetch fixture cache for live goals (only for games with fixture ID)
-  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id);
+  // Fetch fixture cache: auto-fetch only for live games, finished games use cached data only
+  const isLiveForFetch = game.status === 'Live' || game.status === 'Pending';
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(
     game.api_fixture_id ? Number(game.api_fixture_id) : undefined,
