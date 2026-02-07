@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
+import { SofaScoreWidget } from "@/components/SofaScoreWidget";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
@@ -533,6 +534,12 @@ export function GameListItem({
             notes={game.notes}
             onSave={(notes) => onUpdate(game.id, { notes })}
             compact
+          />
+
+          {/* SofaScore Widget */}
+          <SofaScoreWidget
+            url={game.sofascoreUrl}
+            onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
           />
         </div>
       </CollapsibleContent>

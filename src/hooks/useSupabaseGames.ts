@@ -44,6 +44,7 @@ export interface Game {
   bttsBookmaker?: string;
   bttsIsBetfair?: boolean;
   bttsFetchedAt?: string;
+  sofascoreUrl?: string;
 }
 
 const GAMES_QUERY_KEY = ['games'] as const;
@@ -112,6 +113,7 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
       bttsBookmaker: game.btts_bookmaker || undefined,
       bttsIsBetfair: game.btts_is_betfair || false,
       bttsFetchedAt: game.btts_fetched_at || undefined,
+      sofascoreUrl: game.sofascore_url || undefined,
     };
   });
 };
@@ -155,6 +157,7 @@ export const useSupabaseGames = () => {
           btts_bookmaker: game.bttsBookmaker,
           btts_is_betfair: game.bttsIsBetfair,
           btts_fetched_at: game.bttsFetchedAt,
+          sofascore_url: game.sofascoreUrl,
         })
         .select()
         .single();
@@ -225,6 +228,7 @@ export const useSupabaseGames = () => {
       if (updates.goalEvents !== undefined) gameUpdates.goal_events = updates.goalEvents;
       if (updates.finalScoreHome !== undefined) gameUpdates.final_score_home = updates.finalScoreHome;
       if (updates.finalScoreAway !== undefined) gameUpdates.final_score_away = updates.finalScoreAway;
+      if (updates.sofascoreUrl !== undefined) gameUpdates.sofascore_url = updates.sofascoreUrl;
 
       if (Object.keys(gameUpdates).length > 0) {
         const { error: gameError } = await supabase

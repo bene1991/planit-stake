@@ -51,6 +51,7 @@ export interface Game {
   bttsBookmaker?: string;
   bttsIsBetfair?: boolean;
   bttsFetchedAt?: string;
+  sofascoreUrl?: string;
 }
 
 export interface Estrategia {
