@@ -1,33 +1,26 @@
 
 
-## Corrigir Widget SofaScore - 400 Bad Request e impossibilidade de editar
+## Ajustar Widget SofaScore para ficar igual ao screenshot
 
-### Problemas identificados
+### O que muda
 
-1. **400 Bad Request**: O atributo `sandbox` do iframe esta bloqueando requisicoes necessarias para o widget funcionar. O SofaScore precisa de permissoes adicionais como `allow-popups` e `allow-forms`. A solucao mais segura e remover o sandbox para widgets do SofaScore, ja que o iframe ja esta limitado por politicas de same-origin do navegador.
+O widget esta aparecendo grande demais (286px de altura). Para ficar igual ao screenshot com o "Momento de ataque" compacto, precisamos:
 
-2. **Nao consegue colar de novo**: Quando a URL ja esta salva e o widget mostra erro, o campo de input some porque o componente detecta que ja tem uma URL. O usuario precisa expandir o jogo e clicar no botao X para limpar, mas isso nao esta obvio. Vamos melhorar para que o usuario possa clicar no iframe com erro para editar novamente.
+1. **Reduzir a altura do iframe** de 286px para ~120px, que e o tamanho real do widget de Attack Momentum compacto
+2. **Remover a margem lateral esquerda** (`ml-12 sm:ml-14`) para o widget ocupar a largura completa do card, igual ao screenshot
+3. **Ajustar o border-radius** para combinar com o visual escuro do card
 
-### Alteracoes
+### Arquivos a editar
 
 **1. `src/components/SofaScoreWidget.tsx`**
-
-- Remover o atributo `sandbox` do iframe (ele impede o widget de carregar corretamente)
-- No modo `displayOnly`, envolver o iframe em um container clicavel que permita ao usuario clicar para editar/limpar
-- No modo de edicao, garantir que o input aparece mesmo quando ja existe uma URL (para permitir re-colar)
+- Mudar `height="286"` para `height="120"` no iframe do modo `displayOnly`
+- Mudar `height="286"` para `height="120"` no iframe do modo de edicao (se existir preview)
+- Adicionar `style={{ colorScheme: 'normal' }}` para evitar conflitos de tema
 
 **2. `src/components/GameListItem.tsx`**
+- Remover `ml-12 sm:ml-14` do container do widget para ocupar a largura toda
+- Manter o `px-2 sm:px-3 pb-2` para padding lateral consistente
 
-- Passar a funcao `onSave` correta no `displayOnly` mode tambem, para que o widget possa ser editado/limpo diretamente do card principal
-- Adicionar um botao de "editar/remover" visivel sobre o widget quando ele esta em erro ou quando o usuario passa o mouse
+### Resultado esperado
 
-### Detalhes tecnicos
-
-No `SofaScoreWidget.tsx`:
-- Remover `sandbox="allow-scripts allow-same-origin"` - esta propriedade bloqueia requisicoes do widget para subdominios do SofaScore (Cloudflare retorna 400)
-- No modo `displayOnly`, adicionar um botao X flutuante no canto superior direito para limpar a URL
-- No modo de edicao (expanded), sempre mostrar o input com a URL atual para facilitar re-colagem
-
-No `GameListItem.tsx`:
-- Passar a funcao real de `onUpdate` para o `SofaScoreWidget` no modo `displayOnly`, permitindo limpar a URL sem precisar expandir o jogo
-
+O widget vai aparecer compacto, mostrando apenas o grafico de barras do "Momento de ataque" sem espaco vazio, ocupando a largura total do card do jogo.
