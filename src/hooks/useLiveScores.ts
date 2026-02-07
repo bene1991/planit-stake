@@ -69,6 +69,8 @@ export function useLiveScores(
   const remainingCreditsRef = useRef<number | null>(null);
   // Internal snapshot for goal detection - stores previous scores before update
   const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
+  // Track recently notified goals to prevent duplicates
+  const notifiedGoalsRef = useRef<Set<string>>(new Set());
   
   // Stable ref for fetchLiveScores to avoid useEffect dependency issues
   const fetchLiveScoresRef = useRef<(() => Promise<void>) | null>(null);
@@ -161,15 +163,23 @@ export function useLiveScores(
           if (game && onGoalDetected) {
             const previousScore = previousScoresRef.current.get(fixtureId);
             if (previousScore) {
-              // Detect home goal
+              // Detect home goal - with dedup key to prevent double notifications
               if (homeGoals > previousScore.homeScore) {
-                console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${game.homeTeam} scores! ${homeGoals}-${awayGoals}`);
-                onGoalDetected(game.id, 'home', homeGoals, awayGoals, game);
+                const goalKey = `${fixtureId}-home-${homeGoals}`;
+                if (!notifiedGoalsRef.current.has(goalKey)) {
+                  notifiedGoalsRef.current.add(goalKey);
+                  console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${game.homeTeam} scores! ${homeGoals}-${awayGoals}`);
+                  onGoalDetected(game.id, 'home', homeGoals, awayGoals, game);
+                }
               }
               // Detect away goal
               if (awayGoals > previousScore.awayScore) {
-                console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${game.awayTeam} scores! ${homeGoals}-${awayGoals}`);
-                onGoalDetected(game.id, 'away', homeGoals, awayGoals, game);
+                const goalKey = `${fixtureId}-away-${awayGoals}`;
+                if (!notifiedGoalsRef.current.has(goalKey)) {
+                  notifiedGoalsRef.current.add(goalKey);
+                  console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${game.awayTeam} scores! ${homeGoals}-${awayGoals}`);
+                  onGoalDetected(game.id, 'away', homeGoals, awayGoals, game);
+                }
               }
             }
             // Update previous snapshot for next comparison
