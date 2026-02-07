@@ -42,15 +42,22 @@ export function SofaScoreWidget({ url, onSave, displayOnly }: SofaScoreWidgetPro
   if (displayOnly) {
     if (!url) return null;
     return (
-      <iframe
-        src={url}
-        width="100%"
-        height="286"
-        frameBorder="0"
-        scrolling="no"
-        sandbox="allow-scripts allow-same-origin"
-        className="rounded-lg border border-border/30"
-      />
+      <div className="relative group">
+        <iframe
+          src={url}
+          width="100%"
+          height="286"
+          frameBorder="0"
+          scrolling="no"
+          className="rounded-lg border border-border/30"
+        />
+        <button
+          onClick={() => onSave('')}
+          className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
     );
   }
 
