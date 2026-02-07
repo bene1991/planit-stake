@@ -6,16 +6,28 @@ import { X, Link } from 'lucide-react';
 interface SofaScoreWidgetProps {
   url: string | undefined;
   onSave: (url: string) => void;
+  /** If true, only renders the iframe (no input) */
+  displayOnly?: boolean;
 }
 
-export function SofaScoreWidget({ url, onSave }: SofaScoreWidgetProps) {
+/** Extract the src URL from a pasted <iframe> tag, or return the raw string if it's already a URL */
+function extractSofaScoreUrl(input: string): string {
+  const trimmed = input.trim();
+  // If user pasted an <iframe ...> tag, extract the src attribute
+  const srcMatch = trimmed.match(/src=["']([^"']+)["']/i);
+  if (srcMatch) return srcMatch[1];
+  return trimmed;
+}
+
+export function SofaScoreWidget({ url, onSave, displayOnly }: SofaScoreWidgetProps) {
   const [editValue, setEditValue] = useState(url || '');
   const [isEditing, setIsEditing] = useState(false);
 
-  const handleBlur = () => {
-    const trimmed = editValue.trim();
-    if (trimmed !== (url || '')) {
-      onSave(trimmed);
+  const handleSave = (raw: string) => {
+    const extracted = extractSofaScoreUrl(raw);
+    setEditValue(extracted);
+    if (extracted !== (url || '')) {
+      onSave(extracted);
     }
     setIsEditing(false);
   };
@@ -25,6 +37,22 @@ export function SofaScoreWidget({ url, onSave }: SofaScoreWidgetProps) {
     onSave('');
     setIsEditing(false);
   };
+
+  // Display-only mode: just the iframe
+  if (displayOnly) {
+    if (!url) return null;
+    return (
+      <iframe
+        src={url}
+        width="100%"
+        height="286"
+        frameBorder="0"
+        scrolling="no"
+        sandbox="allow-scripts allow-same-origin"
+        className="rounded-lg border border-border/30"
+      />
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -46,9 +74,9 @@ export function SofaScoreWidget({ url, onSave }: SofaScoreWidgetProps) {
           <Input
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleBlur}
+            onBlur={() => handleSave(editValue)}
             onFocus={() => setIsEditing(true)}
-            placeholder="Cole o link do widget SofaScore..."
+            placeholder="Cole o link ou o código <iframe> do SofaScore..."
             className="text-xs h-8"
             autoFocus={isEditing && !url}
           />
@@ -63,18 +91,6 @@ export function SofaScoreWidget({ url, onSave }: SofaScoreWidgetProps) {
             </Button>
           )}
         </div>
-      )}
-
-      {url && (
-        <iframe
-          src={url}
-          width="100%"
-          height="286"
-          frameBorder="0"
-          scrolling="no"
-          sandbox="allow-scripts allow-same-origin"
-          className="rounded-lg border border-border/30"
-        />
       )}
     </div>
   );
