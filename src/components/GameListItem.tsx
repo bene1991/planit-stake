@@ -364,19 +364,6 @@ export function GameListItem({
             </div>
           </CollapsibleTrigger>
 
-          {/* SofaScore Widget - inline right side */}
-          {game.sofascoreUrl && (
-            <div className="hidden sm:flex items-center flex-shrink-0 w-[180px] lg:w-[220px] overflow-hidden">
-              <SofaScoreWidget
-                url={game.sofascoreUrl}
-                onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
-                cropTop={game.sofascoreCropTop}
-                cropHeight={game.sofascoreCropHeight}
-                displayOnly
-              />
-            </div>
-          )}
-
           {/* Actions Column */}
           <div className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 flex-shrink-0 border-l border-border/30">
             <DropdownMenu>
@@ -411,6 +398,21 @@ export function GameListItem({
               </Button>
             </CollapsibleTrigger>
           </div>
+
+          {/* SofaScore Widget - after actions, fills remaining space */}
+          {game.sofascoreUrl && (
+            <div className="hidden sm:flex items-center flex-1 min-w-0 overflow-hidden">
+              <div className="w-full">
+                <SofaScoreWidget
+                  url={game.sofascoreUrl}
+                  onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
+                  cropTop={game.sofascoreCropTop}
+                  cropHeight={game.sofascoreCropHeight}
+                  displayOnly
+                />
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Methods pills row - always visible below teams */}
