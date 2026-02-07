@@ -67,6 +67,10 @@ export function useLiveScores(
   const persistedScoresRef = useRef<Set<string>>(new Set());
   const lastCallTimeRef = useRef<number>(0);
   const remainingCreditsRef = useRef<number | null>(null);
+  
+  // Ref for games to avoid re-creating fetchLiveScores on every games change
+  const gamesRef = useRef(games);
+  useEffect(() => { gamesRef.current = games; }, [games]);
   // Internal snapshot for goal detection - stores previous scores before update
   const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
   // Track recently notified goals to prevent duplicates
@@ -94,6 +98,9 @@ export function useLiveScores(
   
   // Check if there are any games to monitor
   const hasGamesToMonitor = fixtureIds.length > 0 || gamesNeedingBackfill.length > 0;
+  
+  // Memoized flag - only changes when game statuses change, not on every score update
+  const hasLiveGames = useMemo(() => games.some(g => g.status === 'Live'), [games]);
   
   // Fetch all live fixtures in a single API call
   const fetchLiveScores = useCallback(async () => {
@@ -157,7 +164,7 @@ export function useLiveScores(
         
         if (fixtureId && fixtureIds.includes(fixtureId)) {
           // Find the game for this fixture
-          const game = games.find(g => g.api_fixture_id === fixtureId);
+          const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
           
           // GOAL DETECTION: Compare with previous snapshot BEFORE updating
           if (game && onGoalDetected) {
@@ -204,7 +211,7 @@ export function useLiveScores(
           
           // Check if game just finished - persist final score
           if (FINISHED_STATUSES.includes(status)) {
-            const game = games.find(g => g.api_fixture_id === fixtureId);
+            const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
             if (game && !persistedScoresRef.current.has(game.id)) {
               // Mark as persisted immediately to avoid duplicates
               persistedScoresRef.current.add(game.id);
@@ -249,7 +256,7 @@ export function useLiveScores(
       
       // DISABLED: Individual fetch for games that left live=all - saves credits
       // These games likely just finished but live=all should catch them on next cycle
-      const liveGamesNotInResponse = games.filter(g => 
+      const liveGamesNotInResponse = gamesRef.current.filter(g => 
         g.api_fixture_id && 
         g.status === 'Live' && 
         !newScores.has(g.api_fixture_id) &&
@@ -268,7 +275,7 @@ export function useLiveScores(
       
       // DISABLED: Fetching games starting soon - saves credits
       // These will appear in live=all once they actually start
-      const pendingGames = games.filter(g => 
+      const pendingGames = gamesRef.current.filter(g => 
         g.api_fixture_id && 
         g.status === 'Pending' && 
         !newScores.has(g.api_fixture_id)
@@ -355,7 +362,7 @@ export function useLiveScores(
       setLoading(false);
       isFetchingRef.current = false;
     }
-  }, [hasGamesToMonitor, fixtureIds, games, gamesNeedingBackfill, onGoalDetected, onScorePersisted]);
+  }, [hasGamesToMonitor, fixtureIds, gamesNeedingBackfill, onGoalDetected, onScorePersisted]);
   
   // Get score for a specific game
   const getScoreForGame = useCallback((game: Game): LiveScore | null => {
@@ -384,7 +391,7 @@ export function useLiveScores(
     }
     
     // Determine refresh interval: user setting + credit-based floor
-    const hasLiveGames = games.some(g => g.status === 'Live');
+    const hasLive = hasLiveGames;
     const userInterval = activeIntervalMs || DEFAULT_ACTIVE_INTERVAL;
     
     // Auto-economy: raise floor when credits are low
@@ -401,12 +408,12 @@ export function useLiveScores(
       }
     }
     
-    const effectiveInterval = hasLiveGames 
+    const effectiveInterval = hasLive 
       ? Math.max(userInterval, creditFloor) 
       : REFRESH_INTERVAL_IDLE;
     
     if (hasGamesToMonitor) {
-      console.log(`[useLiveScores] Starting ${effectiveInterval/1000}s interval (user=${userInterval/1000}s, credits=${remaining ?? 'unknown'}, ${hasLiveGames ? 'ACTIVE' : 'IDLE'})`);
+      console.log(`[useLiveScores] Starting ${effectiveInterval/1000}s interval (user=${userInterval/1000}s, credits=${remaining ?? 'unknown'}, ${hasLive ? 'ACTIVE' : 'IDLE'})`);
       
       // Fetch immediately using ref
       fetchLiveScoresRef.current?.();
@@ -423,8 +430,8 @@ export function useLiveScores(
         }
       };
     }
-    // REMOVED: fetchLiveScores from dependencies to prevent race condition!
-  }, [hasGamesToMonitor, fixtureIds.length, games, isPageVisible, activeIntervalMs]);
+    // REMOVED: games from dependencies to prevent cascade: goal → persist → games update → re-fetch → duplicate
+  }, [hasGamesToMonitor, fixtureIds.length, hasLiveGames, isPageVisible, activeIntervalMs]);
   
   // Cleanup on unmount
   useEffect(() => {
