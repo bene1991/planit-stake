@@ -366,7 +366,8 @@ export function GameCardCompact({
               result={dominance} 
               homeTeam={game.homeTeam} 
               awayTeam={game.awayTeam} 
-              ldiHistory={ldiHistory} 
+              ldiHistory={ldiHistory}
+              normalizedStats={fixtureCache?.normalized_stats}
             />
             {aiMomentText && (
               <div className="flex items-start gap-1 px-2 py-1 rounded bg-muted/50">
