@@ -1,63 +1,33 @@
 
 
-## Campo de Widget SofaScore por Jogo
+## Corrigir Widget SofaScore - 400 Bad Request e impossibilidade de editar
 
-### O que muda
+### Problemas identificados
 
-Cada jogo vai ter um campo opcional onde voce pode colar o link do widget da SofaScore (ex: `https://widgets.sofascore.com/pt-BR/embed/attackMomentum?id=15238929&widgetTheme=light`). Quando preenchido, o mapa de pressao aparece dentro da area expandida do jogo.
+1. **400 Bad Request**: O atributo `sandbox` do iframe esta bloqueando requisicoes necessarias para o widget funcionar. O SofaScore precisa de permissoes adicionais como `allow-popups` e `allow-forms`. A solucao mais segura e remover o sandbox para widgets do SofaScore, ja que o iframe ja esta limitado por politicas de same-origin do navegador.
 
-### Como funciona
+2. **Nao consegue colar de novo**: Quando a URL ja esta salva e o widget mostra erro, o campo de input some porque o componente detecta que ja tem uma URL. O usuario precisa expandir o jogo e clicar no botao X para limpar, mas isso nao esta obvio. Vamos melhorar para que o usuario possa clicar no iframe com erro para editar novamente.
 
-1. Voce expande o jogo (clica na seta)
-2. Abaixo dos botoes de Green/Red e das notas, aparece um campo de texto para colar o link da SofaScore
-3. Ao colar e salvar, o iframe do widget aparece ali mesmo, mostrando o Attack Momentum em tempo real
+### Alteracoes
 
-### Arquivos a editar
+**1. `src/components/SofaScoreWidget.tsx`**
 
-**1. `src/types/index.ts`**
-- Adicionar campo opcional `sofascoreUrl?: string` na interface `Game`
+- Remover o atributo `sandbox` do iframe (ele impede o widget de carregar corretamente)
+- No modo `displayOnly`, envolver o iframe em um container clicavel que permita ao usuario clicar para editar/limpar
+- No modo de edicao, garantir que o input aparece mesmo quando ja existe uma URL (para permitir re-colar)
 
 **2. `src/components/GameListItem.tsx`**
-- Na area expandida (CollapsibleContent), adicionar:
-  - Um input de texto para colar/editar o link da SofaScore
-  - Um iframe que renderiza o widget quando a URL esta preenchida
-  - Botao para limpar o link
 
-**3. `src/hooks/useSupabaseGames.ts`**
-- Garantir que o campo `sofascoreUrl` e salvo/carregado do banco (via coluna `sofascore_url` na tabela de jogos)
-
-**4. Migracao de banco de dados**
-- Adicionar coluna `sofascore_url TEXT` na tabela de jogos (nullable, sem default)
+- Passar a funcao `onSave` correta no `displayOnly` mode tambem, para que o widget possa ser editado/limpo diretamente do card principal
+- Adicionar um botao de "editar/remover" visivel sobre o widget quando ele esta em erro ou quando o usuario passa o mouse
 
 ### Detalhes tecnicos
 
-Na area expandida do GameListItem, apos as notas:
+No `SofaScoreWidget.tsx`:
+- Remover `sandbox="allow-scripts allow-same-origin"` - esta propriedade bloqueia requisicoes do widget para subdominios do SofaScore (Cloudflare retorna 400)
+- No modo `displayOnly`, adicionar um botao X flutuante no canto superior direito para limpar a URL
+- No modo de edicao (expanded), sempre mostrar o input com a URL atual para facilitar re-colagem
 
-```text
-// Input para colar URL
-<input 
-  placeholder="Cole o link do widget SofaScore..."
-  value={sofascoreUrl}
-  onChange={...}
-  onBlur={() => onUpdate(game.id, { sofascoreUrl })}
-/>
-
-// Iframe do widget (quando URL existe)
-{game.sofascoreUrl && (
-  <iframe
-    src={game.sofascoreUrl}
-    width="100%"
-    height="286"
-    frameBorder="0"
-    scrolling="no"
-    sandbox="allow-scripts allow-same-origin"
-  />
-)}
-```
-
-O campo aceita qualquer URL de widget da SofaScore. Voce vai no site da SofaScore, copia o link do embed do Attack Momentum do jogo que quer, e cola no campo. O widget aparece em tempo real dentro do seu app.
-
-### Seguranca
-
-O iframe usa `sandbox="allow-scripts allow-same-origin"` para limitar o que o widget externo pode fazer no seu site.
+No `GameListItem.tsx`:
+- Passar a funcao real de `onUpdate` para o `SofaScoreWidget` no modo `displayOnly`, permitindo limpar a URL sem precisar expandir o jogo
 
