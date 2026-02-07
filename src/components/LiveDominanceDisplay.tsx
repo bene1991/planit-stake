@@ -1,5 +1,6 @@
 import { DominanceResult, MomentumTrend } from '@/hooks/useDominanceAnalysis';
 import { LdiSnapshot } from '@/hooks/useLdiHistory';
+import { NormalizedStats } from '@/hooks/useFixtureCache';
 import { LdiSparkline } from '@/components/LdiSparkline';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Minus, Info, Loader2 } from 'lucide-react';
@@ -15,6 +16,7 @@ interface LiveDominanceDisplayProps {
   homeTeam: string;
   awayTeam: string;
   ldiHistory?: LdiSnapshot[];
+  normalizedStats?: NormalizedStats;
 }
 
 function calcTrend(history: LdiSnapshot[]): { home: MomentumTrend; away: MomentumTrend } {
@@ -55,7 +57,7 @@ const TrendIcon = ({ trend }: { trend: MomentumTrend }) => {
   }
 };
 
-export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = [] }: LiveDominanceDisplayProps) {
+export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = [], normalizedStats }: LiveDominanceDisplayProps) {
   const { dataStatus, dataStatusMessage, homeLdi, awayLdi, dominanceIndex } = result;
 
   if (dataStatus === 'no_coverage') {
@@ -106,6 +108,11 @@ export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = 
             <TooltipContent side="top" className="max-w-[260px]">
               <p className="text-[10px] font-semibold mb-0.5">{homeTooltip.title}</p>
               <p className="text-[10px] text-muted-foreground">{homeTooltip.description}</p>
+              {normalizedStats && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Posse: {normalizedStats.home.possession}% | Chutes: {normalizedStats.home.shots_total} ({normalizedStats.home.shots_on} no gol)
+                </p>
+              )}
               <p className="text-[10px] text-muted-foreground/70 mt-0.5 italic">Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.</p>
             </TooltipContent>
           </Tooltip>
@@ -139,6 +146,11 @@ export function LiveDominanceDisplay({ result, homeTeam, awayTeam, ldiHistory = 
             <TooltipContent side="top" className="max-w-[260px]">
               <p className="text-[10px] font-semibold mb-0.5">{awayTooltip.title}</p>
               <p className="text-[10px] text-muted-foreground">{awayTooltip.description}</p>
+              {normalizedStats && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Posse: {normalizedStats.away.possession}% | Chutes: {normalizedStats.away.shots_total} ({normalizedStats.away.shots_on} no gol)
+                </p>
+              )}
               <p className="text-[10px] text-muted-foreground/70 mt-0.5 italic">Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.</p>
             </TooltipContent>
           </Tooltip>
