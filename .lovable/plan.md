@@ -1,48 +1,63 @@
 
-## Corrigir Estatísticas Travadas nos Tooltips do LDI
 
-### Problema identificado
+## Campo de Widget SofaScore por Jogo
 
-O hook `useFixtureCache` faz **uma unica chamada** ao `get-fixture-details` quando o componente monta e nunca mais atualiza. O comentario na linha 113 confirma: "Auto-refresh removed to save API credits". Isso faz com que posse de bola, chutes e chutes no gol fiquem congelados no valor do primeiro fetch.
+### O que muda
 
-O sistema de live scores (`useLiveScores`) atualiza apenas o placar via `fixtures?live=all`, mas nao busca estatisticas detalhadas.
+Cada jogo vai ter um campo opcional onde voce pode colar o link do widget da SofaScore (ex: `https://widgets.sofascore.com/pt-BR/embed/attackMomentum?id=15238929&widgetTheme=light`). Quando preenchido, o mapa de pressao aparece dentro da area expandida do jogo.
 
-### Solucao
+### Como funciona
 
-Adicionar auto-refresh no `useFixtureCache` para jogos ao vivo, reaproveitando o cache de 90 segundos do edge function `get-fixture-details` (que ja existe no backend) para nao desperdicar creditos da API.
+1. Voce expande o jogo (clica na seta)
+2. Abaixo dos botoes de Green/Red e das notas, aparece um campo de texto para colar o link da SofaScore
+3. Ao colar e salvar, o iframe do widget aparece ali mesmo, mostrando o Attack Momentum em tempo real
 
-### Arquivo a editar
+### Arquivos a editar
 
-**`src/hooks/useFixtureCache.ts`**
+**1. `src/types/index.ts`**
+- Adicionar campo opcional `sofascoreUrl?: string` na interface `Game`
 
-Adicionar um `setInterval` que re-executa `fetchDetails()` a cada **120 segundos** (2 minutos) somente quando:
-- `autoFetch` esta ativo (jogos live/pending)
-- O status retornado nao e um status de jogo finalizado
+**2. `src/components/GameListItem.tsx`**
+- Na area expandida (CollapsibleContent), adicionar:
+  - Um input de texto para colar/editar o link da SofaScore
+  - Um iframe que renderiza o widget quando a URL esta preenchida
+  - Botao para limpar o link
 
-O edge function ja tem cache de 90s no backend, entao chamadas frequentes nao geram chamadas extras a API-Football. Com intervalo de 120s no frontend, cada refresh vai pegar dados atualizados (cache expirado) sem excesso de chamadas.
+**3. `src/hooks/useSupabaseGames.ts`**
+- Garantir que o campo `sofascoreUrl` e salvo/carregado do banco (via coluna `sofascore_url` na tabela de jogos)
+
+**4. Migracao de banco de dados**
+- Adicionar coluna `sofascore_url TEXT` na tabela de jogos (nullable, sem default)
 
 ### Detalhes tecnicos
 
+Na area expandida do GameListItem, apos as notas:
+
 ```text
-// Dentro de useFixtureCache, apos o useEffect de fetch inicial:
+// Input para colar URL
+<input 
+  placeholder="Cole o link do widget SofaScore..."
+  value={sofascoreUrl}
+  onChange={...}
+  onBlur={() => onUpdate(game.id, { sofascoreUrl })}
+/>
 
-useEffect(() => {
-  if (!fixtureId || !autoFetch) return;
-  
-  // Re-fetch a cada 120s para jogos ao vivo
-  const REFRESH_INTERVAL = 120_000;
-  const interval = setInterval(() => {
-    fetchDetails();
-  }, REFRESH_INTERVAL);
-
-  return () => clearInterval(interval);
-}, [fixtureId, autoFetch, fetchDetails]);
+// Iframe do widget (quando URL existe)
+{game.sofascoreUrl && (
+  <iframe
+    src={game.sofascoreUrl}
+    width="100%"
+    height="286"
+    frameBorder="0"
+    scrolling="no"
+    sandbox="allow-scripts allow-same-origin"
+  />
+)}
 ```
 
-Tambem adicionar logica para parar o intervalo quando o jogo termina (status FT, AET, PEN etc.), checando o `data?.status` retornado.
+O campo aceita qualquer URL de widget da SofaScore. Voce vai no site da SofaScore, copia o link do embed do Attack Momentum do jogo que quer, e cola no campo. O widget aparece em tempo real dentro do seu app.
 
-### Impacto nos creditos da API
+### Seguranca
 
-- O backend `get-fixture-details` ja tem cache de 90s para jogos ao vivo e cache permanente para jogos finalizados
-- Com refresh de 120s no frontend, cada jogo ao vivo gera no maximo ~1 chamada real a API a cada 2 minutos
-- Para 1-5 jogos monitorados simultaneamente, isso representa 30-150 chamadas extras por hora, aceitavel dentro do limite de 7500/dia
+O iframe usa `sandbox="allow-scripts allow-same-origin"` para limitar o que o widget externo pode fazer no seu site.
+
