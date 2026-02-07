@@ -46,7 +46,8 @@ export function SofaScoreWidget({ url, onSave, displayOnly }: SofaScoreWidgetPro
         <iframe
           src={url}
           width="100%"
-          height="286"
+          height="120"
+          style={{ colorScheme: 'normal' }}
           frameBorder="0"
           scrolling="no"
           className="rounded-lg border border-border/30"
