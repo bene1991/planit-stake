@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface NormalizedStats {
@@ -56,6 +56,7 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const statusRef = useRef<string | undefined>(undefined);
 
   const fetchDetails = useCallback(async (retryCount = 0) => {
     if (!fixtureId) return;
@@ -82,6 +83,7 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
       }
 
       setData(result as FixtureCacheData);
+      statusRef.current = (result as FixtureCacheData)?.status;
       setLoading(false);
     } catch (err) {
       console.error(`[useFixtureCache] Erro (tentativa ${retryCount + 1}/3):`, err);
@@ -116,13 +118,14 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
 
     const REFRESH_INTERVAL = 120_000;
     const interval = setInterval(() => {
-      if (!data?.status || !FINISHED_STATUSES.includes(data.status)) {
+      const currentStatus = statusRef.current;
+      if (!currentStatus || !FINISHED_STATUSES.includes(currentStatus)) {
         fetchDetails();
       }
     }, REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [fixtureId, autoFetch, fetchDetails, data?.status]);
+  }, [fixtureId, autoFetch, fetchDetails]);
 
   return { data, loading, error, refetch };
 }
