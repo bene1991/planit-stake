@@ -364,6 +364,19 @@ export function GameListItem({
             </div>
           </CollapsibleTrigger>
 
+          {/* SofaScore Widget - inline right side */}
+          {game.sofascoreUrl && (
+            <div className="hidden sm:flex items-center flex-shrink-0 w-[180px] lg:w-[220px] overflow-hidden">
+              <SofaScoreWidget
+                url={game.sofascoreUrl}
+                onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
+                cropTop={game.sofascoreCropTop}
+                cropHeight={game.sofascoreCropHeight}
+                displayOnly
+              />
+            </div>
+          )}
+
           {/* Actions Column */}
           <div className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 flex-shrink-0 border-l border-border/30">
             <DropdownMenu>
@@ -467,9 +480,9 @@ export function GameListItem({
             />
           </div>
         )}
-        {/* SofaScore Widget - always visible when URL exists */}
+        {/* SofaScore Widget - mobile only (below card) */}
         {game.sofascoreUrl && (
-          <div className="px-2 sm:px-3 pb-2">
+          <div className="px-2 pb-2 sm:hidden">
             <SofaScoreWidget
               url={game.sofascoreUrl}
               onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
