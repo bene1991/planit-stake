@@ -116,8 +116,8 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
       bttsIsBetfair: game.btts_is_betfair || false,
       bttsFetchedAt: game.btts_fetched_at || undefined,
       sofascoreUrl: game.sofascore_url || undefined,
-      sofascoreCropTop: game.sofascore_crop_top ?? undefined,
-      sofascoreCropHeight: game.sofascore_crop_height ?? undefined,
+      sofascoreCropTop: (game as any).sofascore_crop_top ?? undefined,
+      sofascoreCropHeight: (game as any).sofascore_crop_height ?? undefined,
     };
   });
 };
