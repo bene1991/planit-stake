@@ -470,7 +470,7 @@ export function GameListItem({
         {/* SofaScore Widget - always visible when URL exists */}
         {game.sofascoreUrl && (
           <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-            <SofaScoreWidget url={game.sofascoreUrl} onSave={() => {}} displayOnly />
+            <SofaScoreWidget url={game.sofascoreUrl} onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })} displayOnly />
           </div>
         )}
       </div>
