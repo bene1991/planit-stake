@@ -42,21 +42,23 @@ export function SofaScoreWidget({ url, onSave, displayOnly }: SofaScoreWidgetPro
   if (displayOnly) {
     if (!url) return null;
     return (
-      <div className="relative group">
+      <div className="relative group overflow-hidden" style={{ height: 80 }}>
         <iframe
           src={url}
           width="100%"
-          height="120"
-          style={{ colorScheme: 'normal' }}
+          height="300"
+          style={{ colorScheme: 'normal', marginTop: -60 }}
           frameBorder="0"
           scrolling="no"
-          className="rounded-lg border border-border/30"
+          className="pointer-events-none"
         />
+        {/* Overlay to blend edges with dark theme */}
+        <div className="absolute inset-0 pointer-events-none border border-border/10 rounded" />
         <button
           onClick={() => onSave('')}
-          className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-1 right-1 z-10 h-5 w-5 rounded-full bg-background/80 text-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-3 w-3" />
         </button>
       </div>
     );
