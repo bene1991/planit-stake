@@ -1,48 +1,45 @@
 
-## Corrigir Som de Gol Duplicado
+## Corrigir Som de Gol Duplicado - Causa Raiz Real
 
-### Causa Raiz
+### Problema
 
-O som de gol toca duas vezes porque existem **dois loops de refresh independentes** que competem entre si:
+O useEffect que controla o polling (linha 373-427 do `useLiveScores.ts`) tem `games` no array de dependencias. Quando um gol e detectado:
 
-1. **Loop interno do `useLiveScores`** (useEffect linha 412) - chama `fetchLiveScores` imediatamente quando o effect re-executa, e a cada X segundos
-2. **`useAutoRefresh`** em DailyPlanning - chama `handleGlobalRefresh` → `refreshLiveScores()` em outro intervalo
+1. `handleGoalDetected` -> `playGoalSound()` (1o som)
+2. Score e persistido no banco -> `onScorePersisted` -> `games` array atualiza
+3. `games` mudou -> useEffect re-executa -> chama `fetchLiveScoresRef.current?.()` imediatamente (linha 412)
+4. A nova chamada pode passar pelo throttle de 10s se houver tempo suficiente, e detecta o "mesmo gol" novamente
 
-Quando o `games` array muda de referencia (ex: ao persistir um score), o useEffect do `useLiveScores` re-executa e faz um fetch imediato. Se isso coincide com o ciclo do `useAutoRefresh`, duas chamadas acontecem quase simultaneamente. O `notifiedGoalsRef` deveria prevenir isso, MAS existe uma race condition: as duas chamadas podem estar executando em paralelo (a flag `isFetchingRef` bloqueia uma, mas o timing pode permitir ambas).
+O `notifiedGoalsRef` deveria bloquear, mas como `fetchLiveScores` e recriado com cada render (tem `games` nas deps do useCallback), e o timing entre chamadas pode ser imprevisivel, ha uma janela para duplicacao.
 
-Alem disso, o debounce de 3 segundos no `playGoalSound` e insuficiente se as duas chamadas acontecem com menos de 3s de diferenca, mas o som pode ser enfileirado pelo browser.
-
-### Solucao (3 camadas de protecao)
+### Solucao
 
 **Arquivo: `src/hooks/useLiveScores.ts`**
 
-1. **Remover chamada duplicada do `useAutoRefresh`**: Em `DailyPlanning.tsx`, remover `refreshLiveScores()` do `handleGlobalRefresh`. O `useLiveScores` ja tem seu proprio loop de polling - nao precisa de dois loops.
+1. **Remover `games` das dependencias do useEffect de polling** - Substituir pela variavel `hasLiveGames` memoizada. O `games` so era usado para verificar se havia jogos ao vivo (`games.some(g => g.status === 'Live')`). Isso pode ser extraido para um `useMemo`.
 
-**Arquivo: `src/pages/DailyPlanning.tsx`**
-
-2. **Simplificar `handleGlobalRefresh`**: Remover a chamada a `refreshLiveScores()` dentro de `handleGlobalRefresh`, deixando apenas `updateStatuses()`. O polling do `useLiveScores` ja cuida da atualizacao dos scores.
-
-**Arquivo: `src/utils/soundManager.ts`**
-
-3. **Aumentar debounce do som de gol**: Subir o `GOAL_SOUND_DEBOUNCE` de 3000ms para 5000ms como camada extra de seguranca.
+2. **Remover `games` das dependencias do `fetchLiveScores` useCallback** - O `games` dentro do callback pode ser acessado via ref para evitar que o callback seja recriado a cada mudanca do array. Isso previne cascatas de re-render que causam chamadas duplicadas.
 
 ### Detalhes Tecnicos
 
-```text
-ANTES (dois loops):
-useAutoRefresh ──interval──> handleGlobalRefresh ──> refreshLiveScores() ──> fetchLiveScores()
-useLiveScores  ──interval──> fetchLiveScoresRef.current()                ──> fetchLiveScores()
-                                                                              |
-                                                            Ambos detectam gol → som toca 2x
+Mudancas em `src/hooks/useLiveScores.ts`:
 
-DEPOIS (um loop apenas):
-useAutoRefresh ──interval──> handleGlobalRefresh ──> updateStatuses() apenas
-useLiveScores  ──interval──> fetchLiveScoresRef.current() ──> fetchLiveScores()
-                                                                    |
-                                                      Unico ponto de deteccao → som toca 1x
+1. Adicionar `useMemo` para `hasLiveGames`:
+```
+const hasLiveGames = useMemo(() => games.some(g => g.status === 'Live'), [games]);
 ```
 
-As 3 camadas de protecao:
-- **Camada 1**: Eliminar o loop duplicado (causa raiz)
-- **Camada 2**: `notifiedGoalsRef` Set no useLiveScores (ja implementado - dedup por chave unica)
-- **Camada 3**: Debounce de 5s no `playGoalSound` (seguranca extra)
+2. Adicionar `useRef` para `games` (para usar dentro do callback sem depender dele):
+```
+const gamesRef = useRef(games);
+useEffect(() => { gamesRef.current = games; }, [games]);
+```
+
+3. No `fetchLiveScores` useCallback, usar `gamesRef.current` em vez de `games` diretamente, e remover `games` das deps do useCallback
+
+4. No useEffect de polling (linha 373), substituir `games` por `hasLiveGames`:
+```
+}, [hasGamesToMonitor, fixtureIds.length, hasLiveGames, isPageVisible, activeIntervalMs]);
+```
+
+Isso quebra o ciclo: gol detectado -> score persistido -> games atualiza -> MAS o useEffect de polling NAO re-executa (porque `hasLiveGames`, `hasGamesToMonitor` e `fixtureIds.length` nao mudaram). O som toca apenas 1 vez.
