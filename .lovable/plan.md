@@ -1,57 +1,48 @@
 
-## Adicionar Posse, Chutes Totais e Chutes no Gol nos Tooltips do LDI
+## Corrigir Estatísticas Travadas nos Tooltips do LDI
 
-### O que muda
+### Problema identificado
 
-Ao passar o mouse no score LDI de cada time, alem da explicacao textual que ja existe, o tooltip vai mostrar os dados reais do jogo: posse de bola, chutes totais e chutes no gol.
+O hook `useFixtureCache` faz **uma unica chamada** ao `get-fixture-details` quando o componente monta e nunca mais atualiza. O comentario na linha 113 confirma: "Auto-refresh removed to save API credits". Isso faz com que posse de bola, chutes e chutes no gol fiquem congelados no valor do primeiro fetch.
 
-### Exemplo do tooltip atualizado
+O sistema de live scores (`useLiveScores`) atualiza apenas o placar via `fixtures?live=all`, mas nao busca estatisticas detalhadas.
 
-```
-Tigres UANL -- LDI 36/100
+### Solucao
 
-Tigres UANL esta sendo dominado. Adversario controla as acoes do jogo.
+Adicionar auto-refresh no `useFixtureCache` para jogos ao vivo, reaproveitando o cache de 90 segundos do edge function `get-fixture-details` (que ja existe no backend) para nao desperdicar creditos da API.
 
-Posse: 38% | Chutes: 4 (2 no gol)
+### Arquivo a editar
 
-Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.
-```
+**`src/hooks/useFixtureCache.ts`**
 
-### Arquivos a editar
+Adicionar um `setInterval` que re-executa `fetchDetails()` a cada **120 segundos** (2 minutos) somente quando:
+- `autoFetch` esta ativo (jogos live/pending)
+- O status retornado nao e um status de jogo finalizado
 
-**1. `src/components/LiveDominanceDisplay.tsx`**
-- Adicionar prop opcional `normalizedStats` (tipo `NormalizedStats` importado de `useFixtureCache`)
-- Nos tooltips do home e away, adicionar uma linha com os valores reais: posse %, chutes totais e chutes no gol
-- Mostrar apenas quando os dados existem (fallback graceful)
-
-**2. `src/components/GameListItem.tsx`**
-- Passar `fixtureCache?.normalized_stats` como prop para `LiveDominanceDisplay`
-
-**3. `src/components/GameCardCompact.tsx`**
-- Mesmo ajuste: passar `normalized_stats` para `LiveDominanceDisplay`
+O edge function ja tem cache de 90s no backend, entao chamadas frequentes nao geram chamadas extras a API-Football. Com intervalo de 120s no frontend, cada refresh vai pegar dados atualizados (cache expirado) sem excesso de chamadas.
 
 ### Detalhes tecnicos
 
-Nova prop no componente:
-
 ```text
-interface LiveDominanceDisplayProps {
-  result: DominanceResult;
-  homeTeam: string;
-  awayTeam: string;
-  ldiHistory?: LdiSnapshot[];
-  normalizedStats?: NormalizedStats;  // <-- nova
-}
+// Dentro de useFixtureCache, apos o useEffect de fetch inicial:
+
+useEffect(() => {
+  if (!fixtureId || !autoFetch) return;
+  
+  // Re-fetch a cada 120s para jogos ao vivo
+  const REFRESH_INTERVAL = 120_000;
+  const interval = setInterval(() => {
+    fetchDetails();
+  }, REFRESH_INTERVAL);
+
+  return () => clearInterval(interval);
+}, [fixtureId, autoFetch, fetchDetails]);
 ```
 
-Linha extra no tooltip:
+Tambem adicionar logica para parar o intervalo quando o jogo termina (status FT, AET, PEN etc.), checando o `data?.status` retornado.
 
-```text
-{normalizedStats && (
-  <p className="text-[10px] text-muted-foreground mt-0.5">
-    Posse: {possession}% | Chutes: {shots_total} ({shots_on} no gol)
-  </p>
-)}
-```
+### Impacto nos creditos da API
 
-Os dados de cada time (home/away) serao exibidos no tooltip do respectivo time, usando `normalizedStats.home` e `normalizedStats.away`.
+- O backend `get-fixture-details` ja tem cache de 90s para jogos ao vivo e cache permanente para jogos finalizados
+- Com refresh de 120s no frontend, cada jogo ao vivo gera no maximo ~1 chamada real a API a cada 2 minutos
+- Para 1-5 jogos monitorados simultaneamente, isso representa 30-150 chamadas extras por hora, aceitavel dentro do limite de 7500/dia
