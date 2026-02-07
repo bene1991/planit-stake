@@ -338,6 +338,7 @@ export type Database = {
           league: string
           notes: string | null
           owner_id: string
+          sofascore_url: string | null
           status: string | null
           time: string
           updated_at: string | null
@@ -363,6 +364,7 @@ export type Database = {
           league: string
           notes?: string | null
           owner_id: string
+          sofascore_url?: string | null
           status?: string | null
           time: string
           updated_at?: string | null
@@ -388,6 +390,7 @@ export type Database = {
           league?: string
           notes?: string | null
           owner_id?: string
+          sofascore_url?: string | null
           status?: string | null
           time?: string
           updated_at?: string | null
