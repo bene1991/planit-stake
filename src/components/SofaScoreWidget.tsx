@@ -22,6 +22,14 @@ function extractSofaScoreUrl(input: string): string {
   return trimmed;
 }
 
+/** Ensure the SofaScore URL uses dark theme */
+function ensureDarkTheme(url: string): string {
+  if (!url) return url;
+  if (url.includes('widgetTheme=')) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return url + separator + 'widgetTheme=dark';
+}
+
 const DEFAULT_CROP_TOP = 0;
 const DEFAULT_CROP_HEIGHT = 120;
 
@@ -61,11 +69,13 @@ export function SofaScoreWidget({ url, onSave, cropTop: propCropTop, cropHeight:
     onCropChange?.(localCropTop, v);
   };
 
+  const iframeSrc = ensureDarkTheme(url || editValue);
+
   // Shared iframe renderer
   const renderIframe = (ct: number, ch: number, interactive = false) => (
-    <div className="relative group overflow-hidden rounded" style={{ height: ch }}>
+    <div className="relative group overflow-hidden rounded-lg bg-card" style={{ height: ch }}>
       <iframe
-        src={url || editValue}
+        src={iframeSrc}
         width="100%"
         height="500"
         style={{ colorScheme: 'normal', marginTop: -ct }}
@@ -73,7 +83,6 @@ export function SofaScoreWidget({ url, onSave, cropTop: propCropTop, cropHeight:
         scrolling="no"
         className={interactive ? '' : 'pointer-events-none'}
       />
-      <div className="absolute inset-0 pointer-events-none border border-border/10 rounded" />
     </div>
   );
 
