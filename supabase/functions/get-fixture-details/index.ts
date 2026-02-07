@@ -388,6 +388,21 @@ serve(async (req) => {
 
     console.log(`[API FETCH] Fetching fixture ${fixtureIdNum}`);
 
+    // Helper to safely parse JSON from API responses
+    async function safeJson(res: Response, label: string) {
+      const text = await res.text();
+      if (!res.ok || !text.trim().startsWith('{') && !text.trim().startsWith('[')) {
+        console.error(`[${label}] Non-JSON response (${res.status}): ${text.substring(0, 200)}`);
+        return { response: [] };
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        console.error(`[${label}] JSON parse error: ${text.substring(0, 200)}`);
+        return { response: [] };
+      }
+    }
+
     // Fetch fixture info, statistics, and events in parallel
     const [fixtureRes, statsRes, eventsRes] = await Promise.all([
       fetch(`https://v3.football.api-sports.io/fixtures?id=${fixtureIdNum}`, {
@@ -402,9 +417,9 @@ serve(async (req) => {
     ]);
 
     const [fixtureData, statsData, eventsData] = await Promise.all([
-      fixtureRes.json(),
-      statsRes.json(),
-      eventsRes.json(),
+      safeJson(fixtureRes, 'fixtures'),
+      safeJson(statsRes, 'statistics'),
+      safeJson(eventsRes, 'events'),
     ]);
 
     // Extract fixture info
