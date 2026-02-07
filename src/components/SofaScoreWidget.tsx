@@ -31,7 +31,7 @@ function ensureDarkTheme(url: string): string {
 }
 
 const DEFAULT_CROP_TOP = 0;
-const DEFAULT_CROP_HEIGHT = 120;
+const DEFAULT_CROP_HEIGHT = 140;
 
 export function SofaScoreWidget({ url, onSave, cropTop: propCropTop, cropHeight: propCropHeight, onCropChange, displayOnly }: SofaScoreWidgetProps) {
   const [editValue, setEditValue] = useState(url || '');
@@ -73,14 +73,14 @@ export function SofaScoreWidget({ url, onSave, cropTop: propCropTop, cropHeight:
 
   // Shared iframe renderer – crop sides by scaling up and hiding overflow
   const renderIframe = (ct: number, ch: number, interactive = false) => (
-    <div className="relative group overflow-hidden rounded-lg bg-card" style={{ height: ch }}>
+    <div className="relative group overflow-hidden rounded-lg bg-[#0D0D0D]" style={{ height: ch }}>
       <iframe
         src={iframeSrc}
         style={{
           colorScheme: 'normal',
           marginTop: -ct,
-          marginLeft: '-16px',
-          width: 'calc(100% + 32px)',
+          marginLeft: '-4px',
+          width: 'calc(100% + 8px)',
           height: 500,
           border: 'none',
         }}
