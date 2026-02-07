@@ -52,6 +52,8 @@ export interface Game {
   bttsIsBetfair?: boolean;
   bttsFetchedAt?: string;
   sofascoreUrl?: string;
+  sofascoreCropTop?: number;
+  sofascoreCropHeight?: number;
 }
 
 export interface Estrategia {
