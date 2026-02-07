@@ -1,53 +1,57 @@
 
-
-## Tooltips Explicativos nos Scores LDI do Jogo Ao Vivo
+## Adicionar Posse, Chutes Totais e Chutes no Gol nos Tooltips do LDI
 
 ### O que muda
 
-Melhorar os tooltips dos scores LDI (Live Dominance Index) que aparecem ao lado de cada time no card do jogo ao vivo. Em vez de mostrar apenas "Dominando - LDI 10/100", o tooltip vai explicar o que aquele numero significa de forma clara e contextualizada.
+Ao passar o mouse no score LDI de cada time, alem da explicacao textual que ja existe, o tooltip vai mostrar os dados reais do jogo: posse de bola, chutes totais e chutes no gol.
 
-### Arquivo a editar
+### Exemplo do tooltip atualizado
 
-**`src/components/LiveDominanceDisplay.tsx`**
+```
+Tigres UANL -- LDI 36/100
 
-### Conteudo dos tooltips
+Tigres UANL esta sendo dominado. Adversario controla as acoes do jogo.
 
-Os tooltips serao dinamicos, combinando a classificacao do time com uma explicacao do que o LDI representa:
+Posse: 38% | Chutes: 4 (2 no gol)
 
-| Faixa LDI | Classificacao | Tooltip |
-|-----------|--------------|---------|
-| 60-100 | Dominando | "LDI {valor}/100 - {time} domina o jogo. Controla posse, finaliza mais e pressiona o adversario. Indice baseado em posse de bola, chutes, chutes no gol e escanteios." |
-| 40-59 | Equilibrado | "LDI {valor}/100 - Jogo equilibrado para {time}. Nenhum time tem dominio claro. Indice baseado em posse de bola, chutes, chutes no gol e escanteios." |
-| 0-39 | Sendo dominado | "LDI {valor}/100 - {time} esta sendo dominado. Adversario controla as acoes do jogo. Indice baseado em posse de bola, chutes, chutes no gol e escanteios." |
+Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.
+```
 
-Tambem sera adicionado tooltip na barra de dominancia (barra verde/roxa) e no sparkline para contextualizar melhor.
+### Arquivos a editar
+
+**1. `src/components/LiveDominanceDisplay.tsx`**
+- Adicionar prop opcional `normalizedStats` (tipo `NormalizedStats` importado de `useFixtureCache`)
+- Nos tooltips do home e away, adicionar uma linha com os valores reais: posse %, chutes totais e chutes no gol
+- Mostrar apenas quando os dados existem (fallback graceful)
+
+**2. `src/components/GameListItem.tsx`**
+- Passar `fixtureCache?.normalized_stats` como prop para `LiveDominanceDisplay`
+
+**3. `src/components/GameCardCompact.tsx`**
+- Mesmo ajuste: passar `normalized_stats` para `LiveDominanceDisplay`
 
 ### Detalhes tecnicos
 
-- Alterar os `TooltipContent` existentes nas linhas 97-99 (home) e 128-130 (away) para incluir texto explicativo mais completo
-- Adicionar tooltip na barra de dominancia (linhas 135-145) explicando o que a barra representa
-- Usar `max-w-[260px]` nos tooltips para acomodar o texto maior
-- Manter `cursor-help` nos elementos interativos
-
-Exemplo da mudanca no tooltip do time da casa:
+Nova prop no componente:
 
 ```text
-<TooltipContent side="top" className="max-w-[260px]">
-  <p className="text-[10px] font-semibold mb-0.5">{homeTeam} - LDI {homeLdi}/100</p>
-  <p className="text-[10px] text-muted-foreground">
-    {explicacao baseada na faixa do LDI}
-  </p>
+interface LiveDominanceDisplayProps {
+  result: DominanceResult;
+  homeTeam: string;
+  awayTeam: string;
+  ldiHistory?: LdiSnapshot[];
+  normalizedStats?: NormalizedStats;  // <-- nova
+}
+```
+
+Linha extra no tooltip:
+
+```text
+{normalizedStats && (
   <p className="text-[10px] text-muted-foreground mt-0.5">
-    Calculado a partir de posse de bola, chutes, chutes no gol e escanteios.
+    Posse: {possession}% | Chutes: {shots_total} ({shots_on} no gol)
   </p>
-</TooltipContent>
+)}
 ```
 
-Tooltip da barra de dominancia:
-
-```text
-<TooltipContent side="bottom" className="max-w-[240px]">
-  <p className="text-[10px]">Barra de dominancia: verde = controle da casa, roxo = controle do visitante. Quanto maior a faixa, maior o dominio.</p>
-</TooltipContent>
-```
-
+Os dados de cada time (home/away) serao exibidos no tooltip do respectivo time, usando `normalizedStats.home` e `normalizedStats.away`.
