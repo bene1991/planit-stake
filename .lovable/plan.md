@@ -1,28 +1,48 @@
 
+## Corrigir Som de Gol Duplicado
 
-## Corrigir Widget SofaScore - Fundo Preto e Indicadores de Gols/Cartoes
+### Causa Raiz
 
-### Problemas Identificados
+O som de gol toca duas vezes porque existem **dois loops de refresh independentes** que competem entre si:
 
-1. **Indicadores de gols e cartoes vermelhos nao aparecem** - O iframe do SofaScore esta sendo cortado de forma que esconde os icones de gol (circulos verdes) e cartoes vermelhos que ficam nas bordas do grafico de momentum. O corte lateral (`marginLeft: -16px`) e o corte superior (`marginTop`) podem estar removendo esses elementos visuais.
+1. **Loop interno do `useLiveScores`** (useEffect linha 412) - chama `fetchLiveScores` imediatamente quando o effect re-executa, e a cada X segundos
+2. **`useAutoRefresh`** em DailyPlanning - chama `handleGlobalRefresh` → `refreshLiveScores()` em outro intervalo
 
-2. **Fundo nao esta preto** - O container usa `bg-card` que pode nao ser escuro o suficiente. A referencia mostra fundo completamente preto/escuro.
+Quando o `games` array muda de referencia (ex: ao persistir um score), o useEffect do `useLiveScores` re-executa e faz um fetch imediato. Se isso coincide com o ciclo do `useAutoRefresh`, duas chamadas acontecem quase simultaneamente. O `notifiedGoalsRef` deveria prevenir isso, MAS existe uma race condition: as duas chamadas podem estar executando em paralelo (a flag `isFetchingRef` bloqueia uma, mas o timing pode permitir ambas).
 
-### Solucao
+Alem disso, o debounce de 3 segundos no `playGoalSound` e insuficiente se as duas chamadas acontecem com menos de 3s de diferenca, mas o som pode ser enfileirado pelo browser.
 
-**Arquivo: `src/components/SofaScoreWidget.tsx`**
+### Solucao (3 camadas de protecao)
 
-1. **Trocar background para preto** - Usar `bg-[#0D0D0D]` (seguindo o tema do site) em vez de `bg-card`
-2. **Reduzir corte lateral** - Diminuir o `marginLeft` de `-16px` para `-4px` (e width para `calc(100% + 8px)`) para preservar os indicadores de gol e cartao que ficam nas extremidades do grafico
-3. **Adicionar `colorScheme: 'normal'`** no style do iframe (ja existe, manter)
-4. **Aumentar a altura padrao** - O `DEFAULT_CROP_HEIGHT` de 120px pode ser muito pequeno para mostrar os indicadores. Subir para 140px como padrao
+**Arquivo: `src/hooks/useLiveScores.ts`**
+
+1. **Remover chamada duplicada do `useAutoRefresh`**: Em `DailyPlanning.tsx`, remover `refreshLiveScores()` do `handleGlobalRefresh`. O `useLiveScores` ja tem seu proprio loop de polling - nao precisa de dois loops.
+
+**Arquivo: `src/pages/DailyPlanning.tsx`**
+
+2. **Simplificar `handleGlobalRefresh`**: Remover a chamada a `refreshLiveScores()` dentro de `handleGlobalRefresh`, deixando apenas `updateStatuses()`. O polling do `useLiveScores` ja cuida da atualizacao dos scores.
+
+**Arquivo: `src/utils/soundManager.ts`**
+
+3. **Aumentar debounce do som de gol**: Subir o `GOAL_SOUND_DEBOUNCE` de 3000ms para 5000ms como camada extra de seguranca.
 
 ### Detalhes Tecnicos
 
-No `renderIframe`:
-- Container: `className="relative group overflow-hidden rounded-lg bg-[#0D0D0D]"`  
-- Iframe style: reduzir margens laterais para `-4px` / `calc(100% + 8px)` para nao cortar indicadores
-- Aumentar `DEFAULT_CROP_HEIGHT` de 120 para 140
+```text
+ANTES (dois loops):
+useAutoRefresh ──interval──> handleGlobalRefresh ──> refreshLiveScores() ──> fetchLiveScores()
+useLiveScores  ──interval──> fetchLiveScoresRef.current()                ──> fetchLiveScores()
+                                                                              |
+                                                            Ambos detectam gol → som toca 2x
 
-Isso preserva os indicadores visuais do SofaScore (gols, cartoes) enquanto mantem o fundo escuro combinando com o tema do site.
+DEPOIS (um loop apenas):
+useAutoRefresh ──interval──> handleGlobalRefresh ──> updateStatuses() apenas
+useLiveScores  ──interval──> fetchLiveScoresRef.current() ──> fetchLiveScores()
+                                                                    |
+                                                      Unico ponto de deteccao → som toca 1x
+```
 
+As 3 camadas de protecao:
+- **Camada 1**: Eliminar o loop duplicado (causa raiz)
+- **Camada 2**: `notifiedGoalsRef` Set no useLiveScores (ja implementado - dedup por chave unica)
+- **Camada 3**: Debounce de 5s no `playGoalSound` (seguranca extra)
