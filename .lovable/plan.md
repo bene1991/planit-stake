@@ -1,55 +1,36 @@
 
 
-## Widget SofaScore com controle de corte ajustavel
+## Corrigir aparencia do Widget SofaScore para tema escuro
 
 ### Problema
-O corte fixo (marginTop: -60, height: 80) nao mostra as "bolinhas de gol" do widget e o usuario nao consegue ajustar a area visivel. Cada widget do SofaScore pode ter posicionamento diferente do grafico, entao valores fixos nao funcionam para todos os casos.
+O iframe do SofaScore carrega com fundo branco/claro, quebrando o visual do site escuro. Na imagem de referencia, o widget aparece com fundo escuro combinando com o tema.
 
 ### Solucao
-Adicionar controles de ajuste no modo de edicao (dentro do jogo expandido) para que o usuario possa:
-- Ajustar o **corte superior** (quanto esconder do topo) com um slider
-- Ajustar a **altura visivel** (quanto mostrar) com um slider
-- Ver um preview em tempo real enquanto ajusta
-- Os valores sao salvos junto com a URL do widget
 
-### Alteracoes
+**Arquivo: `src/components/SofaScoreWidget.tsx`**
 
-**1. `src/types/index.ts`**
-- Adicionar campos `sofascoreCropTop` e `sofascoreCropHeight` ao tipo Game para salvar os ajustes de corte por jogo
-
-**2. `src/components/SofaScoreWidget.tsx`**
-- Aceitar props `cropTop` e `cropHeight` (com defaults: cropTop=0, cropHeight=120)
-- No modo `displayOnly`, usar esses valores para posicionar o iframe: `marginTop: -cropTop` e container `height: cropHeight`
-- No modo de edicao, adicionar dois sliders:
-  - "Corte superior" (0 a 200px) - controla o marginTop negativo
-  - "Altura visivel" (60 a 250px) - controla a altura do container
-- Mostrar preview do widget enquanto ajusta os sliders
-- Chamar `onSave` com a URL e chamar novo callback `onCropChange` quando os sliders mudam
-
-**3. `src/components/GameListItem.tsx`**
-- Passar `cropTop` e `cropHeight` do game para o `SofaScoreWidget` em ambos os modos
-- No modo de edicao (expandido), passar callbacks para salvar os valores de crop no game via `onUpdate`
+1. **Forcar tema escuro no iframe** - Adicionar o parametro `widgetTheme=dark` na URL do SofaScore automaticamente (se a URL nao tiver esse parametro)
+2. **Background escuro no container** - Adicionar `bg-[#1a1a2e]` (ou similar ao tom do site) no container do iframe para que durante o carregamento nao apareca branco
+3. **Arredondar bordas** - Adicionar `rounded-lg` no container com `overflow-hidden` para combinar com os cards do site
+4. **Remover borda clara** - Remover o overlay de borda `border-border/10` que adiciona uma linha clara desnecessaria
 
 ### Detalhes tecnicos
 
-No `SofaScoreWidget.tsx`, o modo de edicao tera:
+Na funcao `renderIframe`, o container tera:
+- `className="relative group overflow-hidden rounded-lg bg-[#1a1a2e]"` 
+- Remover o div de overlay com borda
 
-```text
-+------------------------------------------+
-| SofaScore Widget                         |
-| [URL input field........................] |
-|                                          |
-| Corte superior:  [======|====] 60px      |
-| Altura visivel:  [===|=======] 120px     |
-|                                          |
-| +--------------------------------------+ |
-| |  [preview do iframe com crop atual]  | |
-| +--------------------------------------+ |
-+------------------------------------------+
+Na URL do iframe, antes de passar ao `src`, adicionar logica:
+```
+function ensureDarkTheme(url: string): string {
+  if (!url) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  if (!url.includes('widgetTheme=')) {
+    return url + separator + 'widgetTheme=dark';
+  }
+  return url;
+}
 ```
 
-O iframe sempre renderiza com height="500" (grande), e a "janela" visivel e controlada pelo container com `overflow-hidden`, `height: cropHeight` e o iframe com `marginTop: -cropTop`.
+Isso faz o SofaScore renderizar no tema escuro nativamente, combinando com o fundo do site.
 
-No `displayOnly` os mesmos valores sao usados sem os controles.
-
-Os valores default (cropTop=0, cropHeight=120) funcionam como ponto de partida, e o usuario ajusta ate ver exatamente as bolinhas de gol e o grafico que quer.
