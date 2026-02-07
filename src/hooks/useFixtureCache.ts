@@ -50,8 +50,8 @@ interface UseFixtureCacheResult {
   refetch: () => void;
 }
 
-// Status codes that indicate a live game (kept for reference)
-// const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'LIVE'];
+const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'INT'];
+
 export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,9 +110,19 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
     }
   }, [fixtureId, fetchDetails, autoFetch]);
 
-  // Auto-refresh removed to save API credits.
-  // useLiveScores handles centralized score updates.
-  // Users can manually refetch via refetch().
+  // Auto-refresh every 120s for live games (backend has 90s cache)
+  useEffect(() => {
+    if (!fixtureId || !autoFetch) return;
+
+    const REFRESH_INTERVAL = 120_000;
+    const interval = setInterval(() => {
+      if (!data?.status || !FINISHED_STATUSES.includes(data.status)) {
+        fetchDetails();
+      }
+    }, REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [fixtureId, autoFetch, fetchDetails, data?.status]);
 
   return { data, loading, error, refetch };
 }
