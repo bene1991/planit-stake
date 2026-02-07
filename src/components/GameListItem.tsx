@@ -470,7 +470,13 @@ export function GameListItem({
         {/* SofaScore Widget - always visible when URL exists */}
         {game.sofascoreUrl && (
           <div className="px-2 sm:px-3 pb-2">
-            <SofaScoreWidget url={game.sofascoreUrl} onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })} displayOnly />
+            <SofaScoreWidget
+              url={game.sofascoreUrl}
+              onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
+              cropTop={game.sofascoreCropTop}
+              cropHeight={game.sofascoreCropHeight}
+              displayOnly
+            />
           </div>
         )}
       </div>
@@ -546,6 +552,9 @@ export function GameListItem({
           <SofaScoreWidget
             url={game.sofascoreUrl}
             onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
+            cropTop={game.sofascoreCropTop}
+            cropHeight={game.sofascoreCropHeight}
+            onCropChange={(sofascoreCropTop, sofascoreCropHeight) => onUpdate(game.id, { sofascoreCropTop, sofascoreCropHeight })}
           />
         </div>
       </CollapsibleContent>

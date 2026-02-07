@@ -45,6 +45,8 @@ export interface Game {
   bttsIsBetfair?: boolean;
   bttsFetchedAt?: string;
   sofascoreUrl?: string;
+  sofascoreCropTop?: number;
+  sofascoreCropHeight?: number;
 }
 
 const GAMES_QUERY_KEY = ['games'] as const;
@@ -114,6 +116,8 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
       bttsIsBetfair: game.btts_is_betfair || false,
       bttsFetchedAt: game.btts_fetched_at || undefined,
       sofascoreUrl: game.sofascore_url || undefined,
+      sofascoreCropTop: game.sofascore_crop_top ?? undefined,
+      sofascoreCropHeight: game.sofascore_crop_height ?? undefined,
     };
   });
 };
@@ -229,6 +233,8 @@ export const useSupabaseGames = () => {
       if (updates.finalScoreHome !== undefined) gameUpdates.final_score_home = updates.finalScoreHome;
       if (updates.finalScoreAway !== undefined) gameUpdates.final_score_away = updates.finalScoreAway;
       if (updates.sofascoreUrl !== undefined) gameUpdates.sofascore_url = updates.sofascoreUrl;
+      if (updates.sofascoreCropTop !== undefined) gameUpdates.sofascore_crop_top = updates.sofascoreCropTop;
+      if (updates.sofascoreCropHeight !== undefined) gameUpdates.sofascore_crop_height = updates.sofascoreCropHeight;
 
       if (Object.keys(gameUpdates).length > 0) {
         const { error: gameError } = await supabase
