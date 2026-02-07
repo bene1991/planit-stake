@@ -71,15 +71,19 @@ export function SofaScoreWidget({ url, onSave, cropTop: propCropTop, cropHeight:
 
   const iframeSrc = ensureDarkTheme(url || editValue);
 
-  // Shared iframe renderer
+  // Shared iframe renderer – crop sides by scaling up and hiding overflow
   const renderIframe = (ct: number, ch: number, interactive = false) => (
     <div className="relative group overflow-hidden rounded-lg bg-card" style={{ height: ch }}>
       <iframe
         src={iframeSrc}
-        width="100%"
-        height="500"
-        style={{ colorScheme: 'normal', marginTop: -ct }}
-        frameBorder="0"
+        style={{
+          colorScheme: 'normal',
+          marginTop: -ct,
+          marginLeft: '-16px',
+          width: 'calc(100% + 32px)',
+          height: 500,
+          border: 'none',
+        }}
         scrolling="no"
         className={interactive ? '' : 'pointer-events-none'}
       />
