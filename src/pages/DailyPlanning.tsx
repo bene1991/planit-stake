@@ -209,7 +209,8 @@ export default function DailyPlanning() {
   
   const handleGlobalRefresh = async () => {
     await updateStatuses();
-    await refreshLiveScores();
+    // NOTE: refreshLiveScores() removido daqui para evitar loop duplo.
+    // O useLiveScores já tem seu próprio polling interno.
     setLastGlobalRefresh(Date.now());
   };
   
