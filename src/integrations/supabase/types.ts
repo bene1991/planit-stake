@@ -338,6 +338,8 @@ export type Database = {
           league: string
           notes: string | null
           owner_id: string
+          sofascore_crop_height: number | null
+          sofascore_crop_top: number | null
           sofascore_url: string | null
           status: string | null
           time: string
@@ -364,6 +366,8 @@ export type Database = {
           league: string
           notes?: string | null
           owner_id: string
+          sofascore_crop_height?: number | null
+          sofascore_crop_top?: number | null
           sofascore_url?: string | null
           status?: string | null
           time: string
@@ -390,6 +394,8 @@ export type Database = {
           league?: string
           notes?: string | null
           owner_id?: string
+          sofascore_crop_height?: number | null
+          sofascore_crop_top?: number | null
           sofascore_url?: string | null
           status?: string | null
           time?: string
