@@ -38,6 +38,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { getNowInBrasilia } from "@/utils/timezone";
 
 export default function DailyPlanning() {
   const { user } = useAuth();
@@ -330,16 +331,7 @@ export default function DailyPlanning() {
   };
 
   // Get today's date in Brasilia timezone
-  const getTodayDate = () => {
-    const now = new Date();
-    const brasiliaOffset = -3 * 60;
-    const localOffset = now.getTimezoneOffset();
-    const offsetDiff = localOffset - brasiliaOffset;
-    const today = new Date(now.getTime() + offsetDiff * 60000);
-    return format(today, 'yyyy-MM-dd');
-  };
-  
-  const todayDate = getTodayDate();
+  const todayDate = format(getNowInBrasilia(), 'yyyy-MM-dd');
 
   // Separar jogos: PENDENTES (pelo menos 1 operação sem resultado) vs FINALIZADOS (todas com resultado)
   const pendingGames = games.filter((game) =>
