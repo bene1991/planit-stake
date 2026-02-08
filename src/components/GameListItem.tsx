@@ -49,6 +49,7 @@ interface GameListItemProps {
   liveScore?: LiveScore | null;
   lastGlobalRefresh?: number;
   isHighlighted?: boolean;
+  globalPaused?: boolean;
 }
 
 export function GameListItem({ 
@@ -60,6 +61,7 @@ export function GameListItem({
   liveScore,
   lastGlobalRefresh,
   isHighlighted,
+  globalPaused = false,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
@@ -72,7 +74,7 @@ export function GameListItem({
   const allMethodsResolved = game.methodOperations.length > 0 
     && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
   const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
-  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch);
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(
     game.api_fixture_id ? Number(game.api_fixture_id) : undefined,

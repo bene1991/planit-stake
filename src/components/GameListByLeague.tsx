@@ -34,6 +34,7 @@ interface GameListByLeagueProps {
   lastGlobalRefresh?: number;
   sortOrder?: GameSortOrder;
   highlightedGameId?: string | null;
+  globalPaused?: boolean;
 }
 
 export function GameListByLeague({
@@ -46,6 +47,7 @@ export function GameListByLeague({
   lastGlobalRefresh,
   sortOrder = 'time',
   highlightedGameId,
+  globalPaused = false,
 }: GameListByLeagueProps) {
   // Sort games based on sortOrder
   const sortedGames = useMemo(() => {
@@ -148,6 +150,7 @@ export function GameListByLeague({
                 liveScore={getScoreForGame(game)}
                 lastGlobalRefresh={lastGlobalRefresh}
                 isHighlighted={game.id === highlightedGameId}
+                globalPaused={globalPaused}
               />
             ))}
           </div>
