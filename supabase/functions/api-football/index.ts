@@ -198,7 +198,15 @@ serve(async (req) => {
       },
     });
 
-    const data = await response.json();
+    // Safe JSON parsing - handle non-JSON responses (e.g. 503 upstream errors)
+    const responseText = await response.text();
+    let data: any;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error(`[API-Football] Non-JSON response (${response.status}):`, responseText.substring(0, 200));
+      throw new Error(`API-Football returned non-JSON response (${response.status}): ${responseText.substring(0, 100)}`);
+    }
 
     // Extract rate limit headers from API-Football response
     const rateLimitLimit = parseInt(response.headers.get('x-ratelimit-requests-limit') || '0', 10);
