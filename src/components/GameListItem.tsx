@@ -68,8 +68,10 @@ export function GameListItem({
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
   
-  // Fetch fixture cache: auto-fetch only for live games, finished games use cached data only
-  const isLiveForFetch = game.status === 'Live' || game.status === 'Pending';
+  // Fetch fixture cache: auto-fetch only for live games that still have unresolved methods
+  const allMethodsResolved = game.methodOperations.length > 0 
+    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
+  const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
   const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(

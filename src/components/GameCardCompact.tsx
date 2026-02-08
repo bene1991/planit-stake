@@ -51,8 +51,11 @@ export function GameCardCompact({
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
-  // Fetch cached stats and momentum for this fixture
-  const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id);
+  // Fetch cached stats: stop auto-fetch when all methods are resolved (Green/Red)
+  const allMethodsResolved = game.methodOperations.length > 0 
+    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
+  const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
+  const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id, isLiveForFetch);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(
     game.api_fixture_id ? Number(game.api_fixture_id) : undefined,
