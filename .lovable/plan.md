@@ -1,74 +1,65 @@
 
 
-## Corrigir Calculo LAY - Valor de Entrada = Responsabilidade
+## Voz "Jogo Comecando Agora" com Web Speech API
 
-### Problema
+### O que sera feito
 
-O sistema trata o "Valor de Entrada" como **stake** nas operacoes LAY, mas na verdade ele representa a **responsabilidade** (liability). Isso gera valores de lucro e prejuizo incorretos.
+Quando um jogo mudar para status **Live** (minuto 0), o navegador vai falar **"Jogo comecando agora!"** usando a voz nativa do dispositivo. Sem API externa, sem custo, funciona offline.
 
-**Calculo atual (ERRADO):**
-- Green: `stakeValue * (1 - comissao)` = 100 * 0.955 = R$ 95,50
-- Red: `-stakeValue * (odd - 1)` = -100 * 14 = -R$ 1.400,00
+### Arquivos a modificar
 
-**Calculo correto:**
-- StakeLay = Responsabilidade / (Odd - 1) = 100 / 14 = 7,14
-- Green: StakeLay * (1 - comissao) = 7,14 * 0.955 = R$ 6,82
-- Red: -Responsabilidade = -R$ 100,00
+**1. `src/utils/soundManager.ts`** - Adicionar funcao `playGameStartVoice()`
+- Usa `window.speechSynthesis.speak()` com lingua `pt-BR`
+- Debounce de 30 segundos para evitar repeticoes
+- Volume e velocidade configuraveis
+- Tenta selecionar voz em portugues automaticamente
 
-### Arquivos Afetados
+**2. `src/hooks/useNotifications.ts`** - Adicionar campo `voiceAlerts` nas preferencias
+- Novo booleano no `NotificationPreferences` (default: `true`)
+- Adicionado ao `DEFAULT_PREFERENCES`
 
-A mesma formula incorreta esta replicada em **3 arquivos**:
+**3. `src/components/NotificationCenter.tsx`** - Chamar voz ao detectar jogo Live
+- No bloco existente onde `previousGame.status !== 'Live' && game.status === 'Live'` (linha ~208), chamar `playGameStartVoice()` se `preferences.voiceAlerts` estiver ativo
 
-1. `src/utils/profitCalculator.ts` - Calculadora principal (usada em GameMethodEditor, GameCard, DailyPlanning, MonthlyReport)
-2. `src/utils/exportToPDF.ts` - Calculo local para exportacao PDF
-3. `src/utils/exportToExcel.ts` - Calculo local para exportacao Excel
+**4. `src/components/NotificationSettings.tsx`** - Adicionar toggle e botao de teste
+- Switch "Voz de inicio de jogo" na secao de Alertas de Jogos
+- Botao "Testar voz" para ouvir o resultado antes de um jogo real
 
-### Plano de Correcao
+### Detalhes tecnicos
 
-**1. `src/utils/profitCalculator.ts`** - Corrigir ambas as funcoes:
+Nova funcao em `soundManager.ts`:
 
-`calculateProfit` (Lay):
-```
-// Green: stakeLay = responsabilidade / (odd - 1), lucro = stakeLay * (1 - comissao)
-Green: (stakeValue / (odd - 1)) * (1 - commissionRate)
+```text
+let lastVoiceTime = 0;
+const VOICE_DEBOUNCE = 30000; // 30s
 
-// Red: perde a responsabilidade inteira
-Red: -stakeValue
-```
-
-`calculatePotentialProfit` (Lay):
-```
-green: (stakeValue / (odd - 1)) * (1 - commissionRate)
-red: -stakeValue
-```
-
-Adicionar validacao: bloquear se `odd <= 1.01`.
-
-**2. `src/utils/exportToPDF.ts`** - Mesma correcao na funcao `calculateProfitForPDF` (linhas 76-81)
-
-**3. `src/utils/exportToExcel.ts`** - Mesma correcao na funcao `calculateProfit` local (linhas 67-71)
-
-### Validacao com Exemplo
-
-Entrada: Odd = 15, Responsabilidade = 100
-
-| | Antes (errado) | Depois (correto) |
-|---|---|---|
-| StakeLay | N/A | 7,14 |
-| Green | R$ 95,50 | R$ 6,82 |
-| Red | -R$ 1.400,00 | -R$ 100,00 |
-| Comissao | R$ 4,50 | R$ 0,32 |
-
-### Secao Tecnica
-
-As formulas corrigidas para LAY:
-
-```
-stakeLay = stakeValue / (odd - 1)
-green = stakeLay * (1 - commissionRate)
-red = -stakeValue
+playGameStartVoice():
+  1. Verifica se window.speechSynthesis existe
+  2. Verifica debounce (30s desde ultima execucao)
+  3. Cria SpeechSynthesisUtterance("Jogo comecando agora!")
+  4. Define lang = "pt-BR", rate = 1.0, volume = 1.0
+  5. Busca voz pt-BR na lista de vozes disponiveis
+  6. Executa speechSynthesis.speak(utterance)
 ```
 
-Onde `stakeValue` = responsabilidade informada pelo usuario.
+Integracao no NotificationCenter (linha ~208-220):
 
-Nenhuma mudanca em componentes de UI e necessaria - todos ja chamam as funcoes centralizadas (exceto os 2 arquivos de export que tem copias locais).
+```text
+// Game went Live
+if (preferences.gameLive && previousGame.status !== 'Live' && game.status === 'Live') {
+  // ... notificacao existente ...
+  
+  // NOVO: Voz de inicio
+  if (preferences.voiceAlerts) {
+    playGameStartVoice();
+  }
+}
+```
+
+### Vantagens
+
+- Zero custo (API nativa do navegador)
+- Zero configuracao (sem API key)
+- Funciona offline
+- Toggle independente para ativar/desativar
+
