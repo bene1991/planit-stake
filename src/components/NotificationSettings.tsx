@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/hooks/useNotifications';
 import { toast } from 'sonner';
-import { testSound, NotificationSoundType } from '@/utils/soundManager';
+import { testSound, NotificationSoundType, testGameStartVoice } from '@/utils/soundManager';
 import { supabase } from '@/integrations/supabase/client';
 
 export const NotificationSettings = () => {
@@ -266,6 +266,37 @@ export const NotificationSettings = () => {
               onCheckedChange={(checked) => updatePreferences({ gameLive: checked })}
               disabled={!preferences.enabled}
             />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="voiceAlerts" className="text-sm">
+                🗣️ Voz de início de jogo
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Fala "Jogo começando agora!" quando o jogo inicia
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  testGameStartVoice();
+                  toast.info('Testando voz...');
+                }}
+                disabled={!preferences.enabled || !preferences.voiceAlerts}
+                className="text-xs h-7 px-2"
+              >
+                Testar
+              </Button>
+              <Switch
+                id="voiceAlerts"
+                checked={preferences.voiceAlerts}
+                onCheckedChange={(checked) => updatePreferences({ voiceAlerts: checked })}
+                disabled={!preferences.enabled}
+              />
+            </div>
           </div>
 
           <div className="flex items-center justify-between">

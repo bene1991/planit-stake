@@ -11,7 +11,7 @@ import {
   getPendingOperationsCount,
   formatGameName,
 } from '@/utils/notificationHelpers';
-import { playNotificationSound, NotificationSoundType } from '@/utils/soundManager';
+import { playNotificationSound, NotificationSoundType, playGameStartVoice } from '@/utils/soundManager';
 import { sendTelegramNotification } from '@/utils/telegramNotification';
 import { getNowInBrasilia } from '@/utils/timezone';
 
@@ -216,6 +216,11 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
               { label: 'Acompanhar', onClick: () => navigate('/daily-planning') }
             );
             markAsShown(notifId);
+
+            // Voice announcement
+            if (preferences.voiceAlerts) {
+              playGameStartVoice();
+            }
           }
         }
 

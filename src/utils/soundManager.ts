@@ -140,3 +140,62 @@ export const previewGoalSound = (soundId: GoalSoundOption): void => {
     console.warn('Error previewing goal sound:', error);
   }
 };
+
+// === Web Speech API - Voz "Jogo começando agora!" ===
+let lastVoiceTime = 0;
+const VOICE_DEBOUNCE = 30000; // 30s
+
+export const playGameStartVoice = (): void => {
+  if (!('speechSynthesis' in window)) {
+    console.warn('[SoundManager] SpeechSynthesis not supported');
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastVoiceTime < VOICE_DEBOUNCE) {
+    console.log('[SoundManager] Debouncing voice (too soon)');
+    return;
+  }
+  lastVoiceTime = now;
+
+  try {
+    window.speechSynthesis.cancel(); // Cancel any pending speech
+    const utterance = new SpeechSynthesisUtterance('Jogo começando agora!');
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.0;
+    utterance.volume = 1.0;
+
+    // Try to find a pt-BR voice
+    const voices = window.speechSynthesis.getVoices();
+    const ptVoice = voices.find(v => v.lang.startsWith('pt'));
+    if (ptVoice) {
+      utterance.voice = ptVoice;
+    }
+
+    console.log('[SoundManager] Speaking: "Jogo começando agora!"');
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.warn('[SoundManager] Error with speech synthesis:', error);
+  }
+};
+
+// Preview voice without debounce (for testing)
+export const testGameStartVoice = (): void => {
+  if (!('speechSynthesis' in window)) {
+    console.warn('[SoundManager] SpeechSynthesis not supported');
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance('Jogo começando agora!');
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.0;
+    utterance.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const ptVoice = voices.find(v => v.lang.startsWith('pt'));
+    if (ptVoice) utterance.voice = ptVoice;
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.warn('[SoundManager] Error testing voice:', error);
+  }
+};
