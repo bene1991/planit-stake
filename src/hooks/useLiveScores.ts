@@ -79,6 +79,12 @@ export function useLiveScores(
   // Stable ref for fetchLiveScores to avoid useEffect dependency issues
   const fetchLiveScoresRef = useRef<(() => Promise<void>) | null>(null);
   
+  // Stable refs for callbacks - prevents fetchLiveScores from being recreated when callbacks change
+  const onGoalDetectedRef = useRef(onGoalDetected);
+  useEffect(() => { onGoalDetectedRef.current = onGoalDetected; }, [onGoalDetected]);
+  const onScorePersistedRef = useRef(onScorePersisted);
+  useEffect(() => { onScorePersistedRef.current = onScorePersisted; }, [onScorePersisted]);
+  
   // Get list of fixture IDs to monitor (live + pending)
   const fixtureIds = useMemo(() => {
     return games
@@ -167,7 +173,7 @@ export function useLiveScores(
           const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
           
           // GOAL DETECTION: Compare with previous snapshot BEFORE updating
-          if (game && onGoalDetected) {
+          if (game && onGoalDetectedRef.current) {
             const previousScore = previousScoresRef.current.get(fixtureId);
             if (previousScore) {
               // Detect home goal - with dedup key to prevent double notifications
@@ -176,7 +182,7 @@ export function useLiveScores(
                 if (!notifiedGoalsRef.current.has(goalKey)) {
                   notifiedGoalsRef.current.add(goalKey);
                   console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${game.homeTeam} scores! ${homeGoals}-${awayGoals}`);
-                  onGoalDetected(game.id, 'home', homeGoals, awayGoals, game);
+                  onGoalDetectedRef.current(game.id, 'home', homeGoals, awayGoals, game);
                 }
               }
               // Detect away goal
@@ -185,7 +191,7 @@ export function useLiveScores(
                 if (!notifiedGoalsRef.current.has(goalKey)) {
                   notifiedGoalsRef.current.add(goalKey);
                   console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${game.awayTeam} scores! ${homeGoals}-${awayGoals}`);
-                  onGoalDetected(game.id, 'away', homeGoals, awayGoals, game);
+                  onGoalDetectedRef.current(game.id, 'away', homeGoals, awayGoals, game);
                 }
               }
             }
@@ -235,7 +241,7 @@ export function useLiveScores(
                   } else {
                     console.log(`[useLiveScores] Score persisted for game ${game.id}`);
                     // Notify parent to update local state
-                    onScorePersisted?.(game.id, homeGoals, awayGoals);
+                    onScorePersistedRef.current?.(game.id, homeGoals, awayGoals);
                   }
                 });
             }
@@ -340,7 +346,7 @@ export function useLiveScores(
                 persistedScoresRef.current.delete(game.id);
               } else {
                 console.log(`[useLiveScores] Backfill: Score persisted for ${game.id}`);
-                onScorePersisted?.(game.id, homeGoals, awayGoals);
+                onScorePersistedRef.current?.(game.id, homeGoals, awayGoals);
               }
             }
           } catch (err) {
@@ -362,7 +368,7 @@ export function useLiveScores(
       setLoading(false);
       isFetchingRef.current = false;
     }
-  }, [hasGamesToMonitor, fixtureIds, gamesNeedingBackfill, onGoalDetected, onScorePersisted]);
+  }, [hasGamesToMonitor, fixtureIds, gamesNeedingBackfill]);
   
   // Get score for a specific game
   const getScoreForGame = useCallback((game: Game): LiveScore | null => {
