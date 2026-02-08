@@ -1,65 +1,54 @@
 
 
-## Voz "Jogo Comecando Agora" com Web Speech API
+## Parar Requisicoes para Jogos ja Sinalizados (Green/Red)
 
-### O que sera feito
+### Problema
 
-Quando um jogo mudar para status **Live** (minuto 0), o navegador vai falar **"Jogo comecando agora!"** usando a voz nativa do dispositivo. Sem API externa, sem custo, funciona offline.
+Jogos ao vivo que ja foram sinalizados com resultado (Green ou Red) em todos os metodos continuam fazendo requisicoes a API a cada 120 segundos ate o jogo terminar. Isso desperdia creditos de API desnecessariamente.
+
+### Solucao
+
+Adicionar uma verificacao: se **todos** os metodos do jogo ja tiverem resultado (Green ou Red), desativar o auto-fetch do fixture cache. O jogo ainda mostrara o placar ao vivo (via `useLiveScores` global que ja roda), mas nao buscara mais estatisticas detalhadas (posse, chutes, dominancia, momentum).
 
 ### Arquivos a modificar
 
-**1. `src/utils/soundManager.ts`** - Adicionar funcao `playGameStartVoice()`
-- Usa `window.speechSynthesis.speak()` com lingua `pt-BR`
-- Debounce de 30 segundos para evitar repeticoes
-- Volume e velocidade configuraveis
-- Tenta selecionar voz em portugues automaticamente
-
-**2. `src/hooks/useNotifications.ts`** - Adicionar campo `voiceAlerts` nas preferencias
-- Novo booleano no `NotificationPreferences` (default: `true`)
-- Adicionado ao `DEFAULT_PREFERENCES`
-
-**3. `src/components/NotificationCenter.tsx`** - Chamar voz ao detectar jogo Live
-- No bloco existente onde `previousGame.status !== 'Live' && game.status === 'Live'` (linha ~208), chamar `playGameStartVoice()` se `preferences.voiceAlerts` estiver ativo
-
-**4. `src/components/NotificationSettings.tsx`** - Adicionar toggle e botao de teste
-- Switch "Voz de inicio de jogo" na secao de Alertas de Jogos
-- Botao "Testar voz" para ouvir o resultado antes de um jogo real
-
-### Detalhes tecnicos
-
-Nova funcao em `soundManager.ts`:
+**1. `src/components/GameListItem.tsx`** (linha 72)
+- Verificar se todos os `methodOperations` ja tem resultado
+- Se todos tiverem resultado, desativar `autoFetch`
 
 ```text
-let lastVoiceTime = 0;
-const VOICE_DEBOUNCE = 30000; // 30s
+Antes:
+  const isLiveForFetch = game.status === 'Live' || game.status === 'Pending';
 
-playGameStartVoice():
-  1. Verifica se window.speechSynthesis existe
-  2. Verifica debounce (30s desde ultima execucao)
-  3. Cria SpeechSynthesisUtterance("Jogo comecando agora!")
-  4. Define lang = "pt-BR", rate = 1.0, volume = 1.0
-  5. Busca voz pt-BR na lista de vozes disponiveis
-  6. Executa speechSynthesis.speak(utterance)
+Depois:
+  const allMethodsResolved = game.methodOperations.length > 0 
+    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
+  const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
 ```
 
-Integracao no NotificationCenter (linha ~208-220):
+**2. `src/components/GameCardCompact.tsx`** (linha 55)
+- Mesma logica: verificar se todos os metodos ja tem resultado
+- Passar `autoFetch` como segundo parametro do `useFixtureCache`
 
 ```text
-// Game went Live
-if (preferences.gameLive && previousGame.status !== 'Live' && game.status === 'Live') {
-  // ... notificacao existente ...
-  
-  // NOVO: Voz de inicio
-  if (preferences.voiceAlerts) {
-    playGameStartVoice();
-  }
-}
+Antes:
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id);
+
+Depois:
+  const allMethodsResolved = game.methodOperations.length > 0
+    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
+  const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch);
 ```
 
-### Vantagens
+### O que continua funcionando
 
-- Zero custo (API nativa do navegador)
-- Zero configuracao (sem API key)
-- Funciona offline
-- Toggle independente para ativar/desativar
+- O **placar ao vivo** continua atualizando (vem do `useLiveScores` global, nao do fixture cache)
+- O **cronometro local** continua contando
+- As **notificacoes de gol** continuam funcionando
+- Se o usuario **remover** o resultado (ex: desfazer Green), o fetch volta automaticamente
+
+### Economia estimada
+
+Cada jogo sinalizado deixa de fazer ~1 requisicao a cada 120 segundos. Em 90 minutos de jogo, sao ~45 requisicoes economizadas por jogo. Com 10 jogos sinalizados, sao ~450 requisicoes salvas por dia.
 
