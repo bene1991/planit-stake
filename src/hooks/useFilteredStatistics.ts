@@ -140,7 +140,15 @@ export const useFilteredStatistics = (
     const filteredGames = games.filter((game) => {
       // Must have completed operations
       if (game.methodOperations.length === 0) return false;
-      if (!game.methodOperations.every((op) => op.result)) return false;
+      
+      // Operation-aware filtering: when filtering by method, only require THOSE operations to have results
+      if (filters.selectedMethods.length > 0) {
+        const relevantOps = game.methodOperations.filter(op => filters.selectedMethods.includes(op.methodId));
+        if (relevantOps.length === 0) return false;
+        if (!relevantOps.some(op => op.result)) return false;
+      } else {
+        if (!game.methodOperations.every((op) => op.result)) return false;
+      }
 
       // Date filter - use T12:00:00 to avoid timezone shift
       if (filters.dateFrom && filters.dateTo) {
