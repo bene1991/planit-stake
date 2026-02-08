@@ -532,13 +532,14 @@ export default function DailyPlanning() {
         }, 0);
         const todayProfit = todayProfitMoney / stakeReference;
         
-        if (todayTotal === 0 && todayGames.length === 0) return null;
-        
         return (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card className="p-3 text-center">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Lucro Hoje</p>
-              <p className={cn("text-lg font-bold", todayProfit >= 0 ? "text-emerald-500" : "text-red-500")}>
+              <p className={cn("text-lg font-bold", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
+                {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+              <p className={cn("text-[10px]", todayProfit >= 0 ? "text-emerald-500/70" : "text-red-500/70")}>
                 {todayProfit >= 0 ? '+' : ''}{todayProfit.toFixed(2)} st
               </p>
             </Card>
@@ -550,6 +551,11 @@ export default function DailyPlanning() {
             <Card className="p-3 text-center">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate</p>
               <p className="text-lg font-bold">{todayWinRate}%</p>
+            </Card>
+            <Card className="p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Jogos Hoje</p>
+              <p className="text-lg font-bold">{todayGames.length}</p>
+              <p className="text-[10px] text-muted-foreground">{todayGames.filter(g => g.status === 'Live').length} ao vivo</p>
             </Card>
           </div>
         );
