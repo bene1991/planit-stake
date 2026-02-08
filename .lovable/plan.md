@@ -1,45 +1,74 @@
 
-## Corrigir Som de Gol Duplicado - Causa Raiz Real
+
+## Corrigir Calculo LAY - Valor de Entrada = Responsabilidade
 
 ### Problema
 
-O useEffect que controla o polling (linha 373-427 do `useLiveScores.ts`) tem `games` no array de dependencias. Quando um gol e detectado:
+O sistema trata o "Valor de Entrada" como **stake** nas operacoes LAY, mas na verdade ele representa a **responsabilidade** (liability). Isso gera valores de lucro e prejuizo incorretos.
 
-1. `handleGoalDetected` -> `playGoalSound()` (1o som)
-2. Score e persistido no banco -> `onScorePersisted` -> `games` array atualiza
-3. `games` mudou -> useEffect re-executa -> chama `fetchLiveScoresRef.current?.()` imediatamente (linha 412)
-4. A nova chamada pode passar pelo throttle de 10s se houver tempo suficiente, e detecta o "mesmo gol" novamente
+**Calculo atual (ERRADO):**
+- Green: `stakeValue * (1 - comissao)` = 100 * 0.955 = R$ 95,50
+- Red: `-stakeValue * (odd - 1)` = -100 * 14 = -R$ 1.400,00
 
-O `notifiedGoalsRef` deveria bloquear, mas como `fetchLiveScores` e recriado com cada render (tem `games` nas deps do useCallback), e o timing entre chamadas pode ser imprevisivel, ha uma janela para duplicacao.
+**Calculo correto:**
+- StakeLay = Responsabilidade / (Odd - 1) = 100 / 14 = 7,14
+- Green: StakeLay * (1 - comissao) = 7,14 * 0.955 = R$ 6,82
+- Red: -Responsabilidade = -R$ 100,00
 
-### Solucao
+### Arquivos Afetados
 
-**Arquivo: `src/hooks/useLiveScores.ts`**
+A mesma formula incorreta esta replicada em **3 arquivos**:
 
-1. **Remover `games` das dependencias do useEffect de polling** - Substituir pela variavel `hasLiveGames` memoizada. O `games` so era usado para verificar se havia jogos ao vivo (`games.some(g => g.status === 'Live')`). Isso pode ser extraido para um `useMemo`.
+1. `src/utils/profitCalculator.ts` - Calculadora principal (usada em GameMethodEditor, GameCard, DailyPlanning, MonthlyReport)
+2. `src/utils/exportToPDF.ts` - Calculo local para exportacao PDF
+3. `src/utils/exportToExcel.ts` - Calculo local para exportacao Excel
 
-2. **Remover `games` das dependencias do `fetchLiveScores` useCallback** - O `games` dentro do callback pode ser acessado via ref para evitar que o callback seja recriado a cada mudanca do array. Isso previne cascatas de re-render que causam chamadas duplicadas.
+### Plano de Correcao
 
-### Detalhes Tecnicos
+**1. `src/utils/profitCalculator.ts`** - Corrigir ambas as funcoes:
 
-Mudancas em `src/hooks/useLiveScores.ts`:
-
-1. Adicionar `useMemo` para `hasLiveGames`:
+`calculateProfit` (Lay):
 ```
-const hasLiveGames = useMemo(() => games.some(g => g.status === 'Live'), [games]);
-```
+// Green: stakeLay = responsabilidade / (odd - 1), lucro = stakeLay * (1 - comissao)
+Green: (stakeValue / (odd - 1)) * (1 - commissionRate)
 
-2. Adicionar `useRef` para `games` (para usar dentro do callback sem depender dele):
-```
-const gamesRef = useRef(games);
-useEffect(() => { gamesRef.current = games; }, [games]);
-```
-
-3. No `fetchLiveScores` useCallback, usar `gamesRef.current` em vez de `games` diretamente, e remover `games` das deps do useCallback
-
-4. No useEffect de polling (linha 373), substituir `games` por `hasLiveGames`:
-```
-}, [hasGamesToMonitor, fixtureIds.length, hasLiveGames, isPageVisible, activeIntervalMs]);
+// Red: perde a responsabilidade inteira
+Red: -stakeValue
 ```
 
-Isso quebra o ciclo: gol detectado -> score persistido -> games atualiza -> MAS o useEffect de polling NAO re-executa (porque `hasLiveGames`, `hasGamesToMonitor` e `fixtureIds.length` nao mudaram). O som toca apenas 1 vez.
+`calculatePotentialProfit` (Lay):
+```
+green: (stakeValue / (odd - 1)) * (1 - commissionRate)
+red: -stakeValue
+```
+
+Adicionar validacao: bloquear se `odd <= 1.01`.
+
+**2. `src/utils/exportToPDF.ts`** - Mesma correcao na funcao `calculateProfitForPDF` (linhas 76-81)
+
+**3. `src/utils/exportToExcel.ts`** - Mesma correcao na funcao `calculateProfit` local (linhas 67-71)
+
+### Validacao com Exemplo
+
+Entrada: Odd = 15, Responsabilidade = 100
+
+| | Antes (errado) | Depois (correto) |
+|---|---|---|
+| StakeLay | N/A | 7,14 |
+| Green | R$ 95,50 | R$ 6,82 |
+| Red | -R$ 1.400,00 | -R$ 100,00 |
+| Comissao | R$ 4,50 | R$ 0,32 |
+
+### Secao Tecnica
+
+As formulas corrigidas para LAY:
+
+```
+stakeLay = stakeValue / (odd - 1)
+green = stakeLay * (1 - commissionRate)
+red = -stakeValue
+```
+
+Onde `stakeValue` = responsabilidade informada pelo usuario.
+
+Nenhuma mudanca em componentes de UI e necessaria - todos ja chamam as funcoes centralizadas (exceto os 2 arquivos de export que tem copias locais).
