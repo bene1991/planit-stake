@@ -13,6 +13,7 @@ export interface NotificationPreferences {
   winRateAlerts: boolean;      // Critical win rate
   streakAlerts: boolean;       // Green/red streaks
   roiAlerts: boolean;          // Profit/loss alerts
+  voiceAlerts: boolean;        // Voice announcement on game start
 }
 
 export interface NotificationState {
@@ -39,6 +40,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   winRateAlerts: true,
   streakAlerts: true,
   roiAlerts: true,
+  voiceAlerts: true,
 };
 
 const DEFAULT_STATE: NotificationState = {
