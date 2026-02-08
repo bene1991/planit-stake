@@ -53,7 +53,10 @@ Escanteios: ${corners || 'N/A'}`;
       }),
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
+      console.error("[analyze-live-moment] AI error:", response.status, responseText.substring(0, 200));
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited", text: null }), {
           status: 429,
@@ -66,15 +69,22 @@ Escanteios: ${corners || 'N/A'}`;
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const t = await response.text();
-      console.error("[analyze-live-moment] AI error:", response.status, t);
       return new Response(JSON.stringify({ error: "AI error", text: null }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const data = await response.json();
+    let data: any;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error("[analyze-live-moment] Non-JSON response:", responseText.substring(0, 200));
+      return new Response(JSON.stringify({ error: "Invalid AI response", text: null }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     let text = data.choices?.[0]?.message?.content?.trim() || null;
 
     // Enforce 120 char limit
