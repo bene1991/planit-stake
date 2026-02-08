@@ -1,100 +1,64 @@
 
 
-## Botao Pausar/Retomar Requisicoes na Pagina de Planejamento
+## Corrigir Resumo do Dia - Mostrar Dados Reais
 
-### O que sera feito
+### Problema
 
-Adicionar um botao toggle na barra de acoes da pagina de Planejamento que permite **pausar todas as requisicoes de API** (live scores + fixture cache) e **retomar** quando desejar. Ideal para momentos em que voce quer economizar creditos manualmente.
+O resumo do dia esta filtrando apenas jogos com `date === todayDate` (2026-02-08), mas voce nao tem jogos cadastrados para hoje. Por isso todos os cards mostram zero. O resumo precisa mostrar os dados do dia **E** um resumo geral.
 
-### Como funciona
+### Solucao
 
-1. Ao clicar em **Pausar**, todas as requisicoes param imediatamente (live scores e fixture cache)
-2. O botao muda para **Retomar** com visual destacado (vermelho/amarelo)
-3. Ao clicar em **Retomar**, o polling volta com o intervalo configurado
-4. O estado persiste no `localStorage` para nao perder ao recarregar a pagina
-5. Um indicador visual mostra que as requisicoes estao pausadas
+Mudar a logica do resumo para mostrar **duas linhas de informacao**:
 
-### Arquivos a modificar
+1. **Resumo Geral** (todos os jogos) - sempre visivel com os totais acumulados
+2. **Resumo do Dia** (jogos de hoje) - mostra os dados do dia atual quando houver jogos hoje
 
-**1. Novo hook `src/hooks/useApiPause.ts`**
-- Estado booleano `isPaused` salvo no `localStorage` (chave `apiPaused`)
-- Funcoes `pause()`, `resume()`, `toggle()`
-- Exporta o estado para ser consumido por `useLiveScores` e `useFixtureCache`
+### Arquivo a modificar
 
-**2. `src/hooks/useLiveScores.ts`** (linhas 386-438)
-- Receber novo parametro `paused?: boolean`
-- Quando `paused === true`, nao iniciar o interval de polling e limpar o existente
-- Ao retomar (`paused` volta para `false`), reiniciar o polling normalmente
+**`src/pages/DailyPlanning.tsx`** (linhas 512-562)
 
-**3. `src/hooks/useFixtureCache.ts`** (linhas 96-109)
-- Receber novo parametro opcional `globalPaused?: boolean` (terceiro parametro)
-- Quando `globalPaused === true`, nao disparar auto-refresh nem fetch inicial
-- Ao retomar, voltar a buscar dados
+Substituir o bloco do "Resumo do Dia" para:
 
-**4. `src/pages/DailyPlanning.tsx`** (linhas 573-593)
-- Importar e usar `useApiPause()`
-- Passar `isPaused` para `useLiveScores`
-- Adicionar botao Pausar/Retomar na barra de acoes (ao lado do botao Atualizar)
-- Mostrar banner informativo quando pausado
+- Calcular stats de **todos os jogos** (greens totais, reds totais, lucro total, win rate geral)
+- Calcular stats de **hoje** separadamente
+- Mostrar 4 cards com dados gerais acumulados
+- Se houver jogos hoje, mostrar uma linha adicional com o resumo do dia
 
-**5. `src/components/GameListItem.tsx` e `src/components/GameCardCompact.tsx`**
-- Receber prop `globalPaused` e passar para `useFixtureCache`
-
-### Detalhes Tecnicos
-
-**Novo hook `useApiPause`:**
+### Logica dos cards
 
 ```text
-useApiPause():
-  - isPaused: boolean (lido do localStorage 'apiPaused', default false)
-  - toggle(): alterna isPaused e salva no localStorage
-  - pause(): define isPaused = true
-  - resume(): define isPaused = false
+Card 1 - Lucro Total:
+  - Soma de profit de TODAS as operacoes com resultado
+  - Mostra em R$ e em Stakes
+
+Card 2 - Operacoes Totais:
+  - Total de greens e reds de todos os jogos
+  - Formato: "289G / 293R"
+
+Card 3 - Win Rate Geral:
+  - (greens / total) * 100
+  - Mostra porcentagem
+
+Card 4 - Jogos Hoje:
+  - Quantidade de jogos com date === todayDate
+  - Quantos estao ao vivo
+  - Se houver resultados hoje, mostra lucro do dia abaixo
 ```
 
-**Modificacao no `useLiveScores`:**
+### Detalhes tecnicos
+
+A mudanca principal e na linha 514, trocar:
 
 ```text
-// Linha 386-397 - adicionar verificacao de pausa
-if (!isPageVisible || paused) {
-  console.log('[useLiveScores] PAUSED by user - stopping API polling');
-  return;
-}
+// ANTES: filtra so hoje (fica zerado se nao tem jogos hoje)
+const todayGames = games.filter(g => g.date === todayDate);
+const todayOps = todayGames.flatMap(...)
+
+// DEPOIS: usa TODOS os jogos para os totais
+const allOps = games.flatMap(g => g.methodOperations).filter(op => op.result);
+const allGreens = allOps.filter(op => op.result === 'Green').length;
+// ... e calcula today separadamente para o card de "Jogos Hoje"
+const todayGames = games.filter(g => g.date === todayDate);
 ```
 
-**Botao na UI (ao lado de Atualizar):**
-
-```text
-Quando ativo (nao pausado):
-  [Pause icon] "Pausar API" - botao outline normal
-
-Quando pausado:
-  [Play icon] "Retomar API" - botao com fundo amarelo/vermelho pulsante
-  + Banner: "Requisicoes pausadas - placares e estatisticas nao estao atualizando"
-```
-
-### Fluxo Visual
-
-```text
-Estado Normal:
-  [Exportar] [Atualizar] [Pausar API] [Buscar Jogos]
-  Ultima atualizacao: 14:30:25 - proxima em 18s
-
-Estado Pausado:
-  [Exportar] [Atualizar (desabilitado)] [► Retomar API (pulsando)] [Buscar Jogos]
-  ⚠️ Requisicoes pausadas - clique em Retomar para voltar a atualizar
-```
-
-### O que para quando pausado
-
-- Polling de placares ao vivo (`useLiveScores`)
-- Fetch de estatisticas detalhadas (`useFixtureCache`)
-- Auto-refresh do `useAutoRefresh`
-
-### O que continua funcionando quando pausado
-
-- Cronometro local dos jogos (conta baseado no horario do jogo)
-- Todos os dados ja carregados continuam visiveis
-- Botoes de Green/Red continuam funcionando
-- Navegacao normal entre paginas
-
+Os cards 1-3 usarao dados de `allOps` (acumulado geral) e o card 4 mostrara dados de `todayGames` (dia atual).
