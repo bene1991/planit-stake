@@ -246,11 +246,12 @@ export const useFilteredStatistics = (
               } else {
                 profitReais -= op.stakeValue;
               }
-            } else { // Lay
+            } else { // Lay - stakeValue = responsabilidade
               if (op.result === 'Green') {
-                profitReais += op.stakeValue * (1 - commissionRate);
+                const stakeLay = op.stakeValue / (op.odd - 1);
+                profitReais += stakeLay * (1 - commissionRate);
               } else {
-                profitReais -= op.stakeValue * (op.odd - 1);
+                profitReais -= op.stakeValue;
               }
             }
           }
@@ -466,11 +467,12 @@ export const useFilteredStatistics = (
             } else {
               profitReais = -op.stakeValue;
             }
-          } else { // Lay
+          } else { // Lay - stakeValue = responsabilidade
             if (op.result === 'Green') {
-              profitReais = op.stakeValue * (1 - commissionRate);
+              const stakeLay = op.stakeValue / (op.odd - 1);
+              profitReais = stakeLay * (1 - commissionRate);
             } else {
-              profitReais = -op.stakeValue * (op.odd - 1);
+              profitReais = -op.stakeValue;
             }
           }
         }
@@ -604,11 +606,12 @@ export const useFilteredStatistics = (
             } else {
               profitReais = -op.stakeValue;
             }
-          } else { // Lay
+          } else { // Lay - stakeValue = responsabilidade
             if (op.result === 'Green') {
-              profitReais = op.stakeValue * (1 - commissionRate);
+              const stakeLay = op.stakeValue / (op.odd - 1);
+              profitReais = stakeLay * (1 - commissionRate);
             } else {
-              profitReais = -op.stakeValue * (op.odd - 1);
+              profitReais = -op.stakeValue;
             }
           }
         }
