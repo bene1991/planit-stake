@@ -5,6 +5,7 @@ import { useLiveScores, GoalDetectedCallback } from "@/hooks/useLiveScores";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import { useOperationalSettings } from "@/hooks/useOperationalSettings";
 import { useGoalSoundTrigger } from "@/hooks/useGoalSoundTrigger";
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
@@ -25,6 +26,7 @@ import { ApiGameBrowser, SelectedGame } from "@/components/ApiGameBrowser";
 import { ApiRequestIndicator } from "@/components/ApiRequestIndicator";
 import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
+import { calculateProfit } from "@/utils/profitCalculator";
 import { Badge } from "@/components/ui/badge";
 
 import { Card } from "@/components/ui/card";
@@ -41,6 +43,9 @@ export default function DailyPlanning() {
   const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
   const { intervalMs } = useRefreshInterval();
+  const { settings: opSettings } = useOperationalSettings();
+  const stakeReference = opSettings.stakeValueReais || 25;
+  
   
   // State for highlighting the last game with a goal
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
@@ -510,7 +515,20 @@ export default function DailyPlanning() {
         const todayReds = todayOps.filter(op => op.result === 'Red').length;
         const todayTotal = todayGreens + todayReds;
         const todayWinRate = todayTotal > 0 ? ((todayGreens / todayTotal) * 100).toFixed(1) : '0.0';
-        const todayProfit = todayOps.reduce((sum, op) => sum + (op.profit || 0), 0);
+        const todayProfitMoney = todayOps.reduce((sum, op) => {
+          if (op.profit != null) return sum + op.profit;
+          if (op.stakeValue && op.odd && op.operationType && op.result) {
+            return sum + calculateProfit({
+              stakeValue: op.stakeValue,
+              odd: op.odd,
+              operationType: op.operationType,
+              result: op.result,
+              commissionRate: 0.045
+            });
+          }
+          return sum;
+        }, 0);
+        const todayProfit = todayProfitMoney / stakeReference;
         
         if (todayTotal === 0 && todayGames.length === 0) return null;
         
