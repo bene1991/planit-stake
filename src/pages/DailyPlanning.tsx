@@ -509,35 +509,14 @@ export default function DailyPlanning() {
     <div className="space-y-4 pb-24 lg:pb-8">
       <DataMigration />
 
-      {/* Resumo Geral + Hoje */}
+      {/* Resumo do Dia */}
       {(() => {
-        // Stats acumuladas de TODOS os jogos
-        const allOps = games.flatMap(g => g.methodOperations).filter(op => op.result);
-        const allGreens = allOps.filter(op => op.result === 'Green').length;
-        const allReds = allOps.filter(op => op.result === 'Red').length;
-        const allTotal = allGreens + allReds;
-        const allWinRate = allTotal > 0 ? ((allGreens / allTotal) * 100).toFixed(1) : '0.0';
-        const allProfitMoney = allOps.reduce((sum, op) => {
-          if (op.profit != null) return sum + op.profit;
-          if (op.stakeValue && op.odd && op.operationType && op.result) {
-            return sum + calculateProfit({
-              stakeValue: op.stakeValue,
-              odd: op.odd,
-              operationType: op.operationType,
-              result: op.result,
-              commissionRate: 0.045
-            });
-          }
-          return sum;
-        }, 0);
-        const allProfitStakes = allProfitMoney / stakeReference;
-
-        // Stats de hoje separadamente
         const todayGames = games.filter(g => g.date === todayDate);
         const todayOps = todayGames.flatMap(g => g.methodOperations).filter(op => op.result);
         const todayGreens = todayOps.filter(op => op.result === 'Green').length;
         const todayReds = todayOps.filter(op => op.result === 'Red').length;
         const todayTotal = todayGreens + todayReds;
+        const todayWinRate = todayTotal > 0 ? ((todayGreens / todayTotal) * 100).toFixed(1) : '0.0';
         const todayProfitMoney = todayOps.reduce((sum, op) => {
           if (op.profit != null) return sum + op.profit;
           if (op.stakeValue && op.odd && op.operationType && op.result) {
@@ -551,28 +530,29 @@ export default function DailyPlanning() {
           }
           return sum;
         }, 0);
+        const todayProfitStakes = todayProfitMoney / stakeReference;
         const todayLive = todayGames.filter(g => g.status === 'Live').length;
 
         return (
           <div className="space-y-2">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Lucro Total</p>
-                <p className={cn("text-lg font-bold", allProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
-                  {allProfitMoney >= 0 ? '+' : ''}{allProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Lucro Hoje</p>
+                <p className={cn("text-lg font-bold", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
+                  {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </p>
-                <p className={cn("text-[10px]", allProfitStakes >= 0 ? "text-emerald-500/70" : "text-red-500/70")}>
-                  {allProfitStakes >= 0 ? '+' : ''}{allProfitStakes.toFixed(2)} st
+                <p className={cn("text-[10px]", todayProfitStakes >= 0 ? "text-emerald-500/70" : "text-red-500/70")}>
+                  {todayProfitStakes >= 0 ? '+' : ''}{todayProfitStakes.toFixed(2)} st
                 </p>
               </Card>
               <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Operações</p>
-                <p className="text-lg font-bold">{allTotal}</p>
-                <p className="text-[10px] text-muted-foreground">{allGreens}G / {allReds}R</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Operações Hoje</p>
+                <p className="text-lg font-bold">{todayTotal}</p>
+                <p className="text-[10px] text-muted-foreground">{todayGreens}G / {todayReds}R</p>
               </Card>
               <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate</p>
-                <p className="text-lg font-bold">{allWinRate}%</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate Hoje</p>
+                <p className="text-lg font-bold">{todayWinRate}%</p>
               </Card>
               <Card className="p-3 text-center">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Jogos Hoje</p>
@@ -580,11 +560,6 @@ export default function DailyPlanning() {
                 <p className="text-[10px] text-muted-foreground">
                   {todayLive > 0 ? `${todayLive} ao vivo` : 'Nenhum ao vivo'}
                 </p>
-                {todayTotal > 0 && (
-                  <p className={cn("text-[10px] mt-1", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
-                    Hoje: {todayGreens}G/{todayReds}R · {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  </p>
-                )}
               </Card>
             </div>
           </div>
