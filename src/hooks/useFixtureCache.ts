@@ -52,7 +52,7 @@ interface UseFixtureCacheResult {
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'INT'];
 
-export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true): UseFixtureCacheResult {
+export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true, globalPaused: boolean = false): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,16 +105,16 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
     fetchDetails();
   }, [fetchDetails]);
 
-  // Initial fetch (only if autoFetch is enabled)
+  // Initial fetch (only if autoFetch is enabled and not globally paused)
   useEffect(() => {
-    if (fixtureId && autoFetch) {
+    if (fixtureId && autoFetch && !globalPaused) {
       fetchDetails();
     }
-  }, [fixtureId, fetchDetails, autoFetch]);
+  }, [fixtureId, fetchDetails, autoFetch, globalPaused]);
 
   // Auto-refresh every 120s for live games (backend has 90s cache)
   useEffect(() => {
-    if (!fixtureId || !autoFetch) return;
+    if (!fixtureId || !autoFetch || globalPaused) return;
 
     const REFRESH_INTERVAL = 120_000;
     const interval = setInterval(() => {
@@ -125,7 +125,7 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
     }, REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [fixtureId, autoFetch, fetchDetails]);
+  }, [fixtureId, autoFetch, globalPaused, fetchDetails]);
 
   return { data, loading, error, refetch };
 }

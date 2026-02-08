@@ -12,11 +12,12 @@ import { updateGameStatuses } from "@/utils/gameStatus";
 import { playGoalSound } from "@/utils/soundManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useApiPause } from "@/hooks/useApiPause";
 
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2 } from "lucide-react";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Pause, Play } from "lucide-react";
 import { toast } from "sonner";
 import { GameListByLeague } from "@/components/GameListByLeague";
 import { GameStatusTabs, GameStatusFilter, GameSortOrder } from "@/components/GameStatusTabs";
@@ -45,6 +46,7 @@ export default function DailyPlanning() {
   const { intervalMs } = useRefreshInterval();
   const { settings: opSettings } = useOperationalSettings();
   const stakeReference = opSettings.stakeValueReais || 25;
+  const { isPaused, toggle: toggleApiPause } = useApiPause();
   
   
   // State for highlighting the last game with a goal
@@ -141,7 +143,7 @@ export default function DailyPlanning() {
     loading: scoresLoading,
     lastRefresh,
     scores: liveScores 
-  } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs);
+  } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs, isPaused);
   
   // Listen for goal sound triggers from Service Worker
   useGoalSoundTrigger();
@@ -485,10 +487,10 @@ export default function DailyPlanning() {
     return games.some(g => g.status === 'Live' || g.status === 'Pending');
   }, [games]);
   
-  // Auto-refresh based on user-configured interval when there are live/pending games
+  // Auto-refresh based on user-configured interval when there are live/pending games (respects pause)
   const { secondsUntilRefresh, isRefreshing } = useAutoRefresh(
     handleGlobalRefresh,
-    { intervalMs, enabled: hasActiveGames }
+    { intervalMs, enabled: hasActiveGames && !isPaused }
   );
 
   const getMethodName = (methodId: string) => {
@@ -581,10 +583,19 @@ export default function DailyPlanning() {
             size="sm" 
             onClick={handleGlobalRefresh} 
             className="h-8"
-            disabled={scoresLoading}
+            disabled={scoresLoading || isPaused}
           >
             <RefreshCw className={cn("h-3.5 w-3.5 sm:mr-2", scoresLoading && "animate-spin")} />
             <span className="hidden sm:inline">Atualizar</span>
+          </Button>
+          <Button 
+            variant={isPaused ? "destructive" : "outline"} 
+            size="sm" 
+            onClick={toggleApiPause} 
+            className={cn("h-8", isPaused && "animate-pulse")}
+          >
+            {isPaused ? <Play className="h-3.5 w-3.5 sm:mr-2" /> : <Pause className="h-3.5 w-3.5 sm:mr-2" />}
+            <span className="hidden sm:inline">{isPaused ? 'Retomar API' : 'Pausar API'}</span>
           </Button>
           <Button variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8">
             <Globe className="h-3.5 w-3.5 sm:mr-2" />
@@ -593,8 +604,16 @@ export default function DailyPlanning() {
         </div>
       </div>
 
+      {/* Pause Banner */}
+      {isPaused && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs font-medium">
+          <Pause className="h-3.5 w-3.5" />
+          Requisições pausadas — placares e estatísticas não estão atualizando
+        </div>
+      )}
+
       {/* Last Refresh Info */}
-      {lastRefresh && (
+      {lastRefresh && !isPaused && (
         <p className="text-[10px] text-muted-foreground">
           Última atualização: {format(lastRefresh, 'HH:mm:ss')}
           {hasActiveGames && (
@@ -673,6 +692,7 @@ export default function DailyPlanning() {
               lastGlobalRefresh={lastGlobalRefresh}
               sortOrder={gameSortOrder}
               highlightedGameId={highlightedGameId}
+              globalPaused={isPaused}
             />
           </div>
         )}

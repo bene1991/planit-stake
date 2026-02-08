@@ -52,7 +52,8 @@ export function useLiveScores(
   games: Game[], 
   onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void,
   onGoalDetected?: GoalDetectedCallback,
-  activeIntervalMs?: number
+  activeIntervalMs?: number,
+  paused?: boolean
 ): UseLiveScoresResult {
   const [scores, setScores] = useState<Map<string, LiveScore>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -390,9 +391,9 @@ export function useLiveScores(
       intervalRef.current = null;
     }
     
-    // If page is not visible, pause all API calls
-    if (!isPageVisible) {
-      console.log('[useLiveScores] Page hidden - PAUSING API polling to save credits');
+    // If page is not visible or manually paused, stop all API calls
+    if (!isPageVisible || paused) {
+      console.log(`[useLiveScores] ${paused ? 'PAUSED by user' : 'Page hidden'} - stopping API polling`);
       return;
     }
     
@@ -437,7 +438,7 @@ export function useLiveScores(
       };
     }
     // REMOVED: games from dependencies to prevent cascade: goal → persist → games update → re-fetch → duplicate
-  }, [hasGamesToMonitor, fixtureIds.length, hasLiveGames, isPageVisible, activeIntervalMs]);
+  }, [hasGamesToMonitor, fixtureIds.length, hasLiveGames, isPageVisible, activeIntervalMs, paused]);
   
   // Cleanup on unmount
   useEffect(() => {
