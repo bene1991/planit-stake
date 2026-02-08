@@ -9,25 +9,22 @@ interface ProfitParams {
 export const calculateProfit = (params: ProfitParams): number => {
   const { stakeValue, odd, operationType, result, commissionRate = 0.045 } = params;
   
-  if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1) {
+  if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1.01) {
     return 0;
   }
   
   if (operationType === 'Back') {
     if (result === 'Green') {
-      // Ganho: stake * (odd - 1), menos comissão
-      return stakeValue * (odd - 1) * (1 - commissionRate);
+      return +(stakeValue * (odd - 1) * (1 - commissionRate)).toFixed(2);
     } else {
-      // Perda total do stake
       return -stakeValue;
     }
-  } else { // Lay
+  } else { // Lay - stakeValue = responsabilidade
+    const stakeLay = stakeValue / (odd - 1);
     if (result === 'Green') {
-      // Ganho: stake (responsabilidade), menos comissão
-      return stakeValue * (1 - commissionRate);
+      return +(stakeLay * (1 - commissionRate)).toFixed(2);
     } else {
-      // Perda: stake * (odd - 1)
-      return -stakeValue * (odd - 1);
+      return -stakeValue;
     }
   }
 };
@@ -39,19 +36,20 @@ export const calculatePotentialProfit = (
   operationType: 'Back' | 'Lay',
   commissionRate: number = 0.045
 ): { green: number; red: number } => {
-  if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1) {
+  if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1.01) {
     return { green: 0, red: 0 };
   }
 
   if (operationType === 'Back') {
     return {
-      green: stakeValue * (odd - 1) * (1 - commissionRate),
+      green: +(stakeValue * (odd - 1) * (1 - commissionRate)).toFixed(2),
       red: -stakeValue
     };
-  } else { // Lay
+  } else { // Lay - stakeValue = responsabilidade
+    const stakeLay = stakeValue / (odd - 1);
     return {
-      green: stakeValue * (1 - commissionRate),
-      red: -stakeValue * (odd - 1)
+      green: +(stakeLay * (1 - commissionRate)).toFixed(2),
+      red: -stakeValue
     };
   }
 };

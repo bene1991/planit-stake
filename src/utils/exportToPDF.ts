@@ -73,11 +73,12 @@ const calculateProfitForPDF = (
     } else {
       return -stakeValue;
     }
-  } else { // Lay
+  } else { // Lay - stakeValue = responsabilidade
+    const stakeLay = stakeValue / (odd - 1);
     if (result === 'Green') {
-      return stakeValue * (1 - commissionRate);
+      return +(stakeLay * (1 - commissionRate)).toFixed(2);
     } else {
-      return -stakeValue * (odd - 1);
+      return -stakeValue;
     }
   }
 };
