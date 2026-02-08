@@ -1,64 +1,38 @@
 
 
-## Corrigir Resumo do Dia - Mostrar Dados Reais
+## Corrigir Resumo - Mostrar Apenas Dados do Dia
 
 ### Problema
 
-O resumo do dia esta filtrando apenas jogos com `date === todayDate` (2026-02-08), mas voce nao tem jogos cadastrados para hoje. Por isso todos os cards mostram zero. O resumo precisa mostrar os dados do dia **E** um resumo geral.
+Os cards de resumo estao mostrando dados acumulados de TODOS os jogos (582 operacoes, R$3,91 de lucro total). Na pagina de Planejamento Diario, o resumo deve mostrar apenas os dados **do dia selecionado**.
 
 ### Solucao
 
-Mudar a logica do resumo para mostrar **duas linhas de informacao**:
-
-1. **Resumo Geral** (todos os jogos) - sempre visivel com os totais acumulados
-2. **Resumo do Dia** (jogos de hoje) - mostra os dados do dia atual quando houver jogos hoje
+Substituir os calculos dos 4 cards para usar apenas `todayGames` (jogos filtrados pela data atual) em vez de `allOps` (todos os jogos).
 
 ### Arquivo a modificar
 
-**`src/pages/DailyPlanning.tsx`** (linhas 512-562)
+**`src/pages/DailyPlanning.tsx`** (linhas 513-590)
 
-Substituir o bloco do "Resumo do Dia" para:
-
-- Calcular stats de **todos os jogos** (greens totais, reds totais, lucro total, win rate geral)
-- Calcular stats de **hoje** separadamente
-- Mostrar 4 cards com dados gerais acumulados
-- Se houver jogos hoje, mostrar uma linha adicional com o resumo do dia
-
-### Logica dos cards
+Remover todo o calculo de `allOps`, `allGreens`, `allReds`, `allProfitMoney` etc. (linhas 514-533) e usar apenas os dados de `todayOps` nos 4 cards:
 
 ```text
-Card 1 - Lucro Total:
-  - Soma de profit de TODAS as operacoes com resultado
-  - Mostra em R$ e em Stakes
+Card 1 - Lucro Hoje:
+  todayProfitMoney em R$ e Stakes (dados apenas do dia)
 
-Card 2 - Operacoes Totais:
-  - Total de greens e reds de todos os jogos
-  - Formato: "289G / 293R"
+Card 2 - Operacoes Hoje:
+  todayTotal com todayGreens G / todayReds R
 
-Card 3 - Win Rate Geral:
-  - (greens / total) * 100
-  - Mostra porcentagem
+Card 3 - Win Rate Hoje:
+  (todayGreens / todayTotal) * 100
 
 Card 4 - Jogos Hoje:
-  - Quantidade de jogos com date === todayDate
-  - Quantos estao ao vivo
-  - Se houver resultados hoje, mostra lucro do dia abaixo
+  todayGames.length + quantos ao vivo
 ```
 
-### Detalhes tecnicos
+Se nao houver jogos/operacoes no dia, os cards mostrarao zeros normalmente (R$0,00 / 0 operacoes / 0% / 0 jogos), o que e o comportamento correto para um dia sem atividade.
 
-A mudanca principal e na linha 514, trocar:
+### Titulo da secao
 
-```text
-// ANTES: filtra so hoje (fica zerado se nao tem jogos hoje)
-const todayGames = games.filter(g => g.date === todayDate);
-const todayOps = todayGames.flatMap(...)
+Mudar de "Resumo Geral + Hoje" para apenas **"Resumo do Dia"**.
 
-// DEPOIS: usa TODOS os jogos para os totais
-const allOps = games.flatMap(g => g.methodOperations).filter(op => op.result);
-const allGreens = allOps.filter(op => op.result === 'Green').length;
-// ... e calcula today separadamente para o card de "Jogos Hoje"
-const todayGames = games.filter(g => g.date === todayDate);
-```
-
-Os cards 1-3 usarao dados de `allOps` (acumulado geral) e o card 4 mostrara dados de `todayGames` (dia atual).
