@@ -1,61 +1,48 @@
 
 
-## Corrigir Som de Gol Duplicado - De Uma Vez Por Todas
+## Atualizar Informativo de Gol Imediatamente Apos Deteccao
 
 ### Problema
 
-O som de gol toca duas vezes porque existem **dois caminhos independentes** que disparam o som para o mesmo gol:
+Quando um gol acontece, o placar atualiza rapido (via `live=all` a cada 60s), mas o **informativo de gol** (nome do jogador que marcou + minuto) demora ate 3.5 minutos para aparecer. Isso acontece porque:
 
-1. **Caminho 1**: `useLiveScores` detecta gol -> chama `handleGoalDetected` em DailyPlanning.tsx -> `playGoalSound()` (som 1) + envia push notification
-2. **Caminho 2**: A push notification chega no Service Worker -> mostra notificacao do sistema (som do OS) OU usuario clica na notificacao -> `useGoalSoundTrigger` -> `playGoalSound()` (som 2)
+1. `useLiveScores` detecta o gol via `live=all` (so tem placar, sem eventos detalhados)
+2. `useFixtureCache` busca detalhes completos (eventos, jogadores) a cada **120 segundos**
+3. O backend `get-fixture-details` tem cache de **90 segundos**
 
-Alem disso, o debounce de 5 segundos no `soundManager.ts` pode nao ser suficiente se dois ciclos de polling detectarem o mesmo gol em sequencia rapida.
+Total: ate 120 + 90 = **210 segundos** de atraso nos detalhes do gol.
 
-### Solucao: Centralizar tudo em um unico ponto
+### Solucao
 
-**1. `src/pages/DailyPlanning.tsx` - Remover push notification duplicada do handleGoalDetected**
+Quando `useLiveScores` detecta um gol, forcar `useFixtureCache` a buscar dados frescos imediatamente, sem esperar o ciclo normal de 120s.
 
-O `handleGoalDetected` faz DUAS coisas que ja sao feitas em outros lugares:
-- Toca o som (ok, manter aqui como ponto unico)
-- Envia push notification (REMOVER - o som ja tocou, push so serve se o app estiver em background)
+### Etapas
 
-Mudar para: so tocar som + highlight. Enviar push notification apenas se a pagina NAO estiver visivel (`document.hidden === true`), pois nesse caso o usuario nao ouviu o som e precisa ser notificado.
+**1. `src/hooks/useFixtureCache.ts` - Aceitar sinal de invalidacao**
 
-**2. `src/sw.ts` - Remover som ao clicar na notificacao de gol**
+Adicionar um parametro `invalidateSignal` (numero/timestamp) que, quando muda, forca um refetch imediato. Tambem passar um parametro `skipCache` na chamada ao edge function para que o backend ignore o cache de 90s.
 
-O Service Worker atualmente adiciona `?goal_alert=true` e envia mensagem `GOAL_NOTIFICATION_CLICKED` quando o usuario clica numa notificacao de gol. Isso causa um SEGUNDO disparo de `playGoalSound()`. Remover essa logica — o clique na notificacao so deve focar a janela, sem tocar som novamente.
+**2. `supabase/functions/get-fixture-details/index.ts` - Suportar `skip_cache`**
 
-**3. `src/hooks/useGoalSoundTrigger.ts` - Remover este hook inteiro**
+Adicionar parametro `skip_cache` na requisicao. Quando verdadeiro, ignora o cache de 90s e busca dados frescos da API, garantindo que os eventos do gol recem-marcado sejam retornados.
 
-Este hook existe apenas para ouvir mensagens do SW e query params de gol, ambos removidos no passo anterior. O hook se torna inutilizado.
+**3. `src/components/GameCardCompact.tsx` - Passar sinal de gol para o cache**
 
-**4. `src/utils/soundManager.ts` - Aumentar debounce para 15 segundos**
+Usar o `liveScore` (que ja tem o placar atualizado) para detectar mudanca de placar e gerar um sinal de invalidacao que forca o `useFixtureCache` a refazer a busca.
 
-Aumentar `GOAL_SOUND_DEBOUNCE` de 5000ms para 15000ms como seguranca extra contra qualquer caso raro de deteccao duplicada.
+**4. `src/hooks/useLiveScores.ts` - Incluir flag de gol recente no LiveScore**
 
-**5. `src/hooks/useGoalNotifications.ts` - Remover arquivo**
-
-Este hook nao e importado em nenhuma pagina. E codigo morto que pode causar confusao. Remover.
+Adicionar campo `goalDetectedAt` no objeto `LiveScore`. Quando um gol e detectado, setar com `Date.now()`. O `GameCardCompact` usa isso como sinal de invalidacao.
 
 ### Resultado
 
-Apos estas mudancas, existe apenas UM unico caminho para tocar o som de gol:
-
-```text
-useLiveScores detecta gol
-  -> onGoalDetected callback
-    -> handleGoalDetected em DailyPlanning.tsx
-      -> playGoalSound() (UNICO ponto)
-      -> highlight dourado
-      -> push notification (SOMENTE se app em background)
-```
+Apos o gol ser detectado pelo polling, os detalhes (jogador + minuto) aparecem em **2-5 segundos** ao inves de ate 3.5 minutos.
 
 ### Secao Tecnica
 
 Arquivos modificados:
-- `src/pages/DailyPlanning.tsx`: Condicionar push a `document.hidden`, remover import de `useGoalSoundTrigger`
-- `src/sw.ts`: Simplificar notificationclick — remover `goal_alert` query param e `GOAL_NOTIFICATION_CLICKED` message
-- `src/utils/soundManager.ts`: `GOAL_SOUND_DEBOUNCE` de 5000 para 15000
-- `src/hooks/useGoalSoundTrigger.ts`: Deletar arquivo
-- `src/hooks/useGoalNotifications.ts`: Deletar arquivo (codigo morto)
+- `src/hooks/useLiveScores.ts`: Adicionar `goalDetectedAt` ao `LiveScore`
+- `src/hooks/useFixtureCache.ts`: Aceitar `invalidateSignal`, passar `skip_cache` ao edge function
+- `supabase/functions/get-fixture-details/index.ts`: Suportar `skip_cache` no body
+- `src/components/GameCardCompact.tsx`: Conectar `liveScore.goalDetectedAt` ao `useFixtureCache` como sinal de invalidacao
 
