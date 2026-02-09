@@ -38,6 +38,7 @@ interface LiveScore {
   homeTeamId?: number;
   awayTeamId?: number;
   events?: LiveScoreEvent[];
+  goalDetectedAt?: number;
 }
 
 interface GameListItemProps {
@@ -74,7 +75,7 @@ export function GameListItem({
   const allMethodsResolved = game.methodOperations.length > 0 
     && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
   const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
-  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused);
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused, liveScore?.goalDetectedAt);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(
     game.api_fixture_id ? Number(game.api_fixture_id) : undefined,

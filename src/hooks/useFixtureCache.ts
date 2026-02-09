@@ -52,13 +52,13 @@ interface UseFixtureCacheResult {
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'INT'];
 
-export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true, globalPaused: boolean = false): UseFixtureCacheResult {
+export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true, globalPaused: boolean = false, invalidateSignal?: number): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | undefined>(undefined);
 
-  const fetchDetails = useCallback(async (retryCount = 0) => {
+  const fetchDetails = useCallback(async (retryCount = 0, skipCache = false) => {
     if (!fixtureId) return;
 
     const fixtureIdNum = parseInt(String(fixtureId), 10);
@@ -71,7 +71,7 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
 
     try {
       const { data: result, error: fnError } = await supabase.functions.invoke('get-fixture-details', {
-        body: { fixture_id: fixtureIdNum },
+        body: { fixture_id: fixtureIdNum, skip_cache: skipCache },
       });
 
       if (fnError) {
@@ -111,6 +111,15 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
       fetchDetails();
     }
   }, [fixtureId, fetchDetails, autoFetch, globalPaused]);
+
+  // Invalidate signal: when a goal is detected, force immediate refetch skipping cache
+  useEffect(() => {
+    if (invalidateSignal && fixtureId && autoFetch) {
+      console.log(`[useFixtureCache] Goal signal received for fixture ${fixtureId}, forcing fresh fetch`);
+      fetchDetails(0, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invalidateSignal]);
 
   // Auto-refresh every 120s for live games (backend has 90s cache)
   useEffect(() => {

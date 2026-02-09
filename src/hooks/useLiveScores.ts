@@ -22,6 +22,7 @@ export interface LiveScore {
   homeTeamId?: number;
   awayTeamId?: number;
   events?: LiveScoreEvent[];
+  goalDetectedAt?: number;
 }
 
 interface UseLiveScoresResult {
@@ -200,6 +201,12 @@ export function useLiveScores(
             previousScoresRef.current.set(fixtureId, { homeScore: homeGoals, awayScore: awayGoals });
           }
           
+          // Detect if a goal just happened for this fixture
+          const previousScore = previousScoresRef.current.get(fixtureId);
+          const goalJustHappened = previousScore && (
+            homeGoals > previousScore.homeScore || awayGoals > previousScore.awayScore
+          );
+
           newScores.set(fixtureId, {
             fixtureId: parseInt(fixtureId),
             homeScore: homeGoals,
@@ -209,6 +216,7 @@ export function useLiveScores(
             statusLong: fixture.fixture?.status?.long ?? 'Not Started',
             homeTeamId,
             awayTeamId,
+            goalDetectedAt: goalJustHappened ? Date.now() : undefined,
           });
           
           // Track fixtures with goals for event fetching

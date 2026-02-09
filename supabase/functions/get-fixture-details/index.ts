@@ -316,7 +316,7 @@ serve(async (req) => {
   }
 
   try {
-    const { fixture_id } = await req.json();
+    const { fixture_id, skip_cache } = await req.json();
     
     if (!fixture_id) {
       throw new Error('fixture_id is required');
@@ -347,7 +347,7 @@ serve(async (req) => {
     const now = new Date();
 
     // If cache exists, check if we should use it
-    if (cached) {
+    if (cached && !skip_cache) {
       const isFinished = FINISHED_STATUSES.includes(cached.status);
       const updatedAt = new Date(cached.updated_at);
       const ageSeconds = (now.getTime() - updatedAt.getTime()) / 1000;
