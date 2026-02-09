@@ -6,7 +6,7 @@ import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import { useOperationalSettings } from "@/hooks/useOperationalSettings";
-import { useGoalSoundTrigger } from "@/hooks/useGoalSoundTrigger";
+
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { playGoalSound } from "@/utils/soundManager";
@@ -113,8 +113,8 @@ export default function DailyPlanning() {
     // Highlight this game with golden border
     setHighlightedGameId(gameId);
     
-    // Send push notification
-    if (user) {
+    // Send push notification ONLY if app is in background (user can't hear the sound)
+    if (user && document.hidden) {
       const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
       supabase.functions.invoke('send-push-notification', {
         body: {
@@ -146,8 +146,6 @@ export default function DailyPlanning() {
     scores: liveScores 
   } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs, isPaused);
   
-  // Listen for goal sound triggers from Service Worker
-  useGoalSoundTrigger();
   
   // Track if we already did the initial highlight check
   const initialHighlightDoneRef = useRef(false);

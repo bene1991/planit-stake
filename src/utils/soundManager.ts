@@ -102,7 +102,7 @@ export const testSound = (type: NotificationSoundType): void => {
 
 // Debounce para evitar som duplicado
 let lastGoalSoundTime = 0;
-const GOAL_SOUND_DEBOUNCE = 5000; // 5 segundos
+const GOAL_SOUND_DEBOUNCE = 15000; // 15 segundos
 
 // Função para tocar som de gol (com debounce)
 export const playGoalSound = (soundId?: GoalSoundOption): void => {

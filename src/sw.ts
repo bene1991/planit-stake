@@ -65,34 +65,19 @@ self.addEventListener('notificationclick', (event) => {
   
   event.notification.close();
 
-  const notificationData = event.notification.data || {};
-  const isGoal = notificationData.type === 'goal';
-  
-  // URL com query param para trigger do som de gol ao abrir
-  const urlToOpen = isGoal 
-    ? `${self.location.origin}?goal_alert=true`
-    : self.location.origin;
-
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // If a window is already open, focus it and send message
+        // If a window is already open, focus it
         for (const client of clientList) {
           if ('focus' in client) {
             client.focus();
-            // Enviar mensagem para o client tocar o som de gol
-            if (isGoal) {
-              client.postMessage({ 
-                type: 'GOAL_NOTIFICATION_CLICKED',
-                data: notificationData 
-              });
-            }
             return;
           }
         }
         // Otherwise, open a new window
         if (self.clients.openWindow) {
-          return self.clients.openWindow(urlToOpen);
+          return self.clients.openWindow(self.location.origin);
         }
       })
   );
