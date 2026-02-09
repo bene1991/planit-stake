@@ -8,6 +8,7 @@ export interface Method {
   name: string;
   percentage: number;
   indice_confianca?: number;
+  sort_order?: number;
 }
 
 export interface Bankroll {
@@ -79,7 +80,8 @@ export const useSupabaseBankroll = () => {
     const { data, error } = await supabase
       .from('methods')
       .select('*')
-      .eq('owner_id', user.id);
+      .eq('owner_id', user.id)
+      .order('sort_order', { ascending: true });
 
     if (error) {
       console.error('Error loading methods:', error);
@@ -92,6 +94,7 @@ export const useSupabaseBankroll = () => {
         name: m.name,
         percentage: Number(m.percentage),
         indice_confianca: m.indice_confianca ? Number(m.indice_confianca) : 0,
+        sort_order: m.sort_order ?? 0,
       }));
       setBankroll((prev) => ({ ...prev, methods }));
     }
@@ -149,12 +152,15 @@ export const useSupabaseBankroll = () => {
   const addMethod = async (method: Omit<Method, "id">) => {
     if (!user) return;
 
+    const maxOrder = bankroll.methods.reduce((max, m) => Math.max(max, m.sort_order ?? 0), 0);
+
     const { data, error } = await supabase
       .from('methods')
       .insert({
         owner_id: user.id,
         name: method.name,
         percentage: method.percentage,
+        sort_order: maxOrder + 1,
       })
       .select()
       .single();
@@ -224,6 +230,35 @@ export const useSupabaseBankroll = () => {
     toast.success('Método removido!');
   };
 
+  const moveMethod = async (index: number, direction: 'up' | 'down') => {
+    if (!user) return;
+    const methods = [...bankroll.methods];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= methods.length) return;
+
+    // Swap sort_order values
+    const currentOrder = methods[index].sort_order ?? index;
+    const targetOrder = methods[targetIndex].sort_order ?? targetIndex;
+
+    // Optimistic update
+    const swapped = [...methods];
+    [swapped[index], swapped[targetIndex]] = [swapped[targetIndex], swapped[index]];
+    swapped[index].sort_order = currentOrder;
+    swapped[targetIndex].sort_order = targetOrder;
+    setBankroll(prev => ({ ...prev, methods: swapped }));
+
+    // Persist
+    const updates = [
+      supabase.from('methods').update({ sort_order: targetOrder } as any).eq('id', methods[index].id).eq('owner_id', user.id),
+      supabase.from('methods').update({ sort_order: currentOrder } as any).eq('id', methods[targetIndex].id).eq('owner_id', user.id),
+    ];
+    const results = await Promise.all(updates);
+    if (results.some(r => r.error)) {
+      toast.error('Erro ao reordenar');
+      await loadMethods();
+    }
+  };
+
   return {
     bankroll,
     loading,
@@ -232,5 +267,6 @@ export const useSupabaseBankroll = () => {
     updateMethod,
     deleteMethod,
     atualizarIndicesConfianca,
+    moveMethod,
   };
 };
