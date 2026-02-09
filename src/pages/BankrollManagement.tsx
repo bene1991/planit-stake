@@ -6,12 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, TrendingUp, RefreshCw, Pencil } from "lucide-react";
+import { Trash2, Plus, TrendingUp, RefreshCw, Pencil, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { MethodEditor } from "@/components/MethodEditor";
 
 export default function BankrollManagement() {
-  const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca } = useSupabaseBankroll();
+  const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca, moveMethod } = useSupabaseBankroll();
   const [newMethodName, setNewMethodName] = useState("");
   const [newMethodPercentage, setNewMethodPercentage] = useState("");
   const [editingMethod, setEditingMethod] = useState<any>(null);
@@ -214,7 +214,27 @@ export default function BankrollManagement() {
                       {method.percentage}% • {formatCurrency(amount)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="flex flex-col">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={bankroll.methods.indexOf(method) === 0}
+                        onClick={() => moveMethod(bankroll.methods.indexOf(method), 'up')}
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={bankroll.methods.indexOf(method) === bankroll.methods.length - 1}
+                        onClick={() => moveMethod(bankroll.methods.indexOf(method), 'down')}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     <Button
                       variant="outline"
                       size="icon"
