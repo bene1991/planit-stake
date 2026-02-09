@@ -1,49 +1,43 @@
 
-
-## Corrigir Calculo de Lucro LAY em useFilteredStatistics.ts
+## Ordenar Metodos na Sequencia Desejada
 
 ### Problema
 
-O arquivo `src/hooks/useFilteredStatistics.ts` tem a formula de lucro LAY errada em **3 lugares** (linhas 249-253, 469-473, 607-611). O codigo atual trata o `stakeValue` (que para LAY e a **responsabilidade/liability**) como se fosse o lucro direto.
+Os metodos aparecem na ordem que o banco de dados retorna (sem garantia de sequencia). O usuario quer que aparecam sempre na ordem que ele definiu (1, 2, 3, 4...).
 
-**Exemplo concreto - Jogo do Benfica (Lay 1x0 Alavancagem):**
-- stake_value = R$215,96 (responsabilidade), odd = 9.4, resultado = Green
-- Calculo ERRADO (atual): 215,96 x 0,955 = **R$206,24**
-- Calculo CORRETO: (215,96 / 8,4) x 0,955 = **R$24,55**
+### Solucao
 
-As 4 operacoes desse metodo somam R$935,89 com o bug. O valor correto e aproximadamente R$93.
+Adicionar uma coluna `sort_order` na tabela `methods` e ordenar por ela ao carregar.
 
-### Causa raiz
+### Etapas
 
-Para operacoes LAY, o campo `stakeValue` armazena a **responsabilidade** (liability). A stake real do LAY e `stakeValue / (odd - 1)`. O `profitCalculator.ts` ja tem a logica correta, mas `useFilteredStatistics.ts` nao a segue.
+**1. Migracao no banco de dados**
 
-### Correcao
+Adicionar coluna `sort_order` (integer, default 0) na tabela `methods`. Atualizar os registros existentes com uma ordem baseada na data de criacao para manter consistencia.
 
-Alterar as 3 ocorrencias em `src/hooks/useFilteredStatistics.ts`:
-
-**LAY Green** (linhas 251, 471, 609):
 ```text
-// ANTES (errado):
-profitReais += op.stakeValue * (1 - commissionRate);
+ALTER TABLE methods ADD COLUMN sort_order integer DEFAULT 0;
 
-// DEPOIS (correto):
-const stakeLay = op.stakeValue / (op.odd - 1);
-profitReais += stakeLay * (1 - commissionRate);
+-- Atribuir ordem inicial baseada na data de criacao
+WITH ordered AS (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY owner_id ORDER BY created_at) as rn
+  FROM methods
+)
+UPDATE methods SET sort_order = ordered.rn FROM ordered WHERE methods.id = ordered.id;
 ```
 
-**LAY Red** (linhas 253, 473, 611):
-```text
-// ANTES (errado):
-profitReais -= op.stakeValue * (op.odd - 1);
+**2. Modificar `src/hooks/useSupabaseBankroll.ts`**
 
-// DEPOIS (correto - liability JA e o stakeValue):
-profitReais -= op.stakeValue;
-```
+- No `loadMethods`: adicionar `.order('sort_order', { ascending: true })` na query e incluir `sort_order` no mapeamento
+- No `addMethod`: calcular o proximo `sort_order` (max atual + 1) ao inserir
+- Adicionar funcao `reorderMethods(methodIds: string[])` que recebe a lista de IDs na nova ordem e atualiza o `sort_order` de cada um no banco
 
-### Impacto
+**3. Modificar `src/pages/BankrollManagement.tsx`**
 
-- Corrige o lucro de TODOS os metodos LAY em toda a pagina de Desempenho
-- Corrige o "Melhor Metodo", ranking de metodos, evolucao de bankroll e graficos
-- Alinha o calculo com a logica ja existente em `profitCalculator.ts`
-- Afeta 3 blocos de calculo no mesmo arquivo
+- Adicionar botoes de seta (cima/baixo) em cada metodo para mover na lista
+- Ao clicar, trocar o `sort_order` entre os dois metodos adjacentes e salvar no banco
+- Usar icones `ChevronUp` e `ChevronDown` do lucide-react ao lado dos botoes de editar/deletar
 
+### Resultado
+
+Os metodos sempre aparecerao na ordem definida pelo usuario, e ele podera reorganizar a qualquer momento usando as setas.
