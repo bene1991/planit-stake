@@ -22,6 +22,7 @@ interface LiveScore {
   homeTeamId?: number;
   awayTeamId?: number;
   events?: LiveScoreEvent[];
+  goalDetectedAt?: number;
 }
 
 interface GameListByLeagueProps {
