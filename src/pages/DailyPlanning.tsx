@@ -552,6 +552,48 @@ export default function DailyPlanning() {
                 </p>
               </Card>
             </div>
+
+            {/* Resumo por Método */}
+            {(() => {
+              const methodGroups = todayOps.reduce<Record<string, { greens: number; reds: number; profit: number }>>((acc, op) => {
+                const key = op.methodId;
+                if (!acc[key]) acc[key] = { greens: 0, reds: 0, profit: 0 };
+                if (op.result === 'Green') acc[key].greens++;
+                if (op.result === 'Red') acc[key].reds++;
+                const p = op.profit != null ? op.profit
+                  : (op.stakeValue && op.odd && op.operationType && op.result)
+                    ? calculateProfit({ stakeValue: op.stakeValue, odd: op.odd, operationType: op.operationType, result: op.result, commissionRate: 0.045 })
+                    : 0;
+                acc[key].profit += p;
+                return acc;
+              }, {});
+
+              const entries = Object.entries(methodGroups);
+              if (entries.length === 0) return null;
+
+              return (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {entries.map(([methodId, data]) => {
+                    const method = bankroll?.methods.find(m => m.id === methodId);
+                    if (!method) return null;
+                    const isPositive = data.profit >= 0;
+                    return (
+                      <span
+                        key={methodId}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                          isPositive
+                            ? "bg-emerald-500/15 text-emerald-400"
+                            : "bg-red-500/15 text-red-400"
+                        )}
+                      >
+                        {method.name}: {data.greens}G/{data.reds}R {isPositive ? '+' : ''}{data.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
