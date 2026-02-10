@@ -580,7 +580,7 @@ export default function Performance() {
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-2">
         <GreenVsRedChart greens={overallStats.greens} reds={overallStats.reds} />
-        <OddRangeStatsChart data={oddRangeStats} />
+        <OddRangeStatsChart data={oddRangeStats} games={filteredGames} methods={bankroll.methods} />
       </div>
 
       {/* League Stats */}
