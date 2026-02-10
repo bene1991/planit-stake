@@ -1,31 +1,51 @@
 
 
-## Adicionar Resumo por Metodo no "Resumo do Dia"
+## Adicionar Widget Radar Futebol nos Jogos
 
 ### O que muda
 
-Abaixo dos 4 cards atuais (Lucro Hoje, Operacoes Hoje, Win Rate Hoje, Jogos Hoje), adicionar uma linha de chips/badges compactos mostrando cada metodo que teve entrada no dia, com greens, reds e lucro individual. Metodos sem operacoes resolvidas no dia nao aparecem.
+Adicionar um campo para colar o link do Radar Futebol (ex: `https://www.radarfutebol.com/radar/reggiana-mantova/14317763`) em cada jogo. O link sera exibido como um iframe embutido, similar ao widget SofaScore que ja existe.
 
-### Layout
+### Ressalva importante
 
-Exemplo visual:
-```text
-[BTTS FILTRO ODD 2: 5G/2R  +R$ 80,00]  [LAY 0x1: 2G/1R  +R$ 30,00]
-```
+Sites como radarfutebol.com podem bloquear embeds via iframe (header `X-Frame-Options`). Se o iframe nao carregar, sera exibido um botao para abrir o link em nova aba como fallback.
 
-### Etapa unica: `src/pages/DailyPlanning.tsx`
+### Etapas
 
-Dentro do bloco do Resumo do Dia (linhas 503-557), apos os calculos existentes de `todayOps` (linha 505), adicionar:
+**1. Migracao do banco de dados**
 
-1. Agrupar `todayOps` por `methodId` usando um `reduce`
-2. Para cada grupo: contar greens, reds, somar lucro (usando `op.profit` ou `calculateProfit`)
-3. Buscar nome do metodo em `bankroll.methods` pelo id
-4. Renderizar como `flex flex-wrap gap-2` de badges compactos abaixo do grid de 4 cards (dentro do `<div className="space-y-2">` existente, linha 527)
+Adicionar coluna `radar_url` (text, nullable) na tabela `games`.
 
-Cada badge tera:
-- Fundo semi-transparente verde ou vermelho conforme lucro positivo/negativo
-- Texto: `NomeMetodo: XG/YR +R$ Z`
-- Tamanho pequeno (`text-xs`, `px-2 py-1`, `rounded-full`)
+**2. `src/types/index.ts` - Adicionar campo no tipo Game**
 
-Nenhum outro arquivo precisa ser alterado.
+Adicionar `radarUrl?: string` na interface `Game`.
 
+**3. `src/hooks/useSupabaseGames.ts` - Mapear campo**
+
+- No fetch: mapear `radar_url` para `radarUrl`
+- No insert: mapear `radarUrl` para `radar_url`
+- No update: suportar atualizacao de `radar_url`
+
+**4. Criar `src/components/RadarFutebolWidget.tsx`**
+
+Componente similar ao `SofaScoreWidget`, mas simplificado (sem controles de crop):
+- Input para colar o link
+- Iframe embutido com altura fixa (~350px)
+- Botao X para remover
+- Fallback: se iframe falhar, mostrar botao "Abrir no Radar Futebol"
+- Aceita URLs no formato `https://www.radarfutebol.com/radar/...`
+
+**5. `src/components/GameListItem.tsx` - Integrar o widget**
+
+Adicionar o `RadarFutebolWidget` no painel expandido do jogo, abaixo do SofaScore widget, com o mesmo padrao de `onSave` para persistir o link.
+
+### Secao Tecnica
+
+Arquivos modificados:
+- Migracao SQL: `ALTER TABLE games ADD COLUMN radar_url text`
+- `src/types/index.ts`: adicionar `radarUrl?: string`
+- `src/hooks/useSupabaseGames.ts`: mapear `radar_url` nos 3 pontos (fetch, insert, update)
+- `src/components/GameListItem.tsx`: renderizar `RadarFutebolWidget`
+
+Arquivo criado:
+- `src/components/RadarFutebolWidget.tsx`
