@@ -37,41 +37,54 @@ Posse: ${possession || 'N/A'}% casa
 Finalizações no gol: Casa ${shotsOnHome ?? '?'} vs Visitante ${shotsOnAway ?? '?'}
 Escanteios: ${corners || 'N/A'}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: statsContext },
-        ],
-        max_tokens: 80,
-      }),
+    const aiBody = JSON.stringify({
+      model: "google/gemini-2.5-flash-lite",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: statsContext },
+      ],
+      max_tokens: 80,
     });
 
-    const responseText = await response.text();
+    let response: Response | null = null;
+    let responseText = "";
 
-    if (!response.ok) {
-      console.error("[analyze-live-moment] AI error:", response.status, responseText.substring(0, 200));
-      if (response.status === 429) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: aiBody,
+        });
+        responseText = await response.text();
+        if (response.ok || response.status === 429 || response.status === 402) break;
+        console.warn(`[analyze-live-moment] Attempt ${attempt + 1} failed: ${response.status}`);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+      } catch (fetchErr) {
+        console.warn(`[analyze-live-moment] Fetch attempt ${attempt + 1} error:`, fetchErr);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!response || !response.ok) {
+      const status = response?.status || 500;
+      console.error("[analyze-live-moment] AI error:", status, responseText.substring(0, 200));
+      if (status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited", text: null }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
+      if (status === 402) {
         return new Response(JSON.stringify({ error: "Payment required", text: null }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ error: "AI error", text: null }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // Return 200 with null text so client doesn't break
+      return new Response(JSON.stringify({ error: "AI temporarily unavailable", text: null }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
