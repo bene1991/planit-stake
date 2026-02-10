@@ -4,14 +4,9 @@
 
 ### O que muda
 
-Abaixo dos 4 cards atuais (Lucro Hoje, Operacoes Hoje, Win Rate Hoje, Jogos Hoje), adicionar uma linha compacta mostrando cada metodo que teve entrada no dia, com seus resultados individuais. Metodos sem operacoes no dia nao aparecem.
+Abaixo dos 4 cards atuais (Lucro Hoje, Operacoes Hoje, Win Rate Hoje, Jogos Hoje), adicionar uma linha de chips/badges compactos mostrando cada metodo que teve entrada no dia, com greens, reds e lucro individual. Metodos sem operacoes resolvidas no dia nao aparecem.
 
 ### Layout
-
-Cada metodo aparece como um mini-badge/chip horizontal com:
-- Nome do metodo
-- Greens/Reds (ex: 5G/2R)
-- Lucro em R$ (colorido verde/vermelho)
 
 Exemplo visual:
 ```text
@@ -20,11 +15,17 @@ Exemplo visual:
 
 ### Etapa unica: `src/pages/DailyPlanning.tsx`
 
-Dentro do bloco do Resumo do Dia (linhas ~503-557), apos calcular `todayOps`, agrupar as operacoes por `methodId`, buscar o nome do metodo em `bankroll.methods`, e renderizar uma linha de chips abaixo dos 4 cards. Somente metodos com pelo menos 1 operacao resolvida no dia aparecem.
+Dentro do bloco do Resumo do Dia (linhas 503-557), apos os calculos existentes de `todayOps` (linha 505), adicionar:
 
-Logica:
-1. Agrupar `todayOps` por `methodId`
-2. Para cada grupo: contar greens, reds, somar lucro
-3. Buscar nome do metodo em `bankroll.methods`
-4. Renderizar como flex-wrap de badges compactos
+1. Agrupar `todayOps` por `methodId` usando um `reduce`
+2. Para cada grupo: contar greens, reds, somar lucro (usando `op.profit` ou `calculateProfit`)
+3. Buscar nome do metodo em `bankroll.methods` pelo id
+4. Renderizar como `flex flex-wrap gap-2` de badges compactos abaixo do grid de 4 cards (dentro do `<div className="space-y-2">` existente, linha 527)
+
+Cada badge tera:
+- Fundo semi-transparente verde ou vermelho conforme lucro positivo/negativo
+- Texto: `NomeMetodo: XG/YR +R$ Z`
+- Tamanho pequeno (`text-xs`, `px-2 py-1`, `rounded-full`)
+
+Nenhum outro arquivo precisa ser alterado.
 
