@@ -16,28 +16,39 @@ Sites como radarfutebol.com podem bloquear embeds via iframe (header `X-Frame-Op
 
 Adicionar coluna `radar_url` (text, nullable) na tabela `games`.
 
+```sql
+ALTER TABLE games ADD COLUMN radar_url text;
+```
+
 **2. `src/types/index.ts` - Adicionar campo no tipo Game**
 
 Adicionar `radarUrl?: string` na interface `Game`.
 
 **3. `src/hooks/useSupabaseGames.ts` - Mapear campo**
 
-- No fetch: mapear `radar_url` para `radarUrl`
-- No insert: mapear `radarUrl` para `radar_url`
-- No update: suportar atualizacao de `radar_url`
+- No fetch (linha ~110): mapear `radar_url` para `radarUrl`
+- No insert (linha ~133): mapear `radarUrl` para `radar_url`
+- No update (linha ~174): suportar atualizacao de `radar_url`
 
 **4. Criar `src/components/RadarFutebolWidget.tsx`**
 
-Componente similar ao `SofaScoreWidget`, mas simplificado (sem controles de crop):
+Componente simplificado (sem controles de crop):
 - Input para colar o link
-- Iframe embutido com altura fixa (~350px)
+- Iframe embutido com altura fixa (~400px)
 - Botao X para remover
-- Fallback: se iframe falhar, mostrar botao "Abrir no Radar Futebol"
+- Fallback: se iframe falhar (onError), mostrar botao "Abrir no Radar Futebol"
 - Aceita URLs no formato `https://www.radarfutebol.com/radar/...`
 
 **5. `src/components/GameListItem.tsx` - Integrar o widget**
 
-Adicionar o `RadarFutebolWidget` no painel expandido do jogo, abaixo do SofaScore widget, com o mesmo padrao de `onSave` para persistir o link.
+Adicionar o `RadarFutebolWidget` logo abaixo do SofaScore widget (linha 578), com o mesmo padrao de `onSave`:
+
+```text
+<RadarFutebolWidget
+  url={game.radarUrl}
+  onSave={(radarUrl) => onUpdate(game.id, { radarUrl })}
+/>
+```
 
 ### Secao Tecnica
 
@@ -45,7 +56,8 @@ Arquivos modificados:
 - Migracao SQL: `ALTER TABLE games ADD COLUMN radar_url text`
 - `src/types/index.ts`: adicionar `radarUrl?: string`
 - `src/hooks/useSupabaseGames.ts`: mapear `radar_url` nos 3 pontos (fetch, insert, update)
-- `src/components/GameListItem.tsx`: renderizar `RadarFutebolWidget`
+- `src/components/GameListItem.tsx`: renderizar `RadarFutebolWidget` abaixo do SofaScore
 
 Arquivo criado:
 - `src/components/RadarFutebolWidget.tsx`
+
