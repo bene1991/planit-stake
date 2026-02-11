@@ -7,6 +7,7 @@ import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { SofaScoreWidget } from "@/components/SofaScoreWidget";
+import { RadarFutebolWidget } from "@/components/RadarFutebolWidget";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
@@ -575,6 +576,12 @@ export function GameListItem({
             cropTop={game.sofascoreCropTop}
             cropHeight={game.sofascoreCropHeight}
             onCropChange={(sofascoreCropTop, sofascoreCropHeight) => onUpdate(game.id, { sofascoreCropTop, sofascoreCropHeight })}
+          />
+
+          {/* Radar Futebol Widget */}
+          <RadarFutebolWidget
+            url={game.radarUrl}
+            onSave={(radarUrl) => onUpdate(game.id, { radarUrl })}
           />
         </div>
       </CollapsibleContent>
