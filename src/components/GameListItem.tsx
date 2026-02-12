@@ -6,8 +6,6 @@ import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
-import { SofaScoreWidget } from "@/components/SofaScoreWidget";
-import { RadarFutebolWidget } from "@/components/RadarFutebolWidget";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFixtureCache } from "@/hooks/useFixtureCache";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
@@ -405,20 +403,6 @@ export function GameListItem({
             </CollapsibleTrigger>
           </div>
 
-          {/* SofaScore Widget - after actions, fills remaining space */}
-          {game.sofascoreUrl && (
-            <div className="hidden sm:flex items-center flex-1 min-w-0 overflow-hidden">
-              <div className="w-full">
-                <SofaScoreWidget
-                  url={game.sofascoreUrl}
-                  onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
-                  cropTop={game.sofascoreCropTop}
-                  cropHeight={game.sofascoreCropHeight}
-                  displayOnly
-                />
-              </div>
-            </div>
-          )}
         </div>
         
         {/* Methods pills row - always visible below teams */}
@@ -485,18 +469,6 @@ export function GameListItem({
               awayTeam={game.awayTeam} 
               ldiHistory={ldiHistory}
               normalizedStats={fixtureCache?.normalized_stats}
-            />
-          </div>
-        )}
-        {/* SofaScore Widget - mobile only (below card) */}
-        {game.sofascoreUrl && (
-          <div className="px-2 pb-2 sm:hidden">
-            <SofaScoreWidget
-              url={game.sofascoreUrl}
-              onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
-              cropTop={game.sofascoreCropTop}
-              cropHeight={game.sofascoreCropHeight}
-              displayOnly
             />
           </div>
         )}
@@ -569,20 +541,6 @@ export function GameListItem({
             compact
           />
 
-          {/* SofaScore Widget */}
-          <SofaScoreWidget
-            url={game.sofascoreUrl}
-            onSave={(sofascoreUrl) => onUpdate(game.id, { sofascoreUrl })}
-            cropTop={game.sofascoreCropTop}
-            cropHeight={game.sofascoreCropHeight}
-            onCropChange={(sofascoreCropTop, sofascoreCropHeight) => onUpdate(game.id, { sofascoreCropTop, sofascoreCropHeight })}
-          />
-
-          {/* Radar Futebol Widget */}
-          <RadarFutebolWidget
-            url={game.radarUrl}
-            onSave={(radarUrl) => onUpdate(game.id, { radarUrl })}
-          />
         </div>
       </CollapsibleContent>
     </Collapsible>
