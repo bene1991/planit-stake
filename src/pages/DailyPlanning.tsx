@@ -568,7 +568,7 @@ export default function DailyPlanning() {
                 return acc;
               }, {});
 
-              const entries = Object.entries(methodGroups);
+              const entries = Object.entries(methodGroups).sort((a, b) => b[1].profit - a[1].profit);
               if (entries.length === 0) return null;
 
               return (
