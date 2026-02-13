@@ -408,7 +408,7 @@ export function GameListItem({
         {/* Methods pills row - always visible below teams */}
         {game.methodOperations.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-            {game.methodOperations.map((operation) => {
+            {[...game.methodOperations].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)).map((operation) => {
               const financialStatus = getFinancialStatus(operation);
               return (
                 <span
@@ -481,7 +481,7 @@ export function GameListItem({
             <div className="space-y-2">
               <span className="text-xs text-muted-foreground font-medium">Métodos</span>
               <div className="flex flex-wrap gap-2">
-                {game.methodOperations.map((operation) => {
+                {[...game.methodOperations].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)).map((operation) => {
                   const financialStatus = getFinancialStatus(operation);
                   return (
                   <div key={operation.methodId} className="flex items-center gap-1.5">
