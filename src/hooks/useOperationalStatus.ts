@@ -16,6 +16,8 @@ interface OperationWithDate {
   league: string;
   operationType: 'Back' | 'Lay' | null;
   odd: number | null;
+  gameId: string;
+  gameLabel: string;
 }
 
 interface StreakInfo {
@@ -39,6 +41,7 @@ export interface OperationalMetrics {
   totalOperationsPeriod: number;
   operationsWithFinancialData: number;
   operationsWithoutFinancialData: number;
+  gamesWithIncompleteData: { id: string; label: string; date: string }[];
 }
 
 export const useOperationalStatus = (filters?: OperationalFilters, stakeOverride?: number) => {
@@ -60,7 +63,9 @@ export const useOperationalStatus = (filters?: OperationalFilters, stakeOverride
             methodId: op.methodId,
             league: game.league,
             operationType: op.operationType ?? null,
-            odd: op.odd ?? null
+            odd: op.odd ?? null,
+            gameId: game.id,
+            gameLabel: `${game.homeTeam} x ${game.awayTeam}`
           });
         }
       });
@@ -176,6 +181,16 @@ export const useOperationalStatus = (filters?: OperationalFilters, stakeOverride
     ).length;
     const operationsWithoutFinancialData = periodOps.length - operationsWithFinancialData;
 
+    // Collect unique games with incomplete financial data
+    const incompleteOps = periodOps.filter(op => !(op.stakeValue && op.odd && op.operationType));
+    const uniqueGames = new Map<string, { id: string; label: string; date: string }>();
+    incompleteOps.forEach(op => {
+      if (!uniqueGames.has(op.gameId)) {
+        uniqueGames.set(op.gameId, { id: op.gameId, label: op.gameLabel, date: op.date });
+      }
+    });
+    const gamesWithIncompleteData = Array.from(uniqueGames.values());
+
     // Calculate peak profit and drawdown for the period (in money, then convert to stakes)
     let runningProfitMoney = 0;
     let peakProfitMoney = 0;
@@ -231,7 +246,8 @@ export const useOperationalStatus = (filters?: OperationalFilters, stakeOverride
       totalOperationsToday: todayOps.length,
       totalOperationsPeriod: periodOps.length,
       operationsWithFinancialData,
-      operationsWithoutFinancialData
+      operationsWithoutFinancialData,
+      gamesWithIncompleteData
     };
   }, [games, settings, filters, stakeOverride]);
 

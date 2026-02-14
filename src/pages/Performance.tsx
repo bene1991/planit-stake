@@ -522,11 +522,28 @@ export default function Performance() {
       {metrics.operationsWithoutFinancialData > 0 && (
         <Card className="border-yellow-500/30 bg-yellow-500/5">
           <CardContent className="py-3">
-            <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-500">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <p className="text-sm">
-                <strong>{metrics.operationsWithoutFinancialData}</strong> de {metrics.totalOperationsPeriod} operações sem dados financeiros completos (stake/odd).
-              </p>
+            <div className="flex items-start gap-2 text-yellow-600 dark:text-yellow-500">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p>
+                  <strong>{metrics.operationsWithoutFinancialData}</strong> de {metrics.totalOperationsPeriod} operações sem dados financeiros completos (stake/odd).
+                </p>
+                {metrics.gamesWithIncompleteData.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-yellow-600/80 dark:text-yellow-500/80">
+                    {metrics.gamesWithIncompleteData.slice(0, 5).map((game) => (
+                      <li key={game.id} className="flex items-center gap-1">
+                        <span className="text-xs">•</span>
+                        <span className="text-xs">{game.label} ({game.date})</span>
+                      </li>
+                    ))}
+                    {metrics.gamesWithIncompleteData.length > 5 && (
+                      <li className="text-xs font-medium">
+                        e mais {metrics.gamesWithIncompleteData.length - 5} jogos...
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
