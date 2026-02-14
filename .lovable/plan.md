@@ -1,28 +1,49 @@
 
-## Remover Widgets SofaScore e Radar Futebol dos Jogos
+## Mostrar qual jogo tem dados financeiros incompletos
 
-### O que será removido
+### Problema
+O alerta "1 de 420 operacoes sem dados financeiros completos (stake/odd)" nao indica qual jogo especifico tem o problema, dificultando a correcao.
 
-Remover completamente os inputs/widgets do SofaScore e do Radar Futebol dos cards de jogo. Os usuários não precisarão mais colar links para esses serviços.
+### Solucao
 
-### Arquivos que serão modificados
+**1. `src/hooks/useOperationalStatus.ts`**
+- Adicionar campo `gameId` e `gameLabel` (ex: "Flamengo x Vasco") ao tipo `OperationWithDate`
+- Ao iterar as operacoes sem dados financeiros, coletar os nomes dos jogos afetados
+- Adicionar ao `OperationalMetrics` um novo campo `gamesWithIncompleteData: { id: string; label: string; date: string }[]` com a lista dos jogos que tem operacoes incompletas
 
-**`src/components/GameListItem.tsx`**
-- Linha 9-10: Remover imports `SofaScoreWidget` e `RadarFutebolWidget`
-- Linhas 408-421: Remover a seção SofaScore displayOnly no desktop (hidden sm:flex)
-- Linhas 491-502: Remover a seção SofaScore displayOnly no mobile (sm:hidden)
-- Linhas 572-585: Remover os widgets SofaScore e Radar Futebol do painel expandido
+**2. `src/pages/Performance.tsx`**
+- No alerta amarelo, listar os jogos afetados abaixo da mensagem principal
+- Formato: "Time A x Time B (data)" para cada jogo com dados incompletos
+- Se houver muitos jogos (>5), mostrar os primeiros 5 com um "e mais X jogos..."
 
-### Arquivos que podem ser deletados (opcionais)
+### Detalhes tecnicos
 
-- `src/components/SofaScoreWidget.tsx` - não será mais usado
-- `src/components/RadarFutebolWidget.tsx` - não será mais usado
+No `useOperationalStatus.ts`, ao construir `allOperations`, adicionar `gameId` e `gameLabel`:
 
-### O que NÃO muda
+```typescript
+allOperations.push({
+  ...
+  gameId: game.id,
+  gameLabel: `${game.homeTeam} x ${game.awayTeam}`,
+});
+```
 
-- Os campos `sofascore_url`, `sofascore_crop_top`, `sofascore_crop_height` e `radar_url` continuam no banco de dados (nenhuma migração necessária)
-- Os mapeamentos em `useSupabaseGames.ts` e `types/index.ts` permanecem intactos (não causa erro, apenas ficam sem uso visual)
+Depois, ao calcular `operationsWithoutFinancialData`, tambem coletar os jogos unicos:
 
-### Resultado esperado
+```typescript
+const incompleteOps = periodOps.filter(op => !(op.stakeValue && op.odd && op.operationType));
+const uniqueGames = new Map();
+incompleteOps.forEach(op => {
+  if (!uniqueGames.has(op.gameId)) {
+    uniqueGames.set(op.gameId, { id: op.gameId, label: op.gameLabel, date: op.date });
+  }
+});
+const gamesWithIncompleteData = Array.from(uniqueGames.values());
+```
 
-Os cards de jogo ficarão mais limpos, sem os inputs de URL para SofaScore e Radar Futebol. O painel expandido não terá mais essas seções.
+No `Performance.tsx`, exibir os jogos no alerta:
+
+```
+[!] 1 de 420 operacoes sem dados financeiros completos (stake/odd).
+    - Flamengo x Vasco (2026-02-14)
+```
