@@ -14,6 +14,7 @@ export interface NotificationPreferences {
   streakAlerts: boolean;       // Green/red streaks
   roiAlerts: boolean;          // Profit/loss alerts
   voiceAlerts: boolean;        // Voice announcement on game start
+  redCardAlerts: boolean;      // Red card alerts
 }
 
 export interface NotificationState {
@@ -41,6 +42,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   streakAlerts: true,
   roiAlerts: true,
   voiceAlerts: true,
+  redCardAlerts: true,
 };
 
 const DEFAULT_STATE: NotificationState = {

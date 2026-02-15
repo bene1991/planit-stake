@@ -55,11 +55,23 @@ interface UseFixtureCacheResult {
 
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'INT'];
 
-export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true, globalPaused: boolean = false, invalidateSignal?: number): UseFixtureCacheResult {
+export interface RedCardEvent {
+  fixtureId: number;
+  minute: number;
+  team: 'home' | 'away';
+  player?: string;
+}
+
+export type OnRedCardDetected = (event: RedCardEvent) => void;
+
+export function useFixtureCache(fixtureId: number | string | null | undefined, autoFetch: boolean = true, globalPaused: boolean = false, invalidateSignal?: number, onRedCardDetected?: OnRedCardDetected): UseFixtureCacheResult {
   const [data, setData] = useState<FixtureCacheData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const statusRef = useRef<string | undefined>(undefined);
+  const previousRedCardsRef = useRef<Set<string>>(new Set());
+  const onRedCardDetectedRef = useRef(onRedCardDetected);
+  onRedCardDetectedRef.current = onRedCardDetected;
 
   const fetchDetails = useCallback(async (skipCache = false) => {
     if (!fixtureId) return;
@@ -89,9 +101,28 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
       }
       
       const result = await resultPromise;
-      setData(result as FixtureCacheData);
-      statusRef.current = (result as FixtureCacheData)?.status;
+      const cacheData = result as FixtureCacheData;
+      setData(cacheData);
+      statusRef.current = cacheData?.status;
       setLoading(false);
+
+      // Detect new red cards
+      if (cacheData?.key_events?.length && onRedCardDetectedRef.current) {
+        const fixtureIdNum2 = parseInt(String(fixtureId), 10);
+        const redCards = cacheData.key_events.filter(e => e.type === 'red_card');
+        for (const rc of redCards) {
+          const key = `${fixtureIdNum2}-${rc.minute}-${rc.player || 'unknown'}`;
+          if (!previousRedCardsRef.current.has(key)) {
+            previousRedCardsRef.current.add(key);
+            onRedCardDetectedRef.current({
+              fixtureId: fixtureIdNum2,
+              minute: rc.minute,
+              team: rc.team,
+              player: rc.player,
+            });
+          }
+        }
+      }
     } catch (err) {
       console.error(`[useFixtureCache] Erro:`, err);
       // NO RETRY - wait for next natural 120s cycle instead of tripling consumption

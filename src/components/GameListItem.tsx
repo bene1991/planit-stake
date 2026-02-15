@@ -7,7 +7,7 @@ import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useFixtureCache } from "@/hooks/useFixtureCache";
+import { useFixtureCache, OnRedCardDetected } from "@/hooks/useFixtureCache";
 import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
 import { LiveDominanceDisplay } from "@/components/LiveDominanceDisplay";
 import { useLdiHistory } from "@/hooks/useLdiHistory";
@@ -50,6 +50,7 @@ interface GameListItemProps {
   lastGlobalRefresh?: number;
   isHighlighted?: boolean;
   globalPaused?: boolean;
+  onRedCardDetected?: OnRedCardDetected;
 }
 
 export function GameListItem({ 
@@ -62,6 +63,7 @@ export function GameListItem({
   lastGlobalRefresh,
   isHighlighted,
   globalPaused = false,
+  onRedCardDetected,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
@@ -74,7 +76,7 @@ export function GameListItem({
   const allMethodsResolved = game.methodOperations.length > 0 
     && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
   const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
-  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused, liveScore?.goalDetectedAt);
+  const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused, liveScore?.goalDetectedAt, onRedCardDetected);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(
     game.api_fixture_id ? Number(game.api_fixture_id) : undefined,

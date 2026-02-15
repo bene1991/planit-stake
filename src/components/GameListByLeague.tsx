@@ -3,7 +3,7 @@ import { Trophy } from "lucide-react";
 import { GameListItem } from "./GameListItem";
 import { useMemo } from "react";
 import { GameSortOrder } from "./GameStatusTabs";
-
+import { OnRedCardDetected } from "@/hooks/useFixtureCache";
 interface LiveScoreEvent {
   minute: number;
   team: 'home' | 'away';
@@ -36,6 +36,7 @@ interface GameListByLeagueProps {
   sortOrder?: GameSortOrder;
   highlightedGameId?: string | null;
   globalPaused?: boolean;
+  onRedCardDetected?: OnRedCardDetected;
 }
 
 export function GameListByLeague({
@@ -49,6 +50,7 @@ export function GameListByLeague({
   sortOrder = 'time',
   highlightedGameId,
   globalPaused = false,
+  onRedCardDetected,
 }: GameListByLeagueProps) {
   // Sort games based on sortOrder
   const sortedGames = useMemo(() => {
@@ -152,6 +154,7 @@ export function GameListByLeague({
                 lastGlobalRefresh={lastGlobalRefresh}
                 isHighlighted={game.id === highlightedGameId}
                 globalPaused={globalPaused}
+                onRedCardDetected={onRedCardDetected}
               />
             ))}
           </div>

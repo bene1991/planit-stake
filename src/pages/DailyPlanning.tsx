@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
 import { useLiveScores, GoalDetectedCallback } from "@/hooks/useLiveScores";
+import { RedCardEvent } from "@/hooks/useFixtureCache";
+import { useNotifications } from "@/hooks/useNotifications";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
@@ -9,7 +11,7 @@ import { useOperationalSettings } from "@/hooks/useOperationalSettings";
 
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
-import { playGoalSound } from "@/utils/soundManager";
+import { playGoalSound, playNotificationSound, playRedCardVoice } from "@/utils/soundManager";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiPause } from "@/hooks/useApiPause";
@@ -48,6 +50,7 @@ export default function DailyPlanning() {
   const { settings: opSettings } = useOperationalSettings();
   const stakeReference = opSettings.stakeValueReais || 25;
   const { isPaused, toggle: toggleApiPause } = useApiPause();
+  const { preferences: notifPrefs } = useNotifications();
   
   
   // State for highlighting the last game with a goal
@@ -136,6 +139,46 @@ export default function DailyPlanning() {
       }).catch(err => console.error('[DailyPlanning] Push notification error:', err));
     }
   }, [user, isGamePending]);
+
+  // Red card detection callback
+  const handleRedCardDetected = useCallback((event: RedCardEvent) => {
+    if (!notifPrefs.redCardAlerts || !notifPrefs.enabled) return;
+
+    const teamLabel = event.team === 'home' ? 'Casa' : 'Fora';
+    const playerName = event.player || 'Jogador';
+    const message = `🟥 Cartão Vermelho! ${playerName} - ${teamLabel} (${event.minute}')`;
+
+    console.log(`[DailyPlanning] ${message}`);
+
+    // Visual toast
+    toast.error(message, { duration: 8000 });
+
+    // Sound alert
+    if (notifPrefs.soundEnabled) {
+      playNotificationSound('error', true);
+    }
+
+    // Voice alert
+    if (notifPrefs.voiceAlerts) {
+      playRedCardVoice();
+    }
+
+    // Push notification (background only)
+    if (user && document.hidden) {
+      supabase.functions.invoke('send-push-notification', {
+        body: {
+          userId: user.id,
+          payload: {
+            title: '🟥 Cartão Vermelho!',
+            body: `${playerName} - ${teamLabel} (${event.minute}')`,
+            icon: '/pwa-192x192.png',
+            badge: '/pwa-192x192.png',
+            data: { type: 'red_card', fixtureId: event.fixtureId }
+          }
+        }
+      }).catch(err => console.error('[DailyPlanning] Push red card error:', err));
+    }
+  }, [user, notifPrefs]);
   
   // Optimized live scores - uses configurable interval + auto-economy
   const { 
@@ -775,6 +818,7 @@ export default function DailyPlanning() {
               sortOrder={gameSortOrder}
               highlightedGameId={highlightedGameId}
               globalPaused={isPaused}
+              onRedCardDetected={handleRedCardDetected}
             />
           </div>
         )}

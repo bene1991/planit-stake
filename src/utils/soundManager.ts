@@ -199,3 +199,38 @@ export const testGameStartVoice = (): void => {
     console.warn('[SoundManager] Error testing voice:', error);
   }
 };
+
+// === Red Card Voice Alert ===
+let lastRedCardVoiceTime = 0;
+const RED_CARD_VOICE_DEBOUNCE = 30000; // 30s
+
+export const playRedCardVoice = (): void => {
+  if (!('speechSynthesis' in window)) {
+    console.warn('[SoundManager] SpeechSynthesis not supported');
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastRedCardVoiceTime < RED_CARD_VOICE_DEBOUNCE) {
+    console.log('[SoundManager] Debouncing red card voice (too soon)');
+    return;
+  }
+  lastRedCardVoiceTime = now;
+
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance('Cartão vermelho!');
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.0;
+    utterance.volume = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const ptVoice = voices.find(v => v.lang.startsWith('pt'));
+    if (ptVoice) utterance.voice = ptVoice;
+
+    console.log('[SoundManager] Speaking: "Cartão vermelho!"');
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.warn('[SoundManager] Error with red card speech:', error);
+  }
+};
