@@ -222,8 +222,10 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
             );
             markAsShown(notifId);
 
-            // Voice announcement
-            if (preferences.voiceAlerts) {
+            // Voice announcement — only if game has no goals yet
+            // (if there's already a score, the goal sound is playing instead)
+            const hasGoals = (game.finalScoreHome ?? 0) > 0 || (game.finalScoreAway ?? 0) > 0;
+            if (preferences.voiceAlerts && !hasGoals) {
               playGameStartVoice();
             }
           }
