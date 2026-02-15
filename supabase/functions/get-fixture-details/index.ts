@@ -383,6 +383,19 @@ serve(async (req) => {
 
     // Need to fetch from API
     if (!apiFootballKey) {
+      // If no API key but we have stale cache, return it
+      if (cached) {
+        console.log(`[STALE CACHE] No API key, returning stale data for ${fixtureIdNum}`);
+        return new Response(JSON.stringify({
+          fixture_id: cached.fixture_id,
+          status: cached.status,
+          minute_now: cached.minute_now,
+          normalized_stats: cached.normalized_stats,
+          momentum_series: cached.momentum_series,
+          key_events: cached.key_events || [],
+          cached: true,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       throw new Error('API_FOOTBALL_KEY not configured');
     }
 
@@ -421,6 +434,25 @@ serve(async (req) => {
       safeJson(statsRes, 'statistics'),
       safeJson(eventsRes, 'events'),
     ]);
+
+    // Check for rate limit errors - return stale cache if available
+    const rateLimited = fixtureData?.errors?.rateLimit || 
+      statsData?.errors?.rateLimit || 
+      eventsData?.errors?.rateLimit;
+    
+    if (rateLimited && cached) {
+      console.log(`[STALE CACHE] Rate limited, returning stale data for ${fixtureIdNum}`);
+      return new Response(JSON.stringify({
+        fixture_id: cached.fixture_id,
+        status: cached.status,
+        minute_now: cached.minute_now,
+        normalized_stats: cached.normalized_stats,
+        momentum_series: cached.momentum_series,
+        key_events: cached.key_events || [],
+        cached: true,
+        _stale: true,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     // Extract fixture info
     const fixture = fixtureData.response?.[0];
