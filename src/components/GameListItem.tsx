@@ -287,6 +287,17 @@ export function GameListItem({
     return { homeGoals: [], awayGoals: [] };
   }, [fixtureCache?.key_events, liveScore?.events, liveScore?.homeTeamId, liveScore?.awayTeamId, game.goalEvents, game.finalScoreHome, game.finalScoreAway]);
 
+  const { homeRedCards, awayRedCards } = useMemo(() => {
+    if (fixtureCache?.key_events?.length) {
+      const reds = fixtureCache.key_events.filter((e: any) => e.type === 'red_card');
+      return {
+        homeRedCards: reds.filter((e: any) => e.team === 'home'),
+        awayRedCards: reds.filter((e: any) => e.team === 'away'),
+      };
+    }
+    return { homeRedCards: [] as any[], awayRedCards: [] as any[] };
+  }, [fixtureCache?.key_events]);
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       {/* Main Row */}
@@ -338,6 +349,15 @@ export function GameListItem({
                   ))}
                 </div>
               )}
+              {homeRedCards.length > 0 && (
+                <div className="ml-5 sm:ml-7 mb-1">
+                  {homeRedCards.map((rc: any, i: number) => (
+                    <span key={i} className="text-[9px] sm:text-[10px] text-red-400 mr-2">
+                      🟥 {rc.player} {rc.minute}'
+                    </span>
+                  ))}
+                </div>
+              )}
               
               {/* Away Team Row */}
               <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
@@ -359,10 +379,19 @@ export function GameListItem({
               
               {/* Away Goals */}
               {awayGoals.length > 0 && (
-                <div className="ml-5 sm:ml-7">
+                <div className="ml-5 sm:ml-7 mb-1">
                   {awayGoals.map((goal, i) => (
                     <span key={i} className="text-[9px] sm:text-[10px] text-muted-foreground mr-2">
                       ⚽ {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (P)' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {awayRedCards.length > 0 && (
+                <div className="ml-5 sm:ml-7">
+                  {awayRedCards.map((rc: any, i: number) => (
+                    <span key={i} className="text-[9px] sm:text-[10px] text-red-400 mr-2">
+                      🟥 {rc.player} {rc.minute}'
                     </span>
                   ))}
                 </div>
