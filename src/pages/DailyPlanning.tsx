@@ -525,7 +525,7 @@ export default function DailyPlanning() {
 
         return (
           <div className="space-y-2">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <Card className="p-3 text-center">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Lucro Hoje</p>
                 <p className={cn("text-lg font-bold", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
@@ -550,6 +550,45 @@ export default function DailyPlanning() {
                 <p className="text-[10px] text-muted-foreground">
                   {todayLive > 0 ? `${todayLive} ao vivo` : 'Nenhum ao vivo'}
                 </p>
+              </Card>
+              {/* Streak Atual */}
+              <Card className="p-3 text-center">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Streak Atual</p>
+                {(() => {
+                  // Calculate streak from all completed operations ordered by date/time
+                  const allCompleted = games
+                    .filter(g => g.methodOperations.some(op => op.result))
+                    .sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
+                  
+                  let streakType: string | null = null;
+                  let streakCount = 0;
+                  
+                  for (const game of allCompleted) {
+                    const ops = game.methodOperations.filter(op => op.result).sort((a, b) => (b.result || '').localeCompare(a.result || ''));
+                    for (const op of ops) {
+                      if (!streakType) {
+                        streakType = op.result!;
+                        streakCount = 1;
+                      } else if (op.result === streakType) {
+                        streakCount++;
+                      } else {
+                        break;
+                      }
+                    }
+                    if (streakType && ops.some(op => op.result !== streakType)) break;
+                  }
+                  
+                  return (
+                    <>
+                      <p className={cn("text-lg font-bold", streakType === 'Green' ? "text-emerald-500" : streakType === 'Red' ? "text-red-500" : "text-muted-foreground")}>
+                        {streakCount > 0 ? `${streakCount} ${streakType}` : '-'}
+                      </p>
+                      {streakType === 'Red' && streakCount >= 3 && (
+                        <p className="text-[10px] text-red-400">⚠️ Atenção</p>
+                      )}
+                    </>
+                  );
+                })()}
               </Card>
             </div>
 

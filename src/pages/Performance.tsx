@@ -11,7 +11,7 @@ import { useSupabaseGames } from '@/hooks/useSupabaseGames';
 import { useSupabaseBankroll } from '@/hooks/useSupabaseBankroll';
 import { useFilteredStatistics } from '@/hooks/useFilteredStatistics';
 import { StatisticsFilterBar, StatisticsFilters } from '@/components/StatisticsFilterBar';
-import { GreenVsRedChart } from '@/components/Charts/GreenVsRedChart';
+
 import { LeagueStatsChart } from '@/components/Charts/LeagueStatsChart';
 import { DailyMethodBreakdown } from '@/components/Charts/DailyMethodBreakdown';
 import { MethodTimelineChart } from '@/components/Charts/MethodTimelineChart';
@@ -22,7 +22,7 @@ import { StatCard } from '@/components/StatCard';
 import { AIPerformanceAnalyzer } from '@/components/AIPerformanceAnalyzer';
 import { AdvancedMetricsCards } from '@/components/AdvancedMetricsCards';
 import { MethodsRankingTable } from '@/components/Charts/MethodsRankingTable';
-import { ProfitDonutCharts } from '@/components/ProfitDonutCharts';
+
 import { useBankrollHealth } from '@/hooks/useBankrollHealth';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
@@ -426,7 +426,7 @@ export default function Performance() {
             </CardContent>
           </Card>
 
-          {/* Odd Média */}
+          {/* Odd Média + Breakeven */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-1">
@@ -439,83 +439,67 @@ export default function Performance() {
                 {averageOdd > 0 ? averageOdd.toFixed(2) : '-'}
               </p>
               <p className="text-xs text-muted-foreground">
-                {operationsWithOdd} ops • BE: {breakevenRate > 0 ? `${breakevenRate.toFixed(1)}%` : '-'}
+                {operationsWithOdd} ops
               </p>
+              {breakevenRate > 0 && (
+                <div className="mt-1 flex items-center gap-1">
+                  <Badge variant={overallStats.winRate >= breakevenRate ? "default" : "destructive"} className="text-[10px] px-1.5 py-0">
+                    BE: {breakevenRate.toFixed(1)}%
+                  </Badge>
+                  <span className={cn("text-[10px] font-medium", overallStats.winRate >= breakevenRate ? "text-emerald-500" : "text-red-500")}>
+                    {overallStats.winRate >= breakevenRate ? `+${(overallStats.winRate - breakevenRate).toFixed(1)}%` : `${(overallStats.winRate - breakevenRate).toFixed(1)}%`}
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Pico / Drawdown */}
+          {/* ROI */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground">Pico / DD</CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground">ROI</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-baseline gap-1">
-                <span className="text-xl lg:text-2xl font-bold text-emerald-500">{metrics.peakProfit}</span>
-                <span className="text-muted-foreground">/</span>
-                <span className={cn("text-lg font-bold", metrics.currentDrawdown > 0 ? "text-red-500" : "text-muted-foreground")}>
-                  -{metrics.currentDrawdown}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">stakes</p>
+              {(() => {
+                const totalStaked = overallStats.total * parsedStake;
+                const roi = totalStaked > 0 ? (totalProfitReais / totalStaked) * 100 : 0;
+                return (
+                  <>
+                    <p className={cn("text-xl lg:text-2xl font-bold", roi >= 0 ? "text-emerald-500" : "text-red-500")}>
+                      {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      sobre {formatCurrency(totalStaked)}
+                    </p>
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Comparison Cards (show when period filter is applied) */}
-      {filters.period !== 'all' && filters.period !== 'custom' && comparison.previousVolume > 0 && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="p-4 shadow-card">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
-                <p className="text-2xl font-bold">{comparison.currentWinRate}%</p>
-              </div>
-              <div className={cn('flex items-center gap-1 text-sm', getChangeColor(comparison.winRateChange))}>
-                {getChangeIcon(comparison.winRateChange)}
-                <span>{comparison.winRateChange > 0 ? '+' : ''}{comparison.winRateChange}%</span>
-              </div>
+      {/* Comparison Card - Best Method only (show when period filter is applied) */}
+      {filters.period !== 'all' && filters.period !== 'custom' && comparison.previousVolume > 0 && comparison.bestMethod && (
+        <Card className="p-4 shadow-card">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Melhor Método</p>
+              <p className="text-lg font-bold truncate">{comparison.bestMethod.name}</p>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">vs período anterior</p>
-          </Card>
-
-          <Card className="p-4 shadow-card">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Volume</p>
-                <p className="text-2xl font-bold">{comparison.currentVolume} ops</p>
-              </div>
-              <div className={cn('flex items-center gap-1 text-sm', getChangeColor(comparison.volumeChange))}>
-                {getChangeIcon(comparison.volumeChange)}
-                <span>{comparison.volumeChange > 0 ? '+' : ''}{comparison.volumeChange}</span>
-              </div>
+            <Trophy className="h-5 w-5 text-warning" />
+          </div>
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                Score: {comparison.bestMethod.combinedScore}
+              </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">vs período anterior</p>
-          </Card>
-
-          <Card className="p-4 shadow-card">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Melhor Método</p>
-                <p className="text-lg font-bold truncate">{comparison.bestMethod?.name || '-'}</p>
-              </div>
-              <Trophy className="h-5 w-5 text-warning" />
-            </div>
-            {comparison.bestMethod && (
-              <div className="mt-2 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
-                    Score: {comparison.bestMethod.combinedScore}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  WR: {comparison.bestMethod.winRate}% • Vol: {comparison.bestMethod.volume} • {comparison.bestMethod.profitReais >= 0 ? '+' : ''}{comparison.bestMethod.profitReais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </p>
-              </div>
-            )}
-          </Card>
-        </div>
+            <p className="text-xs text-muted-foreground">
+              WR: {comparison.bestMethod.winRate}% • Vol: {comparison.bestMethod.volume} • {comparison.bestMethod.profitReais >= 0 ? '+' : ''}{comparison.bestMethod.profitReais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </p>
+          </div>
+        </Card>
       )}
 
       {/* Warning for missing financial data */}
@@ -560,18 +544,6 @@ export default function Performance() {
         stakeValueReais={parsedStake}
       />
 
-      {/* Profit Distribution Donuts - NEW */}
-      <ProfitDonutCharts
-        profitDays={healthMetrics.profitDays}
-        lossDays={healthMetrics.lossDays}
-        totalDays={healthMetrics.totalDays}
-        avgDailyProfit={healthMetrics.avgDailyProfit}
-        avgOperationProfit={healthMetrics.avgOperationProfit}
-        totalOperations={overallStats.total}
-        maxProfit={healthMetrics.maxProfit}
-        maxLoss={healthMetrics.maxLoss}
-        totalProfit={totalProfitReais}
-      />
 
       {/* Bankroll Evolution Chart */}
       <BankrollEvolutionChart data={bankrollEvolution} />
@@ -594,11 +566,8 @@ export default function Performance() {
       {/* Daily Breakdown */}
       {dailyBreakdown.length > 0 && <DailyMethodBreakdown data={dailyBreakdown} />}
 
-      {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <GreenVsRedChart greens={overallStats.greens} reds={overallStats.reds} />
-        <OddRangeStatsChart data={oddRangeStats} games={filteredGames} methods={bankroll.methods} />
-      </div>
+      {/* Odd Range Stats */}
+      <OddRangeStatsChart data={oddRangeStats} games={filteredGames} methods={bankroll.methods} />
 
       {/* League Stats */}
       <LeagueStatsChart data={leagueStats} games={filteredGames} methods={bankroll.methods} />
