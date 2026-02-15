@@ -49,6 +49,9 @@ const MIN_CALL_INTERVAL = 10 * 1000;
 // Status codes that indicate a finished game
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
 
+// Status codes that indicate a live/in-progress game
+const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'INT', 'LIVE'];
+
 export function useLiveScores(
   games: Game[], 
   onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void,
@@ -67,6 +70,7 @@ export function useLiveScores(
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isFetchingRef = useRef(false);
   const persistedScoresRef = useRef<Set<string>>(new Set());
+  const livePersistedRef = useRef<Set<string>>(new Set());
   const lastCallTimeRef = useRef<number>(0);
   const remainingCreditsRef = useRef<number | null>(null);
   const rateLimitedUntilRef = useRef<number>(0);
@@ -253,6 +257,29 @@ export function useLiveScores(
           // Track fixtures with goals for event fetching
           if ((homeGoals > 0 || awayGoals > 0) && homeTeamId && awayTeamId) {
             fixturesWithGoals.push({ id: fixtureId, homeTeamId, awayTeamId });
+          }
+          
+          // LIVE STATUS PERSISTENCE: Update DB when game starts
+          if (game && LIVE_STATUSES.includes(status) && !livePersistedRef.current.has(game.id)) {
+            const dbStatus = game.status;
+            if (dbStatus === 'Pending' || dbStatus === 'Not Started' || !dbStatus) {
+              livePersistedRef.current.add(game.id);
+              console.log(`[useLiveScores] 🟢 GAME STARTED! ${game.homeTeam} vs ${game.awayTeam} - persisting status: Live`);
+              
+              supabase
+                .from('games')
+                .update({ status: 'Live' })
+                .eq('id', game.id)
+                .then(({ error }) => {
+                  if (error) {
+                    console.error('[useLiveScores] Failed to persist Live status:', error);
+                    livePersistedRef.current.delete(game.id);
+                  } else {
+                    console.log(`[useLiveScores] ✅ Live status persisted for ${game.id}`);
+                    onScorePersistedRef.current?.(game.id, homeGoals, awayGoals);
+                  }
+                });
+            }
           }
           
           // Check if game just finished - persist final score
