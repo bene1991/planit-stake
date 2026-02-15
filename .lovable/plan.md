@@ -1,71 +1,34 @@
 
 
-## Corrigir Consumo Excessivo de Creditos - Raiz do Problema
+## Corrigir notificacao de audio quando jogos comecam
 
-### Diagnostico
+### Problema
 
-Os logs mostram claramente o problema: **a edge function `get-fixture-details` esta sendo chamada em massa** (10+ instancias simultaneas), enquanto `useLiveScores` continua fazendo polling mesmo recebendo erros de "rate limit exceeded".
+O sistema **nunca atualiza o status do jogo para "Live" no banco de dados**. Quando o `useLiveScores` detecta que um jogo apareceu na resposta `fixtures?live=all` (ou seja, ja comecou), ele atualiza apenas o placar visual na tela, mas nao grava `status: 'Live'` no banco.
 
-Os logs mostram:
-- `get-fixture-details` com **13 boots simultaneos** numa unica rodada, cada um buscando um fixture individual
-- `useLiveScores` fazendo polling a cada 120s e recebendo "rateLimit: Too many requests" repetidamente
-- Nenhum backoff quando recebe erro de rate limit
+O `NotificationCenter` depende exatamente dessa transicao de status no objeto `game`:
 
-### Causas Raiz
+```text
+previousGame.status !== 'Live' && game.status === 'Live'
+```
 
-| Causa | Impacto | Onde |
-|-------|---------|------|
-| **`get-fixture-details` chamada por CADA GameCard** | N jogos ao vivo = N chamadas a cada 120s | `useFixtureCache` dentro de `GameCardCompact` e `GameListItem` |
-| **Sem backoff em rate limit** | Continua consumindo creditos mesmo quando a API rejeita | `useLiveScores` e `useFixtureCache` |
-| **`get-fixture-details` nao usa o cache L2** | Cada instancia efemera e um CACHE MISS | `supabase/functions/get-fixture-details/index.ts` |
-| **Retry automatico em erro** | Cada falha gera +2 retries (3x o consumo) | `useFixtureCache` linhas 92-97 |
+Como o `game.status` no banco permanece "Pending" ou "Not Started" para sempre (ate virar "Finished"), essa condicao nunca e verdadeira, e o audio/voz nunca dispara.
 
-### Plano de Correcao
+### Solucao
 
-**1. Adicionar backoff exponencial em `useLiveScores` quando recebe rate limit**
+Adicionar no `useLiveScores`, dentro do loop que processa os fixtures ao vivo, a logica para detectar quando um jogo do usuario aparece pela primeira vez como ao vivo e atualizar seu status no banco para "Live".
 
-Quando a resposta contem erro de "rateLimit", parar o polling por 5 minutos e mostrar aviso ao usuario. Atualmente o codigo simplesmente seta o erro e continua no proximo ciclo.
+### Alteracoes
 
-Arquivo: `src/hooks/useLiveScores.ts`
+**`src/hooks/useLiveScores.ts`**
 
-- Detectar `data?.errors?.rateLimit` na resposta
-- Quando detectado, setar um `rateLimitedUntilRef` com timestamp de 5 minutos no futuro
-- No inicio de `fetchLiveScores`, checar se ainda esta em periodo de backoff e pular
+Dentro do loop `for (const fixture of fixtures)`, quando um fixture corresponde a um jogo do usuario e o status da API indica que esta ao vivo (1H, 2H, HT, etc.), verificar se o `game.status` no banco ainda e "Pending" ou "Not Started". Se for, fazer um `supabase.update({ status: 'Live' })` nesse jogo - similar ao que ja e feito para "Finished" nas linhas 259-288.
 
-**2. Adicionar backoff em `useFixtureCache` quando recebe erro**
+Isso vai:
+1. Gravar `status: 'Live'` no banco
+2. O `useSupabaseGames` vai recarregar os dados
+3. O `NotificationCenter` vai detectar a transicao de status
+4. O audio e a voz "Jogo comecando agora!" vao disparar corretamente
 
-Arquivo: `src/hooks/useFixtureCache.ts`
-
-- Remover o retry automatico (linhas 92-97) que triplica o consumo em erros
-- Quando recebe erro, esperar ate o proximo ciclo natural de 120s ao inves de retentar imediatamente
-
-**3. Integrar `get-fixture-details` com o cache L2 (`api_cache`)**
-
-A edge function `get-fixture-details` tem seu proprio cache em `fixture_cache`, mas cada instancia efemera cria uma nova instancia do Supabase client. O problema e que ela faz chamadas individuais a API-Football para cada fixture.
-
-Arquivo: `supabase/functions/get-fixture-details/index.ts`
-
-- Verificar se ja usa o cache do banco (`fixture_cache`) antes de chamar a API
-- Adicionar verificacao de rate limit antes de fazer chamadas a API real
-- Se receber rate limit error, retornar dados cacheados mesmo que expirados (stale-while-revalidate)
-
-**4. Limitar chamadas paralelas de `get-fixture-details` no frontend**
-
-Arquivo: `src/hooks/useFixtureCache.ts`
-
-- Adicionar deduplicacao global (module-level Map) similar ao que foi feito no `useApiFootball`
-- Evitar que 13 GameCards disparem 13 chamadas simultaneas
-
-### Impacto Esperado
-
-- Eliminacao de chamadas duplicadas paralelas (-80% de requests do `get-fixture-details`)
-- Backoff de 5 minutos quando atinge rate limit (para de consumir creditos inutilmente)
-- Sem retries automaticos em erro (cada erro gasta 1 credito ao inves de 3)
-
-### Detalhes Tecnicos
-
-**Arquivos modificados:**
-- `src/hooks/useLiveScores.ts` - Adicionar backoff em rate limit
-- `src/hooks/useFixtureCache.ts` - Remover retries, adicionar deduplicacao global
-- `supabase/functions/get-fixture-details/index.ts` - Stale-while-revalidate em rate limit
+Sera adicionado um Set (`livePersistedRef`) para evitar gravar multiplas vezes o mesmo jogo como "Live", identico ao padrao ja usado com `persistedScoresRef` para jogos finalizados.
 
