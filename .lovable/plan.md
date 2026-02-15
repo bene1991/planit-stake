@@ -1,69 +1,71 @@
 
 
-## Corrigir consumo excessivo de creditos da API-Football
+## Corrigir Consumo Excessivo de Creditos - Raiz do Problema
 
-### Problema identificado
+### Diagnostico
 
-Os logs mostram que **cada chamada a edge function cria uma nova instancia** ("booted" aparece em cada requisicao). Como o cache e **em memoria**, cada nova instancia comeca com cache vazio, resultando em CACHE MISS e consumo real de credito na API-Football.
+Os logs mostram claramente o problema: **a edge function `get-fixture-details` esta sendo chamada em massa** (10+ instancias simultaneas), enquanto `useLiveScores` continua fazendo polling mesmo recebendo erros de "rate limit exceeded".
 
-Em 2 horas, 637 creditos foram consumidos sem jogos ao vivo. A causa principal sao chamadas paralelas ao endpoint `fixtures?date=2026-02-15` que nunca aproveitam o cache porque cada instancia e independente.
+Os logs mostram:
+- `get-fixture-details` com **13 boots simultaneos** numa unica rodada, cada um buscando um fixture individual
+- `useLiveScores` fazendo polling a cada 120s e recebendo "rateLimit: Too many requests" repetidamente
+- Nenhum backoff quando recebe erro de rate limit
 
-### Causa raiz
+### Causas Raiz
 
-1. **Cache em memoria na edge function e inutil** - Supabase edge functions sao efemeras. Cada request pode criar uma nova instancia com cache vazio
-2. **`useFixtureSearch.autoLinkGame`** faz chamadas `fixtures?date=...` a cada jogo adicionado, sem deduplicar
-3. **`useLiveScores`** continua fazendo polling `fixtures?live=all` mesmo sem jogos ao vivo (verifica `hasGamesToMonitor` que inclui jogos "Pending")
-4. **Frontend sem throttle global** - multiplas abas ou componentes podem disparar chamadas simultaneas
+| Causa | Impacto | Onde |
+|-------|---------|------|
+| **`get-fixture-details` chamada por CADA GameCard** | N jogos ao vivo = N chamadas a cada 120s | `useFixtureCache` dentro de `GameCardCompact` e `GameListItem` |
+| **Sem backoff em rate limit** | Continua consumindo creditos mesmo quando a API rejeita | `useLiveScores` e `useFixtureCache` |
+| **`get-fixture-details` nao usa o cache L2** | Cada instancia efemera e um CACHE MISS | `supabase/functions/get-fixture-details/index.ts` |
+| **Retry automatico em erro** | Cada falha gera +2 retries (3x o consumo) | `useFixtureCache` linhas 92-97 |
 
-### Solucao: Cache persistente no banco de dados
+### Plano de Correcao
 
-Migrar o cache da edge function de "em memoria" para a tabela `fixture_cache` (ou uma nova tabela dedicada `api_cache`). Assim, todas as instancias compartilham o mesmo cache.
+**1. Adicionar backoff exponencial em `useLiveScores` quando recebe rate limit**
 
-### Alteracoes
+Quando a resposta contem erro de "rateLimit", parar o polling por 5 minutos e mostrar aviso ao usuario. Atualmente o codigo simplesmente seta o erro e continua no proximo ciclo.
 
-**1. Criar tabela `api_cache` no banco (migracao SQL)**
+Arquivo: `src/hooks/useLiveScores.ts`
 
-Tabela simples para armazenar respostas cacheadas:
+- Detectar `data?.errors?.rateLimit` na resposta
+- Quando detectado, setar um `rateLimitedUntilRef` com timestamp de 5 minutos no futuro
+- No inicio de `fetchLiveScores`, checar se ainda esta em periodo de backoff e pular
 
-```text
-api_cache
-  - cache_key (text, PK)
-  - response_data (jsonb)
-  - created_at (timestamptz)
-  - expires_at (timestamptz)
-```
+**2. Adicionar backoff em `useFixtureCache` quando recebe erro**
 
-Com RLS aberta para leitura autenticada e politica de insert/update para authenticated.
+Arquivo: `src/hooks/useFixtureCache.ts`
 
-**2. Modificar `supabase/functions/api-football/index.ts`**
+- Remover o retry automatico (linhas 92-97) que triplica o consumo em erros
+- Quando recebe erro, esperar ate o proximo ciclo natural de 120s ao inves de retentar imediatamente
 
-- Antes de chamar a API real, consultar `api_cache` no banco: `SELECT response_data FROM api_cache WHERE cache_key = $key AND expires_at > now()`
-- Se encontrar, retornar os dados do banco (0 creditos consumidos)
-- Se nao encontrar, chamar a API real, salvar no `api_cache` com `expires_at = now() + TTL`, e retornar
-- Manter o cache em memoria como camada L1 (rapida) e o banco como L2 (persistente entre instancias)
+**3. Integrar `get-fixture-details` com o cache L2 (`api_cache`)**
 
-**3. Otimizar `useLiveScores` para nao fazer polling quando nao ha jogos ao vivo**
+A edge function `get-fixture-details` tem seu proprio cache em `fixture_cache`, mas cada instancia efemera cria uma nova instancia do Supabase client. O problema e que ela faz chamadas individuais a API-Football para cada fixture.
 
-- Atualmente `hasGamesToMonitor` retorna true se existem jogos "Pending" (que ainda nao comecaram)
-- Mudar para so iniciar polling quando existem jogos "Live" OU quando a hora do jogo "Pending" esta proxima (ex: 30 min antes do inicio)
-- Jogos "Pending" com kickoff em mais de 30 minutos nao devem disparar polling
+Arquivo: `supabase/functions/get-fixture-details/index.ts`
 
-**4. Adicionar deduplicacao no frontend para `fixtures?date=`**
+- Verificar se ja usa o cache do banco (`fixture_cache`) antes de chamar a API
+- Adicionar verificacao de rate limit antes de fazer chamadas a API real
+- Se receber rate limit error, retornar dados cacheados mesmo que expirados (stale-while-revalidate)
 
-- No `useFixturesByDate`, o `pendingRequest` ref ja deveria evitar chamadas duplicadas, mas cada instancia do hook tem seu proprio ref
-- Centralizar numa variavel de modulo para que todas as instancias compartilhem o mesmo promise
+**4. Limitar chamadas paralelas de `get-fixture-details` no frontend**
 
-### Impacto esperado
+Arquivo: `src/hooks/useFixtureCache.ts`
 
-- Reducao de ~90% no consumo de creditos quando nao ha jogos ao vivo
-- Cache compartilhado entre todas as instancias da edge function
-- Polling inteligente: sem jogos ao vivo ou proximos = zero requisicoes
+- Adicionar deduplicacao global (module-level Map) similar ao que foi feito no `useApiFootball`
+- Evitar que 13 GameCards disparem 13 chamadas simultaneas
 
-### Detalhes tecnicos
+### Impacto Esperado
+
+- Eliminacao de chamadas duplicadas paralelas (-80% de requests do `get-fixture-details`)
+- Backoff de 5 minutos quando atinge rate limit (para de consumir creditos inutilmente)
+- Sem retries automaticos em erro (cada erro gasta 1 credito ao inves de 3)
+
+### Detalhes Tecnicos
 
 **Arquivos modificados:**
-- `supabase/functions/api-football/index.ts` - Adicionar cache L2 via banco de dados
-- `src/hooks/useLiveScores.ts` - Restringir polling a jogos realmente ao vivo ou proximos de comecar
-- `src/hooks/useApiFootball.ts` - Melhorar deduplicacao global do `useFixturesByDate`
-- Nova migracao SQL para criar tabela `api_cache`
+- `src/hooks/useLiveScores.ts` - Adicionar backoff em rate limit
+- `src/hooks/useFixtureCache.ts` - Remover retries, adicionar deduplicacao global
+- `supabase/functions/get-fixture-details/index.ts` - Stale-while-revalidate em rate limit
 
