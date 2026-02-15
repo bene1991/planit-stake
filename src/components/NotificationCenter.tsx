@@ -76,10 +76,13 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     title: string,
     body: string,
     type: 'success' | 'warning' | 'error' | 'info' = 'info',
-    action?: { label: string; onClick: () => void }
+    action?: { label: string; onClick: () => void },
+    skipSound: boolean = false
   ) => {
-    // Play sound
-    playNotificationSound(type, preferences.soundEnabled);
+    // Play sound (unless explicitly skipped)
+    if (!skipSound) {
+      playNotificationSound(type, preferences.soundEnabled);
+    }
 
     // Send to Telegram (async, non-blocking)
     sendTelegramMsg(title, body, type);
@@ -209,11 +212,13 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
           const notifId = `game-${game.id}-live`;
           if (canShowNotification(notifId, 120)) { // 2h cooldown
             const message = `⚽ Jogo AO VIVO: ${game.homeTeam} x ${game.awayTeam} (${game.league})`;
+            // Skip sound — goal detection has its own dedicated sound
             showNotification(
               message,
               'O jogo começou!',
               'success',
-              { label: 'Acompanhar', onClick: () => navigate('/daily-planning') }
+              { label: 'Acompanhar', onClick: () => navigate('/daily-planning') },
+              true // skipSound: avoid double sound with goal detection
             );
             markAsShown(notifId);
 

@@ -210,6 +210,8 @@ export function useLiveScores(
           const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
           
           // GOAL DETECTION: Compare with previous snapshot BEFORE updating
+          // Skip detection on first poll when game just transitioned to Live
+          // (previousScoresRef won't have baseline yet — set it below without firing)
           if (game && onGoalDetectedRef.current) {
             const previousScore = previousScoresRef.current.get(fixtureId);
             if (previousScore) {
