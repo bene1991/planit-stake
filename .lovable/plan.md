@@ -1,49 +1,61 @@
 
-## Mostrar qual jogo tem dados financeiros incompletos
+
+## Corrigir inconsistencia entre metricas ao filtrar por metodo
 
 ### Problema
-O alerta "1 de 420 operacoes sem dados financeiros completos (stake/odd)" nao indica qual jogo especifico tem o problema, dificultando a correcao.
+Ao filtrar por metodo diferente na pagina de Desempenho, os cards do topo (Lucro Periodo, Lucro Hoje) mostram valores corretos (ex: +3.64st, R$91.09), mas os cards avancados (Run-up Maximo, Maior Lucro, Maior Prejuizo) mostram R$0.00.
+
+### Causa raiz
+O hook `useBankrollHealth.ts` usa apenas `op.profit ?? 0` para calcular as metricas. Quando a operacao tem `profit: null` no banco de dados (mas tem `stakeValue`, `odd` e `operationType` preenchidos), o calculo retorna zero.
+
+Enquanto isso, o hook `useOperationalStatus.ts` tem um fallback inteligente via funcao `getOperationProfit()` que chama `calculateProfit()` quando `profit` e nulo, gerando os valores corretos.
 
 ### Solucao
+Adicionar o mesmo fallback de calculo em tempo real no `useBankrollHealth.ts`, importando `calculateProfit` de `@/utils/profitCalculator`.
 
-**1. `src/hooks/useOperationalStatus.ts`**
-- Adicionar campo `gameId` e `gameLabel` (ex: "Flamengo x Vasco") ao tipo `OperationWithDate`
-- Ao iterar as operacoes sem dados financeiros, coletar os nomes dos jogos afetados
-- Adicionar ao `OperationalMetrics` um novo campo `gamesWithIncompleteData: { id: string; label: string; date: string }[]` com a lista dos jogos que tem operacoes incompletas
+### Alteracoes
 
-**2. `src/pages/Performance.tsx`**
-- No alerta amarelo, listar os jogos afetados abaixo da mensagem principal
-- Formato: "Time A x Time B (data)" para cada jogo com dados incompletos
-- Se houver muitos jogos (>5), mostrar os primeiros 5 com um "e mais X jogos..."
+**1. `src/hooks/useBankrollHealth.ts`**
 
-### Detalhes tecnicos
+- Importar `calculateProfit` de `@/utils/profitCalculator`
+- Adicionar `commissionRate` como prop opcional (default 0.045)
+- Adicionar campos `operationType` e `methodId` ao tipo `MethodOperationWithGame` (operationType ja existe no tipo Game)
+- Criar funcao auxiliar `getProfit(op)` que:
+  - Se `op.profit` nao for null, usa ele
+  - Senao, se tem `stakeValue`, `odd` e `operationType`, calcula via `calculateProfit`
+  - Senao, retorna 0
+- Substituir todas as ocorrencias de `op.profit ?? 0` por `getProfit(op)`
 
-No `useOperationalStatus.ts`, ao construir `allOperations`, adicionar `gameId` e `gameLabel`:
+Trecho da funcao auxiliar:
+```typescript
+const getProfit = (op: MethodOperationWithGame): number => {
+  if (op.profit !== null && op.profit !== undefined) return op.profit;
+  if (op.stakeValue && op.odd && op.operationType && op.result) {
+    return calculateProfit({
+      stakeValue: op.stakeValue,
+      odd: op.odd,
+      operationType: op.operationType as 'Back' | 'Lay',
+      result: op.result as 'Green' | 'Red',
+      commissionRate: 0.045,
+    });
+  }
+  return 0;
+};
+```
 
+**2. Atualizacao do push de operacoes** - garantir que `operationType` seja incluido ao construir `allOperations`:
 ```typescript
 allOperations.push({
-  ...
-  gameId: game.id,
-  gameLabel: `${game.homeTeam} x ${game.awayTeam}`,
+  result: op.result,
+  profit: op.profit,
+  stakeValue: op.stakeValue,
+  odd: op.odd,
+  operationType: op.operationType,
+  methodId: op.methodId,
+  gameDate: game.date,
+  league: game.league,
 });
 ```
 
-Depois, ao calcular `operationsWithoutFinancialData`, tambem coletar os jogos unicos:
-
-```typescript
-const incompleteOps = periodOps.filter(op => !(op.stakeValue && op.odd && op.operationType));
-const uniqueGames = new Map();
-incompleteOps.forEach(op => {
-  if (!uniqueGames.has(op.gameId)) {
-    uniqueGames.set(op.gameId, { id: op.gameId, label: op.gameLabel, date: op.date });
-  }
-});
-const gamesWithIncompleteData = Array.from(uniqueGames.values());
-```
-
-No `Performance.tsx`, exibir os jogos no alerta:
-
-```
-[!] 1 de 420 operacoes sem dados financeiros completos (stake/odd).
-    - Flamengo x Vasco (2026-02-14)
-```
+### Resultado esperado
+Ao filtrar por qualquer metodo, Run-up Maximo, Drawdown Maximo, Maior Lucro e Maior Prejuizo refletirao os mesmos valores financeiros que os cards do topo, eliminando a inconsistencia.
