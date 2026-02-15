@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
+import { useSupabaseGames } from "@/hooks/useSupabaseGames";
+import { useFilteredStatistics } from "@/hooks/useFilteredStatistics";
+import { BankrollEvolutionChart } from "@/components/Charts/BankrollEvolutionChart";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -12,6 +15,9 @@ import { MethodEditor } from "@/components/MethodEditor";
 
 export default function BankrollManagement() {
   const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca, moveMethod } = useSupabaseBankroll();
+  const { games } = useSupabaseGames();
+  const noFilters = useMemo(() => ({ dateFrom: null, dateTo: null, selectedMethods: [] as string[], selectedLeagues: [] as string[], period: 'all' as const, result: 'all' as const }), []);
+  const { bankrollEvolution } = useFilteredStatistics(games, bankroll.methods, noFilters);
   const [newMethodName, setNewMethodName] = useState("");
   const [newMethodPercentage, setNewMethodPercentage] = useState("");
   const [editingMethod, setEditingMethod] = useState<any>(null);
@@ -112,6 +118,8 @@ export default function BankrollManagement() {
           </div>
         </div>
       </Card>
+
+      <BankrollEvolutionChart data={bankrollEvolution} />
 
       {/* Barra de Alocação Total */}
       {bankroll.methods.length > 0 && (
