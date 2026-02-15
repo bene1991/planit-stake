@@ -69,6 +69,7 @@ export function useLiveScores(
   const persistedScoresRef = useRef<Set<string>>(new Set());
   const lastCallTimeRef = useRef<number>(0);
   const remainingCreditsRef = useRef<number | null>(null);
+  const rateLimitedUntilRef = useRef<number>(0);
   
   // Ref for games to avoid re-creating fetchLiveScores on every games change
   const gamesRef = useRef(games);
@@ -127,8 +128,15 @@ export function useLiveScores(
   
   // Fetch all live fixtures in a single API call
   const fetchLiveScores = useCallback(async () => {
-    // Throttle protection - prevent calls more frequent than MIN_CALL_INTERVAL
+    // Rate limit backoff - skip if still in cooldown period
     const now = Date.now();
+    if (now < rateLimitedUntilRef.current) {
+      const remainingSec = Math.ceil((rateLimitedUntilRef.current - now) / 1000);
+      console.warn(`[useLiveScores] ⛔ Rate limited - skipping (${remainingSec}s remaining)`);
+      return;
+    }
+    
+    // Throttle protection - prevent calls more frequent than MIN_CALL_INTERVAL
     if (now - lastCallTimeRef.current < MIN_CALL_INTERVAL) {
       console.warn('[useLiveScores] Throttled - called too soon, skipping');
       return;
@@ -158,6 +166,14 @@ export function useLiveScores(
       
       if (data?.errors && Object.keys(data.errors).length > 0) {
         console.error('[useLiveScores] API errors:', data.errors);
+        // Detect rate limit and apply 5-minute backoff
+        if (data.errors.rateLimit || JSON.stringify(data.errors).toLowerCase().includes('rate limit') || JSON.stringify(data.errors).toLowerCase().includes('too many')) {
+          const backoffMs = 5 * 60 * 1000;
+          rateLimitedUntilRef.current = Date.now() + backoffMs;
+          console.warn(`[useLiveScores] ⛔ RATE LIMITED - pausing polling for 5 minutes`);
+          setError('Rate limit atingido - pausando por 5 minutos');
+          return;
+        }
         setError(Object.values(data.errors).join(', '));
         return;
       }
