@@ -1,36 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Cache storage with TTL
+// L1: In-memory cache (fast, per-instance)
 interface CacheEntry {
   data: unknown;
   timestamp: number;
   ttl: number;
 }
-
 const cache = new Map<string, CacheEntry>();
 
-// Store the latest rate limit data globally (persists across requests)
+// Store the latest rate limit data globally
 let lastRateLimit: { limit: number; remaining: number; used: number } | null = null;
 
-// Cache TTL configuration (in milliseconds) - OPTIMIZED to reduce API consumption
-const CACHE_TTL = {
-  live: 40 * 1000,           // 40 seconds for live games (was 30s) - saves credits
-  fixtures_date: 10 * 60 * 1000,  // 10 minutes for fixtures by date (was 5 min)
-  fixtures_id: 60 * 1000,    // 60 seconds for specific fixture (was 30s)
-  statistics: 60 * 1000,     // 60 seconds for statistics (was 30s)
-  events: 60 * 1000,         // 60 seconds for events (was 30s)
-  leagues: 24 * 60 * 60 * 1000,  // 24 hours for leagues
-  teams: 24 * 60 * 60 * 1000,    // 24 hours for teams
-  standings: 60 * 60 * 1000,     // 1 hour for standings
-  odds: 10 * 60 * 1000,      // 10 minutes for pre-match odds (was 5 min)
-  odds_live: 120 * 1000,     // 120 seconds for live odds (was 60s)
-  bookmakers: 24 * 60 * 60 * 1000, // 24 hours for bookmakers list
-  default: 5 * 60 * 1000,    // 5 minutes default (was 2 min)
+// Cache TTL configuration (in milliseconds)
+const CACHE_TTL: Record<string, number> = {
+  live: 40 * 1000,
+  fixtures_date: 10 * 60 * 1000,
+  fixtures_id: 60 * 1000,
+  statistics: 60 * 1000,
+  events: 60 * 1000,
+  leagues: 24 * 60 * 60 * 1000,
+  teams: 24 * 60 * 60 * 1000,
+  standings: 60 * 60 * 1000,
+  odds: 10 * 60 * 1000,
+  odds_live: 120 * 1000,
+  bookmakers: 24 * 60 * 60 * 1000,
+  default: 5 * 60 * 1000,
 };
 
 function getCacheKey(endpoint: string, params: Record<string, unknown>): string {
@@ -42,92 +42,80 @@ function getCacheKey(endpoint: string, params: Record<string, unknown>): string 
 }
 
 function getTTL(endpoint: string, params: Record<string, unknown>): number {
-  // Live games
-  if (params.live === 'all') {
-    return CACHE_TTL.live;
-  }
-  
-  // Specific fixture
-  if (endpoint === 'fixtures' && params.id) {
-    return CACHE_TTL.fixtures_id;
-  }
-  
-  // Fixtures by date
-  if (endpoint === 'fixtures' && params.date) {
-    return CACHE_TTL.fixtures_date;
-  }
-  
-  // Statistics
-  if (endpoint === 'fixtures/statistics') {
-    return CACHE_TTL.statistics;
-  }
-  
-  // Events
-  if (endpoint === 'fixtures/events') {
-    return CACHE_TTL.events;
-  }
-  
-  // Leagues
-  if (endpoint === 'leagues') {
-    return CACHE_TTL.leagues;
-  }
-  
-  // Teams
-  if (endpoint === 'teams') {
-    return CACHE_TTL.teams;
-  }
-  
-  // Standings
-  if (endpoint === 'standings') {
-    return CACHE_TTL.standings;
-  }
-  
-  // Odds
-  if (endpoint === 'odds') {
-    return CACHE_TTL.odds;
-  }
-  
-  // Live odds
-  if (endpoint === 'odds/live') {
-    return CACHE_TTL.odds_live;
-  }
-  
-  // Bookmakers
-  if (endpoint === 'bookmakers') {
-    return CACHE_TTL.bookmakers;
-  }
-  
+  if (params.live === 'all') return CACHE_TTL.live;
+  if (endpoint === 'fixtures' && params.id) return CACHE_TTL.fixtures_id;
+  if (endpoint === 'fixtures' && params.date) return CACHE_TTL.fixtures_date;
+  if (endpoint === 'fixtures/statistics') return CACHE_TTL.statistics;
+  if (endpoint === 'fixtures/events') return CACHE_TTL.events;
+  if (endpoint === 'leagues') return CACHE_TTL.leagues;
+  if (endpoint === 'teams') return CACHE_TTL.teams;
+  if (endpoint === 'standings') return CACHE_TTL.standings;
+  if (endpoint === 'odds') return CACHE_TTL.odds;
+  if (endpoint === 'odds/live') return CACHE_TTL.odds_live;
+  if (endpoint === 'bookmakers') return CACHE_TTL.bookmakers;
   return CACHE_TTL.default;
 }
 
-function getFromCache(key: string): unknown | null {
+// L1: In-memory cache helpers
+function getFromL1(key: string): unknown | null {
   const entry = cache.get(key);
   if (!entry) return null;
-  
-  const now = Date.now();
-  if (now - entry.timestamp > entry.ttl) {
+  if (Date.now() - entry.timestamp > entry.ttl) {
     cache.delete(key);
     return null;
   }
-  
   return entry.data;
 }
 
-function setCache(key: string, data: unknown, ttl: number): void {
-  cache.set(key, {
-    data,
-    timestamp: Date.now(),
-    ttl,
-  });
-  
-  // Cleanup old entries (keep cache size manageable)
+function setL1(key: string, data: unknown, ttl: number): void {
+  cache.set(key, { data, timestamp: Date.now(), ttl });
   if (cache.size > 100) {
     const now = Date.now();
     for (const [k, v] of cache.entries()) {
-      if (now - v.timestamp > v.ttl) {
-        cache.delete(k);
-      }
+      if (now - v.timestamp > v.ttl) cache.delete(k);
     }
+  }
+}
+
+// L2: Database cache helpers
+function getSupabaseClient() {
+  const url = Deno.env.get('SUPABASE_URL')!;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  return createClient(url, serviceKey);
+}
+
+async function getFromL2(key: string): Promise<unknown | null> {
+  try {
+    const sb = getSupabaseClient();
+    const { data, error } = await sb
+      .from('api_cache')
+      .select('response_data')
+      .eq('cache_key', key)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data.response_data;
+  } catch (err) {
+    console.error('[L2 Cache] Read error:', err);
+    return null;
+  }
+}
+
+async function setL2(key: string, data: unknown, ttlMs: number): Promise<void> {
+  try {
+    const sb = getSupabaseClient();
+    const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+    await sb
+      .from('api_cache')
+      .upsert({
+        cache_key: key,
+        response_data: data,
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt,
+      }, { onConflict: 'cache_key' });
+  } catch (err) {
+    console.error('[L2 Cache] Write error:', err);
   }
 }
 
@@ -144,31 +132,32 @@ serve(async (req) => {
   try {
     const { endpoint, params = {} }: ApiFootballRequest = await req.json();
     
-    if (!endpoint) {
-      throw new Error('Endpoint is required');
-    }
+    if (!endpoint) throw new Error('Endpoint is required');
     
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
-    if (!apiKey) {
-      console.error('API_FOOTBALL_KEY not configured');
-      throw new Error('API_FOOTBALL_KEY not configured');
+    if (!apiKey) throw new Error('API_FOOTBALL_KEY not configured');
+
+    const cacheKey = getCacheKey(endpoint, params);
+    const ttl = getTTL(endpoint, params);
+    
+    // L1: Check in-memory cache first (fastest)
+    const l1Data = getFromL1(cacheKey);
+    if (l1Data) {
+      console.log(`[L1 HIT] ${cacheKey}`);
+      return new Response(
+        JSON.stringify({ ...l1Data as object, _cached: true, _cacheKey: cacheKey, _rateLimit: lastRateLimit }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Build cache key
-    const cacheKey = getCacheKey(endpoint, params);
-    
-    // Check cache
-    const cachedData = getFromCache(cacheKey);
-    if (cachedData) {
-      console.log(`[CACHE HIT] ${cacheKey}`);
-      // Include last known rate limit even for cached responses
+    // L2: Check database cache (persistent across instances)
+    const l2Data = await getFromL2(cacheKey);
+    if (l2Data) {
+      console.log(`[L2 HIT] ${cacheKey}`);
+      // Warm L1 with L2 data
+      setL1(cacheKey, l2Data, ttl);
       return new Response(
-        JSON.stringify({ 
-          ...cachedData as object, 
-          _cached: true,
-          _cacheKey: cacheKey,
-          _rateLimit: lastRateLimit
-        }),
+        JSON.stringify({ ...l2Data as object, _cached: true, _cacheKey: cacheKey, _rateLimit: lastRateLimit }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -183,7 +172,6 @@ serve(async (req) => {
       }
     }
     
-    // Only add timezone for the main fixtures endpoint (not fixtures/events or fixtures/statistics)
     if (endpoint === 'fixtures' && !params.timezone) {
       queryParams.append('timezone', 'America/Sao_Paulo');
     }
@@ -193,12 +181,9 @@ serve(async (req) => {
 
     const response = await fetch(apiUrl, {
       method: 'GET',
-      headers: {
-        'x-apisports-key': apiKey,
-      },
+      headers: { 'x-apisports-key': apiKey },
     });
 
-    // Safe JSON parsing - handle non-JSON responses (e.g. 503 upstream errors)
     const responseText = await response.text();
     let data: any;
     try {
@@ -208,7 +193,7 @@ serve(async (req) => {
       throw new Error(`API-Football returned non-JSON response (${response.status}): ${responseText.substring(0, 100)}`);
     }
 
-    // Extract rate limit headers from API-Football response
+    // Extract rate limit headers
     const rateLimitLimit = parseInt(response.headers.get('x-ratelimit-requests-limit') || '0', 10);
     const rateLimitRemaining = parseInt(response.headers.get('x-ratelimit-requests-remaining') || '0', 10);
     const rateLimitUsed = rateLimitLimit > 0 ? rateLimitLimit - rateLimitRemaining : 0;
@@ -218,38 +203,23 @@ serve(async (req) => {
       throw new Error(`API-Football error: ${data.message || response.statusText}`);
     }
 
-    // Check for API errors in response
     if (data.errors && Object.keys(data.errors).length > 0) {
       console.error('API-Football errors:', JSON.stringify(data.errors));
-      // Still return the data, let frontend handle the errors
     }
 
-    // Log rate limit info from headers (real API usage) and store globally
     if (rateLimitLimit > 0) {
       console.log(`[RATE LIMIT] Used: ${rateLimitUsed}/${rateLimitLimit}, Remaining: ${rateLimitRemaining}`);
-      // Store globally so cache hits can also return rate limit data
-      lastRateLimit = {
-        limit: rateLimitLimit,
-        remaining: rateLimitRemaining,
-        used: rateLimitUsed
-      };
-    } else if (data.paging) {
-      console.log(`[RATE LIMIT] Paging: ${data.paging.current}/${data.paging.total}`);
+      lastRateLimit = { limit: rateLimitLimit, remaining: rateLimitRemaining, used: rateLimitUsed };
     }
 
-    // Cache the result
-    const ttl = getTTL(endpoint, params);
-    setCache(cacheKey, data, ttl);
-    console.log(`[CACHED] ${cacheKey} for ${ttl/1000}s`);
+    // Save to both L1 and L2 caches
+    setL1(cacheKey, data, ttl);
+    setL2(cacheKey, data, ttl); // fire-and-forget
+    console.log(`[CACHED L1+L2] ${cacheKey} for ${ttl / 1000}s`);
 
-    // Include rate limit data in response for frontend tracking
     const responseData = {
       ...data,
-      _rateLimit: rateLimitLimit > 0 ? {
-        limit: rateLimitLimit,
-        remaining: rateLimitRemaining,
-        used: rateLimitUsed
-      } : null
+      _rateLimit: rateLimitLimit > 0 ? { limit: rateLimitLimit, remaining: rateLimitRemaining, used: rateLimitUsed } : null
     };
 
     return new Response(
@@ -261,16 +231,8 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        errors: { request: errorMessage },
-        response: [],
-        results: 0
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ error: errorMessage, errors: { request: errorMessage }, response: [], results: 0 }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

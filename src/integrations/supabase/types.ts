@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_cache: {
+        Row: {
+          cache_key: string
+          created_at: string
+          expires_at: string
+          response_data: Json
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string
+          expires_at: string
+          response_data: Json
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string
+          expires_at?: string
+          response_data?: Json
+        }
+        Relationships: []
+      }
       bankroll: {
         Row: {
           created_at: string | null
