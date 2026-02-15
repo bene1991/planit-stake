@@ -1,52 +1,35 @@
 
 
-## Mostrar cartoes vermelhos visualmente no card do jogo
+## Corrigir som de gol duplicado
 
-### Problema
+### Causa raiz
 
-A API retorna corretamente os cartoes vermelhos no campo `key_events` (ex: fixture 1392043 do Huesca mostra `"type":"red_card","minute":29,"player":"M. Fernandez Sanchez"`). Porem, o `GameListItem` so extrai e exibe **gols** dos `key_events` (linha 198: `filter(e => e.type === 'goal')`). Nao existe nenhum codigo para mostrar cartoes vermelhos no card.
+Quando um jogo comeca e o primeiro poll do `useLiveScores` ja detecta um placar (ex: 1-0), duas coisas acontecem simultaneamente:
+
+1. **Deteccao de gol** (`handleGoalDetected` no DailyPlanning) -> toca `playGoalSound()` (som de celebracao)
+2. **Transicao para Live** (status persiste no banco -> NotificationCenter detecta `game.status` mudou para "Live") -> toca `playNotificationSound('success')` (som de sucesso) + toast "Jogo AO VIVO"
+
+O usuario ouve dois sons praticamente ao mesmo tempo e percebe como "notificacao dupla de gol".
+
+Alem disso, se o primeiro poll pega o jogo ja com 1-0, o sistema interpreta como gol E inicio de jogo no mesmo instante.
 
 ### Solucao
 
-Adicionar extracao e exibicao de eventos de cartao vermelho no `GameListItem.tsx`, logo abaixo dos gols de cada time, usando o mesmo padrao visual.
+Duas correcoes:
 
-### Alteracoes
+**1. `src/components/NotificationCenter.tsx`** - Suprimir o som do alerta "Jogo AO VIVO"
 
-**`src/components/GameListItem.tsx`**
+Quando o jogo vai para Live, a notificacao visual (toast) continua, mas o som sera suprimido se houver gol simultaneo. A forma mais simples: chamar `showNotification` com som desabilitado para o evento de Live, ja que o sistema de gol tem seu proprio som dedicado. Vamos usar a variante sem som para o alerta de Live, mantendo apenas a voz "Jogo comecando agora!" e o toast visual.
 
-1. Adicionar um `useMemo` similar ao de gols para extrair cartoes vermelhos do `key_events`:
+Concretamente: ao inves de passar `'success'` como tipo (que toca notification-success.mp3), chamar o toast diretamente sem passar pelo `playNotificationSound`, ou adicionar um parametro `skipSound` ao `showNotification`.
 
-```typescript
-const { homeRedCards, awayRedCards } = useMemo(() => {
-  if (fixtureCache?.key_events?.length) {
-    const reds = fixtureCache.key_events.filter(e => e.type === 'red_card');
-    return {
-      homeRedCards: reds.filter(e => e.team === 'home'),
-      awayRedCards: reds.filter(e => e.team === 'away'),
-    };
-  }
-  return { homeRedCards: [], awayRedCards: [] };
-}, [fixtureCache?.key_events]);
-```
+**2. `src/hooks/useLiveScores.ts`** - Nao detectar gol na primeira comparacao quando jogo acaba de comecar
 
-2. Renderizar abaixo dos gols de cada time (home e away), com icone vermelho:
-
-```tsx
-{homeRedCards.length > 0 && (
-  <div className="ml-5 sm:ml-7 mb-1">
-    {homeRedCards.map((rc, i) => (
-      <span key={i} className="text-[9px] sm:text-[10px] text-red-400 mr-2">
-        🟥 {rc.player} {rc.minute}'
-      </span>
-    ))}
-  </div>
-)}
-```
-
-Mesmo padrao para `awayRedCards` abaixo dos gols do visitante.
+Quando o jogo acabou de ser persistido como Live (esta no `livePersistedRef`), o primeiro poll ja vem com placar. Pular a deteccao de gol nesse primeiro ciclo para evitar que o som de gol e o som de "jogo comecando" toquem juntos. Na proxima iteracao, o `previousScoresRef` ja tera o baseline correto e gols subsequentes serao detectados normalmente.
 
 ### Resultado esperado
 
-No card do jogo Huesca vs AD Ceuta FC, vai aparecer:
-- Linha do gol: "J. Escobar 47'"
-- Linha do cartao: "🟥 M. Fernandez Sanchez 29'" (em vermelho, abaixo dos gols do time visitante)
+- Quando um jogo comeca sem gols: apenas toast + voz "Jogo comecando agora!" (sem som extra)
+- Quando um gol acontece durante o jogo: apenas som de gol + highlight dourado
+- Nunca dois sons ao mesmo tempo para o mesmo evento
+
