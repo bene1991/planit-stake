@@ -10,6 +10,9 @@ export interface FixturesCacheEntry {
 export const fixturesCache = new Map<string, FixturesCacheEntry>();
 export const FIXTURES_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
 
+// Module-level pending requests map for global deduplication
+const pendingFixtureRequests = new Map<string, Promise<void>>();
+
 interface CacheEntry<T> {
   data: T[];
   timestamp: number;
@@ -234,8 +237,6 @@ export function useFixturesByDate(date: string, enabled = true) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState(false);
-  const pendingRequest = useRef<Promise<void> | null>(null);
-
   const fetchData = useCallback(async () => {
     if (!enabled || !date) return;
 
@@ -250,9 +251,18 @@ export function useFixturesByDate(date: string, enabled = true) {
       return;
     }
 
-    // Evitar requests duplicados para mesma data
-    if (pendingRequest.current) {
-      await pendingRequest.current;
+    // Module-level deduplication: reuse pending request from any hook instance
+    if (pendingFixtureRequests.has(cacheKey)) {
+      try {
+        await pendingFixtureRequests.get(cacheKey);
+        // After the shared request completes, read from cache
+        const freshEntry = fixturesCache.get(cacheKey) as CacheEntry<ApiFootballFixture> | undefined;
+        if (freshEntry) {
+          setData(freshEntry.data);
+          setCached(true);
+        }
+      } catch { /* ignore */ }
+      setLoading(false);
       return;
     }
 
@@ -290,11 +300,11 @@ export function useFixturesByDate(date: string, enabled = true) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
-        pendingRequest.current = null;
+        pendingFixtureRequests.delete(cacheKey);
       }
     })();
 
-    pendingRequest.current = requestPromise;
+    pendingFixtureRequests.set(cacheKey, requestPromise);
     await requestPromise;
   }, [date, enabled]);
 

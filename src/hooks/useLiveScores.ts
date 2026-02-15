@@ -87,10 +87,25 @@ export function useLiveScores(
   const onScorePersistedRef = useRef(onScorePersisted);
   useEffect(() => { onScorePersistedRef.current = onScorePersisted; }, [onScorePersisted]);
   
-  // Get list of fixture IDs to monitor (live + pending)
+  // Get list of fixture IDs to monitor - only Live games + Pending games starting within 30 min
   const fixtureIds = useMemo(() => {
+    const now = new Date();
     return games
-      .filter(g => g.api_fixture_id && (g.status === 'Live' || g.status === 'Pending'))
+      .filter(g => {
+        if (!g.api_fixture_id) return false;
+        if (g.status === 'Live') return true;
+        if (g.status === 'Pending') {
+          // Only include Pending games starting within 30 minutes
+          try {
+            const gameTime = new Date(`${g.date}T${g.time}`);
+            const diffMs = gameTime.getTime() - now.getTime();
+            return diffMs <= 30 * 60 * 1000 && diffMs > -60 * 60 * 1000;
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      })
       .map(g => g.api_fixture_id!);
   }, [games]);
   
