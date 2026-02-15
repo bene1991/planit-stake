@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { Game } from "@/types";
+import { calculateProfit } from "@/utils/profitCalculator";
 
 interface MethodOperationWithGame {
   result?: string | null;
   profit?: number | null;
   stakeValue?: number | null;
   odd?: number | null;
+  operationType?: string | null;
   methodId: string;
   methodName?: string;
   gameDate: string;
@@ -76,12 +78,28 @@ export function useBankrollHealth({
           profit: op.profit,
           stakeValue: op.stakeValue,
           odd: op.odd,
+          operationType: op.operationType,
           methodId: op.methodId,
           gameDate: game.date,
           league: game.league,
         });
       });
     });
+
+    // Helper: use stored profit or calculate fallback
+    const getProfit = (op: MethodOperationWithGame): number => {
+      if (op.profit !== null && op.profit !== undefined) return op.profit;
+      if (op.stakeValue && op.odd && op.operationType && op.result) {
+        return calculateProfit({
+          stakeValue: op.stakeValue,
+          odd: op.odd,
+          operationType: op.operationType as 'Back' | 'Lay',
+          result: op.result as 'Green' | 'Red',
+          commissionRate: 0.045,
+        });
+      }
+      return 0;
+    };
 
     // Calculate total profits and losses
     let totalProfitSum = 0;
@@ -90,7 +108,7 @@ export function useBankrollHealth({
     let maxLoss = 0;
 
     allOperations.forEach(op => {
-      const profit = op.profit ?? 0;
+      const profit = getProfit(op);
       if (profit > 0) {
         totalProfitSum += profit;
         if (profit > maxProfit) maxProfit = profit;
@@ -103,7 +121,7 @@ export function useBankrollHealth({
     // Calculate daily profits for run-up/drawdown
     const dailyProfits: { [date: string]: number } = {};
     allOperations.forEach(op => {
-      const profit = op.profit ?? 0;
+      const profit = getProfit(op);
       if (!dailyProfits[op.gameDate]) {
         dailyProfits[op.gameDate] = 0;
       }
