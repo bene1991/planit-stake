@@ -179,18 +179,30 @@ serve(async (req) => {
     const apiUrl = `https://v3.football.api-sports.io/${endpoint}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
     console.log(`[API CALL] ${apiUrl}`);
 
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: { 'x-apisports-key': apiKey },
-    });
-
-    const responseText = await response.text();
+    // Fetch with retry for transient errors (503, 502, etc.)
+    let response: Response | null = null;
     let data: any;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      console.error(`[API-Football] Non-JSON response (${response.status}):`, responseText.substring(0, 200));
-      throw new Error(`API-Football returned non-JSON response (${response.status}): ${responseText.substring(0, 100)}`);
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: { 'x-apisports-key': apiKey },
+      });
+
+      const responseText = await response.text();
+      try {
+        data = JSON.parse(responseText);
+        break; // success
+      } catch {
+        console.error(`[API-Football] Attempt ${attempt}/${maxRetries} Non-JSON response (${response.status}):`, responseText.substring(0, 200));
+        if (attempt < maxRetries && (response.status >= 500 || response.status === 0)) {
+          const delay = attempt * 1000;
+          console.log(`[API-Football] Retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error(`API-Football returned non-JSON response (${response.status}): ${responseText.substring(0, 100)}`);
+      }
     }
 
     // Extract rate limit headers
