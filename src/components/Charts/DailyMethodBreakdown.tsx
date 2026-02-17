@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus } from 'luci
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/utils/profitCalculator';
 
 interface MethodDayData {
   methodId: string;
@@ -14,6 +15,7 @@ interface MethodDayData {
   reds: number;
   winRate: number;
   balance: number;
+  profitReais: number;
 }
 
 interface DayBreakdown {
@@ -22,6 +24,7 @@ interface DayBreakdown {
   totalReds: number;
   totalWinRate: number;
   totalBalance: number;
+  totalProfitReais: number;
   methods: MethodDayData[];
 }
 
@@ -81,6 +84,7 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
               <TableHead className="text-center">Reds</TableHead>
               <TableHead className="text-center">Win Rate</TableHead>
               <TableHead className="text-center">Saldo</TableHead>
+              <TableHead className="text-center">Lucro</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -119,6 +123,9 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
                         <span className="font-semibold">{balanceInfo.text}</span>
                       </div>
                     </TableCell>
+                    <TableCell className={cn('text-center font-semibold py-2', day.totalProfitReais >= 0 ? 'text-success' : 'text-destructive')}>
+                      {day.totalProfitReais >= 0 ? '+' : ''}{formatCurrency(day.totalProfitReais)}
+                    </TableCell>
                   </TableRow>
 
                   {/* Métodos expandidos */}
@@ -154,6 +161,9 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
                               <MethodBalanceIcon className="h-3 w-3" />
                               <span>{methodBalanceInfo.text}</span>
                             </div>
+                          </TableCell>
+                          <TableCell className={cn('text-center text-sm py-1.5', method.profitReais >= 0 ? 'text-success' : 'text-destructive')}>
+                            {method.profitReais >= 0 ? '+' : ''}{formatCurrency(method.profitReais)}
                           </TableCell>
                         </TableRow>
                       );

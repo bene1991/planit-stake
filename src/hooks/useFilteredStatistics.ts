@@ -47,8 +47,10 @@ interface DayBreakdown {
     greens: number;
     reds: number;
     winRate: number;
-    balance: number;
+     balance: number;
+     profitReais: number;
   }[];
+  totalProfitReais: number;
 }
 
 interface MethodTimelineData {
@@ -381,7 +383,8 @@ export const useFilteredStatistics = (
       {
         totalGreens: number;
         totalReds: number;
-        methods: Map<string, { methodName: string; greens: number; reds: number }>;
+        totalProfitReais: number;
+        methods: Map<string, { methodName: string; greens: number; reds: number; profitReais: number }>;
       }
     >();
 
@@ -390,7 +393,7 @@ export const useFilteredStatistics = (
       if (ops.length === 0) return;
 
       if (!dayBreakdownMap.has(game.date)) {
-        dayBreakdownMap.set(game.date, { totalGreens: 0, totalReds: 0, methods: new Map() });
+        dayBreakdownMap.set(game.date, { totalGreens: 0, totalReds: 0, totalProfitReais: 0, methods: new Map() });
       }
       const dayData = dayBreakdownMap.get(game.date)!;
 
@@ -399,7 +402,7 @@ export const useFilteredStatistics = (
         if (!method) return;
 
         if (!dayData.methods.has(op.methodId)) {
-          dayData.methods.set(op.methodId, { methodName: method.name, greens: 0, reds: 0 });
+          dayData.methods.set(op.methodId, { methodName: method.name, greens: 0, reds: 0, profitReais: 0 });
         }
         const methodData = dayData.methods.get(op.methodId)!;
 
@@ -411,6 +414,26 @@ export const useFilteredStatistics = (
           dayData.totalReds++;
           methodData.reds++;
         }
+
+        // Calculate profit in R$
+        let opProfit = 0;
+        if (op.profit !== undefined && op.profit !== null) {
+          opProfit = op.profit;
+        } else if (op.stakeValue && op.odd && op.odd > 0 && op.operationType) {
+          const commissionRate = op.commissionRate ?? 0.045;
+          if (op.operationType === 'Back') {
+            opProfit = op.result === 'Green' ? op.stakeValue * (op.odd - 1) * (1 - commissionRate) : -op.stakeValue;
+          } else {
+            if (op.result === 'Green') {
+              const stakeLay = op.stakeValue / (op.odd - 1);
+              opProfit = stakeLay * (1 - commissionRate);
+            } else {
+              opProfit = -op.stakeValue;
+            }
+          }
+        }
+        dayData.totalProfitReais += opProfit;
+        methodData.profitReais += opProfit;
       });
     });
 
@@ -423,6 +446,7 @@ export const useFilteredStatistics = (
           totalReds: data.totalReds,
           totalWinRate: total > 0 ? (data.totalGreens / total) * 100 : 0,
           totalBalance: data.totalGreens - data.totalReds,
+          totalProfitReais: data.totalProfitReais,
           methods: Array.from(data.methods.entries()).map(([methodId, mData]) => {
             const mTotal = mData.greens + mData.reds;
             return {
@@ -432,6 +456,7 @@ export const useFilteredStatistics = (
               reds: mData.reds,
               winRate: mTotal > 0 ? (mData.greens / mTotal) * 100 : 0,
               balance: mData.greens - mData.reds,
+              profitReais: mData.profitReais,
             };
           }),
         };
