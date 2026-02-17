@@ -56,8 +56,7 @@ export default function DailyPlanning() {
   // State for highlighting the last game with a goal
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
   
-  // === DEDUP LAYER 2: Independent goal notification tracking in DailyPlanning ===
-  const notifiedGoalKeysRef = useRef<Set<string>>(new Set());
+  // === DEDUP LAYER 2: sessionStorage-based (survives StrictMode remounts + HMR) ===
   const [showApiBrowser, setShowApiBrowser] = useState(false);
   
   const [showMethodSelector, setShowMethodSelector] = useState(false);
@@ -110,13 +109,23 @@ export default function DailyPlanning() {
       return;
     }
     
-    // === DEDUP LAYER 2: Check if this exact goal was already notified in DailyPlanning ===
+    // === DEDUP LAYER 2: sessionStorage-based dedup (survives remounts/HMR) ===
     const goalKey = `${gameId}-${homeScore}-${awayScore}`;
-    if (notifiedGoalKeysRef.current.has(goalKey)) {
-      console.log(`[DailyPlanning] Dedup: goal already notified for key=${goalKey}, skipping`);
-      return;
+    try {
+      const stored = sessionStorage.getItem('notifiedGoalKeys');
+      const keys: string[] = stored ? JSON.parse(stored) : [];
+      if (keys.includes(goalKey)) {
+        console.log(`[DailyPlanning] Dedup: goal already notified for key=${goalKey}, skipping`);
+        return;
+      }
+      // Keep last 50 keys max to avoid unbounded growth
+      keys.push(goalKey);
+      if (keys.length > 50) keys.splice(0, keys.length - 50);
+      sessionStorage.setItem('notifiedGoalKeys', JSON.stringify(keys));
+    } catch {
+      // sessionStorage fail - proceed but log
+      console.warn('[DailyPlanning] sessionStorage dedup failed, proceeding');
     }
-    notifiedGoalKeysRef.current.add(goalKey);
     
     console.log(`[DailyPlanning] ⚽ GOAL! ${team === 'home' ? game.homeTeam : game.awayTeam} scores! ${game.homeTeam} ${homeScore}-${awayScore} ${game.awayTeam}`);
     

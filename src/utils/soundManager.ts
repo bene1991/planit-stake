@@ -102,8 +102,8 @@ export const testSound = (type: NotificationSoundType): void => {
 
 // Debounce para evitar som duplicado - com sessionStorage backup (sobrevive a HMR)
 let lastGoalSoundTime = 0;
-const GOAL_SOUND_DEBOUNCE = 15000; // 15 segundos
-let activeGoalAudio: HTMLAudioElement | null = null;
+const GOAL_SOUND_DEBOUNCE = 30000; // 30 segundos (maior que qualquer intervalo de polling ~20s)
+let isGoalSoundPlaying = false; // Flag booleano à prova de race conditions
 
 const getLastGoalSoundTime = (): number => {
   try {
@@ -121,23 +121,26 @@ const setLastGoalSoundTime = (time: number): void => {
   } catch { /* ignore */ }
 };
 
-// Função para tocar som de gol (com debounce + lock de áudio ativo)
+// Função para tocar som de gol (com debounce + flag booleano + sessionStorage dedup)
 export const playGoalSound = (soundId?: GoalSoundOption): void => {
   const now = Date.now();
   const lastTime = getLastGoalSoundTime();
   
-  // Debounce: recusar se tocou recentemente
+  // Camada 4a: Debounce 30s - recusar se tocou recentemente
   if (now - lastTime < GOAL_SOUND_DEBOUNCE) {
     console.log('[SoundManager] Debouncing goal sound (too soon)', { diff: now - lastTime });
     return;
   }
   
-  // Lock: recusar se já tem áudio tocando
-  if (activeGoalAudio && !activeGoalAudio.ended && !activeGoalAudio.paused) {
-    console.log('[SoundManager] Goal sound already playing, skipping');
+  // Camada 3: Flag booleano - recusar se já tem áudio tocando
+  // Diferente do check anterior (.paused), este flag é setado ANTES de criar o Audio
+  if (isGoalSoundPlaying) {
+    console.log('[SoundManager] Goal sound already playing (boolean lock), skipping');
     return;
   }
   
+  // LOCK: setar flag ANTES de qualquer operação assíncrona
+  isGoalSoundPlaying = true;
   setLastGoalSoundTime(now);
   
   try {
@@ -145,16 +148,17 @@ export const playGoalSound = (soundId?: GoalSoundOption): void => {
     console.log('[SoundManager] Playing goal sound:', path);
     const audio = new Audio(path);
     audio.volume = 0.8;
-    activeGoalAudio = audio;
-    audio.addEventListener('ended', () => { activeGoalAudio = null; });
-    audio.addEventListener('error', () => { activeGoalAudio = null; });
+    audio.addEventListener('ended', () => { isGoalSoundPlaying = false; });
+    audio.addEventListener('error', () => { isGoalSoundPlaying = false; });
     audio.play().catch((err) => {
       console.warn('Could not play goal sound:', err);
-      activeGoalAudio = null;
+      isGoalSoundPlaying = false;
     });
+    // Safety: auto-release lock after 10 seconds max (in case events don't fire)
+    setTimeout(() => { isGoalSoundPlaying = false; }, 10000);
   } catch (error) {
     console.warn('Error playing goal sound:', error);
-    activeGoalAudio = null;
+    isGoalSoundPlaying = false;
   }
 };
 
