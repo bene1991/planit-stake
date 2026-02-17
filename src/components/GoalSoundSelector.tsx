@@ -10,7 +10,7 @@ import {
   GoalSoundOption,
   getSelectedGoalSound,
   setSelectedGoalSound,
-  playGoalSound,
+  previewGoalSound,
 } from '@/utils/soundManager';
 
 export const GoalSoundSelector = () => {
@@ -24,8 +24,7 @@ export const GoalSoundSelector = () => {
 
   const handlePlaySound = (soundId: GoalSoundOption) => {
     setPlaying(soundId);
-    playGoalSound(soundId);
-    // Reset playing state after sound duration
+    previewGoalSound(soundId);
     setTimeout(() => setPlaying(null), 3000);
   };
 

@@ -46,6 +46,17 @@ const REFRESH_INTERVAL_IDLE = 120 * 1000;
 // Minimum interval between calls (throttle protection)
 const MIN_CALL_INTERVAL = 10 * 1000;
 
+// === MODULE-LEVEL goal dedup (survives StrictMode remounts) ===
+const notifiedGoalsModule = new Map<string, number>(); // key -> timestamp
+
+// Cleanup entries older than 2 hours to prevent memory leaks
+const cleanupNotifiedGoals = () => {
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  for (const [key, ts] of notifiedGoalsModule) {
+    if (ts < cutoff) notifiedGoalsModule.delete(key);
+  }
+};
+
 // Status codes that indicate a finished game
 const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
 
@@ -80,8 +91,8 @@ export function useLiveScores(
   useEffect(() => { gamesRef.current = games; }, [games]);
   // Internal snapshot for goal detection - stores previous scores before update
   const previousScoresRef = useRef<Map<string, { homeScore: number; awayScore: number }>>(new Map());
-  // Track recently notified goals to prevent duplicates
-  const notifiedGoalsRef = useRef<Set<string>>(new Set());
+  // Track recently notified goals - MODULE-LEVEL to survive StrictMode remounts
+  // (notifiedGoalsModule is defined outside the component)
   
   // Stable ref for fetchLiveScores to avoid useEffect dependency issues
   const fetchLiveScoresRef = useRef<(() => Promise<void>) | null>(null);
@@ -218,11 +229,14 @@ export function useLiveScores(
           
           if (game && onGoalDetectedRef.current) {
             if (oldSnapshot) {
-              // Detect home goal - with dedup key to prevent double notifications
+              // Periodic cleanup of old entries
+              cleanupNotifiedGoals();
+              
+              // Detect home goal - with MODULE-LEVEL dedup
               if (homeGoals > oldSnapshot.homeScore) {
                 const goalKey = `${fixtureId}-home-${homeGoals}`;
-                if (!notifiedGoalsRef.current.has(goalKey)) {
-                  notifiedGoalsRef.current.add(goalKey);
+                if (!notifiedGoalsModule.has(goalKey)) {
+                  notifiedGoalsModule.set(goalKey, Date.now());
                   console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${game.homeTeam} scores! ${homeGoals}-${awayGoals}`);
                   onGoalDetectedRef.current(game.id, 'home', homeGoals, awayGoals, game);
                 }
@@ -230,8 +244,8 @@ export function useLiveScores(
               // Detect away goal
               if (awayGoals > oldSnapshot.awayScore) {
                 const goalKey = `${fixtureId}-away-${awayGoals}`;
-                if (!notifiedGoalsRef.current.has(goalKey)) {
-                  notifiedGoalsRef.current.add(goalKey);
+                if (!notifiedGoalsModule.has(goalKey)) {
+                  notifiedGoalsModule.set(goalKey, Date.now());
                   console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${game.awayTeam} scores! ${homeGoals}-${awayGoals}`);
                   onGoalDetectedRef.current(game.id, 'away', homeGoals, awayGoals, game);
                 }
