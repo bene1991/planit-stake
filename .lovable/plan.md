@@ -1,34 +1,29 @@
 
+## Adicionar coluna de % sobre a Stake no Historico Diario
 
-## Adicionar coluna de Lucro em R$ no Historico Diario por Metodo
+### O que o usuario quer
 
-### O que muda
-
-Adicionar uma nova coluna "Lucro" na tabela de Historico Diario por Metodo, mostrando o resultado financeiro em R$ de cada dia e de cada metodo quando expandido.
+Mostrar o lucro/perda como fracao da stake unitaria configurada no topo da pagina. Exemplo: se a stake e R$10 e o lucro do dia foi R$10, exibir "+1.00 stake". Se perdeu R$6,70, exibir "-0.67 stake".
 
 ### Alteracoes
 
-**1. `src/hooks/useFilteredStatistics.ts`** - Calcular lucro R$ por dia e por metodo/dia
+**1. `src/pages/Performance.tsx`** - Passar `stakeValueReais` para o componente
 
-No bloco que constroi o `dayBreakdownMap` (linhas 378-439), adicionar acumulacao de `profitReais` tanto no total do dia quanto por metodo, usando a mesma logica de calculo de lucro ja existente no arquivo (linhas 458-477).
+Na linha 567 onde renderiza `<DailyMethodBreakdown data={dailyBreakdown} />`, adicionar a prop `stakeValueReais={parsedStake}`.
 
-A interface `DayBreakdown` passara a incluir `totalProfitReais: number` e cada metodo dentro de `methods` tera `profitReais: number`.
+**2. `src/components/Charts/DailyMethodBreakdown.tsx`** - Adicionar coluna "Stakes"
 
-**2. `src/components/Charts/DailyMethodBreakdown.tsx`** - Exibir coluna de Lucro
-
-- Adicionar `profitReais` nas interfaces `MethodDayData` e `DayBreakdown`
-- Adicionar coluna "Lucro" no header da tabela (apos "Saldo")
-- Renderizar o valor formatado em R$ com cor verde (positivo) ou vermelha (negativo)
-- Aplicar o mesmo padrao nas linhas expandidas dos metodos
+- Adicionar prop `stakeValueReais: number` na interface do componente
+- Adicionar coluna "Stakes" no header da tabela (apos "Lucro")
+- Calcular `profitReais / stakeValueReais` para cada dia e cada metodo expandido
+- Exibir com formato `+1.25 st` ou `-0.67 st` com cor verde/vermelha
+- Mostrar "—" se stakeValueReais for 0
 
 ### Resultado esperado
 
-A tabela de historico diario mostrara:
-
 ```text
-Data              | Greens | Reds | Win Rate | Saldo | Lucro
-17/02 (segunda)   |   5    |  2   |  71.4%   |  +3   | +R$ 125,50
-  -> Metodo A     |   3    |  1   |  75.0%   |  +2   | +R$ 80,30
-  -> Metodo B     |   2    |  1   |  66.7%   |  +1   | +R$ 45,20
+Data              | Greens | Reds | Win Rate | Saldo | Lucro        | Stakes
+17/02 (segunda)   |   5    |  2   |  71.4%   |  +3   | +R$ 125,50   | +12.55 st
+  -> Metodo A     |   3    |  1   |  75.0%   |  +2   | +R$ 80,30    | +8.03 st
+  -> Metodo B     |   2    |  1   |  66.7%   |  +1   | +R$ 45,20    | +4.52 st
 ```
-
