@@ -100,29 +100,61 @@ export const testSound = (type: NotificationSoundType): void => {
   playNotificationSound(type, true);
 };
 
-// Debounce para evitar som duplicado
+// Debounce para evitar som duplicado - com sessionStorage backup (sobrevive a HMR)
 let lastGoalSoundTime = 0;
 const GOAL_SOUND_DEBOUNCE = 15000; // 15 segundos
+let activeGoalAudio: HTMLAudioElement | null = null;
 
-// Função para tocar som de gol (com debounce)
+const getLastGoalSoundTime = (): number => {
+  try {
+    const stored = sessionStorage.getItem('lastGoalSoundTime');
+    return stored ? Math.max(lastGoalSoundTime, parseInt(stored, 10)) : lastGoalSoundTime;
+  } catch {
+    return lastGoalSoundTime;
+  }
+};
+
+const setLastGoalSoundTime = (time: number): void => {
+  lastGoalSoundTime = time;
+  try {
+    sessionStorage.setItem('lastGoalSoundTime', time.toString());
+  } catch { /* ignore */ }
+};
+
+// Função para tocar som de gol (com debounce + lock de áudio ativo)
 export const playGoalSound = (soundId?: GoalSoundOption): void => {
   const now = Date.now();
-  if (now - lastGoalSoundTime < GOAL_SOUND_DEBOUNCE) {
-    console.log('[SoundManager] Debouncing goal sound (too soon)');
+  const lastTime = getLastGoalSoundTime();
+  
+  // Debounce: recusar se tocou recentemente
+  if (now - lastTime < GOAL_SOUND_DEBOUNCE) {
+    console.log('[SoundManager] Debouncing goal sound (too soon)', { diff: now - lastTime });
     return;
   }
-  lastGoalSoundTime = now;
+  
+  // Lock: recusar se já tem áudio tocando
+  if (activeGoalAudio && !activeGoalAudio.ended && !activeGoalAudio.paused) {
+    console.log('[SoundManager] Goal sound already playing, skipping');
+    return;
+  }
+  
+  setLastGoalSoundTime(now);
   
   try {
     const path = getGoalSoundPath(soundId);
     console.log('[SoundManager] Playing goal sound:', path);
     const audio = new Audio(path);
     audio.volume = 0.8;
+    activeGoalAudio = audio;
+    audio.addEventListener('ended', () => { activeGoalAudio = null; });
+    audio.addEventListener('error', () => { activeGoalAudio = null; });
     audio.play().catch((err) => {
       console.warn('Could not play goal sound:', err);
+      activeGoalAudio = null;
     });
   } catch (error) {
     console.warn('Error playing goal sound:', error);
+    activeGoalAudio = null;
   }
 };
 
