@@ -56,6 +56,8 @@ export default function DailyPlanning() {
   // State for highlighting the last game with a goal
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
   
+  // === DEDUP LAYER 2: Independent goal notification tracking in DailyPlanning ===
+  const notifiedGoalKeysRef = useRef<Set<string>>(new Set());
   const [showApiBrowser, setShowApiBrowser] = useState(false);
   
   const [showMethodSelector, setShowMethodSelector] = useState(false);
@@ -108,9 +110,17 @@ export default function DailyPlanning() {
       return;
     }
     
+    // === DEDUP LAYER 2: Check if this exact goal was already notified in DailyPlanning ===
+    const goalKey = `${gameId}-${homeScore}-${awayScore}`;
+    if (notifiedGoalKeysRef.current.has(goalKey)) {
+      console.log(`[DailyPlanning] Dedup: goal already notified for key=${goalKey}, skipping`);
+      return;
+    }
+    notifiedGoalKeysRef.current.add(goalKey);
+    
     console.log(`[DailyPlanning] ⚽ GOAL! ${team === 'home' ? game.homeTeam : game.awayTeam} scores! ${game.homeTeam} ${homeScore}-${awayScore} ${game.awayTeam}`);
     
-    // Play celebration sound
+    // Play celebration sound (Layer 3 dedup inside playGoalSound)
     playGoalSound();
     
     // Highlight this game with golden border

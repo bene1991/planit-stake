@@ -210,13 +210,16 @@ export function useLiveScores(
           const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
           
           // GOAL DETECTION: Compare with previous snapshot BEFORE updating
-          // Skip detection on first poll when game just transitioned to Live
-          // (previousScoresRef won't have baseline yet — set it below without firing)
+          // Save old snapshot for goalDetectedAt comparison later
+          const oldSnapshot = previousScoresRef.current.get(fixtureId);
+          const hadPreviousBaseline = !!oldSnapshot;
+          const oldHomeScore = oldSnapshot?.homeScore ?? 0;
+          const oldAwayScore = oldSnapshot?.awayScore ?? 0;
+          
           if (game && onGoalDetectedRef.current) {
-            const previousScore = previousScoresRef.current.get(fixtureId);
-            if (previousScore) {
+            if (oldSnapshot) {
               // Detect home goal - with dedup key to prevent double notifications
-              if (homeGoals > previousScore.homeScore) {
+              if (homeGoals > oldSnapshot.homeScore) {
                 const goalKey = `${fixtureId}-home-${homeGoals}`;
                 if (!notifiedGoalsRef.current.has(goalKey)) {
                   notifiedGoalsRef.current.add(goalKey);
@@ -225,7 +228,7 @@ export function useLiveScores(
                 }
               }
               // Detect away goal
-              if (awayGoals > previousScore.awayScore) {
+              if (awayGoals > oldSnapshot.awayScore) {
                 const goalKey = `${fixtureId}-away-${awayGoals}`;
                 if (!notifiedGoalsRef.current.has(goalKey)) {
                   notifiedGoalsRef.current.add(goalKey);
@@ -234,14 +237,13 @@ export function useLiveScores(
                 }
               }
             }
-            // Update previous snapshot for next comparison
+            // Update previous snapshot for next comparison (AFTER reading old values)
             previousScoresRef.current.set(fixtureId, { homeScore: homeGoals, awayScore: awayGoals });
           }
           
-          // Detect if a goal just happened for this fixture
-          const previousScore = previousScoresRef.current.get(fixtureId);
-          const goalJustHappened = previousScore && (
-            homeGoals > previousScore.homeScore || awayGoals > previousScore.awayScore
+          // Detect if a goal just happened using the OLD snapshot (before it was updated above)
+          const goalJustHappened = hadPreviousBaseline && (
+            homeGoals > oldHomeScore || awayGoals > oldAwayScore
           );
 
           newScores.set(fixtureId, {
