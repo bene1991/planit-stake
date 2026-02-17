@@ -1,36 +1,50 @@
 
-## Corrigir som de gol tocando duas vezes - Solucao definitiva
 
-### Problemas encontrados
+## Corrigir som de gol tocando 3 vezes - Solucao DEFINITIVA
 
-1. **Bug no `goalDetectedAt`**: O `previousScoresRef` e atualizado na linha 238, mas lido novamente nas linhas 242-245, fazendo com que `goalJustHappened` seja SEMPRE `false`.
-2. **Sem dedup no `handleGoalDetected`**: Se o hook `useLiveScores` for recriado (remontagem do componente), o `notifiedGoalsRef` reseta e gols ja detectados podem disparar novamente.
-3. **Debounce fragil no `playGoalSound`**: O debounce de 15s usa variavel de modulo que pode ser perdida em HMR ou re-avaliacao do modulo.
+### Causa raiz identificada (3 falhas simultaneas)
+
+1. **StrictMode + Refs resetados**: O app usa React StrictMode que desmonta e remonta componentes. Quando isso acontece, `notifiedGoalsRef` (useLiveScores) e `notifiedGoalKeysRef` (DailyPlanning) sao RECRIADOS como Sets vazios, perdendo todo o historico de gols ja notificados. No proximo ciclo de polling, o gol e "detectado" novamente.
+
+2. **Audio lock quebrado**: O check `!activeGoalAudio.paused` falha porque um `new Audio()` comeca com `paused=true`. Entre chamar `play()` e o audio realmente comecar, uma segunda chamada passa pelo lock.
+
+3. **Debounce de 15s insuficiente**: O intervalo de polling e ~20s. Se os refs resetam (StrictMode), o proximo poll apos 20s ultrapassa o debounce de 15s e toca o som novamente.
 
 ### Alteracoes
 
-**1. `src/hooks/useLiveScores.ts`** - Corrigir `goalDetectedAt` e fortalecer dedup
+**1. `src/utils/soundManager.ts`** - Tornar `playGoalSound` 100% a prova de falhas
 
-- Salvar o snapshot anterior ANTES de atualizar o `previousScoresRef` (mover a leitura das linhas 242-245 para antes da linha 238)
-- Adicionar timestamp ao `notifiedGoalsRef` para permitir limpeza periodica (evitar memory leak)
+- Trocar o audio lock por um **flag booleano** (`isGoalSoundPlaying = true`) setado ANTES de criar o Audio, impossivel de furar
+- Aumentar debounce de 15s para **30s** (maior que qualquer intervalo de polling)
+- Adicionar dedup por **chave de gol** no proprio soundManager usando sessionStorage (ultima linha de defesa independente de React)
 
-**2. `src/pages/DailyPlanning.tsx`** - Adicionar dedup proprio no `handleGoalDetected`
+**2. `src/hooks/useLiveScores.ts`** - Mover dedup para nivel de modulo
 
-- Criar um `notifiedGoalKeysRef` no DailyPlanning com chaves tipo `${gameId}-${homeScore}-${awayScore}`
-- Verificar se o gol ja foi notificado ANTES de chamar `playGoalSound()`
-- Isso cria uma segunda camada de protecao independente do `useLiveScores`
+- Mover `notifiedGoalsRef` de `useRef` para variavel de **modulo** (fora do componente), para sobreviver a remontagens do StrictMode
+- Adicionar limpeza automatica de chaves com mais de 2 horas (evitar memory leak)
 
-**3. `src/utils/soundManager.ts`** - Tornar `playGoalSound` a prova de balas
+**3. `src/pages/DailyPlanning.tsx`** - Mover dedup para sessionStorage
 
-- Usar uma referencia ao objeto `Audio` ativo para impedir que um segundo audio seja criado enquanto o primeiro ainda esta tocando
-- Manter o debounce de 15s como protecao adicional
-- Guardar `lastGoalSoundTime` no `sessionStorage` alem da variavel de modulo (sobrevive a HMR)
+- Trocar `notifiedGoalKeysRef` (useRef) por **sessionStorage** (`notifiedGoalKeys`)
+- Sobrevive a remontagens, HMR e re-renders
 
 ### Resultado esperado
 
-Triple dedup:
-1. `notifiedGoalsRef` no `useLiveScores` (chave por fixture+team+score)
-2. `notifiedGoalKeysRef` no `DailyPlanning` (chave por game+score)
-3. `playGoalSound` com lock de audio ativo + debounce 15s + sessionStorage backup
+Quatro camadas de protecao, TODAS independentes de ciclo de vida React:
 
-Isso garante que, mesmo que qualquer camada falhe, as outras impedem o som duplicado.
+```text
+Camada 1: notifiedGoals (variavel de modulo em useLiveScores)
+   -> Bloqueia callback duplicado por fixture+team+score
+
+Camada 2: notifiedGoalKeys (sessionStorage em DailyPlanning)
+   -> Bloqueia playGoalSound() por gameId+score
+
+Camada 3: isGoalSoundPlaying (flag booleano em soundManager)
+   -> Bloqueia audio concorrente
+
+Camada 4: debounce 30s + sessionStorage (soundManager)
+   -> Bloqueia qualquer chamada dentro de 30s da anterior
+```
+
+Nenhuma dessas camadas depende de `useRef`, entao remontagens do React nao afetam nada.
+
