@@ -30,10 +30,17 @@ interface DayBreakdown {
 
 interface DailyMethodBreakdownProps {
   data: DayBreakdown[];
+  stakeValueReais: number;
 }
 
-export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
+export function DailyMethodBreakdown({ data, stakeValueReais }: DailyMethodBreakdownProps) {
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+
+  const getStakeUnits = (profitReais: number) => {
+    if (!stakeValueReais || stakeValueReais <= 0) return '—';
+    const units = profitReais / stakeValueReais;
+    return `${units >= 0 ? '+' : ''}${units.toFixed(2)} st`;
+  };
 
   const toggleDay = (date: string) => {
     const newExpanded = new Set(expandedDays);
@@ -85,6 +92,7 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
               <TableHead className="text-center">Win Rate</TableHead>
               <TableHead className="text-center">Saldo</TableHead>
               <TableHead className="text-center">Lucro</TableHead>
+              <TableHead className="text-center">Stakes</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -126,6 +134,9 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
                     <TableCell className={cn('text-center font-semibold py-2', day.totalProfitReais >= 0 ? 'text-success' : 'text-destructive')}>
                       {day.totalProfitReais >= 0 ? '+' : ''}{formatCurrency(day.totalProfitReais)}
                     </TableCell>
+                    <TableCell className={cn('text-center font-semibold py-2', day.totalProfitReais >= 0 ? 'text-success' : 'text-destructive')}>
+                      {getStakeUnits(day.totalProfitReais)}
+                    </TableCell>
                   </TableRow>
 
                   {/* Métodos expandidos */}
@@ -164,6 +175,9 @@ export function DailyMethodBreakdown({ data }: DailyMethodBreakdownProps) {
                           </TableCell>
                           <TableCell className={cn('text-center text-sm py-1.5', method.profitReais >= 0 ? 'text-success' : 'text-destructive')}>
                             {method.profitReais >= 0 ? '+' : ''}{formatCurrency(method.profitReais)}
+                          </TableCell>
+                          <TableCell className={cn('text-center text-sm py-1.5', method.profitReais >= 0 ? 'text-success' : 'text-destructive')}>
+                            {getStakeUnits(method.profitReais)}
                           </TableCell>
                         </TableRow>
                       );

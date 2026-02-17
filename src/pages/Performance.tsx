@@ -564,7 +564,7 @@ export default function Performance() {
       )}
 
       {/* Daily Breakdown */}
-      {dailyBreakdown.length > 0 && <DailyMethodBreakdown data={dailyBreakdown} />}
+      {dailyBreakdown.length > 0 && <DailyMethodBreakdown data={dailyBreakdown} stakeValueReais={parsedStake} />}
 
       {/* Odd Range Stats */}
       <OddRangeStatsChart data={oddRangeStats} games={filteredGames} methods={bankroll.methods} />
