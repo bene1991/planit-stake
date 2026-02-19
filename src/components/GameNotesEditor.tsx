@@ -43,7 +43,7 @@ export function GameNotesEditor({ notes, onSave, compact = false }: GameNotesEdi
         <Textarea
           value={editValue}
           onChange={(e) => setEditValue(e.target.value.slice(0, MAX_CHARS))}
-          placeholder="Adicionar observação sobre o jogo..."
+          placeholder={"Ex: Odds pré-live → 1X2: 2.10 / 3.40 / 3.20 | BTTS: 1.85 / 1.95\nNotas sobre o jogo, análise, condições..."}
           className={cn(
             "min-h-[80px] text-sm resize-none",
             compact && "min-h-[60px]"
@@ -85,10 +85,10 @@ export function GameNotesEditor({ notes, onSave, compact = false }: GameNotesEdi
     return (
       <button
         onClick={handleStartEdit}
-        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1.5 px-2 rounded-lg hover:bg-secondary/50 border border-dashed border-border/50"
       >
-        <MessageSquare className="h-3 w-3" />
-        <span className="italic">Adicionar observação...</span>
+        <MessageSquare className="h-3.5 w-3.5" />
+        <span className="italic">Adicionar observações / odds pré-live...</span>
         <Pencil className="h-3 w-3 opacity-50" />
       </button>
     );
