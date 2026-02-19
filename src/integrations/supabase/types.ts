@@ -357,6 +357,7 @@ export type Database = {
           home_team_logo: string | null
           id: string
           league: string
+          matchbook_event_id: string | null
           notes: string | null
           owner_id: string
           radar_url: string | null
@@ -386,6 +387,7 @@ export type Database = {
           home_team_logo?: string | null
           id?: string
           league: string
+          matchbook_event_id?: string | null
           notes?: string | null
           owner_id: string
           radar_url?: string | null
@@ -415,6 +417,7 @@ export type Database = {
           home_team_logo?: string | null
           id?: string
           league?: string
+          matchbook_event_id?: string | null
           notes?: string | null
           owner_id?: string
           radar_url?: string | null
