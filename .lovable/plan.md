@@ -1,32 +1,41 @@
 
+## Adicionar Resultado Acumulado do Mes no Resumo Telegram
 
-## Corrigir ordenacao por horario na mensagem de Planejamento do Telegram
+### O que sera feito
 
-### Problema
+Adicionar um botao/checkbox no modal de Resumo do Dia que permite incluir o resultado acumulado do mes (do dia 1 ate a data selecionada) na mensagem. Quando ativado, a mensagem tera uma secao extra apos o totalizador diario mostrando:
 
-A ordenacao cronologica foi corrigida apenas no componente de **Resumo** (`TelegramSummaryMessage.tsx`), mas a mensagem de **Planejamento** (`TelegramPlanningMessage.tsx`) nunca recebeu essa correcao. A funcao `buildTelegramGames` simplesmente itera os jogos na ordem do array original, sem nenhum sort. Por isso o jogo das 16:00 aparece depois dos jogos das 17:00.
+- Total de operacoes no mes
+- Greens e Reds acumulados
+- Win Rate mensal
+- Resultado acumulado em % de stake
 
-### Solucao
+### Como vai funcionar
 
-**Arquivo: `src/components/TelegramPlanningMessage.tsx`**
+1. **Novo toggle** no modal: um Switch/Checkbox com label "Incluir acumulado do mes"
+2. **Logica de calculo**: filtrar todos os jogos do mes (mesmo ano-mes da data selecionada), calcular os totais usando a mesma logica de `buildSummaryItems`
+3. **Secao extra na mensagem** quando ativado:
 
-Adicionar ordenacao cronologica na funcao `buildTelegramGames`, apos montar o array `result`, usando a mesma logica numerica que ja existe no resumo:
+```
+---
 
-```typescript
-result.sort((a, b) => {
-  const [ah, am] = a.time.split(':').map(Number);
-  const [bh, bm] = b.time.split(':').map(Number);
-  return (ah * 60 + am) - (bh * 60 + bm);
-});
+📅 ACUMULADO DO MES (01/02 a 19/02):
+• Operacoes: 45 (32 Green, 13 Red)
+• Win Rate: 71.1%
+• Resultado: +125.3% de stake
+
+Bons trades!
 ```
 
-Isso garante que os jogos sejam listados de 14:45, 16:00, 17:00, 17:00 em vez da ordem arbitraria atual.
+### Detalhes tecnicos
 
-### Resultado esperado
+**Arquivo: `src/components/TelegramSummaryMessage.tsx`**
 
-A mensagem de planejamento listara os jogos em ordem cronologica correta:
-1. Fenerbahce x Nottingham Forest - 14:45
-2. Al-Ettifaq x Al-Fateh - 16:00
-3. Celtic x VfB Stuttgart - 17:00
-4. Ludogorets x Ferencvarosi TC - 17:00
-
+- Adicionar estado `includeMonthly` (boolean, default false)
+- Criar funcao `buildMonthlyAccumulated` que:
+  - Extrai o ano-mes da data selecionada (`selectedDateStr.slice(0, 7)`)
+  - Filtra todos os jogos com `g.date.startsWith(yearMonth)` e `g.date <= selectedDateStr`
+  - Usa `buildSummaryItems` para calcular os items de todos esses dias
+  - Retorna totais: operacoes, greens, reds, winRate, stakePercent
+- Modificar `buildSummaryMessage` para aceitar dados mensais opcionais e anexar a secao extra
+- Adicionar um Switch/Checkbox na UI entre o date picker e o textarea
