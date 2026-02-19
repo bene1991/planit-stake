@@ -86,7 +86,7 @@ function buildMessage(telegramGames: TelegramGame[]): string {
 }
 
 export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: TelegramPlanningMessageProps) {
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const [sending, setSending] = useState(false);
 
   const telegramGames = buildTelegramGames(games, methods);
@@ -129,7 +129,28 @@ export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: 
         toast.success('✅ Mensagem enviada ao Telegram!');
         onOpenChange(false);
       } else {
-        toast.error('Erro do Telegram: ' + data.description);
+        const newChatId = data.parameters?.migrate_to_chat_id;
+        if (newChatId) {
+          // Grupo migrou para supergrupo — atualizar ID automaticamente e reenviar
+          await updateSettings({ telegram_chat_id: String(newChatId) });
+          const retry = await fetch(
+            `https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: newChatId, text: message }),
+            }
+          );
+          const retryData = await retry.json();
+          if (retryData.ok) {
+            toast.success('✅ Mensagem enviada! Chat ID atualizado automaticamente para o supergrupo.');
+            onOpenChange(false);
+          } else {
+            toast.error('Erro ao reenviar após migração: ' + retryData.description);
+          }
+        } else {
+          toast.error('Erro do Telegram: ' + data.description);
+        }
       }
     } catch (error: any) {
       toast.error('Erro ao enviar: ' + (error.message || 'Erro desconhecido'));
