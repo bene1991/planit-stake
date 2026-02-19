@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 import { calculateProfit } from '@/utils/profitCalculator';
 import { getNowInBrasilia } from '@/utils/timezone';
 import { useOperationalSettings } from '@/hooks/useOperationalSettings';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface SummaryItem {
   homeTeam: string;
@@ -80,7 +82,36 @@ function buildSummaryItems(games: Game[], methods: Method[], stakeReference: num
   return items;
 }
 
-function buildSummaryMessage(items: SummaryItem[], dateStr: string): string {
+interface MonthlyData {
+  total: number;
+  greens: number;
+  reds: number;
+  winRate: string;
+  totalStakePercent: number;
+  hasStakeData: boolean;
+  dateRange: string;
+}
+
+function buildMonthlyAccumulated(games: Game[], methods: Method[], stakeReference: number, selectedDateStr: string): MonthlyData {
+  const yearMonth = selectedDateStr.slice(0, 7);
+  const monthGames = games.filter(g => g.date.startsWith(yearMonth) && g.date <= selectedDateStr);
+  const allItems = buildSummaryItems(monthGames, methods, stakeReference);
+
+  const greens = allItems.filter(i => i.result === 'Green').length;
+  const reds = allItems.filter(i => i.result === 'Red').length;
+  const total = allItems.length;
+  const winRate = total > 0 ? ((greens / total) * 100).toFixed(1) : '0.0';
+  const totalStakePercent = allItems.reduce((sum, i) => sum + (i.stakePercent ?? 0), 0);
+  const hasStakeData = allItems.some(i => i.stakePercent !== null);
+
+  const [year, month] = yearMonth.split('-');
+  const [, , day] = selectedDateStr.split('-');
+  const dateRange = `01/${month} a ${day}/${month}`;
+
+  return { total, greens, reds, winRate, totalStakePercent, hasStakeData, dateRange };
+}
+
+function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: MonthlyData): string {
   if (items.length === 0) return '';
 
   const [year, month, day] = dateStr.split('-');
@@ -124,6 +155,18 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string): string {
     const sign = totalStakePercent >= 0 ? '+' : '';
     msg += `\n• Resultado: ${sign}${totalStakePercent.toFixed(1)}% de stake`;
   }
+
+  if (monthly && monthly.total > 0) {
+    msg += '\n\n---\n';
+    msg += `\n📅 ACUMULADO DO MÊS (${monthly.dateRange}):`;
+    msg += `\n• Operações: ${monthly.total} (${monthly.greens} Green, ${monthly.reds} Red)`;
+    msg += `\n• Win Rate: ${monthly.winRate}%`;
+    if (monthly.hasStakeData) {
+      const sign = monthly.totalStakePercent >= 0 ? '+' : '';
+      msg += `\n• Resultado: ${sign}${monthly.totalStakePercent.toFixed(1)}% de stake`;
+    }
+  }
+
   msg += '\n\nBons trades!';
 
   return msg;
@@ -133,6 +176,7 @@ export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: T
   const { settings } = useSettings();
   const { settings: opSettings } = useOperationalSettings();
   const [sending, setSending] = useState(false);
+  const [includeMonthly, setIncludeMonthly] = useState(false);
 
   // Default to yesterday in Brasilia
   const now = getNowInBrasilia();
@@ -145,7 +189,8 @@ export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: T
 
   const stakeReference = opSettings.stakeValueReais;
   const items = buildSummaryItems(filteredGames, methods, stakeReference);
-  const message = buildSummaryMessage(items, selectedDateStr);
+  const monthlyData = includeMonthly ? buildMonthlyAccumulated(games, methods, stakeReference, selectedDateStr) : undefined;
+  const message = buildSummaryMessage(items, selectedDateStr, monthlyData);
 
   const hasTelegramConfig = settings?.telegram_bot_token && settings?.telegram_chat_id;
 
@@ -224,6 +269,12 @@ export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: T
               />
             </PopoverContent>
           </Popover>
+        </div>
+
+        {/* Monthly toggle */}
+        <div className="flex items-center gap-2">
+          <Switch id="include-monthly" checked={includeMonthly} onCheckedChange={setIncludeMonthly} />
+          <Label htmlFor="include-monthly" className="text-sm cursor-pointer">Incluir acumulado do mês</Label>
         </div>
 
         {items.length === 0 ? (
