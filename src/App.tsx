@@ -20,6 +20,7 @@ import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
 import MatchbookOdds from "./pages/MatchbookOdds";
+import MonitorTrader from "./pages/MonitorTrader";
 
 const AppContent = () => {
   const { games } = useSupabaseGames();
@@ -89,6 +90,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><MatchbookOdds /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/monitor"
+          element={
+            <ProtectedRoute>
+              <Layout><MonitorTrader /></Layout>
             </ProtectedRoute>
           }
         />
