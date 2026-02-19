@@ -33,7 +33,7 @@ const SESSION_KEY = 'matchbook_creds';
 
 function loadCreds(): { username: string; password: string } | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
