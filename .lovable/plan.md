@@ -1,55 +1,52 @@
 
-## Adicionar opcao "Void" na finalizacao de metodos
+## Corrigir erro "group chat was upgraded to a supergroup chat" no Telegram
 
-### Resumo
-Adicionar "Void" como terceira opcao de resultado (alem de Green e Red) ao finalizar um metodo. Void significa que a operacao foi anulada (ex: jogo terminou 0x0 no Lay 0x1/1x0). Void tem lucro zero e aparece nos relatorios como "Void".
+### O Problema
 
-### Alteracoes necessarias
+Quando um grupo do Telegram e convertido em **supergrupo** (o que acontece automaticamente quando o grupo passa de certo tamanho ou quando alguma funcionalidade de supergrupo e ativada), o `chat_id` muda. O antigo ID negativo (ex: `-5223159610`) se torna um novo ID prefixado com `-100` (ex: `-1005223159610`).
 
-**1. Tipo `MethodOperation` (`src/types/index.ts`)**
-- Alterar o tipo `result` de `'Green' | 'Red'` para `'Green' | 'Red' | 'Void'`
+A API do Telegram retorna o novo ID no campo `parameters.migrate_to_chat_id` da resposta de erro. Atualmente o codigo ignora esse campo e apenas exibe o erro bruto para o usuario.
 
-**2. Calculadora de lucro (`src/utils/profitCalculator.ts`)**
-- Tratar `result === 'Void'` retornando lucro 0
+### A Solucao
 
-**3. Botoes de resultado nos cards de jogo**
-- **`src/components/GameCardCompact.tsx`**: Adicionar botao Void (circulo amarelo/cinza com icone "Minus") ao lado dos botoes Green/Red
-- **`src/components/GameListItem.tsx`**: Mesmo botao Void
-- Atualizar `handleResultClick` para aceitar `'Void'` alem de `'Green' | 'Red'`
-- Estilizar pill do metodo com cor amarela/cinza quando Void
+Nos dois componentes (`TelegramPlanningMessage.tsx` e `TelegramSummaryMessage.tsx`), dentro da funcao `handleSendTelegram`, detectar especificamente esse erro e:
 
-**4. Editor de metodos no modal (`src/components/GameMethodEditor.tsx`)**
-- Adicionar opcao "Void" no Select de resultado (com icone Minus, cor amarela)
-- Atualizar tipo `MethodFormData.result` para incluir `'Void'`
-- Tratar badge de Void no cabecalho do metodo
+1. Extrair o novo `chat_id` de `data.parameters?.migrate_to_chat_id`
+2. Atualizar automaticamente o `telegram_chat_id` nas configuracoes do usuario via `updateSettings`
+3. Reenviar a mensagem automaticamente com o novo `chat_id`
+4. Exibir um toast informativo ao usuario dizendo que o ID foi atualizado automaticamente
 
-**5. Resumo Telegram (`src/components/TelegramSummaryMessage.tsx`)**
-- Alterar tipo `SummaryItem.result` para incluir `'Void'`
-- Void aparece como "Void" na mensagem (nao conta como Green nem Red)
-- Stake percent = 0% para Void
+### Arquivos Modificados
 
-**6. Estatisticas e filtros**
-- Em `src/hooks/useFilteredStatistics.ts`: Void conta como operacao finalizada (tem result), mas nao e Green nem Red - nao afeta win rate
-- Em `src/hooks/useStatistics.ts`: Mesmo tratamento
-- Nos graficos e badges que checam `op.result === 'Green'` ou `op.result === 'Red'`: Void simplesmente nao entra em nenhum dos dois, o que ja e o comportamento correto na maioria dos casos
+**1. `src/components/TelegramPlanningMessage.tsx`**
+- Adicionar `updateSettings` ao `useSettings()`
+- Substituir `toast.error('Erro do Telegram: ...')` por logica que detecta `migrate_to_chat_id`
 
-**7. Reconstrucao de stats (`src/utils/rebuildStats.ts`)**
-- Adicionar Void como resultado possivel (lucro 0)
+**2. `src/components/TelegramSummaryMessage.tsx`**
+- Mesma logica aplicada ao `handleSendTelegram` do resumo
 
-### Detalhes tecnicos
+### Logica do Fix
 
-- **Lucro Void = 0**: Nenhum dinheiro ganho ou perdido
-- **Win Rate**: Void NAO entra no calculo. Win Rate = Greens / (Greens + Reds). Voids sao ignorados
-- **Cor visual**: Amarelo/amber para Void (consistente com "neutro")
-- **Icone**: `Minus` do lucide-react
-- **Database**: A coluna `result` na tabela `method_operations` ja e tipo `text`, entao aceita "Void" sem migracao
+```typescript
+if (!data.ok) {
+  const newChatId = data.parameters?.migrate_to_chat_id;
+  if (newChatId) {
+    // Grupo foi convertido em supergrupo - atualizar ID automaticamente
+    await updateSettings({ telegram_chat_id: String(newChatId) });
+    // Reenviar com o novo ID
+    const retry = await fetch(`https://api.telegram.org/bot.../sendMessage`, {
+      body: JSON.stringify({ chat_id: newChatId, text: message })
+    });
+    const retryData = await retry.json();
+    if (retryData.ok) {
+      toast.success('✅ Mensagem enviada! Chat ID atualizado automaticamente.');
+    }
+  } else {
+    toast.error('Erro do Telegram: ' + data.description);
+  }
+}
+```
 
-### Arquivos modificados
-1. `src/types/index.ts`
-2. `src/utils/profitCalculator.ts`
-3. `src/components/GameCardCompact.tsx`
-4. `src/components/GameListItem.tsx`
-5. `src/components/GameMethodEditor.tsx`
-6. `src/components/TelegramSummaryMessage.tsx`
-7. `src/hooks/useFilteredStatistics.ts`
-8. `src/utils/rebuildStats.ts`
+### Resultado
+
+O usuario nao precisara fazer nada manualmente. Na proxima vez que tentar enviar, o ID ja estara correto nas configuracoes e o envio funcionara normalmente.
