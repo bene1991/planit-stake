@@ -1,124 +1,63 @@
 
 
-## Monitor Trader - Painel Operacional de Odds em Tempo Real
+## Corrigir conexao Matchbook - Proxy via Edge Function
 
-### Resumo
+### Problema
 
-Criar uma nova aba "Monitor Trader" que exibe automaticamente os jogos planejados e mostra odds em tempo real de 4 mercados da Matchbook (Correct Score, Match Odds, BTTS, Over 1.5 Goals), com auto-refresh a cada 5 segundos e visual estilo trader.
+A chamada direta do navegador para `api.matchbook.com` falha com **"Failed to fetch"** (erro de CORS). A API da Matchbook nao permite requisicoes cross-origin do navegador.
 
-### Descoberta importante
+A abordagem anterior de Edge Function foi removida porque o Cloudflare bloqueava com 403. Porem, a solucao e criar uma Edge Function proxy com headers adequados (User-Agent de navegador real) para evitar a deteccao do Cloudflare.
 
-Os jogos no Planejamento possuem `api_fixture_id` (API-Football), mas **nao possuem** um ID de evento da Matchbook. Sera necessario adicionar um campo `matchbook_event_id` na tabela `games` e implementar um sistema de vinculacao automatica (por nome dos times) + manual.
+### Solucao
 
-### Arquitetura
-
-```text
-Monitor Trader (pagina)
-    |
-    +-- Busca jogos com status 'Not Started' ou 'Live' do Planejamento
-    |
-    +-- Para cada jogo com matchbook_event_id:
-    |     |
-    |     +-- GET /events/{id}/markets (a cada 5s)
-    |     |
-    |     +-- Filtra 4 mercados:
-    |           - Correct Score
-    |           - Match Odds
-    |           - Both Teams To Score
-    |           - Over/Under 1.5 Goals
-    |
-    +-- Para jogos sem matchbook_event_id:
-          +-- Botao "Vincular" para buscar e selecionar evento Matchbook
-```
+Criar uma Edge Function `matchbook-proxy` que atua como proxy generico para qualquer chamada a API da Matchbook. O frontend envia o path e os headers necessarios, e a Edge Function faz a requisicao real.
 
 ### Alteracoes
 
-**1. Migracao de banco de dados**
-- Adicionar coluna `matchbook_event_id` (text, nullable) na tabela `games`
+**1. Nova Edge Function: `supabase/functions/matchbook-proxy/index.ts`**
+- Recebe requisicoes POST com `{ url, method, headers, body }`
+- Faz a requisicao para a Matchbook API com User-Agent de navegador real
+- Retorna a resposta (status, headers, body) ao frontend
+- Adiciona headers CORS para o frontend
+- User-Agent realista para evitar bloqueio Cloudflare
 
-**2. Hook: `src/hooks/useMatchbookMonitor.ts` (novo)**
-- Hook dedicado ao Monitor que busca todos os mercados de um evento (nao apenas Correct Score)
-- Retorna dados estruturados para 4 mercados: Correct Score, Match Odds, BTTS, Over 1.5
-- Cache interno de 5 segundos por evento para evitar requisicoes duplicadas
-- Auto-refresh com `setInterval` de 5 segundos
-- Deteccao de variacao de odd (comparar valor anterior vs atual para colorir verde/vermelho)
-- Reutiliza `fetchWithAuth` e autenticacao do `useMatchbook` existente
+**2. Atualizar `supabase/config.toml`**
+- Adicionar entrada `[functions.matchbook-proxy]` com `verify_jwt = false`
 
-**3. Hook: `src/hooks/useMatchbookEventLinker.ts` (novo)**
-- Busca eventos da Matchbook e tenta vincular automaticamente pelo nome dos times
-- Funcao de busca manual caso a vinculacao automatica falhe
-- Salva o `matchbook_event_id` no jogo via `updateGame`
+**3. Atualizar `src/hooks/useMatchbookMonitor.ts`**
+- Substituir chamadas diretas a `api.matchbook.com` por chamadas ao proxy Edge Function
+- O proxy sera chamado via `supabase.functions.invoke('matchbook-proxy', ...)`
+- Manter toda a logica de cache, flash de odds, e auto-refresh
 
-**4. Pagina: `src/pages/MonitorTrader.tsx` (nova)**
-- Busca jogos pendentes/ao vivo do `useSupabaseGames`
-- Para cada jogo, exibe card expansivel com:
-  - Cabecalho: nome do evento, liga, horario, status (badge colorido)
-  - Se tem `matchbook_event_id`: mostra 4 blocos de mercados
-  - Se nao tem: botao "Vincular ao Matchbook"
-- Blocos de mercados dentro do card:
-  - **Correct Score**: tabela com Score | Back | Lay | Liquidez Lay
-  - **Match Odds**: 3 runners (Home/Draw/Away) com Back e Lay
-  - **BTTS**: Yes/No com Back e Lay
-  - **Over 1.5**: Over/Under com Back e Lay
-- Indicador visual de variacao: fundo verde-flash quando odd cai, vermelho-flash quando sobe
-- Horario da ultima atualizacao por jogo
-- Botao manual de refresh global
-- Formulario de login Matchbook (reutiliza logica existente de sessionStorage)
-- Tema escuro forcado na pagina
+**4. Atualizar `src/hooks/useMatchbook.ts`**
+- Mesma mudanca: rotear todas as chamadas via proxy
+- Manter logica de token, TTL, e re-autenticacao
 
-**5. Rota: `src/App.tsx`**
-- Adicionar rota `/monitor` protegida com Layout
-
-**6. Navegacao: `src/components/BottomNav.tsx` e `src/components/Layout.tsx`**
-- Adicionar aba "Monitor" com icone `Monitor` ou `Activity` na BottomNav (6 itens)
-- Adicionar link correspondente na navegacao desktop
+**5. Atualizar `src/hooks/useMatchbookEventLinker.ts`**
+- Rotear chamadas de busca de eventos via proxy
 
 ### Detalhes tecnicos
 
-**Estrutura de dados dos mercados:**
+**Edge Function proxy (matchbook-proxy):**
 ```text
-interface MarketData {
-  correct_score: Array<{
-    score: string;
-    back_price: number | null;
-    back_available: number;
-    lay_price: number | null;
-    lay_available: number;
-  }>;
-  match_odds: Array<{
-    name: string; // "Home", "Draw", "Away"
-    back_price: number | null;
-    lay_price: number | null;
-  }>;
-  btts: Array<{
-    name: string; // "Yes", "No"
-    back_price: number | null;
-    lay_price: number | null;
-  }>;
-  over_15: Array<{
-    name: string; // "Over 1.5", "Under 1.5"
-    back_price: number | null;
-    lay_price: number | null;
-  }>;
+POST /matchbook-proxy
+Body: {
+  "url": "https://api.matchbook.com/bpapi/rest/security/session",
+  "method": "POST",
+  "headers": { "Content-Type": "application/json" },
+  "body": "{\"username\":\"...\",\"password\":\"...\"}"
+}
+
+Resposta: {
+  "status": 200,
+  "data": { "session-token": "abc123..." }
 }
 ```
 
-**Filtragem de mercados na API Matchbook:**
-```text
-market.name ou market['market-type'] contendo:
-- "Correct Score" ou "correct_score"
-- "Match Odds" ou "moneyline"
-- "Both Teams To Score" ou "btts"
-- "Over/Under 1.5 Goals" ou similar com "1.5"
-```
+A Edge Function adicionara headers como:
+- `User-Agent`: string de navegador Chrome real
+- `Accept`: conforme recebido
+- `Referer`: `https://www.matchbook.com/`
 
-**Controle de rate limit:**
-- Cache por evento: armazena resposta por 5 segundos
-- Se multiplos jogos, escalona as requisicoes (nao envia todas ao mesmo tempo)
-- Maximo de 1 requisicao por segundo por evento
-
-**Deteccao de variacao de odd:**
-- Armazena odds anteriores em ref
-- Compara com novas odds: se caiu = verde (flash 1s), se subiu = vermelho (flash 1s)
-- Reset do flash apos 1 segundo via setTimeout
+Isso deve contornar tanto o CORS (frontend -> Edge Function) quanto o Cloudflare (Edge Function -> Matchbook com headers de navegador).
 
