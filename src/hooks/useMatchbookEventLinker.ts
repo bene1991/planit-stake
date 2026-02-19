@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
-const MATCHBOOK_BASE = 'https://api.matchbook.com';
 const SESSION_KEY = 'matchbook_creds';
 
 interface MatchbookSearchResult {
@@ -16,6 +16,14 @@ function loadCreds() {
   } catch { return null; }
 }
 
+async function matchbookFetch(url: string, method = 'GET', headers: Record<string, string> = {}, body?: string) {
+  const { data, error } = await supabase.functions.invoke('matchbook-proxy', {
+    body: { url, method, headers, body },
+  });
+  if (error) throw new Error(error.message || 'Proxy error');
+  return data;
+}
+
 export function useMatchbookEventLinker() {
   const [searchResults, setSearchResults] = useState<MatchbookSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -26,14 +34,13 @@ export function useMatchbookEventLinker() {
     if (tokenRef.current && (Date.now() - tokenTsRef.current) < 4 * 3600000) return;
     const creds = loadCreds();
     if (!creds) throw new Error('Não autenticado');
-    const res = await fetch(`${MATCHBOOK_BASE}/bpapi/rest/security/session`, {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(creds),
-    });
-    if (!res.ok) throw new Error('Login falhou');
-    const data = await res.json();
-    tokenRef.current = data['session-token'] || data['sessionToken'];
+    const res = await matchbookFetch(
+      'https://api.matchbook.com/bpapi/rest/security/session',
+      'POST',
+      { 'Content-Type': 'application/json' },
+      JSON.stringify(creds)
+    );
+    tokenRef.current = res.data?.['session-token'] || res.data?.['sessionToken'];
     tokenTsRef.current = Date.now();
   }, []);
 
@@ -41,19 +48,17 @@ export function useMatchbookEventLinker() {
     setSearching(true);
     try {
       await ensureAuth();
-      const res = await fetch(
-        `${MATCHBOOK_BASE}/edge/rest/events?category-ids=1&states=open&per-page=100`,
-        { headers: { 'Accept': 'application/json', 'session-token': tokenRef.current! } }
+      const res = await matchbookFetch(
+        'https://api.matchbook.com/edge/rest/events?category-ids=1&states=open&per-page=100',
+        'GET',
+        { 'session-token': tokenRef.current! }
       );
-      if (!res.ok) throw new Error('Erro buscando eventos');
-      const data = await res.json();
-      const events: MatchbookSearchResult[] = (data.events || []).map((e: any) => ({
+      const events: MatchbookSearchResult[] = (res.data?.events || []).map((e: any) => ({
         id: e.id,
         name: e.name,
         start: e.start,
       }));
 
-      // Filter by query (fuzzy match on team names)
       const q = query.toLowerCase();
       const filtered = events.filter(e => {
         const name = e.name.toLowerCase();
@@ -73,13 +78,12 @@ export function useMatchbookEventLinker() {
   const autoMatch = useCallback(async (homeTeam: string, awayTeam: string): Promise<number | null> => {
     try {
       await ensureAuth();
-      const res = await fetch(
-        `${MATCHBOOK_BASE}/edge/rest/events?category-ids=1&states=open&per-page=100`,
-        { headers: { 'Accept': 'application/json', 'session-token': tokenRef.current! } }
+      const res = await matchbookFetch(
+        'https://api.matchbook.com/edge/rest/events?category-ids=1&states=open&per-page=100',
+        'GET',
+        { 'session-token': tokenRef.current! }
       );
-      if (!res.ok) return null;
-      const data = await res.json();
-      const events = data.events || [];
+      const events = res.data?.events || [];
 
       const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
       const home = normalize(homeTeam);

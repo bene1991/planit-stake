@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
-const MATCHBOOK_BASE = 'https://api.matchbook.com';
 const TOKEN_TTL = 4 * 60 * 60 * 1000;
-const CACHE_TTL = 5000; // 5s cache per event
+const CACHE_TTL = 5000;
 const REFRESH_INTERVAL = 5000;
 
 interface RunnerOdds {
@@ -38,6 +38,14 @@ function loadCreds(): { username: string; password: string } | null {
   } catch { return null; }
 }
 
+async function matchbookFetch(url: string, method = 'GET', headers: Record<string, string> = {}, body?: string) {
+  const { data, error } = await supabase.functions.invoke('matchbook-proxy', {
+    body: { url, method, headers, body },
+  });
+  if (error) throw new Error(error.message || 'Proxy error');
+  return data;
+}
+
 export function useMatchbookMonitor() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -60,37 +68,32 @@ export function useMatchbookMonitor() {
   }, []);
 
   const doLogin = useCallback(async (username: string, password: string): Promise<string> => {
-    const res = await fetch(`${MATCHBOOK_BASE}/bpapi/rest/security/session`, {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    if (!res.ok) throw new Error(`Login falhou (${res.status})`);
-    const data = await res.json();
-    const token = data['session-token'] || data['sessionToken'];
+    const res = await matchbookFetch(
+      'https://api.matchbook.com/bpapi/rest/security/session',
+      'POST',
+      { 'Content-Type': 'application/json' },
+      JSON.stringify({ username, password })
+    );
+    const token = res.data?.['session-token'] || res.data?.['sessionToken'];
     if (!token) throw new Error('Sem session-token');
     tokenRef.current = token;
     tokenTimestampRef.current = Date.now();
     return token;
   }, []);
 
-  const fetchWithAuth = useCallback(async (url: string): Promise<Response> => {
+  const fetchWithAuth = useCallback(async (url: string): Promise<any> => {
     const creds = loadCreds();
     if (!isTokenValid() && creds) {
       await doLogin(creds.username, creds.password);
     }
     if (!tokenRef.current) throw new Error('Não autenticado');
 
-    let res = await fetch(url, {
-      headers: { 'Accept': 'application/json', 'session-token': tokenRef.current },
-    });
+    let res = await matchbookFetch(url, 'GET', { 'session-token': tokenRef.current });
 
     if (res.status === 401 && creds) {
       tokenRef.current = null;
       await doLogin(creds.username, creds.password);
-      res = await fetch(url, {
-        headers: { 'Accept': 'application/json', 'session-token': tokenRef.current! },
-      });
+      res = await matchbookFetch(url, 'GET', { 'session-token': tokenRef.current! });
     }
     return res;
   }, [isTokenValid, doLogin]);
@@ -165,13 +168,11 @@ export function useMatchbookMonitor() {
 
     try {
       const res = await fetchWithAuth(
-        `${MATCHBOOK_BASE}/edge/rest/events/${eventId}/markets?include-runners-prices=true`
+        `https://api.matchbook.com/edge/rest/events/${eventId}/markets?include-runners-prices=true`
       );
-      if (!res.ok) return;
+      if (res.status && res.status >= 400) return;
 
-      const data = await res.json();
-      const markets = data.markets || [];
-
+      const markets = res.data?.markets || [];
       const result: MarketData = { correct_score: [], match_odds: [], btts: [], over_15: [] };
 
       for (const m of markets) {
@@ -192,14 +193,12 @@ export function useMatchbookMonitor() {
       }
 
       cacheRef.current[eventId] = { data: result, timestamp: Date.now() };
-
       const flashes = detectFlashes(eventId, result);
 
       setMarketsByEvent(prev => ({ ...prev, [eventId]: result }));
       setLastUpdatedByEvent(prev => ({ ...prev, [eventId]: new Date() }));
       setFlashesByEvent(prev => ({ ...prev, [eventId]: flashes }));
 
-      // Clear flashes after 1s
       setTimeout(() => {
         setFlashesByEvent(prev => ({ ...prev, [eventId]: {} }));
       }, 1000);
@@ -212,7 +211,6 @@ export function useMatchbookMonitor() {
     const ids = eventIdsRef.current;
     if (ids.length === 0 || !connected) return;
 
-    // Stagger requests: 200ms apart
     for (let i = 0; i < ids.length; i++) {
       requestQueueRef.current = requestQueueRef.current.then(async () => {
         await fetchMarketsForEvent(ids[i]);
@@ -228,26 +226,20 @@ export function useMatchbookMonitor() {
   }, []);
 
   const manualRefresh = useCallback(() => {
-    cacheRef.current = {}; // Clear cache to force fresh fetch
+    cacheRef.current = {};
     fetchAllEvents();
   }, [fetchAllEvents]);
 
-  // Auto-refresh
   useEffect(() => {
     if (!autoRefresh || !connected) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
-
     fetchAllEvents();
     intervalRef.current = setInterval(fetchAllEvents, REFRESH_INTERVAL);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [autoRefresh, connected, fetchAllEvents]);
 
-  // Auto-login on mount
   useEffect(() => {
     const creds = loadCreds();
     if (creds && !connected) {
@@ -268,18 +260,7 @@ export function useMatchbookMonitor() {
   }, []);
 
   return {
-    connected,
-    loading,
-    error,
-    marketsByEvent,
-    flashesByEvent,
-    lastUpdatedByEvent,
-    autoRefresh,
-    setAutoRefresh,
-    login,
-    disconnect,
-    setEventIds,
-    fetchMarketsForEvent,
-    manualRefresh,
+    connected, loading, error, marketsByEvent, flashesByEvent, lastUpdatedByEvent,
+    autoRefresh, setAutoRefresh, login, disconnect, setEventIds, fetchMarketsForEvent, manualRefresh,
   };
 }

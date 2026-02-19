@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
-const MATCHBOOK_BASE = 'https://api.matchbook.com';
 const TOKEN_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 interface MatchbookEvent {
@@ -14,6 +14,17 @@ interface CorrectScoreLay {
   score: string;
   lay_price: number;
   lay_available: number;
+}
+
+async function matchbookFetch(url: string, method = 'GET', headers: Record<string, string> = {}, body?: string) {
+  const { data, error } = await supabase.functions.invoke('matchbook-proxy', {
+    body: { url, method, headers, body },
+  });
+  if (error) throw new Error(error.message || 'Proxy error');
+  if (data?.status && data.status >= 400) {
+    throw new Error(`Matchbook error (${data.status}): ${JSON.stringify(data.data).substring(0, 200)}`);
+  }
+  return data;
 }
 
 export function useMatchbook() {
@@ -34,56 +45,32 @@ export function useMatchbook() {
   }, []);
 
   const doLogin = useCallback(async (username: string, password: string): Promise<string> => {
-    const res = await fetch(`${MATCHBOOK_BASE}/bpapi/rest/security/session`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Login falhou (${res.status}): ${text.substring(0, 200)}`);
-    }
-
-    const data = await res.json();
-    const token = data['session-token'] || data['sessionToken'] || null;
+    const res = await matchbookFetch(
+      'https://api.matchbook.com/bpapi/rest/security/session',
+      'POST',
+      { 'Content-Type': 'application/json' },
+      JSON.stringify({ username, password })
+    );
+    const token = res.data?.['session-token'] || res.data?.['sessionToken'] || null;
     if (!token) throw new Error('Nenhum session-token na resposta');
-
     tokenRef.current = token;
     tokenTimestampRef.current = Date.now();
     return token;
   }, []);
 
-  const fetchWithAuth = useCallback(async (url: string, username?: string, password?: string): Promise<Response> => {
+  const fetchWithAuth = useCallback(async (url: string, username?: string, password?: string) => {
     if (!isTokenValid() && username && password) {
       await doLogin(username, password);
     }
-    if (!tokenRef.current) {
-      throw new Error('Não autenticado. Faça login primeiro.');
-    }
+    if (!tokenRef.current) throw new Error('Não autenticado. Faça login primeiro.');
 
-    const res = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'session-token': tokenRef.current,
-      },
-    });
+    let res = await matchbookFetch(url, 'GET', { 'session-token': tokenRef.current });
 
-    // If 401, try re-login once
     if (res.status === 401 && username && password) {
       tokenRef.current = null;
       await doLogin(username, password);
-      return fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'session-token': tokenRef.current!,
-        },
-      });
+      res = await matchbookFetch(url, 'GET', { 'session-token': tokenRef.current! });
     }
-
     return res;
   }, [isTokenValid, doLogin]);
 
@@ -108,15 +95,10 @@ export function useMatchbook() {
     setError(null);
     try {
       const res = await fetchWithAuth(
-        `${MATCHBOOK_BASE}/edge/rest/events?category-ids=1&states=open&per-page=50`,
+        'https://api.matchbook.com/edge/rest/events?category-ids=1&states=open&per-page=50',
         username, password
       );
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(`Erro ao buscar eventos (${res.status}): ${t.substring(0, 200)}`);
-      }
-      const data = await res.json();
-      const mapped = (data.events || []).map((e: Record<string, unknown>) => ({
+      const mapped = (res.data?.events || []).map((e: Record<string, unknown>) => ({
         event_id: e.id,
         event_name: e.name,
         start_time: e.start,
@@ -137,15 +119,10 @@ export function useMatchbook() {
     setError(null);
     try {
       const res = await fetchWithAuth(
-        `${MATCHBOOK_BASE}/edge/rest/events/${eventId}/markets`,
+        `https://api.matchbook.com/edge/rest/events/${eventId}/markets`,
         username, password
       );
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(`Erro ao buscar mercados (${res.status}): ${t.substring(0, 200)}`);
-      }
-      const data = await res.json();
-      const markets = data.markets || [];
+      const markets = res.data?.markets || [];
       const csMarket = markets.find((m: Record<string, unknown>) => {
         const name = String(m.name || '').toLowerCase();
         const mtype = String(m['market-type'] || '').toLowerCase();
@@ -192,17 +169,7 @@ export function useMatchbook() {
   }, []);
 
   return {
-    connected,
-    events,
-    scores,
-    loading,
-    eventsLoading,
-    scoresLoading,
-    error,
-    lastUpdated,
-    login,
-    fetchEvents,
-    fetchCorrectScoreLay,
-    disconnect,
+    connected, events, scores, loading, eventsLoading, scoresLoading,
+    error, lastUpdated, login, fetchEvents, fetchCorrectScoreLay, disconnect,
   };
 }
