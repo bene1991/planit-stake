@@ -11,6 +11,7 @@ interface TelegramGame {
   homeTeam: string;
   awayTeam: string;
   league: string;
+  time: string;
   market: string;
   entryOdds?: number;
 }
@@ -34,6 +35,7 @@ function buildTelegramGames(games: Game[], methods: Method[]): TelegramGame[] {
           homeTeam: game.homeTeam,
           awayTeam: game.awayTeam,
           league: game.league,
+          time: game.time,
           market: method.name,
           entryOdds: op.entryOdds,
         });
@@ -53,6 +55,7 @@ function buildMessage(telegramGames: TelegramGame[]): string {
     const oddText = g.entryOdds ? g.entryOdds.toFixed(2) : 'A definir';
     msg += `\n🏟 Jogo: ${g.homeTeam} x ${g.awayTeam}`;
     msg += `\n📍 Liga: ${g.league}`;
+    msg += `\n⏰ Horário: ${g.time}`;
     msg += `\n🎯 Mercado: ${g.market}`;
     msg += `\n💰 Odd mínima para entrada: ${oddText}`;
     msg += `\n⏱ Entrada somente com jogo em 0x0`;
@@ -70,6 +73,8 @@ function buildMessage(telegramGames: TelegramGame[]): string {
   msg += '\n• Seguir progressão da planilha sem improvisar';
   msg += '\n• Ao atingir 100%, resetar para a responsabilidade inicial';
   msg += '\n• Nunca ultrapassar o risco pré-definido';
+  msg += '\n• Só aumentar a stake inicial após atingir pelo menos 500% de resultado acumulado';
+  msg += '\n• Ao aumentar, nunca elevar mais do que 30% da stake atual';
 
   return msg;
 }
