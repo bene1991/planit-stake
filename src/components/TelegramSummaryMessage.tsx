@@ -178,7 +178,7 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
 }
 
 export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: TelegramSummaryMessageProps) {
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const { settings: opSettings } = useOperationalSettings();
   const [sending, setSending] = useState(false);
   const [includeMonthly, setIncludeMonthly] = useState(false);
@@ -234,7 +234,28 @@ export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: T
         toast.success('✅ Resumo enviado ao Telegram!');
         onOpenChange(false);
       } else {
-        toast.error('Erro do Telegram: ' + data.description);
+        const newChatId = data.parameters?.migrate_to_chat_id;
+        if (newChatId) {
+          // Grupo migrou para supergrupo — atualizar ID automaticamente e reenviar
+          await updateSettings({ telegram_chat_id: String(newChatId) });
+          const retry = await fetch(
+            `https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: newChatId, text: message }),
+            }
+          );
+          const retryData = await retry.json();
+          if (retryData.ok) {
+            toast.success('✅ Resumo enviado! Chat ID atualizado automaticamente para o supergrupo.');
+            onOpenChange(false);
+          } else {
+            toast.error('Erro ao reenviar após migração: ' + retryData.description);
+          }
+        } else {
+          toast.error('Erro do Telegram: ' + data.description);
+        }
       }
     } catch (error: any) {
       toast.error('Erro ao enviar: ' + (error.message || 'Erro desconhecido'));
