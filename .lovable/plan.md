@@ -1,41 +1,72 @@
 
 
-## Corrigir Redirecionamento Geografico da Matchbook API
+## Botao "Planejamento Diario Telegram"
 
-### Problema Real
+### O que sera feito
 
-A Edge Function `matchbook-proxy` roda em um servidor cujo IP e detectado como Brasil pela Matchbook. A API redireciona (HTTP 301/302) para `matchbook.bet.br`, que retorna uma pagina HTML do site brasileiro. O `redirect: 'follow'` segue esse redirect automaticamente, resultando em HTML em vez de JSON.
+Um botao novo na area de header do Planejamento que, ao clicar, gera a mensagem formatada com todos os jogos do dia que possuem metodo "Lay 0x1" ou "Lay 1x0" e abre um modal com a mensagem pronta para copiar ou enviar direto ao Telegram.
 
-Evidencia: o response body contem `<html lang="pt-br">` e `<title>Apostas esportivas online...Matchbook</title>` do dominio `matchbook.bet.br`.
+### Componentes
 
-### Solucao
+**1. Novo componente `src/components/TelegramPlanningMessage.tsx`**
+- Modal (Dialog) com a mensagem gerada
+- Botao "Copiar" que copia o texto para a area de transferencia
+- Botao "Enviar ao Telegram" que envia via API do Telegram usando as credenciais salvas nas configuracoes do usuario
+- A mensagem segue exatamente o formato solicitado
 
-**1. Atualizar `supabase/functions/matchbook-proxy/index.ts`**
+**2. Atualizar `src/pages/DailyPlanning.tsx`**
+- Adicionar botao com icone Send (Telegram) na barra de acoes do header, ao lado dos botoes existentes
+- Ao clicar, filtra os jogos do dia atual cujos metodos contenham "Lay 0x1" ou "Lay 1x0" (busca pelo nome do metodo)
+- Busca a odd de entrada (`entryOdds`) de cada operacao para incluir na mensagem
+- Abre o modal com a mensagem pronta
 
-- Trocar `redirect: 'follow'` por `redirect: 'manual'` para impedir que o fetch siga redirects geograficos
-- Adicionar header `Accept-Language: en-GB,en;q=0.9` para sinalizar que queremos a versao internacional
-- Quando receber um response 3xx (redirect), retornar erro descritivo com a URL de destino em vez de seguir
-- Adicionar logs para debug: URL sendo chamada, status recebido, primeiros 200 caracteres do body
-- Se o response for HTML (comeca com `<!` ou `<html`), retornar erro especifico informando o redirecionamento
-
-**2. Atualizar `src/hooks/useMatchbookMonitor.ts`**
-
-- Melhorar a mensagem de erro quando detectar HTML para mostrar "Servidor bloqueado por geo-restricao" em vez da mensagem generica atual
-
-### Detalhes Tecnicos
-
-Mudanca principal no proxy:
+### Logica de filtragem
 
 ```text
-// ANTES
-redirect: 'follow'    // segue o redirect para matchbook.bet.br
-
-// DEPOIS  
-redirect: 'manual'    // NAO segue redirects
-+ Accept-Language: en-GB,en;q=0.9
-+ Verificacao: se status 3xx, retorna erro com Location header
-+ Verificacao: se body comeca com HTML, retorna erro especifico
+1. Pegar todos os jogos com date = hoje (Brasilia)
+2. Para cada jogo, verificar se algum methodOperation tem methodId 
+   cujo nome no bankroll.methods seja "Lay 0x1" ou "Lay 1x0"
+3. Montar a mensagem com os dados de cada jogo + metodo
+4. Se a odd de entrada (entryOdds) estiver preenchida, usar ela
+   Se nao, exibir "A definir"
 ```
 
-Se mesmo com essas mudancas o servidor da Matchbook ainda retornar HTML (o que significaria que o bloqueio e por IP direto, nao por redirect), a alternativa seria usar as credenciais salvas nos secrets do backend (`MATCHBOOK_USERNAME` e `MATCHBOOK_PASSWORD`) para fazer o login diretamente no servidor, sem depender do frontend enviar credenciais.
+### Formato da mensagem gerada
+
+```text
+PLANEJAMENTO DO DIA
+
+Jogo: Time A x Time B
+Liga: Liga
+Mercado: Lay 0x1
+Odd minima para entrada: 1.50
+Entrada somente com jogo em 0x0
+Responsabilidade: consultar planilha de alavancagem
+
+---
+
+Regras da operacao:
+- Operar apenas um placar por jogo
+- Nao entrar fora da odd definida
+
+Gestao de banca (orientacao):
+- Iniciar ciclo com no maximo 1% da banca
+- Seguir progressao da planilha sem improvisar
+- Ao atingir 100%, resetar para a responsabilidade inicial
+- Nunca ultrapassar o risco pre-definido
+```
+
+(com emojis conforme especificado)
+
+### Envio ao Telegram
+
+Usa as credenciais ja salvas na tabela `settings` (telegram_bot_token e telegram_chat_id) para enviar a mensagem diretamente, reutilizando o padrao do `sendTelegramNotification` existente.
+
+### Detalhes tecnicos
+
+- O botao so aparece se existirem jogos do dia com metodos Lay 0x1/1x0
+- Modal usa Dialog do Radix (ja instalado)
+- Textarea readonly com a mensagem para facil copia
+- Toast de sucesso/erro apos copiar ou enviar
+- Nenhuma alteracao de banco de dados necessaria
 
