@@ -19,7 +19,7 @@ import { useApiPause } from "@/hooks/useApiPause";
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Pause, Play } from "lucide-react";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Pause, Play, Send } from "lucide-react";
 import { toast } from "sonner";
 import { GameListByLeague } from "@/components/GameListByLeague";
 import { GameStatusTabs, GameStatusFilter, GameSortOrder } from "@/components/GameStatusTabs";
@@ -31,6 +31,7 @@ import { exportGamesToCSV } from "@/utils/exportToCSV";
 import { Game } from "@/types";
 import { calculateProfit } from "@/utils/profitCalculator";
 import { Badge } from "@/components/ui/badge";
+import { TelegramPlanningMessage, buildTelegramGames } from "@/components/TelegramPlanningMessage";
 
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -58,7 +59,7 @@ export default function DailyPlanning() {
   
   // === DEDUP LAYER 2: sessionStorage-based (survives StrictMode remounts + HMR) ===
   const [showApiBrowser, setShowApiBrowser] = useState(false);
-  
+  const [showTelegramModal, setShowTelegramModal] = useState(false);
   const [showMethodSelector, setShowMethodSelector] = useState(false);
   const [selectedDailyGames, setSelectedDailyGames] = useState<string[]>([]);
   const [addingToPlanning, setAddingToPlanning] = useState(false);
@@ -717,6 +718,12 @@ export default function DailyPlanning() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {buildTelegramGames(games, bankroll.methods).length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8">
+              <Send className="h-3.5 w-3.5 sm:mr-2" />
+              <span className="hidden sm:inline">Telegram</span>
+            </Button>
+          )}
           <ApiRequestIndicator />
           <Button variant="outline" size="sm" onClick={handleExport} className="h-8">
             <Download className="h-3.5 w-3.5 sm:mr-2" />
@@ -794,6 +801,14 @@ export default function DailyPlanning() {
         methods={bankroll.methods}
         onConfirm={handleConfirmGameMethodsEdit}
         loading={updatingGameMethods}
+      />
+
+      {/* Telegram Planning Message */}
+      <TelegramPlanningMessage
+        open={showTelegramModal}
+        onOpenChange={setShowTelegramModal}
+        games={games}
+        methods={bankroll.methods}
       />
 
       {/* PLANEJAMENTO - Seção Principal */}
