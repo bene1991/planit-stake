@@ -1,41 +1,55 @@
 
-## Adicionar Resultado Acumulado do Mes no Resumo Telegram
+## Adicionar opcao "Void" na finalizacao de metodos
 
-### O que sera feito
+### Resumo
+Adicionar "Void" como terceira opcao de resultado (alem de Green e Red) ao finalizar um metodo. Void significa que a operacao foi anulada (ex: jogo terminou 0x0 no Lay 0x1/1x0). Void tem lucro zero e aparece nos relatorios como "Void".
 
-Adicionar um botao/checkbox no modal de Resumo do Dia que permite incluir o resultado acumulado do mes (do dia 1 ate a data selecionada) na mensagem. Quando ativado, a mensagem tera uma secao extra apos o totalizador diario mostrando:
+### Alteracoes necessarias
 
-- Total de operacoes no mes
-- Greens e Reds acumulados
-- Win Rate mensal
-- Resultado acumulado em % de stake
+**1. Tipo `MethodOperation` (`src/types/index.ts`)**
+- Alterar o tipo `result` de `'Green' | 'Red'` para `'Green' | 'Red' | 'Void'`
 
-### Como vai funcionar
+**2. Calculadora de lucro (`src/utils/profitCalculator.ts`)**
+- Tratar `result === 'Void'` retornando lucro 0
 
-1. **Novo toggle** no modal: um Switch/Checkbox com label "Incluir acumulado do mes"
-2. **Logica de calculo**: filtrar todos os jogos do mes (mesmo ano-mes da data selecionada), calcular os totais usando a mesma logica de `buildSummaryItems`
-3. **Secao extra na mensagem** quando ativado:
+**3. Botoes de resultado nos cards de jogo**
+- **`src/components/GameCardCompact.tsx`**: Adicionar botao Void (circulo amarelo/cinza com icone "Minus") ao lado dos botoes Green/Red
+- **`src/components/GameListItem.tsx`**: Mesmo botao Void
+- Atualizar `handleResultClick` para aceitar `'Void'` alem de `'Green' | 'Red'`
+- Estilizar pill do metodo com cor amarela/cinza quando Void
 
-```
----
+**4. Editor de metodos no modal (`src/components/GameMethodEditor.tsx`)**
+- Adicionar opcao "Void" no Select de resultado (com icone Minus, cor amarela)
+- Atualizar tipo `MethodFormData.result` para incluir `'Void'`
+- Tratar badge de Void no cabecalho do metodo
 
-📅 ACUMULADO DO MES (01/02 a 19/02):
-• Operacoes: 45 (32 Green, 13 Red)
-• Win Rate: 71.1%
-• Resultado: +125.3% de stake
+**5. Resumo Telegram (`src/components/TelegramSummaryMessage.tsx`)**
+- Alterar tipo `SummaryItem.result` para incluir `'Void'`
+- Void aparece como "Void" na mensagem (nao conta como Green nem Red)
+- Stake percent = 0% para Void
 
-Bons trades!
-```
+**6. Estatisticas e filtros**
+- Em `src/hooks/useFilteredStatistics.ts`: Void conta como operacao finalizada (tem result), mas nao e Green nem Red - nao afeta win rate
+- Em `src/hooks/useStatistics.ts`: Mesmo tratamento
+- Nos graficos e badges que checam `op.result === 'Green'` ou `op.result === 'Red'`: Void simplesmente nao entra em nenhum dos dois, o que ja e o comportamento correto na maioria dos casos
+
+**7. Reconstrucao de stats (`src/utils/rebuildStats.ts`)**
+- Adicionar Void como resultado possivel (lucro 0)
 
 ### Detalhes tecnicos
 
-**Arquivo: `src/components/TelegramSummaryMessage.tsx`**
+- **Lucro Void = 0**: Nenhum dinheiro ganho ou perdido
+- **Win Rate**: Void NAO entra no calculo. Win Rate = Greens / (Greens + Reds). Voids sao ignorados
+- **Cor visual**: Amarelo/amber para Void (consistente com "neutro")
+- **Icone**: `Minus` do lucide-react
+- **Database**: A coluna `result` na tabela `method_operations` ja e tipo `text`, entao aceita "Void" sem migracao
 
-- Adicionar estado `includeMonthly` (boolean, default false)
-- Criar funcao `buildMonthlyAccumulated` que:
-  - Extrai o ano-mes da data selecionada (`selectedDateStr.slice(0, 7)`)
-  - Filtra todos os jogos com `g.date.startsWith(yearMonth)` e `g.date <= selectedDateStr`
-  - Usa `buildSummaryItems` para calcular os items de todos esses dias
-  - Retorna totais: operacoes, greens, reds, winRate, stakePercent
-- Modificar `buildSummaryMessage` para aceitar dados mensais opcionais e anexar a secao extra
-- Adicionar um Switch/Checkbox na UI entre o date picker e o textarea
+### Arquivos modificados
+1. `src/types/index.ts`
+2. `src/utils/profitCalculator.ts`
+3. `src/components/GameCardCompact.tsx`
+4. `src/components/GameListItem.tsx`
+5. `src/components/GameMethodEditor.tsx`
+6. `src/components/TelegramSummaryMessage.tsx`
+7. `src/hooks/useFilteredStatistics.ts`
+8. `src/utils/rebuildStats.ts`
