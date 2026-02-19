@@ -1,24 +1,50 @@
 
 
-## Persistir credenciais Matchbook
+## Corrigir Proxy Matchbook - API retornando HTML
 
-### Problema
-As credenciais (username/password) desaparecem ao recarregar a pagina por dois motivos:
-1. Sao armazenadas em `sessionStorage`, que se perde ao fechar a aba
-2. So sao salvas apos conexao bem-sucedida (linha 147-151 de MonitorTrader.tsx) -- se o login falha, nunca sao gravadas
+### Problema Identificado
+
+A Edge Function `matchbook-proxy` esta adicionando headers `Referer: https://www.matchbook.com/` e `Origin: https://www.matchbook.com` na requisicao para a API. Isso faz com que a API da Matchbook detecte a origem e redirecione para o site brasileiro (`matchbook.bet.br`), retornando uma pagina HTML completa em vez do JSON esperado.
+
+A resposta do proxy mostra claramente HTML com `<title>Apostas esportivas online - Matchbook</title>` em vez de `{"session-token": "..."}`.
 
 ### Solucao
-Trocar `sessionStorage` por `localStorage` e salvar as credenciais imediatamente ao clicar "Conectar", independente do resultado da conexao.
 
-### Alteracoes
+**1. Atualizar `supabase/functions/matchbook-proxy/index.ts`**
+- Remover os headers `Referer` e `Origin` que causam o redirecionamento geografico
+- Alterar `Accept` para `*/*` conforme a documentacao oficial da Matchbook
+- Adicionar `redirect: 'follow'` ao fetch para garantir que redirects sejam seguidos corretamente
+- Adicionar log do response status e primeiros caracteres para debug
 
-**1. `src/hooks/useMatchbookMonitor.ts`**
-- Linha 32-38: Trocar `sessionStorage` por `localStorage` nas funcoes `loadCreds` e `saveCreds` (implicitamente chamadas no hook)
+**2. Atualizar `src/hooks/useMatchbookMonitor.ts`**
+- Melhorar o `matchbookFetch` para detectar quando a resposta e HTML (nao JSON) e lancar erro descritivo
+- Isso evita o erro silencioso "Sem session-token" e mostra algo como "API retornou HTML em vez de JSON"
 
-**2. `src/pages/MonitorTrader.tsx`**
-- Linhas 20-25: Trocar `sessionStorage.getItem`/`setItem`/`removeItem` por `localStorage`
-- Linha 153-156 (`handleConnect`): Salvar credenciais **antes** de chamar `monitor.login()`, para que persistam mesmo se o login falhar
-- Remover o `useEffect` de salvar creds apos conexao (linhas 147-151), ja que agora salvamos no clique
+**3. Atualizar `src/hooks/useMatchbook.ts`**
+- Mesma melhoria de deteccao de HTML no response
 
-Resultado: ao recarregar a pagina, o username e password ja estarao preenchidos e o auto-login tentara reconectar automaticamente.
+### Detalhes Tecnicos
+
+Headers atuais (incorretos):
+```text
+User-Agent: Chrome/125...
+Accept: application/json
+Referer: https://www.matchbook.com/    <-- CAUSA REDIRECT
+Origin: https://www.matchbook.com      <-- CAUSA REDIRECT
+```
+
+Headers corrigidos (conforme documentacao oficial):
+```text
+User-Agent: Chrome/125...
+Accept: */*
+(sem Referer, sem Origin)
+```
+
+A documentacao oficial da Matchbook API mostra o login assim:
+```text
+POST https://api.matchbook.com/bpapi/rest/security/session
+Content-Type: application/json;charset=UTF-8
+Accept: */*
+Body: {"username":"...","password":"..."}
+```
 
