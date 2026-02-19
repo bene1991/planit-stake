@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { calculateProfit } from '@/utils/profitCalculator';
 import { getNowInBrasilia } from '@/utils/timezone';
+import { useOperationalSettings } from '@/hooks/useOperationalSettings';
 
 interface SummaryItem {
   homeTeam: string;
@@ -31,7 +32,7 @@ interface TelegramSummaryMessageProps {
   methods: Method[];
 }
 
-function buildSummaryItems(games: Game[], methods: Method[]): SummaryItem[] {
+function buildSummaryItems(games: Game[], methods: Method[], stakeReference: number): SummaryItem[] {
   const targetNames = ['Lay 0x1', 'Lay 1x0'];
   const items: SummaryItem[] = [];
 
@@ -43,8 +44,8 @@ function buildSummaryItems(games: Game[], methods: Method[]): SummaryItem[] {
 
       let stakePercent: number | null = null;
 
-      if (op.profit != null && op.stakeValue && op.stakeValue > 0) {
-        stakePercent = (op.profit / op.stakeValue) * 100;
+      if (op.profit != null) {
+        stakePercent = (op.profit / stakeReference) * 100;
       } else if (op.stakeValue && op.odd && op.operationType && op.result) {
         const profit = calculateProfit({
           stakeValue: op.stakeValue,
@@ -54,7 +55,7 @@ function buildSummaryItems(games: Game[], methods: Method[]): SummaryItem[] {
           commissionRate: op.commissionRate ?? 0.045,
         });
         if (profit !== 0 || op.result === 'Red') {
-          stakePercent = (profit / op.stakeValue) * 100;
+          stakePercent = (profit / stakeReference) * 100;
         }
       }
 
@@ -124,6 +125,7 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string): string {
 
 export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: TelegramSummaryMessageProps) {
   const { settings } = useSettings();
+  const { settings: opSettings } = useOperationalSettings();
   const [sending, setSending] = useState(false);
 
   // Default to yesterday in Brasilia
@@ -135,7 +137,8 @@ export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: T
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const filteredGames = games.filter(g => g.date === selectedDateStr);
 
-  const items = buildSummaryItems(filteredGames, methods);
+  const stakeReference = opSettings.stakeValueReais;
+  const items = buildSummaryItems(filteredGames, methods, stakeReference);
   const message = buildSummaryMessage(items, selectedDateStr);
 
   const hasTelegramConfig = settings?.telegram_bot_token && settings?.telegram_chat_id;
