@@ -43,6 +43,9 @@ async function matchbookFetch(url: string, method = 'GET', headers: Record<strin
     body: { url, method, headers, body },
   });
   if (error) throw new Error(error.message || 'Proxy error');
+  if (typeof data?.data === 'string' && data.data.trim().startsWith('<!')) {
+    throw new Error('API retornou HTML em vez de JSON (possível redirecionamento geográfico)');
+  }
   if (data?.status && data.status >= 400) {
     throw new Error(data.data?.message || data.data?.error || `HTTP ${data.status}`);
   }

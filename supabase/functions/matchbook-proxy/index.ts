@@ -24,15 +24,14 @@ Deno.serve(async (req) => {
 
     const fetchHeaders: Record<string, string> = {
       'User-Agent': BROWSER_UA,
-      'Accept': 'application/json',
-      'Referer': 'https://www.matchbook.com/',
-      'Origin': 'https://www.matchbook.com',
+      'Accept': '*/*',
       ...headers,
     };
 
     const fetchOptions: RequestInit = {
       method,
       headers: fetchHeaders,
+      redirect: 'follow',
     };
 
     if (body && method !== 'GET') {
