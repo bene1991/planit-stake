@@ -27,7 +27,7 @@ interface OperationRow {
   Tipo: string;
   Stake: number;
   Odd: number;
-  Resultado: 'GREEN' | 'RED';
+  Resultado: 'GREEN' | 'RED' | 'VOID';
   Lucro: number;
 }
 
@@ -42,7 +42,7 @@ const getMethodName = (methodId: string, methods: Method[]): string => {
 };
 
 const calculateProfit = (
-  result: 'Green' | 'Red',
+  result: 'Green' | 'Red' | 'Void',
   stakeValue: number,
   odd: number,
   operationType: 'Back' | 'Lay',
@@ -53,6 +53,8 @@ const calculateProfit = (
   if (existingProfit !== undefined && existingProfit !== null) {
     return existingProfit;
   }
+
+  if (result === 'Void') return 0;
 
   if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1) {
     return 0;

@@ -2,7 +2,7 @@ import { Game, Method, GoalEvent } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, Trash2, Trophy, Settings, Sparkles } from "lucide-react";
+import { Shield, Check, X, Minus, Trash2, Trophy, Settings, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -55,7 +55,7 @@ export function GameCardCompact({
 
   // Fetch cached stats: stop auto-fetch when all methods are resolved (Green/Red)
   const allMethodsResolved = game.methodOperations.length > 0 
-    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red');
+    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red' || op.result === 'Void');
   const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
   const { data: fixtureCache, loading: cacheLoading } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused);
   const dominance = useDominanceAnalysis(fixtureCache);
@@ -154,7 +154,7 @@ export function GameCardCompact({
   const hasScore = apiHomeScore !== null && apiHomeScore !== undefined || 
                    persistedHomeScore !== null && persistedHomeScore !== undefined;
 
-  const handleResultClick = (methodId: string, result: 'Green' | 'Red') => {
+  const handleResultClick = (methodId: string, result: 'Green' | 'Red' | 'Void') => {
     const updatedOperations = game.methodOperations.map(op =>
       op.methodId === methodId ? { ...op, result } : op
     );
@@ -458,14 +458,16 @@ export function GameCardCompact({
                   "text-[10px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1",
                   operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
                   operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
+                  operation.result === 'Void' && "bg-amber-500 text-white shadow-sm shadow-amber-500/50",
                   !operation.result && "bg-zinc-700 text-zinc-300"
                 )}>
                   {getMethodName(operation.methodId)}
                   {operation.result === 'Green' && <Check className="h-3 w-3" />}
                   {operation.result === 'Red' && <X className="h-3 w-3" />}
+                  {operation.result === 'Void' && <Minus className="h-3 w-3" />}
                 </span>
                 
-                {/* Always visible Green/Red buttons */}
+                {/* Always visible Green/Red/Void buttons */}
                 <div className="flex gap-1">
                   <button
                     onClick={() => handleResultClick(operation.methodId, 'Green')}
@@ -488,6 +490,17 @@ export function GameCardCompact({
                     )}
                   >
                     <X className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleResultClick(operation.methodId, 'Void')}
+                    className={cn(
+                      "h-5 w-5 rounded-full flex items-center justify-center transition-all",
+                      operation.result === 'Void' 
+                        ? "bg-amber-500 text-white shadow-sm shadow-amber-500/50" 
+                        : "bg-zinc-800 text-amber-500 hover:bg-amber-500/20 border border-amber-500/50"
+                    )}
+                  >
+                    <Minus className="h-3 w-3" />
                   </button>
                 </div>
               </div>
