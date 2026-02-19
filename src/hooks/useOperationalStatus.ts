@@ -8,7 +8,7 @@ import { getNowInBrasilia } from '@/utils/timezone';
 export type OperationalStatusType = 'NORMAL' | 'ALERTA' | 'PROTEÇÃO' | 'PAUSADO';
 
 interface OperationWithDate {
-  result: 'Green' | 'Red' | null;
+  result: 'Green' | 'Red' | 'Void' | null;
   date: string;
   profit: number | null;
   stakeValue: number | null;
@@ -21,7 +21,7 @@ interface OperationWithDate {
 }
 
 interface StreakInfo {
-  type: 'Green' | 'Red' | null;
+  type: 'Green' | 'Red' | 'Void' | null;
   count: number;
 }
 

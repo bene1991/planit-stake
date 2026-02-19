@@ -23,7 +23,7 @@ interface SummaryItem {
   league: string;
   time: string;
   market: string;
-  result: 'Green' | 'Red';
+  result: 'Green' | 'Red' | 'Void';
   stakePercent: number | null;
 }
 
@@ -100,7 +100,8 @@ function buildMonthlyAccumulated(games: Game[], methods: Method[], stakeReferenc
   const greens = allItems.filter(i => i.result === 'Green').length;
   const reds = allItems.filter(i => i.result === 'Red').length;
   const total = allItems.length;
-  const winRate = total > 0 ? ((greens / total) * 100).toFixed(1) : '0.0';
+  const winRateBase = greens + reds;
+  const winRate = winRateBase > 0 ? ((greens / winRateBase) * 100).toFixed(1) : '0.0';
   const totalStakePercent = allItems.reduce((sum, i) => sum + (i.stakePercent ?? 0), 0);
   const hasStakeData = allItems.some(i => i.stakePercent !== null);
 
@@ -120,9 +121,11 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
   let msg = `📋 RESUMO DO DIA - ${formattedDate}\n`;
 
   for (const item of items) {
-    const emoji = item.result === 'Green' ? '✅' : '❌';
+    const emoji = item.result === 'Green' ? '✅' : item.result === 'Void' ? '⚪' : '❌';
     let resultText: string = item.result;
-    if (item.stakePercent !== null) {
+    if (item.result === 'Void') {
+      resultText = 'Void | 0% de stake';
+    } else if (item.stakePercent !== null) {
       const sign = item.stakePercent >= 0 ? '+' : '';
       resultText = `${item.result} | ${sign}${item.stakePercent.toFixed(1)}% de stake`;
     }
@@ -137,8 +140,10 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
 
   const greens = items.filter(i => i.result === 'Green').length;
   const reds = items.filter(i => i.result === 'Red').length;
+  const voids = items.filter(i => i.result === 'Void').length;
   const total = items.length;
-  const winRate = total > 0 ? ((greens / total) * 100).toFixed(1) : '0.0';
+  const winRateBase = greens + reds;
+  const winRate = winRateBase > 0 ? ((greens / winRateBase) * 100).toFixed(1) : '0.0';
 
   const totalStakePercent = items.reduce((sum, i) => {
     if (i.stakePercent !== null) return sum + i.stakePercent;
@@ -149,7 +154,7 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
 
   msg += '\n---\n';
   msg += '\n📊 Totalizador:';
-  msg += `\n• Operações: ${total} (${greens} Green, ${reds} Red)`;
+  msg += `\n• Operações: ${total} (${greens} Green, ${reds} Red${voids > 0 ? `, ${voids} Void` : ''})`;
   msg += `\n• Win Rate: ${winRate}%`;
   if (hasStakeData) {
     const sign = totalStakePercent >= 0 ? '+' : '';

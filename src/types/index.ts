@@ -15,7 +15,7 @@ export interface MethodOperation {
   operationType?: 'Back' | 'Lay';
   entryOdds?: number;
   exitOdds?: number;
-  result?: 'Green' | 'Red';
+  result?: 'Green' | 'Red' | 'Void';
   stakeValue?: number;
   odd?: number;
   profit?: number;

@@ -2,12 +2,14 @@ interface ProfitParams {
   stakeValue: number;
   odd: number;
   operationType: 'Back' | 'Lay';
-  result: 'Green' | 'Red';
+  result: 'Green' | 'Red' | 'Void';
   commissionRate?: number;
 }
 
 export const calculateProfit = (params: ProfitParams): number => {
   const { stakeValue, odd, operationType, result, commissionRate = 0.045 } = params;
+  
+  if (result === 'Void') return 0;
   
   if (!stakeValue || !odd || stakeValue <= 0 || odd <= 1.01) {
     return 0;

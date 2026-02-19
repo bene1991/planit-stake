@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useState, useEffect } from 'react';
 import { Game, Method, MethodOperation } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { X, Check, AlertTriangle, Calculator, DollarSign, AlertCircle } from 'lucide-react';
+import { X, Check, Minus, AlertTriangle, Calculator, DollarSign, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { calculateProfit, calculatePotentialProfit, formatCurrency } from '@/utils/profitCalculator';
@@ -23,7 +23,7 @@ interface GameMethodEditorProps {
 }
 
 interface MethodFormData {
-  result?: 'Green' | 'Red';
+  result?: 'Green' | 'Red' | 'Void';
   operationType?: 'Back' | 'Lay';
   stakeValue?: number;
   odd?: number;
@@ -263,13 +263,18 @@ export const GameMethodEditor = ({
                               </Badge>
                               {isSelected && data.result && (
                                 <Badge 
-                                  variant={data.result === 'Green' ? 'default' : 'destructive'}
-                                  className="text-xs gap-1"
+                                  variant={data.result === 'Green' ? 'default' : data.result === 'Void' ? 'secondary' : 'destructive'}
+                                  className={cn("text-xs gap-1", data.result === 'Void' && "bg-amber-500/20 text-amber-400 border-amber-500/30")}
                                 >
                                   {data.result === 'Green' ? (
                                     <>
                                       <Check className="h-3 w-3" />
                                       Green
+                                    </>
+                                  ) : data.result === 'Void' ? (
+                                    <>
+                                      <Minus className="h-3 w-3" />
+                                      Void
                                     </>
                                   ) : (
                                     <>
@@ -347,7 +352,7 @@ export const GameMethodEditor = ({
                                   </Label>
                                   <Select
                                     value={data.result || ''}
-                                    onValueChange={(value: 'Green' | 'Red') => 
+                                    onValueChange={(value: 'Green' | 'Red' | 'Void') => 
                                       updateMethodData(method.id, 'result', value)
                                     }
                                   >
@@ -365,6 +370,12 @@ export const GameMethodEditor = ({
                                         <div className="flex items-center gap-2">
                                           <X className="h-3 w-3 text-red-500" />
                                           <span className="text-red-500 font-medium">Red</span>
+                                        </div>
+                                      </SelectItem>
+                                      <SelectItem value="Void">
+                                        <div className="flex items-center gap-2">
+                                          <Minus className="h-3 w-3 text-amber-500" />
+                                          <span className="text-amber-500 font-medium">Void</span>
                                         </div>
                                       </SelectItem>
                                     </SelectContent>

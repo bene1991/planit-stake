@@ -110,7 +110,7 @@ export function useMonthlyReport(
     
     try {
       // Collect all operations with results
-      const operations: { date: string; methodId: string; result: 'Green' | 'Red'; profit: number }[] = [];
+      const operations: { date: string; methodId: string; result: 'Green' | 'Red' | 'Void'; profit: number }[] = [];
       
       monthGames.forEach(game => {
         game.methodOperations?.forEach(op => {

@@ -9,7 +9,7 @@ export interface MethodOperation {
   operationType?: 'Back' | 'Lay';
   entryOdds?: number;
   exitOdds?: number;
-  result?: 'Green' | 'Red';
+  result?: 'Green' | 'Red' | 'Void';
   stakeValue?: number;
   odd?: number;
   profit?: number;
@@ -86,7 +86,7 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
       operationType: op.operation_type as 'Back' | 'Lay' | undefined,
       entryOdds: op.entry_odds ? Number(op.entry_odds) : undefined,
       exitOdds: op.exit_odds ? Number(op.exit_odds) : undefined,
-      result: op.result as 'Green' | 'Red' | undefined,
+      result: op.result as 'Green' | 'Red' | 'Void' | undefined,
       stakeValue: op.stake_value ? Number(op.stake_value) : undefined,
       odd: op.odd ? Number(op.odd) : undefined,
       profit: op.profit ? Number(op.profit) : undefined,
