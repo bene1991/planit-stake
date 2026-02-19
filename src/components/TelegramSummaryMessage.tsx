@@ -71,6 +71,8 @@ function buildSummaryItems(games: Game[], methods: Method[], stakeReference: num
     }
   }
 
+  items.sort((a, b) => a.time.localeCompare(b.time));
+
   return items;
 }
 
