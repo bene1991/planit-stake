@@ -1,70 +1,48 @@
 
 
-## Resumo Diario Telegram - Mensagem de Fechamento
+## Corrigir calculo de stakes no Resumo Telegram
 
-### O que sera feito
+### Problema identificado
 
-Criar um segundo botao/modal no Planejamento para gerar uma mensagem de **resumo das operacoes do dia** (ou de uma data especifica) para os metodos Lay 0x1 e Lay 1x0, mostrando resultado em percentual de stakes (1 stake = 100%).
+O calculo atual divide o lucro de cada operacao pelo `stakeValue` (valor de entrada/responsabilidade) daquela operacao individual. Porem, o conceito correto de "1 stake" no sistema e um valor de referencia fixo configurado nas configuracoes operacionais (`stakeValueReais`, ex: R$25).
 
-### Novo componente: `src/components/TelegramSummaryMessage.tsx`
+Exemplo: se o lucro de uma operacao e R$2,50 e o stakeReference e R$25, o resultado correto e +10% de stake (0.10 st). Mas o codigo atual divide por `op.stakeValue` (que pode ser R$100 de responsabilidade), dando um valor errado.
 
-Modal com a mensagem de resumo contendo:
+A pagina de Performance ja faz esse calculo corretamente: `profitReais / stakeValueReais`.
 
-- Para cada jogo com Lay 0x1 ou Lay 1x0 que tenha resultado (Green/Red):
-  - Nome do jogo, liga, mercado
-  - Resultado (Green/Red)
-  - Lucro/prejuizo em % de stake (profit / stakeValue * 100)
+### Solucao
 
-- Totais:
-  - Operacoes: X (Y Green, Z Red)
-  - Win Rate: XX%
-  - Resultado do dia: +/- XX% de stake
+**Arquivo: `src/components/TelegramSummaryMessage.tsx`**
 
-Formato da mensagem:
+1. Importar e usar o hook `useOperationalSettings` para obter o `stakeValueReais` (valor de referencia de 1 stake)
 
-```text
-📋 RESUMO DO DIA - dd/mm/aaaa
+2. Alterar a funcao `buildSummaryItems` para receber `stakeReference` como parametro
 
-🏟 Time A x Time B
-📍 Liga
-🎯 Mercado: Lay 0x1
-✅ Green | +95.5% de stake
-(ou ❌ Red | -100% de stake)
+3. Corrigir o calculo de `stakePercent`:
+   - Se `op.profit` existe: `stakePercent = (op.profit / stakeReference) * 100`
+   - Se `op.profit` nao existe mas tem `stakeValue`, `odd`, `operationType` e `result`: calcular o profit via `calculateProfit()` e depois dividir por `stakeReference`
+   - Isso garante consistencia com o calculo da pagina Performance
 
-🏟 Time C x Time D
-📍 Liga
-🎯 Mercado: Lay 1x0
-❌ Red | -100% de stake
+4. No totalizador, a soma de `stakePercent` de todos os itens dara o resultado correto em % de stake
 
----
+### Resultado esperado
 
-📊 Totalizador:
-• Operacoes: 3 (2 Green, 1 Red)
-• Win Rate: 66.7%
-• Resultado: +91.0% de stake
-
-Bons trades!
-```
-
-### Calculo do resultado em %
-
-- Se a operacao tem `profit` e `stakeValue` definidos: `(profit / stakeValue) * 100`
-- Se so tem `result` sem profit calculado: Green = mostrar "Green" sem %, Red = mostrar "Red" sem %
-- 1 stake = 100%, entao um profit de 0.955 stake = +95.5%
-
-### Alteracoes em `src/pages/DailyPlanning.tsx`
-
-- Adicionar botao "Resumo" ao lado do botao "Telegram" existente (icone diferente, ex: FileText ou ClipboardList)
-- O botao filtra jogos da data selecionada (por padrao ontem ou hoje) que tenham resultado para Lay 0x1/1x0
-- Abre o modal com a mensagem pronta para copiar ou enviar
-
-### Botoes de copiar e enviar
-
-Mesma logica do componente de planejamento: copiar para clipboard e enviar via API do Telegram usando credenciais salvas.
+Se o lucro total do dia em R$ dividido pelo stakeReference da 0.90 stakes, o totalizador mostrara "+90.0% de stake", consistente com o que aparece na pagina Performance.
 
 ### Detalhes tecnicos
 
-- A prop `date` sera passada para o componente para permitir gerar resumo de qualquer data
-- O componente recebe `games` (ja filtrados por data) e `methods`
-- Calculo de profit em stakes: `profit / stakeValue * 100` quando ambos existem
-- Nenhuma alteracao de banco de dados necessaria
+```text
+Antes (errado):
+  stakePercent = (op.profit / op.stakeValue) * 100
+  -> cada operacao divide por um valor diferente
+
+Depois (correto):
+  stakePercent = (op.profit / stakeReference) * 100
+  -> todas as operacoes dividem pelo mesmo valor de referencia
+```
+
+Alteracoes apenas em `src/components/TelegramSummaryMessage.tsx`:
+- Adicionar `useOperationalSettings` ao componente
+- Passar `stakeReference` para `buildSummaryItems`
+- Substituir `op.stakeValue` por `stakeReference` na divisao do calculo de percentual
+
