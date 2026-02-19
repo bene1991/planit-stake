@@ -1,56 +1,70 @@
 
 
-## Atualizar mensagem do Telegram
+## Resumo Diario Telegram - Mensagem de Fechamento
 
-### Alteracoes no `src/components/TelegramPlanningMessage.tsx`
+### O que sera feito
 
-**1. Adicionar horario do jogo na mensagem**
+Criar um segundo botao/modal no Planejamento para gerar uma mensagem de **resumo das operacoes do dia** (ou de uma data especifica) para os metodos Lay 0x1 e Lay 1x0, mostrando resultado em percentual de stakes (1 stake = 100%).
 
-Na interface `TelegramGame`, adicionar o campo `time: string`.
+### Novo componente: `src/components/TelegramSummaryMessage.tsx`
 
-Na funcao `buildTelegramGames`, incluir `game.time` ao montar cada item.
+Modal com a mensagem de resumo contendo:
 
-Na funcao `buildMessage`, adicionar uma linha apos o jogo:
-```
-⏰ Horário: {horario}
-```
+- Para cada jogo com Lay 0x1 ou Lay 1x0 que tenha resultado (Green/Red):
+  - Nome do jogo, liga, mercado
+  - Resultado (Green/Red)
+  - Lucro/prejuizo em % de stake (profit / stakeValue * 100)
 
-**2. Adicionar regras de gestao de banca**
+- Totais:
+  - Operacoes: X (Y Green, Z Red)
+  - Win Rate: XX%
+  - Resultado do dia: +/- XX% de stake
 
-Acrescentar duas linhas novas na secao "Gestao de banca (orientacao)":
-```
-• Só aumentar a stake inicial após atingir pelo menos 500% de resultado acumulado
-• Ao aumentar, nunca elevar mais do que 30% da stake atual
-```
-
-### Resultado final da mensagem
+Formato da mensagem:
 
 ```text
-📊 PLANEJAMENTO DO DIA
+📋 RESUMO DO DIA - dd/mm/aaaa
 
-🏟 Jogo: Time A x Time B
-📍 Liga: Liga
-⏰ Horário: 16:00
+🏟 Time A x Time B
+📍 Liga
 🎯 Mercado: Lay 0x1
-💰 Odd mínima para entrada: 1.50
-⏱ Entrada somente com jogo em 0x0
-📈 Responsabilidade: consultar planilha de alavancagem
+✅ Green | +95.5% de stake
+(ou ❌ Red | -100% de stake)
+
+🏟 Time C x Time D
+📍 Liga
+🎯 Mercado: Lay 1x0
+❌ Red | -100% de stake
 
 ---
 
-⚙️ Regras da operação:
-• Operar apenas um placar por jogo
-• Não entrar fora da odd definida
+📊 Totalizador:
+• Operacoes: 3 (2 Green, 1 Red)
+• Win Rate: 66.7%
+• Resultado: +91.0% de stake
 
-💸 Gestão de banca (orientação):
-• Iniciar ciclo com no máximo 1% da banca
-• Seguir progressão da planilha sem improvisar
-• Ao atingir 100%, resetar para a responsabilidade inicial
-• Nunca ultrapassar o risco pré-definido
-• Só aumentar a stake inicial após atingir pelo menos 500% de resultado acumulado
-• Ao aumentar, nunca elevar mais do que 30% da stake atual
+Bons trades!
 ```
 
-### Arquivo alterado
-- `src/components/TelegramPlanningMessage.tsx` - adicionar campo `time` na interface e na funcao de build, incluir linha de horario na mensagem, e acrescentar as duas regras de gestao de banca.
+### Calculo do resultado em %
 
+- Se a operacao tem `profit` e `stakeValue` definidos: `(profit / stakeValue) * 100`
+- Se so tem `result` sem profit calculado: Green = mostrar "Green" sem %, Red = mostrar "Red" sem %
+- 1 stake = 100%, entao um profit de 0.955 stake = +95.5%
+
+### Alteracoes em `src/pages/DailyPlanning.tsx`
+
+- Adicionar botao "Resumo" ao lado do botao "Telegram" existente (icone diferente, ex: FileText ou ClipboardList)
+- O botao filtra jogos da data selecionada (por padrao ontem ou hoje) que tenham resultado para Lay 0x1/1x0
+- Abre o modal com a mensagem pronta para copiar ou enviar
+
+### Botoes de copiar e enviar
+
+Mesma logica do componente de planejamento: copiar para clipboard e enviar via API do Telegram usando credenciais salvas.
+
+### Detalhes tecnicos
+
+- A prop `date` sera passada para o componente para permitir gerar resumo de qualquer data
+- O componente recebe `games` (ja filtrados por data) e `methods`
+- Calculo de profit em stakes: `profit / stakeValue * 100` quando ambos existem
+- Nenhuma alteracao de banco de dados necessaria
