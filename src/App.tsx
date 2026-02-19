@@ -19,6 +19,7 @@ import MethodAnalysis from "./pages/MethodAnalysis";
 import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
+import MatchbookOdds from "./pages/MatchbookOdds";
 
 const AppContent = () => {
   const { games } = useSupabaseGames();
@@ -80,6 +81,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><Account /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/matchbook"
+          element={
+            <ProtectedRoute>
+              <Layout><MatchbookOdds /></Layout>
             </ProtectedRoute>
           }
         />

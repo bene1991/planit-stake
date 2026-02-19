@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.analyze-live-moment]
 verify_jwt = false
+
+[functions.matchbook-api]
+verify_jwt = false
