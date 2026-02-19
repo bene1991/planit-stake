@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 
 const SESSION_KEY = 'matchbook_creds';
 function loadCreds() {
@@ -124,10 +125,10 @@ const MonitorTrader = () => {
     monitor.setEventIds(ids);
   }, [plannedGames, monitor.setEventIds]);
 
-  // Auto-login
+  // Auto-login from saved creds
   useEffect(() => {
     const creds = loadCreds();
-    if (creds && !monitor.connected) {
+    if (creds && !monitor.connected && !monitor.loading) {
       setUsername(creds.username);
       setPassword(creds.password);
       monitor.login(creds.username, creds.password);
@@ -135,10 +136,23 @@ const MonitorTrader = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Show toast on error
+  useEffect(() => {
+    if (monitor.error) {
+      toast({ title: 'Erro Matchbook', description: monitor.error, variant: 'destructive' });
+    }
+  }, [monitor.error]);
+
+  // Save creds on successful connection
+  useEffect(() => {
+    if (monitor.connected && username && password) {
+      saveCreds(username, password);
+    }
+  }, [monitor.connected, username, password]);
+
   const handleConnect = async () => {
     if (!username.trim() || !password.trim()) return;
     await monitor.login(username, password);
-    saveCreds(username, password);
   };
 
   const handleDisconnect = () => {
@@ -242,6 +256,9 @@ const MonitorTrader = () => {
             <Button onClick={handleConnect} disabled={!username.trim() || !password.trim()} size="sm" className="w-full sm:w-auto">
               Conectar
             </Button>
+            {monitor.error && (
+              <p className="text-sm text-destructive mt-1">{monitor.error}</p>
+            )}
           </CardContent>
         </Card>
       )}

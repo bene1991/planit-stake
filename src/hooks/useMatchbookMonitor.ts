@@ -43,6 +43,9 @@ async function matchbookFetch(url: string, method = 'GET', headers: Record<strin
     body: { url, method, headers, body },
   });
   if (error) throw new Error(error.message || 'Proxy error');
+  if (data?.status && data.status >= 400) {
+    throw new Error(data.data?.message || data.data?.error || `HTTP ${data.status}`);
+  }
   return data;
 }
 
@@ -240,13 +243,7 @@ export function useMatchbookMonitor() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [autoRefresh, connected, fetchAllEvents]);
 
-  useEffect(() => {
-    const creds = loadCreds();
-    if (creds && !connected) {
-      login(creds.username, creds.password);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Auto-login removed from hook — handled only in MonitorTrader page component
 
   const disconnect = useCallback(() => {
     tokenRef.current = null;
