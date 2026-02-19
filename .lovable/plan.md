@@ -1,50 +1,41 @@
 
 
-## Corrigir Proxy Matchbook - API retornando HTML
+## Corrigir Redirecionamento Geografico da Matchbook API
 
-### Problema Identificado
+### Problema Real
 
-A Edge Function `matchbook-proxy` esta adicionando headers `Referer: https://www.matchbook.com/` e `Origin: https://www.matchbook.com` na requisicao para a API. Isso faz com que a API da Matchbook detecte a origem e redirecione para o site brasileiro (`matchbook.bet.br`), retornando uma pagina HTML completa em vez do JSON esperado.
+A Edge Function `matchbook-proxy` roda em um servidor cujo IP e detectado como Brasil pela Matchbook. A API redireciona (HTTP 301/302) para `matchbook.bet.br`, que retorna uma pagina HTML do site brasileiro. O `redirect: 'follow'` segue esse redirect automaticamente, resultando em HTML em vez de JSON.
 
-A resposta do proxy mostra claramente HTML com `<title>Apostas esportivas online - Matchbook</title>` em vez de `{"session-token": "..."}`.
+Evidencia: o response body contem `<html lang="pt-br">` e `<title>Apostas esportivas online...Matchbook</title>` do dominio `matchbook.bet.br`.
 
 ### Solucao
 
 **1. Atualizar `supabase/functions/matchbook-proxy/index.ts`**
-- Remover os headers `Referer` e `Origin` que causam o redirecionamento geografico
-- Alterar `Accept` para `*/*` conforme a documentacao oficial da Matchbook
-- Adicionar `redirect: 'follow'` ao fetch para garantir que redirects sejam seguidos corretamente
-- Adicionar log do response status e primeiros caracteres para debug
+
+- Trocar `redirect: 'follow'` por `redirect: 'manual'` para impedir que o fetch siga redirects geograficos
+- Adicionar header `Accept-Language: en-GB,en;q=0.9` para sinalizar que queremos a versao internacional
+- Quando receber um response 3xx (redirect), retornar erro descritivo com a URL de destino em vez de seguir
+- Adicionar logs para debug: URL sendo chamada, status recebido, primeiros 200 caracteres do body
+- Se o response for HTML (comeca com `<!` ou `<html`), retornar erro especifico informando o redirecionamento
 
 **2. Atualizar `src/hooks/useMatchbookMonitor.ts`**
-- Melhorar o `matchbookFetch` para detectar quando a resposta e HTML (nao JSON) e lancar erro descritivo
-- Isso evita o erro silencioso "Sem session-token" e mostra algo como "API retornou HTML em vez de JSON"
 
-**3. Atualizar `src/hooks/useMatchbook.ts`**
-- Mesma melhoria de deteccao de HTML no response
+- Melhorar a mensagem de erro quando detectar HTML para mostrar "Servidor bloqueado por geo-restricao" em vez da mensagem generica atual
 
 ### Detalhes Tecnicos
 
-Headers atuais (incorretos):
+Mudanca principal no proxy:
+
 ```text
-User-Agent: Chrome/125...
-Accept: application/json
-Referer: https://www.matchbook.com/    <-- CAUSA REDIRECT
-Origin: https://www.matchbook.com      <-- CAUSA REDIRECT
+// ANTES
+redirect: 'follow'    // segue o redirect para matchbook.bet.br
+
+// DEPOIS  
+redirect: 'manual'    // NAO segue redirects
++ Accept-Language: en-GB,en;q=0.9
++ Verificacao: se status 3xx, retorna erro com Location header
++ Verificacao: se body comeca com HTML, retorna erro especifico
 ```
 
-Headers corrigidos (conforme documentacao oficial):
-```text
-User-Agent: Chrome/125...
-Accept: */*
-(sem Referer, sem Origin)
-```
-
-A documentacao oficial da Matchbook API mostra o login assim:
-```text
-POST https://api.matchbook.com/bpapi/rest/security/session
-Content-Type: application/json;charset=UTF-8
-Accept: */*
-Body: {"username":"...","password":"..."}
-```
+Se mesmo com essas mudancas o servidor da Matchbook ainda retornar HTML (o que significaria que o bloqueio e por IP direto, nao por redirect), a alternativa seria usar as credenciais salvas nos secrets do backend (`MATCHBOOK_USERNAME` e `MATCHBOOK_PASSWORD`) para fazer o login diretamente no servidor, sem depender do frontend enviar credenciais.
 
