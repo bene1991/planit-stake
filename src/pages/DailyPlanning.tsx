@@ -718,7 +718,7 @@ export default function DailyPlanning() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {buildTelegramGames(games, bankroll.methods).length > 0 && (
+          {buildTelegramGames(games.filter(g => g.date === todayDate), bankroll.methods).length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8">
               <Send className="h-3.5 w-3.5 sm:mr-2" />
               <span className="hidden sm:inline">Telegram</span>
@@ -807,7 +807,7 @@ export default function DailyPlanning() {
       <TelegramPlanningMessage
         open={showTelegramModal}
         onOpenChange={setShowTelegramModal}
-        games={games}
+        games={games.filter(g => g.date === todayDate)}
         methods={bankroll.methods}
       />
 
