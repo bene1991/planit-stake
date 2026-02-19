@@ -823,7 +823,6 @@ export default function DailyPlanning() {
         onOpenChange={setShowSummaryModal}
         games={games}
         methods={bankroll.methods}
-        date={todayDate}
       />
 
       {/* PLANEJAMENTO - Seção Principal */}

@@ -2,11 +2,17 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Copy, Send, FileText } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Copy, Send, FileText, CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
 import { Game, Method } from '@/types';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { calculateProfit } from '@/utils/profitCalculator';
+import { getNowInBrasilia } from '@/utils/timezone';
 
 interface SummaryItem {
   homeTeam: string;
@@ -15,7 +21,7 @@ interface SummaryItem {
   time: string;
   market: string;
   result: 'Green' | 'Red';
-  stakePercent: number | null; // null = sem dados para calcular
+  stakePercent: number | null;
 }
 
 interface TelegramSummaryMessageProps {
@@ -23,7 +29,6 @@ interface TelegramSummaryMessageProps {
   onOpenChange: (open: boolean) => void;
   games: Game[];
   methods: Method[];
-  date: string; // yyyy-MM-dd
 }
 
 function buildSummaryItems(games: Game[], methods: Method[]): SummaryItem[] {
@@ -37,8 +42,20 @@ function buildSummaryItems(games: Game[], methods: Method[]): SummaryItem[] {
       if (!method || !targetNames.includes(method.name)) continue;
 
       let stakePercent: number | null = null;
+
       if (op.profit != null && op.stakeValue && op.stakeValue > 0) {
         stakePercent = (op.profit / op.stakeValue) * 100;
+      } else if (op.stakeValue && op.odd && op.operationType && op.result) {
+        const profit = calculateProfit({
+          stakeValue: op.stakeValue,
+          odd: op.odd,
+          operationType: op.operationType,
+          result: op.result,
+          commissionRate: op.commissionRate ?? 0.045,
+        });
+        if (profit !== 0 || op.result === 'Red') {
+          stakePercent = (profit / op.stakeValue) * 100;
+        }
       }
 
       items.push({
@@ -59,7 +76,6 @@ function buildSummaryItems(games: Game[], methods: Method[]): SummaryItem[] {
 function buildSummaryMessage(items: SummaryItem[], dateStr: string): string {
   if (items.length === 0) return '';
 
-  // Format date dd/mm/aaaa
   const [year, month, day] = dateStr.split('-');
   const formattedDate = `${day}/${month}/${year}`;
 
@@ -81,7 +97,6 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string): string {
     msg += '\n';
   }
 
-  // Totalizador
   const greens = items.filter(i => i.result === 'Green').length;
   const reds = items.filter(i => i.result === 'Red').length;
   const total = items.length;
@@ -107,12 +122,21 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string): string {
   return msg;
 }
 
-export function TelegramSummaryMessage({ open, onOpenChange, games, methods, date }: TelegramSummaryMessageProps) {
+export function TelegramSummaryMessage({ open, onOpenChange, games, methods }: TelegramSummaryMessageProps) {
   const { settings } = useSettings();
   const [sending, setSending] = useState(false);
 
-  const items = buildSummaryItems(games, methods);
-  const message = buildSummaryMessage(items, date);
+  // Default to yesterday in Brasilia
+  const now = getNowInBrasilia();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const [selectedDate, setSelectedDate] = useState<Date>(yesterday);
+
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const filteredGames = games.filter(g => g.date === selectedDateStr);
+
+  const items = buildSummaryItems(filteredGames, methods);
+  const message = buildSummaryMessage(items, selectedDateStr);
 
   const hasTelegramConfig = settings?.telegram_bot_token && settings?.telegram_chat_id;
 
@@ -169,6 +193,29 @@ export function TelegramSummaryMessage({ open, onOpenChange, games, methods, dat
             Resumo do Dia - Telegram
           </DialogTitle>
         </DialogHeader>
+
+        {/* Date Picker */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Data:</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
+                <CalendarIcon className="h-4 w-4 mr-2" />
+                {format(selectedDate, "dd/MM/yyyy")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => d && setSelectedDate(d)}
+                locale={ptBR}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
 
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">
