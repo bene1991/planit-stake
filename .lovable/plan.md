@@ -1,50 +1,93 @@
 
 
-## Corrigir som de gol tocando 3 vezes - Solucao DEFINITIVA
+## Integracao Matchbook - Correct Score LAY
 
-### Causa raiz identificada (3 falhas simultaneas)
+### Visao Geral
 
-1. **StrictMode + Refs resetados**: O app usa React StrictMode que desmonta e remonta componentes. Quando isso acontece, `notifiedGoalsRef` (useLiveScores) e `notifiedGoalKeysRef` (DailyPlanning) sao RECRIADOS como Sets vazios, perdendo todo o historico de gols ja notificados. No proximo ciclo de polling, o gol e "detectado" novamente.
+Criar uma integracao completa com a API da Matchbook Exchange para buscar odds de Correct Score (LAY), incluindo backend (Edge Function) e frontend (pagina dedicada).
 
-2. **Audio lock quebrado**: O check `!activeGoalAudio.paused` falha porque um `new Audio()` comeca com `paused=true`. Entre chamar `play()` e o audio realmente comecar, uma segunda chamada passa pelo lock.
+### Seguranca
 
-3. **Debounce de 15s insuficiente**: O intervalo de polling e ~20s. Se os refs resetam (StrictMode), o proximo poll apos 20s ultrapassa o debounce de 15s e toca o som novamente.
+As credenciais da Matchbook (username e password) serao armazenadas como secrets seguros no backend, nunca expostos no frontend. O usuario nao precisara digitar as credenciais na interface -- a autenticacao sera automatica via backend.
+
+### Arquitetura
+
+```text
+Frontend (MatchbookDashboard)
+    |
+    v
+Edge Function (matchbook-api)
+    |
+    +-- POST /login  --> Matchbook Session API
+    +-- GET /events  --> Matchbook Events API
+    +-- GET /correct-score-lay --> Matchbook Markets API
+```
 
 ### Alteracoes
 
-**1. `src/utils/soundManager.ts`** - Tornar `playGoalSound` 100% a prova de falhas
+**1. Secrets (2 novos)**
+- `MATCHBOOK_USERNAME` - username da conta Matchbook
+- `MATCHBOOK_PASSWORD` - password da conta Matchbook
 
-- Trocar o audio lock por um **flag booleano** (`isGoalSoundPlaying = true`) setado ANTES de criar o Audio, impossivel de furar
-- Aumentar debounce de 15s para **30s** (maior que qualquer intervalo de polling)
-- Adicionar dedup por **chave de gol** no proprio soundManager usando sessionStorage (ultima linha de defesa independente de React)
+**2. Edge Function: `supabase/functions/matchbook-api/index.ts`**
 
-**2. `src/hooks/useLiveScores.ts`** - Mover dedup para nivel de modulo
+Funcao unica com 3 acoes:
 
-- Mover `notifiedGoalsRef` de `useRef` para variavel de **modulo** (fora do componente), para sobreviver a remontagens do StrictMode
-- Adicionar limpeza automatica de chaves com mais de 2 horas (evitar memory leak)
+- **login**: POST para `https://api.matchbook.com/bpapi/rest/security/session` com as credenciais dos secrets. Retorna o session-token. Armazena em variavel de modulo para reutilizacao (com TTL de 4h para auto-renovacao).
 
-**3. `src/pages/DailyPlanning.tsx`** - Mover dedup para sessionStorage
+- **events**: GET para `https://api.matchbook.com/edge/rest/events?category-ids=1` (futebol) usando o session-token. Retorna lista simplificada com `event_id`, `event_name`, `start_time`.
 
-- Trocar `notifiedGoalKeysRef` (useRef) por **sessionStorage** (`notifiedGoalKeys`)
-- Sobrevive a remontagens, HMR e re-renders
+- **correct-score-lay**: GET para `https://api.matchbook.com/edge/rest/events/{event_id}/markets`, filtra por mercado "Correct Score", depois busca os runners com preco LAY. Retorna array de `{ score, lay_price, lay_available }`.
 
-### Resultado esperado
+Tratamento de erros:
+- 401: auto-renovacao do token e retry
+- 400/500: mensagem de erro clara
+- CORS headers padrao
 
-Quatro camadas de protecao, TODAS independentes de ciclo de vida React:
+**3. Config: `supabase/config.toml`**
+- Adicionar `[functions.matchbook-api]` com `verify_jwt = false`
+
+**4. Hook: `src/hooks/useMatchbook.ts`**
+- Hook React para gerenciar estado da conexao, lista de eventos e odds de Correct Score
+- Funcoes: `login()`, `fetchEvents()`, `fetchCorrectScoreLay(eventId)`
+- Gerenciamento de loading/error states
+
+**5. Pagina: `src/pages/MatchbookOdds.tsx`**
+- Dashboard com tema escuro focado em trading
+- Botao "Conectar" que dispara login automatico (credenciais ja nos secrets)
+- Status de conexao (conectado/desconectado)
+- Lista de eventos de futebol com busca/filtro
+- Ao clicar em evento: tabela responsiva com Score | Lay Price | Lay Available
+- Botao refresh para atualizar odds manualmente
+- Indicador de ultima atualizacao
+
+**6. Rota: `src/App.tsx`**
+- Adicionar rota `/matchbook` protegida com Layout
+
+**7. Navegacao: nao sera adicionada ao menu principal**
+- A pagina sera acessivel via URL direta `/matchbook` para manter o menu limpo
+- Pode ser adicionada ao menu posteriormente se desejado
+
+### Detalhes tecnicos da Edge Function
 
 ```text
-Camada 1: notifiedGoals (variavel de modulo em useLiveScores)
-   -> Bloqueia callback duplicado por fixture+team+score
+// Variavel de modulo para cache do session-token
+let sessionToken: string | null = null;
+let tokenTimestamp: number = 0;
+const TOKEN_TTL = 4 * 60 * 60 * 1000; // 4 horas
 
-Camada 2: notifiedGoalKeys (sessionStorage em DailyPlanning)
-   -> Bloqueia playGoalSound() por gameId+score
-
-Camada 3: isGoalSoundPlaying (flag booleano em soundManager)
-   -> Bloqueia audio concorrente
-
-Camada 4: debounce 30s + sessionStorage (soundManager)
-   -> Bloqueia qualquer chamada dentro de 30s da anterior
+// Auto-login: se token expirado ou inexistente, faz login automatico
+// Retry: se qualquer chamada retorna 401, invalida token e tenta novamente
 ```
 
-Nenhuma dessas camadas depende de `useRef`, entao remontagens do React nao afetam nada.
+### Estrutura da resposta de Correct Score LAY
+
+```text
+[
+  { score: "0-0", lay_price: 8.5, lay_available: 150.00 },
+  { score: "1-0", lay_price: 6.2, lay_available: 200.00 },
+  { score: "1-1", lay_price: 5.8, lay_available: 180.00 },
+  ...
+]
+```
 
