@@ -1,48 +1,32 @@
 
 
-## Corrigir calculo de stakes no Resumo Telegram
+## Corrigir ordenacao por horario na mensagem de Planejamento do Telegram
 
-### Problema identificado
+### Problema
 
-O calculo atual divide o lucro de cada operacao pelo `stakeValue` (valor de entrada/responsabilidade) daquela operacao individual. Porem, o conceito correto de "1 stake" no sistema e um valor de referencia fixo configurado nas configuracoes operacionais (`stakeValueReais`, ex: R$25).
-
-Exemplo: se o lucro de uma operacao e R$2,50 e o stakeReference e R$25, o resultado correto e +10% de stake (0.10 st). Mas o codigo atual divide por `op.stakeValue` (que pode ser R$100 de responsabilidade), dando um valor errado.
-
-A pagina de Performance ja faz esse calculo corretamente: `profitReais / stakeValueReais`.
+A ordenacao cronologica foi corrigida apenas no componente de **Resumo** (`TelegramSummaryMessage.tsx`), mas a mensagem de **Planejamento** (`TelegramPlanningMessage.tsx`) nunca recebeu essa correcao. A funcao `buildTelegramGames` simplesmente itera os jogos na ordem do array original, sem nenhum sort. Por isso o jogo das 16:00 aparece depois dos jogos das 17:00.
 
 ### Solucao
 
-**Arquivo: `src/components/TelegramSummaryMessage.tsx`**
+**Arquivo: `src/components/TelegramPlanningMessage.tsx`**
 
-1. Importar e usar o hook `useOperationalSettings` para obter o `stakeValueReais` (valor de referencia de 1 stake)
+Adicionar ordenacao cronologica na funcao `buildTelegramGames`, apos montar o array `result`, usando a mesma logica numerica que ja existe no resumo:
 
-2. Alterar a funcao `buildSummaryItems` para receber `stakeReference` como parametro
+```typescript
+result.sort((a, b) => {
+  const [ah, am] = a.time.split(':').map(Number);
+  const [bh, bm] = b.time.split(':').map(Number);
+  return (ah * 60 + am) - (bh * 60 + bm);
+});
+```
 
-3. Corrigir o calculo de `stakePercent`:
-   - Se `op.profit` existe: `stakePercent = (op.profit / stakeReference) * 100`
-   - Se `op.profit` nao existe mas tem `stakeValue`, `odd`, `operationType` e `result`: calcular o profit via `calculateProfit()` e depois dividir por `stakeReference`
-   - Isso garante consistencia com o calculo da pagina Performance
-
-4. No totalizador, a soma de `stakePercent` de todos os itens dara o resultado correto em % de stake
+Isso garante que os jogos sejam listados de 14:45, 16:00, 17:00, 17:00 em vez da ordem arbitraria atual.
 
 ### Resultado esperado
 
-Se o lucro total do dia em R$ dividido pelo stakeReference da 0.90 stakes, o totalizador mostrara "+90.0% de stake", consistente com o que aparece na pagina Performance.
-
-### Detalhes tecnicos
-
-```text
-Antes (errado):
-  stakePercent = (op.profit / op.stakeValue) * 100
-  -> cada operacao divide por um valor diferente
-
-Depois (correto):
-  stakePercent = (op.profit / stakeReference) * 100
-  -> todas as operacoes dividem pelo mesmo valor de referencia
-```
-
-Alteracoes apenas em `src/components/TelegramSummaryMessage.tsx`:
-- Adicionar `useOperationalSettings` ao componente
-- Passar `stakeReference` para `buildSummaryItems`
-- Substituir `op.stakeValue` por `stakeReference` na divisao do calculo de percentual
+A mensagem de planejamento listara os jogos em ordem cronologica correta:
+1. Fenerbahce x Nottingham Forest - 14:45
+2. Al-Ettifaq x Al-Fateh - 16:00
+3. Celtic x VfB Stuttgart - 17:00
+4. Ludogorets x Ferencvarosi TC - 17:00
 
