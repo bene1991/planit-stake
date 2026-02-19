@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.analyze-live-moment]
 verify_jwt = false
+
+[functions.matchbook-proxy]
+verify_jwt = false
