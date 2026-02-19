@@ -19,10 +19,10 @@ import { toast } from '@/hooks/use-toast';
 
 const SESSION_KEY = 'matchbook_creds';
 function loadCreds() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
 }
-function saveCreds(u: string, p: string) { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ username: u, password: p })); }
-function clearCreds() { sessionStorage.removeItem(SESSION_KEY); }
+function saveCreds(u: string, p: string) { localStorage.setItem(SESSION_KEY, JSON.stringify({ username: u, password: p })); }
+function clearCreds() { localStorage.removeItem(SESSION_KEY); }
 
 // Odd cell component with flash
 const OddCell = ({ value, flashKey, flashes, suffix }: {
@@ -143,15 +143,9 @@ const MonitorTrader = () => {
     }
   }, [monitor.error]);
 
-  // Save creds on successful connection
-  useEffect(() => {
-    if (monitor.connected && username && password) {
-      saveCreds(username, password);
-    }
-  }, [monitor.connected, username, password]);
-
   const handleConnect = async () => {
     if (!username.trim() || !password.trim()) return;
+    saveCreds(username, password);
     await monitor.login(username, password);
   };
 
