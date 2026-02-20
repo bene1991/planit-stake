@@ -186,7 +186,9 @@ export const useFilteredStatistics = (
     const totalOps = allFilteredOps.length;
     const greenOps = allFilteredOps.filter((op) => op.result === 'Green').length;
     const redOps = allFilteredOps.filter((op) => op.result === 'Red').length;
-    const winRate = totalOps > 0 ? (greenOps / totalOps) * 100 : 0;
+    // Win Rate excludes Voids from denominator
+    const decidedOps = greenOps + redOps;
+    const winRate = decidedOps > 0 ? (greenOps / decidedOps) * 100 : 0;
 
     const overallStats: OverallStats = {
       total: totalOps,
@@ -233,7 +235,9 @@ export const useFilteredStatistics = (
         const methodGreens = methodOps.filter((op) => op.result === 'Green').length;
         const methodReds = methodOps.filter((op) => op.result === 'Red').length;
         const methodTotal = methodOps.length;
-        const methodWinRate = methodTotal > 0 ? (methodGreens / methodTotal) * 100 : 0;
+        // Win Rate excludes Voids from denominator
+        const methodDecided = methodGreens + methodReds;
+        const methodWinRate = methodDecided > 0 ? (methodGreens / methodDecided) * 100 : 0;
 
         // Calculate profit in R$ for this method
         let profitReais = 0;
