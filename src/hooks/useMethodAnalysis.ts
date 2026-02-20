@@ -49,6 +49,7 @@ export interface MethodAnalysisData {
     totalOperations: number;
     greens: number;
     reds: number;
+    voids: number;
     winRate: number;
     profitReais: number;
     profitStakes: number;
@@ -309,22 +310,27 @@ export function useMethodAnalysis() {
 
       const totalOperations = methodOperations.length;
       const greens = methodOperations.filter(op => op.result === 'Green').length;
-      const reds = totalOperations - greens;
-      const winRate = totalOperations > 0 ? (greens / totalOperations) * 100 : 0;
+      // Void is NOT counted as Red — only explicit Red results
+      const reds = methodOperations.filter(op => op.result === 'Red').length;
+      const voids = methodOperations.filter(op => op.result === 'Void').length;
+      // Win Rate excludes Voids from denominator
+      const decidedOps = greens + reds;
+      const winRate = decidedOps > 0 ? (greens / decidedOps) * 100 : 0;
 
-      // Calculate profit
+      // Calculate profit — Void operations have profit = 0, so they don't affect the sum
       const profitReais = methodOperations.reduce((sum, op) => sum + (op.profit || 0), 0);
-      const profitStakes = profitReais / stakeValueReais;
+      const profitStakes = stakeValueReais > 0 ? profitReais / stakeValueReais : 0;
 
-      // Calculate average odd
-      const oddsSum = methodOperations.reduce((sum, op) => sum + (op.odd || 2), 0);
-      const avgOdd = totalOperations > 0 ? oddsSum / totalOperations : 2;
+      // Calculate average odd (exclude Voids from avg odd)
+      const nonVoidOps = methodOperations.filter(op => op.result !== 'Void');
+      const oddsSum = nonVoidOps.reduce((sum, op) => sum + (op.odd || 2), 0);
+      const avgOdd = nonVoidOps.length > 0 ? oddsSum / nonVoidOps.length : 2;
 
       // Calculate breakeven
       const breakevenRate = calculateBreakevenRate(avgOdd);
 
-      // Calculate ROI
-      const totalStaked = totalOperations * stakeValueReais;
+      // Calculate ROI — only stake decided operations (exclude Voids from denominator)
+      const totalStaked = decidedOps * stakeValueReais;
       const roi = totalStaked > 0 ? (profitReais / totalStaked) * 100 : 0;
 
       // Calculate max drawdown
@@ -338,11 +344,12 @@ export function useMethodAnalysis() {
         if (drawdown > maxDrawdown) maxDrawdown = drawdown;
       });
 
-      // Calculate current streak
+      // Calculate current streak — Void is ignored (neutral, does not start or break a streak)
       let currentStreak: { type: 'green' | 'red'; count: number } = { type: 'green', count: 0 };
-      for (let i = methodOperations.length - 1; i >= 0; i--) {
-        const result = methodOperations[i].result;
-        if (i === methodOperations.length - 1) {
+      const decidedOperations = methodOperations.filter(op => op.result === 'Green' || op.result === 'Red');
+      for (let i = decidedOperations.length - 1; i >= 0; i--) {
+        const result = decidedOperations[i].result;
+        if (i === decidedOperations.length - 1) {
           currentStreak.type = result === 'Green' ? 'green' : 'red';
           currentStreak.count = 1;
         } else if ((result === 'Green' && currentStreak.type === 'green') ||
@@ -479,6 +486,7 @@ export function useMethodAnalysis() {
         stats: {
           totalOperations,
           greens,
+          voids,
           reds,
           winRate,
           profitReais,

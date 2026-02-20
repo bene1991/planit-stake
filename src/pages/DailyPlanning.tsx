@@ -534,7 +534,9 @@ export default function DailyPlanning() {
   const totalOperations = allOperations.length;
   const greenOperations = allOperations.filter((op) => op.result === "Green").length;
   const redOperations = allOperations.filter((op) => op.result === "Red").length;
-  const winRate = totalOperations > 0 ? ((greenOperations / totalOperations) * 100).toFixed(1) : "0.0";
+  // Win Rate excludes Voids from denominator
+  const decidedOperations = greenOperations + redOperations;
+  const winRate = decidedOperations > 0 ? ((greenOperations / decidedOperations) * 100).toFixed(1) : "0.0";
   const liveGames = games.filter(g => g.status === 'Live').length;
   
   // Check if there are any live or pending games that need auto-refresh
@@ -570,6 +572,7 @@ export default function DailyPlanning() {
         const todayOps = todayGames.flatMap(g => g.methodOperations).filter(op => op.result);
         const todayGreens = todayOps.filter(op => op.result === 'Green').length;
         const todayReds = todayOps.filter(op => op.result === 'Red').length;
+        // Win Rate excludes Voids from denominator
         const todayTotal = todayGreens + todayReds;
         const todayWinRate = todayTotal > 0 ? ((todayGreens / todayTotal) * 100).toFixed(1) : '0.0';
         const todayProfitMoney = todayOps.reduce((sum, op) => {

@@ -75,7 +75,9 @@ export const useStatistics = (games: Game[], methods: Method[]) => {
       const result = op.result || calculateResult(op);
       return result === 'Red';
     }).length;
-    const winRate = totalOperations > 0 ? (greenOperations / totalOperations) * 100 : 0;
+    // Win Rate excludes Voids from denominator
+    const decidedOperations = greenOperations + redOperations;
+    const winRate = decidedOperations > 0 ? (greenOperations / decidedOperations) * 100 : 0;
 
     const overallStats: OverallStats = {
       total: totalOperations,
