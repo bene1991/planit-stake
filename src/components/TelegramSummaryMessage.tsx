@@ -44,19 +44,20 @@ function buildSummaryItems(games: Game[], methods: Method[], stakeReference: num
       const method = methods.find(m => m.id === op.methodId);
       if (!method || !targetNames.includes(method.name)) continue;
 
-      let stakePercent: number | null = null;
+      // Void sempre tem stakePercent = 0
+      let stakePercent: number | null = op.result === 'Void' ? 0 : null;
 
-      if (op.profit != null) {
-        stakePercent = (op.profit / stakeReference) * 100;
-      } else if (op.stakeValue && op.odd && op.operationType && op.result) {
-        const profit = calculateProfit({
-          stakeValue: op.stakeValue,
-          odd: op.odd,
-          operationType: op.operationType,
-          result: op.result,
-          commissionRate: op.commissionRate ?? 0.045,
-        });
-        if (profit !== 0 || op.result === 'Red') {
+      if (op.result !== 'Void') {
+        if (op.profit != null) {
+          stakePercent = (op.profit / stakeReference) * 100;
+        } else if (op.stakeValue && op.odd && op.operationType && op.result) {
+          const profit = calculateProfit({
+            stakeValue: op.stakeValue,
+            odd: op.odd,
+            operationType: op.operationType,
+            result: op.result,
+            commissionRate: op.commissionRate ?? 0.045,
+          });
           stakePercent = (profit / stakeReference) * 100;
         }
       }
@@ -86,6 +87,7 @@ interface MonthlyData {
   total: number;
   greens: number;
   reds: number;
+  voids: number;
   winRate: string;
   totalStakePercent: number;
   hasStakeData: boolean;
@@ -99,6 +101,7 @@ function buildMonthlyAccumulated(games: Game[], methods: Method[], stakeReferenc
 
   const greens = allItems.filter(i => i.result === 'Green').length;
   const reds = allItems.filter(i => i.result === 'Red').length;
+  const voids = allItems.filter(i => i.result === 'Void').length;
   const total = allItems.length;
   const winRateBase = greens + reds;
   const winRate = winRateBase > 0 ? ((greens / winRateBase) * 100).toFixed(1) : '0.0';
@@ -109,7 +112,7 @@ function buildMonthlyAccumulated(games: Game[], methods: Method[], stakeReferenc
   const [, , day] = selectedDateStr.split('-');
   const dateRange = `01/${month} a ${day}/${month}`;
 
-  return { total, greens, reds, winRate, totalStakePercent, hasStakeData, dateRange };
+  return { total, greens, reds, voids, winRate, totalStakePercent, hasStakeData, dateRange };
 }
 
 function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: MonthlyData): string {
@@ -164,7 +167,7 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
   if (monthly && monthly.total > 0) {
     msg += '\n\n---\n';
     msg += `\n📅 ACUMULADO DO MÊS (${monthly.dateRange}):`;
-    msg += `\n• Operações: ${monthly.total} (${monthly.greens} Green, ${monthly.reds} Red)`;
+    msg += `\n• Operações: ${monthly.total} (${monthly.greens} Green, ${monthly.reds} Red${monthly.voids > 0 ? `, ${monthly.voids} Void` : ''})`;
     msg += `\n• Win Rate: ${monthly.winRate}%`;
     if (monthly.hasStakeData) {
       const sign = monthly.totalStakePercent >= 0 ? '+' : '';
