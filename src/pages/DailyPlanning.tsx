@@ -413,8 +413,11 @@ export default function DailyPlanning() {
     });
   };
 
-  // Mostrar apenas jogos pendentes na seção principal
-  const sortedPlanned = sortGames(pendingGames);
+  // Jogos finalizados de hoje para incluir na seção principal
+  const todayFinalizedGames = finalizedGames.filter(g => g.date === todayDate);
+
+  // Combinar pendentes + finalizados de hoje na seção principal
+  const sortedPlanned = sortGames([...pendingGames, ...todayFinalizedGames]);
 
   // Filtros para planejamento
   const filteredPlannedGames = useMemo(() => {
@@ -723,12 +726,10 @@ export default function DailyPlanning() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {buildTelegramGames(games.filter(g => g.date === todayDate), bankroll.methods).length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8">
-              <Send className="h-3.5 w-3.5 sm:mr-2" />
-              <span className="hidden sm:inline">Telegram</span>
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8">
+            <Send className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">Telegram</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowSummaryModal(true)} className="h-8">
             <FileText className="h-3.5 w-3.5 sm:mr-2" />
             <span className="hidden sm:inline">Resumo</span>

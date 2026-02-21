@@ -123,7 +123,8 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
 
   let msg = `📋 RESUMO DO DIA - ${formattedDate}\n`;
 
-  for (const item of items) {
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
     const emoji = item.result === 'Green' ? '✅' : item.result === 'Void' ? '⚪' : '❌';
     let resultText: string = item.result;
     if (item.result === 'Void') {
@@ -133,7 +134,7 @@ function buildSummaryMessage(items: SummaryItem[], dateStr: string, monthly?: Mo
       resultText = `${item.result} | ${sign}${item.stakePercent.toFixed(1)}% de stake`;
     }
 
-    msg += `\n🏟 ${item.homeTeam} x ${item.awayTeam}`;
+    msg += `\n${i + 1}. 🏟 ${item.homeTeam} x ${item.awayTeam}`;
     msg += `\n📍 ${item.league}`;
     msg += `\n⏰ Horário: ${item.time}`;
     msg += `\n🎯 Mercado: ${item.market}`;
