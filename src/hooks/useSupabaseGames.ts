@@ -53,21 +53,32 @@ export interface Game {
 
 const GAMES_QUERY_KEY = ['games'] as const;
 
-// Optimized single query to fetch all games with operations
-const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
-  // Fetch games and operations in parallel
-  const [gamesResult, operationsResult] = await Promise.all([
-    supabase.from('games').select('*').eq('owner_id', userId),
-    supabase.from('method_operations').select('*'),
-  ]);
+// Fetch all rows with automatic pagination to bypass the 1000-row default limit
+const fetchAllPaginated = async <T>(
+  queryBuilder: any
+): Promise<T[]> => {
+  let allData: T[] = [];
+  let from = 0;
+  const pageSize = 1000;
 
-  if (gamesResult.error) {
-    console.error('Error loading games:', gamesResult.error);
-    throw gamesResult.error;
+  while (true) {
+    const { data, error } = await queryBuilder.range(from, from + pageSize - 1);
+    if (error) throw error;
+    allData = [...allData, ...(data || [])];
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
   }
 
-  const gamesData = gamesResult.data || [];
-  const allOperations = operationsResult.data || [];
+  return allData;
+};
+
+// Optimized single query to fetch all games with operations
+const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
+  // Fetch games and operations in parallel with pagination
+  const [gamesData, allOperations] = await Promise.all([
+    fetchAllPaginated<any>(supabase.from('games').select('*').eq('owner_id', userId)),
+    fetchAllPaginated<any>(supabase.from('method_operations').select('*')),
+  ]);
 
   // Create a map of operations by game_id for O(1) lookup
   const operationsByGameId = new Map<string, typeof allOperations>();
