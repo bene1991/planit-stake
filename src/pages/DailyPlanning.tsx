@@ -413,11 +413,8 @@ export default function DailyPlanning() {
     });
   };
 
-  // Jogos finalizados de hoje para incluir na seção principal
-  const todayFinalizedGames = finalizedGames.filter(g => g.date === todayDate);
-
-  // Combinar pendentes + finalizados de hoje na seção principal
-  const sortedPlanned = sortGames([...pendingGames, ...todayFinalizedGames]);
+  // Apenas pendentes na seção principal - finalizados vão direto para o histórico
+  const sortedPlanned = sortGames(pendingGames);
 
   // Filtros para planejamento
   const filteredPlannedGames = useMemo(() => {
