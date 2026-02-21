@@ -1,50 +1,94 @@
 
 
-## Bug: Jogos adicionados não aparecem no planejamento
+## Monitoramento em Background com Notificações Telegram
 
-### Causa raiz
+### O que muda
 
-Voce tem **1012 jogos** no banco de dados. O sistema tem um limite padrao de **1000 registros por consulta**. Como os jogos mais recentes ultrapassam esse limite, eles simplesmente nao aparecem na interface -- mesmo que tenham sido salvos corretamente no banco.
+Atualmente, o sistema so funciona com o navegador aberto. Vamos criar um **monitor automatico no backend** que roda a cada 2 minutos, independente do navegador. Quando detectar um gol ou cartao vermelho, envia uma mensagem no seu Telegram automaticamente.
 
-Os jogos ESTAO no banco de dados (confirmei). O problema e que a consulta que carrega os jogos so traz os primeiros 1000.
+---
 
-### Solucao
+### Como vai funcionar
 
-Corrigir a consulta de jogos para buscar TODOS os registros, sem limite de 1000.
+1. A cada 2 minutos, uma funcao no backend acorda automaticamente
+2. Busca no banco de dados todos os seus jogos que estao "Live" ou prestes a comecar
+3. Consulta a API-Football para obter placares e eventos atualizados
+4. Compara com os placares anteriores armazenados no banco
+5. Se detectar um **gol** ou **cartao vermelho**, envia uma mensagem no seu Telegram
+6. Atualiza os placares no banco para a proxima comparacao
+
+### Formato das mensagens Telegram
+
+**Gol:**
+```
+⚽ GOL! Flamengo
+Flamengo 1 - 0 Palmeiras
+🏟 Brasileirão | ⏱ 34'
+```
+
+**Cartao Vermelho:**
+```
+🟥 CARTÃO VERMELHO!
+Jogador: Fulano (Palmeiras)
+Flamengo 1 - 0 Palmeiras | ⏱ 67'
+```
 
 ---
 
 ### Detalhes tecnicos
 
-**Arquivo: `src/hooks/useSupabaseGames.ts`**
+**1. Nova Edge Function: `monitor-live-games`**
 
-A funcao `fetchGamesWithOperations` faz:
-```typescript
-supabase.from('games').select('*').eq('owner_id', userId)
+Funcao principal que sera chamada pelo cron. Logica:
+- Busca jogos com `status = 'Live'` ou `status = 'Pending'` com horario proximo (30min)
+- Agrupa por usuario (owner_id)
+- Chama `live=all` da API-Football (1 unica chamada para todos os jogos)
+- Para cada jogo monitorado, compara placar atual com `final_score_home`/`final_score_away` no banco
+- Para detectar cartoes vermelhos, busca eventos do fixture quando ha jogos ao vivo
+- Se detectar mudanca, envia Telegram usando o bot token/chat id da tabela `settings`
+- Atualiza o placar no banco de dados
+
+**2. Armazenamento de estado (nova tabela `live_monitor_state`)**
+
+Para rastrear o ultimo estado conhecido de cada jogo sem depender do frontend:
+
+```sql
+CREATE TABLE live_monitor_state (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  game_id uuid NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  owner_id uuid NOT NULL,
+  fixture_id text NOT NULL,
+  last_home_score integer DEFAULT 0,
+  last_away_score integer DEFAULT 0,
+  last_events_count integer DEFAULT 0,
+  notified_events jsonb DEFAULT '[]',
+  status text DEFAULT 'monitoring',
+  updated_at timestamptz DEFAULT now()
+);
 ```
 
-Isso retorna no maximo 1000 registros (limite padrao). Preciso paginar ou aumentar o limite para trazer todos os jogos.
+Com RLS para que apenas o dono veja seus dados + service role para a edge function.
 
-**Correcao:** Implementar paginacao automatica na consulta, buscando em lotes de 1000 ate trazer todos os registros. Tambem aplicar o mesmo para `method_operations` que pode ter o mesmo problema.
+**3. Cron Job (pg_cron)**
 
-```typescript
-// Buscar todos os jogos com paginacao automatica
-const fetchAllRows = async (query) => {
-  let allData = [];
-  let from = 0;
-  const pageSize = 1000;
-  
-  while (true) {
-    const { data, error } = await query.range(from, from + pageSize - 1);
-    if (error) throw error;
-    allData = [...allData, ...(data || [])];
-    if (!data || data.length < pageSize) break;
-    from += pageSize;
-  }
-  
-  return allData;
-};
+Configurar um job que chama a edge function a cada 2 minutos:
+
+```sql
+SELECT cron.schedule(
+  'monitor-live-games',
+  '*/2 * * * *',
+  $$ SELECT net.http_post(...) $$
+);
 ```
 
-Isso garante que mesmo com milhares de jogos, todos serao carregados corretamente.
+**4. Consumo de creditos**
+
+- 1 chamada `live=all` a cada 2 min = ~720 creditos/dia (bem dentro dos 75k)
+- Chamadas extras para eventos apenas quando ha jogos ao vivo (~5-10 por jogo)
+- Estimativa total: ~1000-2000 creditos/dia para monitoramento em background
+
+**Arquivos a criar/modificar:**
+- `supabase/functions/monitor-live-games/index.ts` (nova edge function)
+- `supabase/config.toml` (adicionar config da nova funcao)
+- Migracoes SQL: tabela `live_monitor_state` + cron job + extensoes pg_cron/pg_net
 
