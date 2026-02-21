@@ -430,6 +430,53 @@ export type Database = {
         }
         Relationships: []
       }
+      live_monitor_state: {
+        Row: {
+          fixture_id: string
+          game_id: string
+          id: string
+          last_away_score: number | null
+          last_events_count: number | null
+          last_home_score: number | null
+          notified_events: Json | null
+          owner_id: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          fixture_id: string
+          game_id: string
+          id?: string
+          last_away_score?: number | null
+          last_events_count?: number | null
+          last_home_score?: number | null
+          notified_events?: Json | null
+          owner_id: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          fixture_id?: string
+          game_id?: string
+          id?: string
+          last_away_score?: number | null
+          last_events_count?: number | null
+          last_home_score?: number | null
+          notified_events?: Json | null
+          owner_id?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_monitor_state_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       method_operations: {
         Row: {
           commission_rate: number | null
