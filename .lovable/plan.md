@@ -1,123 +1,94 @@
 
-## Correções: Void no fluxo de jogos, ROI zerado na análise e Win Rate
+
+## Correções: Void no relatório Telegram, botão de planejamento e enumeração
 
 ### 3 problemas identificados
 
 ---
 
-### Problema 1 — Jogo sumindo ao marcar Void
+### Problema 1 -- Botão "Telegram" (Planejamento) sumiu
 
-**Causa:** Em `src/pages/DailyPlanning.tsx` (linhas 400-406), a separação entre jogos pendentes e finalizados usa:
-
-```
-pendingGames  = games where some(op => !op.result)
-finalizedGames = games where every(op => op.result)
-```
-
-Void é um resultado válido (`op.result = 'Void'`), então um jogo com **todos** os métodos marcados (incluindo Void) é corretamente movido para o histórico. Isso é o comportamento esperado.
-
-**O bug real:** Quando um jogo tem **múltiplos métodos** e apenas **um deles é marcado como Void**, o jogo some do planejamento porque o `pendingGames` ainda o incluiria... mas na verdade o jogo deveria continuar visível até que todos os outros métodos também sejam finalizados. Isso **já funciona corretamente** com a lógica atual — a exceção relatada deve ser que o jogo foi para o histórico porque de fato todos os métodos foram marcados.
-
-**Porém**, há um bug relacionado: a contagem de operações no resumo do dia e histórico inclui Void no total, inflando os números. E a detecção de "jogo completo" para suprimir alertas de gol (`allMethodsResolved`) na linha 58 do `GameCardCompact.tsx` já trata Void corretamente:
+**Causa:** Em `DailyPlanning.tsx` linha 726, o botão de planejamento do Telegram só aparece se existem jogos **pendentes** de hoje com métodos Lay 0x1/1x0:
 
 ```typescript
-const allMethodsResolved = game.methodOperations.every(
-  op => op.result === 'Green' || op.result === 'Red' || op.result === 'Void'
-);
+{buildTelegramGames(games.filter(g => g.date === todayDate), bankroll.methods).length > 0 && (
+  <Button ... onClick={() => setShowTelegramModal(true)}>Telegram</Button>
+)}
 ```
 
-**Fix real para o Problema 1:** O jogo com Void deve ir ao histórico (isso já acontece). O que precisa ser corrigido é que quando um jogo vai ao histórico com resultado Void, ele deve **aparecer no histórico** normalmente (sem desaparecer). O motivo do "sumiço" é que `finalizedGames` usa `every(op => op.result)` que funciona, mas o histórico filtra por `historyPeriod` — se o jogo foi de um dia diferente do filtro aplicado, ele fica invisível. Vamos deixar o filtro de histórico mais claro para o usuário.
+O filtro `games.filter(g => g.date === todayDate)` pega todos os jogos de hoje, mas `buildTelegramGames` inclui qualquer jogo com Lay 0x1/1x0. Porém, quando todos os jogos com esses métodos são finalizados (Green/Red/Void), eles saem de `sortedPlanned` (pendentes) e vão para `finalizedGames`. O problema é que a condição verifica `games` (todos), mas se nenhum jogo de hoje tem Lay 0x1/1x0, o botão some.
 
-Na verdade, revisando mais a fundo: **o bug confirmado** é que `isGamePending` na linha 104 usa `!op.result`, que é `true` quando result é `undefined/null` mas `false` quando é `'Void'` — então um Void JÁ é tratado como "finalizado". Se um jogo tem 2 métodos e um é Void e outro ainda não tem resultado, o jogo **permanece** no planejamento. Se ambos têm resultado (um Void, outro Green/Red), o jogo vai ao histórico. Esse comportamento está correto.
+**Na verdade**, olhando de novo: `games` inclui TODOS os jogos (pendentes + finalizados). Então o botão deveria aparecer se existem jogos de hoje com Lay 0x1/1x0, independente do resultado. A função `buildTelegramGames` não filtra por resultado -- ela inclui todos.
 
-**O bug real reportado** ("o jogo simplesmente sumiu"): provavelmente o jogo tinha só um método, que foi marcado como Void — e foi para o histórico, mas o usuário não percebeu que estava lá (pode estar escondido pelo filtro de período do histórico). Vamos garantir que Void seja visível no histórico e que o filtro padrão do histórico mostre "Hoje" (que inclui jogos de hoje).
+O problema real é que se o usuário está olhando um dia diferente de hoje, o botão usa `todayDate` fixo e pode não ter jogos. Mas pelo screenshot o usuário está no dia correto.
+
+**Fix:** Remover a condição que esconde o botão. O botão "Telegram" (planejamento) deve estar sempre visível, igual ao "Resumo".
 
 ---
 
-### Problema 2 — ROI = 0 na Análise de Método
+### Problema 2 -- Jogos com Void "sumindo"
 
-**Causa identificada em `src/hooks/useMethodAnalysis.ts` (linha 312):**
+**Causa:** A lógica de separação pendentes/finalizados está correta (linhas 400-406). Quando todos os métodos de um jogo têm resultado (incluindo Void), o jogo vai para o histórico ("Finalizados"). O filtro padrão do histórico mostra "Hoje", mas se o jogo é de outro dia, ele fica invisível.
 
-```typescript
-const greens = methodOperations.filter(op => op.result === 'Green').length;
-const reds = totalOperations - greens;  // BUG: Void é contado como Red!
-```
+**Fix:** Garantir que a contagem de "Finalizados" na aba principal inclua jogos de hoje com Void. Além disso, no `GameStatusTabs`, a aba "Finalizados (0)" mostra 0 porque conta apenas jogos pendentes filtrados como finalizados -- mas os finalizados estão em `finalizedGames`, não em `sortedPlanned`. A aba "Finalizados" no topo filtra `sortedPlanned` (que só tem pendentes), então sempre mostra 0 para jogos completamente finalizados.
 
-Isso faz com que operações Void sejam somadas aos Reds erroneamente.
-
-**Causa secundária (linha 327):**
-```typescript
-const totalStaked = totalOperations * stakeValueReais;
-const roi = totalStaked > 0 ? (profitReais / totalStaked) * 100 : 0;
-```
-
-Voids (lucro 0) diluem o `profitReais` total, e o `totalStaked` inclui Voids no denominador, calculando ROI incorretamente.
-
-**Causa terciária (linha 316):**
-```typescript
-const profitReais = methodOperations.reduce((sum, op) => sum + (op.profit || 0), 0);
-```
-
-Quando uma operação Void não tem `op.profit` salvo (null/undefined), ela contribui com 0 — correto. Mas se o profit foi salvo com valor errado anteriormente, pode distorcer.
-
-**Fix:** 
-- `reds` = filtrar explicitamente `op.result === 'Red'`
-- `totalStaked` = usar apenas operações que NÃO são Void (Green + Red) para o denominador do ROI
-- `winRate` = `greens / (greens + reds)` excluindo Voids
+**O bug real:** A aba "Finalizados (0)" na seção de planejamento filtra `sortedPlanned`, que por definição só contém jogos pendentes. Jogos com todos os métodos finalizados (incluindo Void) estão em `finalizedGames` e aparecem apenas na seção "Histórico" colapsável abaixo. Precisamos incluir os jogos finalizados de hoje na aba "Finalizados" do planejamento para que o usuário os veja imediatamente.
 
 ---
 
-### Problema 3 — Win Rate e contagens incorretas em múltiplos lugares
+### Problema 3 -- Enumerar jogos no relatório Telegram e incluir Voids
 
-**Locais com Void não excluído do denominador:**
+**Causa:** A função `buildSummaryMessage` não numera os jogos. Voids já são incluídos (linha 43: `if (!op.result) continue` pula apenas sem resultado, Void passa).
 
-1. `src/pages/DailyPlanning.tsx` linha 537: `winRate = totalOperations / greenOps` — `totalOperations` inclui Void
-2. `src/hooks/useStatistics.ts` linha 78: `winRate = greenOps / totalOperations` — mesmo problema
-3. `src/hooks/useFilteredStatistics.ts` linha 189: `winRate = greenOps / totalOps` — idem
-
-**Fix:** Em todos esses lugares, o denominador do Win Rate deve ser `greens + reds` (excluindo Voids).
-
----
-
-### Problema 4 — IA não analisa
-
-**Causa:** A IA chama a edge function `analyze-performance` e `analyze-method`, que usam a chave `LOVABLE_API_KEY`. O problema pode ser que o token de autorização enviado usa `VITE_SUPABASE_PUBLISHABLE_KEY` — que é o anon key público — mas a edge function pode esperar o token do usuário autenticado. Vamos verificar como a chamada é feita e garantir que o token correto é enviado.
-
-Adicionalmente, as operações Void distorcem os dados enviados para a IA (ROI zerado, Win Rate inflado/deflado), fazendo com que a análise retorne valores sem sentido.
+**Fix:** Adicionar numeração sequencial (1., 2., 3...) a cada jogo no relatório.
 
 ---
 
 ### Arquivos a modificar
 
-1. **`src/hooks/useMethodAnalysis.ts`**
-   - Corrigir `reds` para filtrar explicitamente `op.result === 'Red'`
-   - Corrigir `winRate` para usar `greens / (greens + reds)`
-   - Corrigir `totalStaked` no cálculo do ROI para excluir Voids
-   - Corrigir `currentStreak` para tratar Void como neutro (não quebrar streak nem ser contado)
+**1. `src/pages/DailyPlanning.tsx`**
 
-2. **`src/pages/DailyPlanning.tsx`**
-   - Corrigir `winRate` (linha 537) para usar `greens / (greens + reds)`
-   - Corrigir `todayWinRate` (linha 574) para excluir Voids do denominador
-   - Garantir que `finalizedGames` inclua jogos com todos os métodos como Void (já funciona, mas adicionar comentário claro)
+- **Linha 726**: Remover a condição `buildTelegramGames(...).length > 0` -- o botão "Telegram" deve estar sempre visível (igual ao "Resumo")
+- **Linhas 831-876**: Na seção de planejamento, incluir jogos finalizados de hoje junto com os pendentes na aba "Finalizados", para que jogos com Void não "sumam" da tela principal
+- Alterar `sortedPlanned` na aba "Finalizados" para incluir `finalizedGames` de hoje
 
-3. **`src/hooks/useFilteredStatistics.ts`**
-   - Corrigir `winRate` em `overallStats` (linha 189) para excluir Voids
-   - Corrigir `methodWinRate` (linha 236) para excluir Voids do denominador
-   - Corrigir cálculo de lucro para garantir que Void não entra como Red no cálculo inline
+**2. `src/components/TelegramSummaryMessage.tsx`**
 
-4. **`src/hooks/useStatistics.ts`**
-   - Corrigir `winRate` (linha 78) para excluir Voids do denominador
+- Na função `buildSummaryMessage`, adicionar numeração sequencial antes de cada jogo:
+  - Mudar de `🏟 Team A x Team B` para `1. 🏟 Team A x Team B`
+- Confirmar que Voids estão sendo incluídos (já estão)
 
-5. **`src/components/GameCardCompact.tsx`** (verificação)
-   - Confirmar que `allMethodsResolved` trata Void como finalizado (já está correto, manter)
+### Detalhes técnicos
 
-### Resumo das correções
+**DailyPlanning.tsx -- Botão Telegram sempre visível:**
+```typescript
+// ANTES (linha 726-731):
+{buildTelegramGames(games.filter(...)).length > 0 && (
+  <Button ...>Telegram</Button>
+)}
 
-| Arquivo | Problema | Correção |
-|---|---|---|
-| `useMethodAnalysis.ts` | `reds = total - greens` inclui Void | `reds = filter(Red)` |
-| `useMethodAnalysis.ts` | ROI usa total com Void | `totalStaked = (greens + reds) * stake` |
-| `useMethodAnalysis.ts` | Streak quebra em Void | Void é ignorado no streak |
-| `DailyPlanning.tsx` | Win Rate inclui Void | `greens / (greens + reds)` |
-| `useFilteredStatistics.ts` | Win Rate inclui Void | `greens / (greens + reds)` |
-| `useStatistics.ts` | Win Rate inclui Void | `greens / (greens + reds)` |
+// DEPOIS:
+<Button variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8">
+  <Send className="h-3.5 w-3.5 sm:mr-2" />
+  <span className="hidden sm:inline">Telegram</span>
+</Button>
+```
+
+**DailyPlanning.tsx -- Mostrar finalizados de hoje na seção principal:**
+```typescript
+// Criar lista combinada para as abas que inclui finalizados de hoje
+const todayFinalizedGames = finalizedGames.filter(g => g.date === todayDate);
+const planningViewGames = [...sortedPlanned, ...todayFinalizedGames.sort(...)];
+```
+
+**TelegramSummaryMessage.tsx -- Enumerar jogos:**
+```typescript
+// ANTES:
+for (const item of items) {
+  msg += `\n🏟 ${item.homeTeam} x ${item.awayTeam}`;
+
+// DEPOIS:
+for (let i = 0; i < items.length; i++) {
+  const item = items[i];
+  msg += `\n${i + 1}. 🏟 ${item.homeTeam} x ${item.awayTeam}`;
+```
