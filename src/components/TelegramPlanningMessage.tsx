@@ -57,9 +57,9 @@ function buildMessage(telegramGames: TelegramGame[]): string {
 
   let msg = '📊 PLANEJAMENTO DO DIA\n';
 
-  for (const g of telegramGames) {
+  telegramGames.forEach((g, index) => {
     const oddText = g.entryOdds ? g.entryOdds.toFixed(2) : 'A definir';
-    msg += `\n🏟 Jogo: ${g.homeTeam} x ${g.awayTeam}`;
+    msg += `\n${index + 1}. 🏟 Jogo: ${g.homeTeam} x ${g.awayTeam}`;
     msg += `\n📍 Liga: ${g.league}`;
     msg += `\n⏰ Horário: ${g.time}`;
     msg += `\n🎯 Mercado: ${g.market}`;
@@ -67,7 +67,7 @@ function buildMessage(telegramGames: TelegramGame[]): string {
     msg += `\n⏱ Entrada somente com jogo em 0x0`;
     msg += `\n📈 Responsabilidade: consultar planilha de alavancagem`;
     msg += '\n';
-  }
+  });
 
   msg += '\n---\n';
   msg += '\n⚙️ Regras da operação:';
