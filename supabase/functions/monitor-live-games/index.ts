@@ -179,6 +179,21 @@ serve(async (req) => {
       }
     }
 
+    // 4b. Fetch finalized games (any method_operation with result)
+    const { data: finalizedOps } = await sb
+      .from('method_operations')
+      .select('game_id')
+      .in('game_id', gameIds)
+      .not('result', 'is', null);
+
+    const finalizedGameIds = new Set<string>();
+    if (finalizedOps) {
+      for (const op of finalizedOps) {
+        finalizedGameIds.add(op.game_id);
+      }
+    }
+    console.log(`[Monitor] ${finalizedGameIds.size} games already finalized by user`);
+
     let notificationsSent = 0;
     let gamesUpdated = 0;
 
@@ -202,12 +217,15 @@ serve(async (req) => {
 
       const telegramSettings = settingsMap.get(game.owner_id);
 
+      const isFinalized = finalizedGameIds.has(game.id);
+
       // --- Detect GOALS ---
       if (currentHome > prevHome || currentAway > prevAway) {
         console.log(`[Monitor] GOAL detected in ${game.home_team} vs ${game.away_team}: ${currentHome}-${currentAway} (was ${prevHome}-${prevAway})`);
 
-        if (telegramSettings) {
-          // Determine who scored
+        if (isFinalized) {
+          console.log(`[Monitor] Skipping goal notification - game already finalized by user`);
+        } else if (telegramSettings) {
           let scoringTeam = '';
           if (currentHome > prevHome) scoringTeam = game.home_team;
           else if (currentAway > prevAway) scoringTeam = game.away_team;
@@ -228,7 +246,9 @@ serve(async (req) => {
             notifiedEvents.push(eventKey);
             console.log(`[Monitor] RED CARD in ${game.home_team} vs ${game.away_team}: ${event.player?.name}`);
 
-            if (telegramSettings) {
+            if (isFinalized) {
+              console.log(`[Monitor] Skipping red card notification - game already finalized by user`);
+            } else if (telegramSettings) {
               const playerName = event.player?.name || 'Desconhecido';
               const teamName = event.team?.name || '';
               const msg = `🟥 <b>CARTÃO VERMELHO!</b>\nJogador: ${playerName} (${teamName})\n${game.home_team} ${currentHome} - ${currentAway} ${game.away_team} | ⏱ ${event.time?.elapsed}'`;
