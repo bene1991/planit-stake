@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLay0x1Weights, type Lay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
+import { useSupabaseGames } from '@/hooks/useSupabaseGames';
 import { Lay0x1ScoreCard } from './Lay0x1ScoreCard';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
@@ -96,11 +97,13 @@ export const Lay0x1Scanner = () => {
   const { weights, saveWeights } = useLay0x1Weights();
   const { analyses, saveAnalysis } = useLay0x1Analyses();
   const { blockedNames, blockLeague } = useLay0x1BlockedLeagues();
+  const { games, addGame } = useSupabaseGames();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(getNowInBrasilia(), 'yyyy-MM-dd'));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [sendingPlanningId, setSendingPlanningId] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
   const [rangeMode, setRangeMode] = useState<RangeMode | null>(null);
   const [rangeData, setRangeData] = useState<AggregatedData | null>(null);
@@ -108,6 +111,12 @@ export const Lay0x1Scanner = () => {
   const [missingProgress, setMissingProgress] = useState({ current: 0, total: 0 });
   const [savingBacktest, setSavingBacktest] = useState(false);
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
+
+  // Set of fixture IDs already in planning
+  const planningFixtureIds = useMemo(() => 
+    new Set(games.map(g => g.api_fixture_id).filter(Boolean)),
+    [games]
+  );
 
   const rangeShortcuts = useMemo(() => [
     { label: '7d', days: 7 },
@@ -336,6 +345,37 @@ export const Lay0x1Scanner = () => {
     ));
     toast.success('Análise salva!');
     setSavingId(null);
+  };
+
+  const handleSendToPlanning = async (result: AnalysisResult) => {
+    setSendingPlanningId(result.fixture_id);
+    try {
+      // Find "Lay 0x1" method
+      const { data: userMethods } = await supabase
+        .from('methods')
+        .select('id, name')
+        .ilike('name', '%lay%0x1%')
+        .limit(1);
+      
+      const methodOps = userMethods && userMethods.length > 0
+        ? [{ methodId: userMethods[0].id, operationType: 'Lay' as const }]
+        : [];
+
+      await addGame({
+        date: result.date,
+        time: result.time || '00:00',
+        league: result.league,
+        homeTeam: result.home_team,
+        awayTeam: result.away_team,
+        api_fixture_id: result.fixture_id,
+        methodOperations: methodOps,
+      });
+      toast.success('Jogo enviado para o planejamento!');
+    } catch {
+      toast.error('Erro ao enviar para planejamento');
+    } finally {
+      setSendingPlanningId(null);
+    }
   };
 
   const handleWeightChange = (key: keyof Lay0x1Weights, value: number) => {
@@ -704,6 +744,9 @@ export const Lay0x1Scanner = () => {
                     saving={savingId === r.fixture_id}
                     backtestResult={getBacktestResult(r)}
                     onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                    onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                    sendingToPlanning={sendingPlanningId === r.fixture_id}
+                    alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
                   />
                 ))}
               </div>
@@ -736,6 +779,9 @@ export const Lay0x1Scanner = () => {
                       onForceAdd={() => handleSave(r)}
                       forceAdding={savingId === r.fixture_id}
                       onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                      onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                      sendingToPlanning={sendingPlanningId === r.fixture_id}
+                      alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
                     />
                   ))}
                 </div>
