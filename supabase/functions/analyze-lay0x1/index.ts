@@ -385,10 +385,10 @@ serve(async (req) => {
         const totalWeight = weights.offensive_weight + weights.defensive_weight + weights.over_weight +
           weights.league_avg_weight + weights.h2h_weight + weights.odds_weight;
 
-        const offensiveScore = normalize(homeGoalsAvg, 0.5, 3.0) * (weights.offensive_weight / totalWeight);
-        const defensiveScore = normalize(awayConcededAvg, 0.5, 3.0) * (weights.defensive_weight / totalWeight);
-        const overScore = normalize(probOverReal, 30, 95) * (weights.over_weight / totalWeight);
-        const leagueScore = normalize(leagueGoalsAvg, 1.0, 3.5) * (weights.league_avg_weight / totalWeight);
+        const offensiveScore = normalize(homeGoalsAvg, 1.0, 2.2) * (weights.offensive_weight / totalWeight);
+        const defensiveScore = normalize(awayConcededAvg, 1.0, 2.2) * (weights.defensive_weight / totalWeight);
+        const overScore = normalize(probOverReal, 40, 85) * (weights.over_weight / totalWeight);
+        const leagueScore = normalize(leagueGoalsAvg, 1.3, 2.5) * (weights.league_avg_weight / totalWeight);
         const h2hScore = normalize(5 - h2h0x1Count, 0, 5) * (weights.h2h_weight / totalWeight);
         const oddsScore = calculateOddsScore(awayOdd) * (weights.odds_weight / totalWeight);
 
