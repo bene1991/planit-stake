@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2 } from 'lucide-react';
+import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLay0x1Weights, type Lay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
@@ -59,6 +59,38 @@ function getCachedMeta(date: string): any {
   } catch { return null; }
 }
 
+interface RangeMode {
+  label: string;
+  days: number;
+}
+
+interface AggregatedData {
+  results: AnalysisResult[];
+  analyzedDays: number;
+  totalDays: number;
+  missingDates: string[];
+}
+
+function getAggregatedResults(days: number): AggregatedData {
+  const now = getNowInBrasilia();
+  const allResults: AnalysisResult[] = [];
+  let analyzedDays = 0;
+  const missingDates: string[] = [];
+
+  for (let i = 1; i <= days; i++) {
+    const dateStr = format(subDays(now, i), 'yyyy-MM-dd');
+    const cached = getCachedResults(dateStr);
+    if (cached) {
+      allResults.push(...cached);
+      analyzedDays++;
+    } else {
+      missingDates.push(dateStr);
+    }
+  }
+
+  return { results: allResults, analyzedDays, totalDays: days, missingDates };
+}
+
 export const Lay0x1Scanner = () => {
   const { weights, saveWeights } = useLay0x1Weights();
   const { analyses, saveAnalysis } = useLay0x1Analyses();
@@ -68,31 +100,24 @@ export const Lay0x1Scanner = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
+  const [rangeMode, setRangeMode] = useState<RangeMode | null>(null);
+  const [rangeData, setRangeData] = useState<AggregatedData | null>(null);
+  const [analyzingMissing, setAnalyzingMissing] = useState(false);
+  const [missingProgress, setMissingProgress] = useState({ current: 0, total: 0 });
 
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
 
-  const dateShortcuts = useMemo(() => [
-    { label: 'Ontem', date: format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') },
-    { label: '-7d', date: format(subDays(getNowInBrasilia(), 7), 'yyyy-MM-dd') },
-    { label: '-15d', date: format(subDays(getNowInBrasilia(), 15), 'yyyy-MM-dd') },
-    { label: '-30d', date: format(subDays(getNowInBrasilia(), 30), 'yyyy-MM-dd') },
+  const rangeShortcuts = useMemo(() => [
+    { label: '7d', days: 7 },
+    { label: '15d', days: 15 },
+    { label: '30d', days: 30 },
   ], []);
 
-  const isBacktest = selectedDate < todayStr;
+  const isBacktest = !rangeMode && selectedDate < todayStr;
 
-  // Backtest stats
-  const backtestStats = useMemo(() => {
-    if (!isBacktest || results.length === 0) return null;
-    const approved = results.filter(r => r.approved);
-    const finished = approved.filter(r => r.fixture_status && ['FT', 'AET', 'PEN'].includes(r.fixture_status));
-    const greens = finished.filter(r => !(r.final_score_home === 0 && r.final_score_away === 1));
-    const reds = finished.filter(r => r.final_score_home === 0 && r.final_score_away === 1);
-    const winRate = finished.length > 0 ? (greens.length / finished.length) * 100 : 0;
-    return { total: approved.length, finished: finished.length, greens: greens.length, reds: reds.length, winRate };
-  }, [isBacktest, results]);
-
-  // Load from cache on date change (never auto-fetch)
+  // Load from cache on date change (single day mode only)
   useEffect(() => {
+    if (rangeMode) return;
     const cached = getCachedResults(selectedDate);
     if (cached && cached.length > 0) {
       setResults(cached);
@@ -101,15 +126,114 @@ export const Lay0x1Scanner = () => {
       setResults([]);
       setMeta(null);
     }
-  }, [selectedDate]);
+  }, [selectedDate, rangeMode]);
+
+  // Load aggregated data when entering range mode
+  useEffect(() => {
+    if (!rangeMode) {
+      setRangeData(null);
+      return;
+    }
+    const data = getAggregatedResults(rangeMode.days);
+    setRangeData(data);
+    setResults(data.results);
+  }, [rangeMode]);
+
+  const handleRangeClick = useCallback((shortcut: { label: string; days: number }) => {
+    setRangeMode(shortcut);
+  }, []);
+
+  const handleSingleDateClick = useCallback((date: string) => {
+    setRangeMode(null);
+    setRangeData(null);
+    setSelectedDate(date);
+  }, []);
 
   const clearCache = useCallback(() => {
-    localStorage.removeItem(CACHE_KEY_PREFIX + selectedDate);
-    localStorage.removeItem(CACHE_META_PREFIX + selectedDate);
-    setResults([]);
-    setMeta(null);
-    toast.success('Cache limpo para ' + selectedDate);
-  }, [selectedDate]);
+    if (rangeMode) {
+      const now = getNowInBrasilia();
+      for (let i = 1; i <= rangeMode.days; i++) {
+        const dateStr = format(subDays(now, i), 'yyyy-MM-dd');
+        localStorage.removeItem(CACHE_KEY_PREFIX + dateStr);
+        localStorage.removeItem(CACHE_META_PREFIX + dateStr);
+      }
+      const data = getAggregatedResults(rangeMode.days);
+      setRangeData(data);
+      setResults(data.results);
+      toast.success(`Cache limpo para últimos ${rangeMode.days} dias`);
+    } else {
+      localStorage.removeItem(CACHE_KEY_PREFIX + selectedDate);
+      localStorage.removeItem(CACHE_META_PREFIX + selectedDate);
+      setResults([]);
+      setMeta(null);
+      toast.success('Cache limpo para ' + selectedDate);
+    }
+  }, [selectedDate, rangeMode]);
+
+  // Backtest stats (works for both single day and range mode)
+  const backtestStats = useMemo(() => {
+    const isBacktestContext = rangeMode || isBacktest;
+    if (!isBacktestContext || results.length === 0) return null;
+    const approved = results.filter(r => r.approved);
+    const finished = approved.filter(r => r.fixture_status && ['FT', 'AET', 'PEN'].includes(r.fixture_status));
+    const greens = finished.filter(r => !(r.final_score_home === 0 && r.final_score_away === 1));
+    const reds = finished.filter(r => r.final_score_home === 0 && r.final_score_away === 1);
+    const winRate = finished.length > 0 ? (greens.length / finished.length) * 100 : 0;
+    return { total: approved.length, finished: finished.length, greens: greens.length, reds: reds.length, winRate };
+  }, [isBacktest, rangeMode, results]);
+
+  const analyzeMissingDays = useCallback(async () => {
+    if (!rangeData || rangeData.missingDates.length === 0) return;
+    setAnalyzingMissing(true);
+    const missing = rangeData.missingDates;
+    setMissingProgress({ current: 0, total: missing.length });
+
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session) {
+        toast.error('Faça login para usar o scanner');
+        return;
+      }
+
+      for (let i = 0; i < missing.length; i++) {
+        setMissingProgress({ current: i + 1, total: missing.length });
+        const dateStr = missing[i];
+
+        try {
+          const res = await supabase.functions.invoke('analyze-lay0x1', {
+            body: { date: dateStr },
+          });
+
+          if (!res.error && res.data?.results) {
+            const analysisResults: AnalysisResult[] = res.data.results;
+            const resMeta = {
+              total_fixtures: res.data.total_fixtures || 0,
+              pre_filtered: res.data.pre_filtered || 0,
+              analyzed: res.data.analyzed || 0,
+            };
+            setCachedResults(dateStr, analysisResults, resMeta);
+          }
+        } catch (err) {
+          console.error(`Erro ao analisar ${dateStr}:`, err);
+        }
+      }
+
+      // Refresh aggregated data
+      if (rangeMode) {
+        const data = getAggregatedResults(rangeMode.days);
+        setRangeData(data);
+        setResults(data.results);
+      }
+
+      toast.success(`${missing.length} dia(s) analisado(s) com sucesso`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao analisar dias faltantes');
+    } finally {
+      setAnalyzingMissing(false);
+      setMissingProgress({ current: 0, total: 0 });
+    }
+  }, [rangeData, rangeMode]);
 
   const analyzeGames = useCallback(async () => {
     setLoading(true);
@@ -122,17 +246,9 @@ export const Lay0x1Scanner = () => {
         return;
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120000);
-      
-      let res: any;
-      try {
-        res = await supabase.functions.invoke('analyze-lay0x1', {
-          body: { date: selectedDate },
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
+      const res = await supabase.functions.invoke('analyze-lay0x1', {
+        body: { date: selectedDate },
+      });
 
       if (res.error) {
         toast.error('Erro na análise');
@@ -150,9 +266,7 @@ export const Lay0x1Scanner = () => {
       setResults(analysisResults);
       setMeta(resMeta);
       setCachedResults(selectedDate, analysisResults, resMeta);
-      
 
-      // Only auto-save for today/future dates (not backtest)
       if (!isBacktest) {
         const approvedResults = analysisResults.filter(r => r.approved);
         const existingFixtureIds = new Set(analyses.map(a => a.fixture_id));
@@ -219,7 +333,7 @@ export const Lay0x1Scanner = () => {
   const rejectedResults = results.filter(r => !r.approved);
 
   const getBacktestResult = (r: AnalysisResult) => {
-    if (!isBacktest || r.final_score_home == null || r.final_score_away == null) return undefined;
+    if ((!isBacktest && !rangeMode) || r.final_score_home == null || r.final_score_away == null) return undefined;
     return {
       scoreHome: r.final_score_home,
       scoreAway: r.final_score_away,
@@ -234,46 +348,56 @@ export const Lay0x1Scanner = () => {
         <CardContent className="p-4">
           {/* Date shortcuts */}
           <div className="flex flex-wrap gap-2 mb-3">
-            {dateShortcuts.map(s => (
+            <Button
+              variant={!rangeMode && selectedDate === format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'}
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => handleSingleDateClick(format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd'))}
+            >
+              Ontem
+            </Button>
+            {rangeShortcuts.map(s => (
               <Button
-                key={s.date}
-                variant={selectedDate === s.date ? 'default' : 'outline'}
+                key={s.label}
+                variant={rangeMode?.days === s.days ? 'default' : 'outline'}
                 size="sm"
                 className="text-xs h-7"
-                onClick={() => setSelectedDate(s.date)}
+                onClick={() => handleRangeClick(s)}
               >
                 {s.label}
               </Button>
             ))}
             <Button
-              variant={selectedDate === todayStr ? 'default' : 'outline'}
+              variant={!rangeMode && selectedDate === todayStr ? 'default' : 'outline'}
               size="sm"
               className="text-xs h-7"
-              onClick={() => setSelectedDate(todayStr)}
+              onClick={() => handleSingleDateClick(todayStr)}
             >
               Hoje
             </Button>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full sm:w-auto"
-            />
-            <Button onClick={analyzeGames} disabled={loading} className="gap-2">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isBacktest ? <FlaskConical className="w-4 h-4" /> : <Search className="w-4 h-4" />}
-              {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar Jogos do Dia'}
-            </Button>
-            {results.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
-                <Trash2 className="w-3 h-3" /> Limpar cache
+          {!rangeMode && (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => { setRangeMode(null); setSelectedDate(e.target.value); }}
+                className="w-full sm:w-auto"
+              />
+              <Button onClick={analyzeGames} disabled={loading} className="gap-2">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isBacktest ? <FlaskConical className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+                {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar Jogos do Dia'}
               </Button>
-            )}
-          </div>
+              {results.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
+                  <Trash2 className="w-3 h-3" /> Limpar cache
+                </Button>
+              )}
+            </div>
+          )}
 
-          {isBacktest && (
+          {isBacktest && !rangeMode && (
             <div className="mt-2 flex items-center gap-2">
               <Badge variant="outline" className="text-yellow-400 border-yellow-500/30">
                 <FlaskConical className="w-3 h-3 mr-1" /> Modo Backtest
@@ -289,7 +413,7 @@ export const Lay0x1Scanner = () => {
             </div>
           )}
 
-          {!loading && meta && (
+          {!loading && !rangeMode && meta && (
             <p className="text-xs text-muted-foreground mt-2">
               {meta.total_fixtures} jogos no dia → {meta.pre_filtered} com odd casa &lt; visitante → {approvedResults.length} aprovados
             </p>
@@ -297,8 +421,92 @@ export const Lay0x1Scanner = () => {
         </CardContent>
       </Card>
 
-      {/* Backtest Summary */}
-      {isBacktest && backtestStats && backtestStats.finished > 0 && (
+      {/* Range Mode Summary */}
+      {rangeMode && rangeData && (
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold">
+                  Últimos {rangeMode.days} dias
+                  <span className="text-muted-foreground font-normal ml-1">
+                    ({rangeData.analyzedDays}/{rangeData.totalDays} analisados)
+                  </span>
+                </h3>
+              </div>
+              {(rangeData.analyzedDays > 0) && (
+                <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
+                  <Trash2 className="w-3 h-3" /> Limpar cache
+                </Button>
+              )}
+            </div>
+
+            {rangeData.missingDates.length > 0 && (
+              <div className="mb-3">
+                <Button
+                  onClick={analyzeMissingDays}
+                  disabled={analyzingMissing}
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-xs"
+                >
+                  {analyzingMissing ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Analisando {missingProgress.current}/{missingProgress.total}...
+                    </>
+                  ) : (
+                    <>
+                      <FlaskConical className="w-3 h-3" />
+                      Analisar {rangeData.missingDates.length} dia(s) faltante(s)
+                    </>
+                  )}
+                </Button>
+                {analyzingMissing && (
+                  <Progress value={(missingProgress.current / missingProgress.total) * 100} className="h-1.5 mt-2" />
+                )}
+              </div>
+            )}
+
+            {backtestStats && backtestStats.finished > 0 && (
+              <div className="grid grid-cols-4 gap-3 text-center">
+                <div>
+                  <p className="text-lg font-bold">{backtestStats.total}</p>
+                  <p className="text-xs text-muted-foreground">Aprovados</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-emerald-400">{backtestStats.greens}</p>
+                  <p className="text-xs text-muted-foreground">Green</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-red-400">{backtestStats.reds}</p>
+                  <p className="text-xs text-muted-foreground">Red</p>
+                </div>
+                <div>
+                  <p className={`text-lg font-bold ${backtestStats.winRate >= 70 ? 'text-emerald-400' : backtestStats.winRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {backtestStats.winRate.toFixed(0)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground">Win Rate</p>
+                </div>
+              </div>
+            )}
+
+            {backtestStats && backtestStats.finished < backtestStats.total && backtestStats.total > 0 && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
+              </p>
+            )}
+
+            {rangeData.analyzedDays === 0 && (
+              <p className="text-xs text-muted-foreground">Nenhum dia analisado ainda. Clique no botão acima para analisar.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Single day Backtest Summary */}
+      {!rangeMode && isBacktest && backtestStats && backtestStats.finished > 0 && (
         <Card className="border-yellow-500/20">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -401,7 +609,7 @@ export const Lay0x1Scanner = () => {
                     approved={r.approved}
                     criteria={r.criteria}
                     reasons={r.reasons}
-                    onSave={!isBacktest ? () => handleSave(r) : undefined}
+                    onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
                     saving={savingId === r.fixture_id}
                     backtestResult={getBacktestResult(r)}
                   />
