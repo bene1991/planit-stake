@@ -64,7 +64,7 @@ export function PreMatchModal({ open, onOpenChange, fixtureId, homeTeam, awayTea
               <StandingsSection standings={data.standings} homeTeamId={data.fixtureInfo?.homeTeamId || 0} awayTeamId={data.fixtureInfo?.awayTeamId || 0} />
             </TabsContent>
             <TabsContent value="stats">
-              <GoalStatsSection homeStats={data.homeStats} awayStats={data.awayStats} homeTeam={homeTeam} awayTeam={awayTeam} />
+              <GoalStatsSection homeStats={data.homeStats} awayStats={data.awayStats} homeTeam={homeTeam} awayTeam={awayTeam} homeLastMatches={data.homeLastMatches} awayLastMatches={data.awayLastMatches} homeTeamId={data.fixtureInfo?.homeTeamId || 0} awayTeamId={data.fixtureInfo?.awayTeamId || 0} />
             </TabsContent>
             <TabsContent value="minutes">
               <GoalMinutesSection homeStats={data.homeStats} awayStats={data.awayStats} homeTeam={homeTeam} awayTeam={awayTeam} />
