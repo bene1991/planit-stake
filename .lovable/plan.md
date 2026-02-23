@@ -1,67 +1,87 @@
 
 
-## IA Especialista Lay 0x1 - Implementacao Completa
+## Completar Modelo Evolutivo Bayesiano - Lacunas Pendentes
 
-### Passo 1 - Criar tabelas no banco
+### Status Atual
 
-Duas novas tabelas com RLS:
+A base do modelo ja esta implementada:
+- Pesos iniciais (20/20/20/15/15/10) - OK
+- Formula `novo_peso = peso_atual * (taxa_criterio / taxa_media)` - OK no `calibrate-lay0x1`
+- Limites min=5, max=30 com rebalanceamento para 100 - OK
+- Score = soma(criterio normalizado * peso adaptativo) - OK no `analyze-lay0x1`
 
-**`lay0x1_analyses`** - Historico de jogos analisados e resultados
-- owner_id, fixture_id, home_team, away_team, league, date
-- score_value (0-100), classification
-- criteria_snapshot (jsonb), weights_snapshot (jsonb)
-- final_score_home, final_score_away, was_0x1, result (Green/Red)
-- resolved_at, created_at
+### O que falta implementar
 
-**`lay0x1_weights`** - Pesos adaptativos por usuario
-- owner_id (unique), pesos dos 6 criterios (default 20/20/20/15/15/10)
-- Thresholds ajustaveis: min_home_goals_avg, min_away_conceded_avg, max_away_odd, min_over15_combined, max_h2h_0x1
-- cycle_count, last_calibration_at
+**1. Calibracao automatica a cada 30 jogos resolvidos**
 
-RLS: todas as operacoes restritas a `owner_id = auth.uid()`
+Atualmente a calibracao so ocorre quando o usuario clica "Recalibrar Pesos" no Dashboard. O sistema deve disparar automaticamente apos cada resolucao de resultado quando `resolved_count % 30 === 0`.
 
-### Passo 2 - Edge Function `analyze-lay0x1`
+Arquivo: `src/hooks/useLay0x1Analyses.ts`
+- Apos `resolveAnalysis` com sucesso, contar jogos resolvidos
+- Se `resolved_count % 30 === 0`, chamar `supabase.functions.invoke('calibrate-lay0x1')` automaticamente
+- Mostrar toast informando que recalibracao automatica ocorreu
 
-Recebe fixture IDs, para cada jogo:
-1. Busca H2H via edge function `api-football` existente
-2. Busca stats do mandante em casa e visitante fora
-3. Aplica criterios de filtragem (usando thresholds do usuario)
-4. Calcula score ponderado (0-100) com os pesos do usuario
-5. Retorna lista de jogos aprovados/reprovados com detalhes
+**2. Analise pos-Red com 0x1 (insights automaticos)**
 
-### Passo 3 - Edge Function `calibrate-lay0x1`
+Quando um resultado Red (0x1) e registrado, o sistema deve gerar insights textuais analisando qual criterio provavelmente falhou.
 
-Disparada a cada 30 jogos resolvidos:
-1. Calcula taxa de sucesso por criterio
-2. Aplica formula: novo_peso = peso_atual * (taxa_criterio / taxa_media)
-3. Limita entre 5 e 30, rebalanceia para somar 100
-4. Salva novos pesos
+Arquivo: `src/hooks/useLay0x1Analyses.ts`
+- Apos detectar `was_0x1 === true`, analisar o `criteria_snapshot` do jogo
+- Gerar lista de insights, por exemplo:
+  - "Visitante tinha odd alta: X.XX (fora da faixa ideal 2.5-4.0)"
+  - "Over 1.5 combinado estava no limite: XX%"
+  - "H2H tinha historico proximo do limite"
+- Salvar insights no campo `criteria_snapshot` (adicionar chave `red_insights`)
+- Exibir toast com resumo
 
-### Passo 4 - Frontend
+Arquivo: `src/components/Lay0x1/Lay0x1Dashboard.tsx`
+- Na secao de historico, quando `result === 'Red'`, exibir icone clicavel que mostra os insights do Red
 
-**Novos arquivos:**
-- `src/pages/Lay0x1.tsx` - Pagina com 3 tabs (Scanner, Dashboard, Configuracoes)
-- `src/components/Lay0x1/Lay0x1Scanner.tsx` - Busca jogos do dia, analisa, exibe aprovados/reprovados
-- `src/components/Lay0x1/Lay0x1ScoreCard.tsx` - Score circular com breakdown
-- `src/components/Lay0x1/Lay0x1Dashboard.tsx` - Equity, taxa de acerto, evolucao mensal
-- `src/components/Lay0x1/Lay0x1Evolution.tsx` - Grafico de evolucao dos pesos
-- `src/hooks/useLay0x1Weights.ts` - CRUD dos pesos
-- `src/hooks/useLay0x1Analyses.ts` - CRUD das analises + metricas
+**3. Rebalanceamento forcado a cada 100 jogos**
 
-**Arquivos modificados:**
-- `src/App.tsx` - Nova rota `/lay-0x1`
-- `src/components/BottomNav.tsx` - Link com icone Target
-- `src/components/Layout.tsx` - Link no menu lateral
+Arquivo: `supabase/functions/calibrate-lay0x1/index.ts`
+- Adicionar logica: se `cycle_count % 10 === 0` (cada ciclo = 30 jogos, entao ciclo 3-4 ~ 100 jogos), aplicar rebalanceamento forcado
+- Rebalanceamento forcado: puxa os pesos mais proximo dos defaults (media entre peso atual e default), evitando distorcao extrema
 
-### Passo 5 - Registrar edge functions
+**4. Evolucao mensal e por liga no Dashboard**
 
-Adicionar `analyze-lay0x1` e `calibrate-lay0x1` no `supabase/config.toml`
+Arquivo: `src/components/Lay0x1/Lay0x1Dashboard.tsx`
+- Adicionar secao de evolucao mensal: agrupar analises por mes e mostrar win rate por mes
+- Adicionar secao de evolucao por liga: agrupar por liga e mostrar win rate por liga
+- Ambos com mini graficos de barras
 
-### Ordem de execucao
+**5. Historico de calibracoes na aba Config**
 
-1. Migracao SQL (tabelas + RLS + indices)
-2. Edge functions (analyze + calibrate)
-3. Hooks (weights + analyses)
-4. Componentes (Scanner, ScoreCard, Dashboard, Evolution)
-5. Pagina + rotas + navegacao
+Arquivo: `src/components/Lay0x1/Lay0x1Evolution.tsx`
+- Exibir historico de quando cada calibracao ocorreu
+- Mostrar pesos antes/depois de cada calibracao (guardados no `weights_snapshot` das analises)
+
+---
+
+### Detalhes Tecnicos
+
+**Alteracoes em `useLay0x1Analyses.ts`:**
+- `resolveAnalysis`: apos update com sucesso, verificar se `resolved.length % 30 === 0`; se sim, invocar `calibrate-lay0x1`
+- Se `was_0x1`, gerar insights localmente comparando `criteria_snapshot` com thresholds e salvar via update no `criteria_snapshot`
+
+**Alteracoes em `calibrate-lay0x1/index.ts`:**
+- Adicionar campo `forced_rebalance` na resposta
+- Se `newCycleCount % 4 === 0` (aprox 120 jogos), aplicar anti-overfitting: `adjusted_weight = (current + default) / 2` antes da formula principal
+
+**Alteracoes em `Lay0x1Dashboard.tsx`:**
+- Nova secao "Evolucao Mensal" com tabela agrupada por ano-mes
+- Nova secao "Performance por Liga" com tabela agrupada por liga
+- Icone de info nos Reds que mostra insights
+
+**Alteracoes em `Lay0x1Evolution.tsx`:**
+- Exibir numero do ciclo atual e data da ultima calibracao (ja existe)
+- Adicionar texto explicativo sobre o modelo bayesiano
+
+### Resumo de Arquivos
+
+**Modificados:**
+- `src/hooks/useLay0x1Analyses.ts` (auto-calibracao + insights pos-Red)
+- `src/components/Lay0x1/Lay0x1Dashboard.tsx` (evolucao mensal, por liga, insights Red)
+- `src/components/Lay0x1/Lay0x1Evolution.tsx` (historico calibracoes, texto explicativo)
+- `supabase/functions/calibrate-lay0x1/index.ts` (rebalanceamento forcado anti-overfitting)
 
