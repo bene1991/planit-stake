@@ -658,7 +658,7 @@ export const Lay0x1Scanner = () => {
               </div>
               <div>
                 <Label className="text-xs">Mín. Over 1.5 combinado: {weights.min_over15_combined}%</Label>
-                <Slider value={[weights.min_over15_combined]} min={30} max={150} step={5}
+                <Slider value={[weights.min_over15_combined]} min={30} max={95} step={5}
                   onValueChange={([v]) => handleWeightChange('min_over15_combined', v)} />
               </div>
               <div>
