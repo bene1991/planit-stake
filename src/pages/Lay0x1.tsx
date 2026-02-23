@@ -2,7 +2,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Lay0x1Scanner } from '@/components/Lay0x1/Lay0x1Scanner';
 import { Lay0x1Dashboard } from '@/components/Lay0x1/Lay0x1Dashboard';
 import { Lay0x1Evolution } from '@/components/Lay0x1/Lay0x1Evolution';
-import { Target, BarChart3, Settings2 } from 'lucide-react';
+import { Lay0x1History } from '@/components/Lay0x1/Lay0x1History';
+import { Target, BarChart3, Settings2, History } from 'lucide-react';
 
 const Lay0x1 = () => {
   return (
@@ -18,7 +19,7 @@ const Lay0x1 = () => {
       </div>
 
       <Tabs defaultValue="scanner" className="w-full">
-        <TabsList className="w-full grid grid-cols-3">
+        <TabsList className="w-full grid grid-cols-4">
           <TabsTrigger value="scanner" className="gap-1.5 text-xs sm:text-sm">
             <Target className="w-4 h-4" /> Scanner
           </TabsTrigger>
@@ -27,6 +28,9 @@ const Lay0x1 = () => {
           </TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5 text-xs sm:text-sm">
             <Settings2 className="w-4 h-4" /> Config
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-1.5 text-xs sm:text-sm">
+            <History className="w-4 h-4" /> Histórico IA
           </TabsTrigger>
         </TabsList>
 
@@ -40,6 +44,10 @@ const Lay0x1 = () => {
 
         <TabsContent value="config">
           <Lay0x1Evolution />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <Lay0x1History />
         </TabsContent>
       </Tabs>
     </div>

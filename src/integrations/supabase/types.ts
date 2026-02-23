@@ -514,6 +514,63 @@ export type Database = {
         }
         Relationships: []
       }
+      lay0x1_calibration_history: {
+        Row: {
+          changes_summary: string[]
+          created_at: string
+          criterion_rates: Json
+          cycle_number: number
+          forced_rebalance: boolean
+          general_rate: number
+          id: string
+          new_thresholds: Json
+          new_weights: Json
+          old_thresholds: Json
+          old_weights: Json
+          owner_id: string
+          patterns_detected: Json
+          threshold_details: Json
+          total_analyses: number
+          trigger_type: string
+        }
+        Insert: {
+          changes_summary?: string[]
+          created_at?: string
+          criterion_rates?: Json
+          cycle_number?: number
+          forced_rebalance?: boolean
+          general_rate?: number
+          id?: string
+          new_thresholds?: Json
+          new_weights?: Json
+          old_thresholds?: Json
+          old_weights?: Json
+          owner_id: string
+          patterns_detected?: Json
+          threshold_details?: Json
+          total_analyses?: number
+          trigger_type?: string
+        }
+        Update: {
+          changes_summary?: string[]
+          created_at?: string
+          criterion_rates?: Json
+          cycle_number?: number
+          forced_rebalance?: boolean
+          general_rate?: number
+          id?: string
+          new_thresholds?: Json
+          new_weights?: Json
+          old_thresholds?: Json
+          old_weights?: Json
+          owner_id?: string
+          patterns_detected?: Json
+          threshold_details?: Json
+          total_analyses?: number
+          trigger_type?: string
+        }
+        Relationships: []
+      }
       lay0x1_weights: {
         Row: {
           created_at: string
