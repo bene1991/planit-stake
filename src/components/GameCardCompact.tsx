@@ -430,13 +430,14 @@ export function GameCardCompact({
           <div className="flex items-center gap-1">
             {game.api_fixture_id && (
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="sm" 
                 onClick={() => setShowPreMatch(true)}
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+                className="h-7 px-2 gap-1 text-[10px] font-semibold text-primary border-primary/40 hover:bg-primary/10 hover:text-primary"
                 title="Análise pré-jogo"
               >
-                <BarChart3 className="h-3 w-3" />
+                <BarChart3 className="h-3.5 w-3.5" />
+                Pré-Jogo
               </Button>
             )}
             {onEdit && (
