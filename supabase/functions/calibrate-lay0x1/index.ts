@@ -29,12 +29,27 @@ const THRESHOLD_LIMITS: Record<string, [number, number]> = {
   max_h2h_0x1: [0, 2],
 };
 
-// Maps threshold keys to criteria_snapshot field names
 const THRESHOLD_TO_SNAPSHOT: Record<string, string> = {
   min_home_goals_avg: 'home_goals_avg',
   min_away_conceded_avg: 'away_conceded_avg',
   min_over15_combined: 'over15_combined',
   max_h2h_0x1: 'h2h_0x1_count',
+};
+
+const WEIGHT_LABELS: Record<string, string> = {
+  offensive_weight: 'Força Ofensiva Casa',
+  defensive_weight: 'Fragilidade Defensiva Visitante',
+  over_weight: 'Tendência Over 1.5',
+  league_avg_weight: 'Média Gols Liga',
+  h2h_weight: 'Histórico H2H',
+  odds_weight: 'Faixa de Odds',
+};
+
+const THRESHOLD_LABELS: Record<string, string> = {
+  min_home_goals_avg: 'Mín. Gols Casa',
+  min_away_conceded_avg: 'Mín. Gols Sofridos Fora',
+  min_over15_combined: 'Mín. Over 1.5 Combinado',
+  max_h2h_0x1: 'Máx. H2H 0x1',
 };
 
 function getMedian(values: number[]): number {
@@ -56,6 +71,127 @@ function getPercentile(values: number[], p: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+// ========== Pattern Detection ==========
+
+function detectPatterns(analyses: any[]): Record<string, any> {
+  const patterns: Record<string, any> = {};
+
+  // 1. Leagues with highest Red rate
+  const leagueStats: Record<string, { total: number; reds: number }> = {};
+  for (const a of analyses) {
+    if (!leagueStats[a.league]) leagueStats[a.league] = { total: 0, reds: 0 };
+    leagueStats[a.league].total++;
+    if (a.result === 'Red') leagueStats[a.league].reds++;
+  }
+  const leagueRedRates = Object.entries(leagueStats)
+    .map(([league, s]) => ({ league, rate: s.reds / s.total, total: s.total, reds: s.reds }))
+    .filter(l => l.total >= 3)
+    .sort((a, b) => b.rate - a.rate)
+    .slice(0, 5);
+  patterns.top_red_leagues = leagueRedRates;
+
+  // 2. Leagues with 2+ consecutive Reds (auto-escalation alert)
+  const leagueConsecutiveReds: string[] = [];
+  const leagueLastResults: Record<string, string[]> = {};
+  for (const a of analyses) {
+    if (!a.result) continue;
+    if (!leagueLastResults[a.league]) leagueLastResults[a.league] = [];
+    leagueLastResults[a.league].push(a.result);
+  }
+  for (const [league, results] of Object.entries(leagueLastResults)) {
+    const last2 = results.slice(-2);
+    if (last2.length === 2 && last2[0] === 'Red' && last2[1] === 'Red') {
+      leagueConsecutiveReds.push(league);
+    }
+  }
+  patterns.consecutive_red_leagues = leagueConsecutiveReds;
+
+  // 3. Odds ranges with worst performance
+  const oddsRanges = [
+    { label: '1.50-2.50', min: 1.5, max: 2.5 },
+    { label: '2.50-3.50', min: 2.5, max: 3.5 },
+    { label: '3.50-4.50', min: 3.5, max: 4.5 },
+  ];
+  const oddsPerformance = oddsRanges.map(range => {
+    const inRange = analyses.filter(a => {
+      const odd = (a.criteria_snapshot as any)?.away_odd;
+      return odd >= range.min && odd < range.max;
+    });
+    const greens = inRange.filter(a => a.result === 'Green').length;
+    return {
+      range: range.label,
+      total: inRange.length,
+      greens,
+      rate: inRange.length > 0 ? Math.round((greens / inRange.length) * 100) : 0,
+    };
+  });
+  patterns.odds_performance = oddsPerformance;
+
+  // 4. Offensive averages not converting
+  const redAnalyses = analyses.filter(a => a.result === 'Red');
+  const redOffensiveAvgs = redAnalyses
+    .map(a => (a.criteria_snapshot as any)?.home_goals_avg)
+    .filter((v: any) => typeof v === 'number');
+  if (redOffensiveAvgs.length > 0) {
+    patterns.red_avg_offensive = {
+      median: Math.round(getMedian(redOffensiveAvgs) * 100) / 100,
+      count: redOffensiveAvgs.length,
+    };
+  }
+
+  // 5. Over 1.5 artificial trend
+  const redOver15 = redAnalyses
+    .map(a => (a.criteria_snapshot as any)?.over15_combined)
+    .filter((v: any) => typeof v === 'number');
+  if (redOver15.length > 0) {
+    patterns.red_avg_over15 = {
+      median: Math.round(getMedian(redOver15) * 100) / 100,
+      count: redOver15.length,
+    };
+  }
+
+  return patterns;
+}
+
+function buildChangesSummary(
+  weightKeys: string[],
+  oldWeightsObj: Record<string, number>,
+  newWeights: Record<string, number>,
+  oldThresholds: Record<string, number>,
+  newThresholds: Record<string, number>,
+  generalRate: number,
+  forcedRebalance: boolean,
+): string[] {
+  const changes: string[] = [];
+
+  for (const key of weightKeys) {
+    const oldVal = oldWeightsObj[key] ?? DEFAULT_WEIGHTS[key];
+    const newVal = newWeights[key];
+    if (Math.abs(oldVal - newVal) >= 0.5) {
+      const direction = newVal > oldVal ? 'fortalecido' : 'enfraquecido';
+      changes.push(`${WEIGHT_LABELS[key] || key}: ${oldVal} → ${newVal} (${direction})`);
+    }
+  }
+
+  for (const key of Object.keys(DEFAULT_THRESHOLDS)) {
+    const oldVal = oldThresholds[key];
+    const newVal = newThresholds[key];
+    if (oldVal !== newVal) {
+      changes.push(`Threshold ${THRESHOLD_LABELS[key] || key}: ${oldVal} → ${newVal}`);
+    }
+  }
+
+  if (forcedRebalance) {
+    changes.push('Anti-overfitting: rebalanceamento forçado aplicado');
+  }
+
+  if (generalRate < 0.65) {
+    changes.push(`⚠️ Taxa geral (${Math.round(generalRate * 100)}%) abaixo de 65% - recomendado elevar score mínimo`);
+  }
+
+  return changes;
 }
 
 serve(async (req) => {
@@ -111,7 +247,7 @@ serve(async (req) => {
       cycle_count: 0,
     };
 
-    // ========== PHASE 1: Weight calibration (existing logic) ==========
+    // ========== PHASE 1: Weight calibration ==========
     const criteriaKeys = ['home_goals_avg', 'away_conceded_avg', 'over15_combined', 'league_goals_avg', 'h2h_0x1_count', 'away_odd'];
     const weightKeys = Object.keys(DEFAULT_WEIGHTS);
 
@@ -119,8 +255,10 @@ serve(async (req) => {
     const generalRate = totalGreen / analyses.length;
 
     const criterionRates: number[] = [];
+    const criterionRatesObj: Record<string, number> = {};
 
-    for (const key of criteriaKeys) {
+    for (let i = 0; i < criteriaKeys.length; i++) {
+      const key = criteriaKeys[i];
       const strongGames = analyses.filter(a => {
         const snapshot = a.criteria_snapshot as any;
         if (!snapshot?.criteria_met) return false;
@@ -131,12 +269,18 @@ serve(async (req) => {
       const strongGreens = strongGames.filter(a => a.result === 'Green').length;
       const rate = strongGames.length > 0 ? strongGreens / strongGames.length : generalRate;
       criterionRates.push(rate);
+      criterionRatesObj[key] = Math.round(rate * 100);
     }
 
     const avgRate = criterionRates.reduce((s, r) => s + r, 0) / criterionRates.length || generalRate;
     const newCycleCount = (weights.cycle_count || 0) + 1;
-
     const forcedRebalance = newCycleCount % 4 === 0;
+
+    // Save old weights for history
+    const oldWeightsObj: Record<string, number> = {};
+    for (const k of weightKeys) {
+      oldWeightsObj[k] = (weights as any)[k] ?? DEFAULT_WEIGHTS[k];
+    }
 
     const newWeights: Record<string, number> = {};
     let totalNewWeight = 0;
@@ -164,7 +308,7 @@ serve(async (req) => {
     const diff = 100 - finalSum;
     newWeights[weightKeys[0]] = Math.round((newWeights[weightKeys[0]] + diff) * 10) / 10;
 
-    // ========== PHASE 2: Threshold calibration (NEW) ==========
+    // ========== PHASE 2: Threshold calibration ==========
     const greenAnalyses = analyses.filter(a => a.result === 'Green');
     const redAnalyses = analyses.filter(a => a.result === 'Red');
 
@@ -176,65 +320,37 @@ serve(async (req) => {
       const currentValue = (weights as any)[thresholdKey] ?? DEFAULT_THRESHOLDS[thresholdKey];
       oldThresholds[thresholdKey] = currentValue;
 
-      // Extract values from criteria_snapshot for greens and reds
       const greenValues: number[] = [];
       const redValues: number[] = [];
 
       for (const a of greenAnalyses) {
-        const snapshot = a.criteria_snapshot as any;
-        const val = snapshot?.[snapshotField];
-        if (val !== undefined && val !== null && typeof val === 'number') {
-          greenValues.push(val);
-        }
+        const val = (a.criteria_snapshot as any)?.[snapshotField];
+        if (val !== undefined && val !== null && typeof val === 'number') greenValues.push(val);
       }
-
       for (const a of redAnalyses) {
-        const snapshot = a.criteria_snapshot as any;
-        const val = snapshot?.[snapshotField];
-        if (val !== undefined && val !== null && typeof val === 'number') {
-          redValues.push(val);
-        }
+        const val = (a.criteria_snapshot as any)?.[snapshotField];
+        if (val !== undefined && val !== null && typeof val === 'number') redValues.push(val);
       }
 
       const [limitMin, limitMax] = THRESHOLD_LIMITS[thresholdKey];
 
-      // Need at least some data in both groups
       if (greenValues.length < 3 || redValues.length < 2) {
         newThresholds[thresholdKey] = currentValue;
-        thresholdDetails[thresholdKey] = {
-          status: 'insufficient_data',
-          green_count: greenValues.length,
-          red_count: redValues.length,
-        };
+        thresholdDetails[thresholdKey] = { status: 'insufficient_data', green_count: greenValues.length, red_count: redValues.length };
         continue;
       }
 
       let optimalCutoff: number;
-
       if (thresholdKey === 'max_h2h_0x1') {
-        // For max_h2h_0x1, LOWER is better (fewer 0x1 in history)
-        // Use p75 of greens and p25 of reds
-        const greenP75 = getPercentile(greenValues, 75);
-        const redP25 = getPercentile(redValues, 25);
-        optimalCutoff = (greenP75 + redP25) / 2;
+        optimalCutoff = (getPercentile(greenValues, 75) + getPercentile(redValues, 25)) / 2;
       } else {
-        // For min thresholds, HIGHER is better
-        // Use p25 of greens (weakest greens) and p75 of reds (strongest reds)
-        const greenP25 = getPercentile(greenValues, 25);
-        const redP75 = getPercentile(redValues, 75);
-        optimalCutoff = (greenP25 + redP75) / 2;
+        optimalCutoff = (getPercentile(greenValues, 25) + getPercentile(redValues, 75)) / 2;
       }
 
-      // Smoothing: 70% calculated + 30% current
       const smoothed = 0.7 * optimalCutoff + 0.3 * currentValue;
-
-      // Clamp to safety limits
       let finalValue = clamp(smoothed, limitMin, limitMax);
 
-      // Round appropriately
-      if (thresholdKey === 'max_h2h_0x1') {
-        finalValue = Math.round(finalValue);
-      } else if (thresholdKey === 'min_over15_combined') {
+      if (thresholdKey === 'max_h2h_0x1' || thresholdKey === 'min_over15_combined') {
         finalValue = Math.round(finalValue);
       } else {
         finalValue = Math.round(finalValue * 10) / 10;
@@ -252,14 +368,20 @@ serve(async (req) => {
       };
     }
 
-    // ========== PHASE 3: Upsert everything ==========
+    // ========== PHASE 3: Pattern detection ==========
+    const patterns = detectPatterns(analyses);
+
+    // ========== PHASE 4: Build changes summary ==========
+    const triggerType = forcedRebalance && newCycleCount % (100 / 30) === 0 ? 'rebalance_100' : (forcedRebalance ? 'auto_30' : 'auto_30');
+    const changesSummary = buildChangesSummary(weightKeys, oldWeightsObj, newWeights, oldThresholds, newThresholds, generalRate, forcedRebalance);
+
+    // ========== PHASE 5: Upsert weights ==========
     const { error: upsertErr } = await supabase
       .from('lay0x1_weights')
       .upsert({
         owner_id: userId,
         ...newWeights,
         ...newThresholds,
-        // max_away_odd stays untouched
         max_away_odd: (weights as any).max_away_odd ?? 4.5,
         cycle_count: newCycleCount,
         last_calibration_at: new Date().toISOString(),
@@ -268,6 +390,32 @@ serve(async (req) => {
 
     if (upsertErr) throw upsertErr;
 
+    // ========== PHASE 6: Save calibration history ==========
+    const historyRecord = {
+      owner_id: userId,
+      cycle_number: newCycleCount,
+      trigger_type: triggerType,
+      total_analyses: analyses.length,
+      general_rate: Math.round(generalRate * 100) / 100,
+      old_weights: oldWeightsObj,
+      new_weights: newWeights,
+      old_thresholds: oldThresholds,
+      new_thresholds: newThresholds,
+      criterion_rates: criterionRatesObj,
+      threshold_details: thresholdDetails,
+      patterns_detected: patterns,
+      changes_summary: changesSummary,
+      forced_rebalance: forcedRebalance,
+    };
+
+    const { error: histErr } = await supabase
+      .from('lay0x1_calibration_history')
+      .insert(historyRecord);
+
+    if (histErr) {
+      console.error('Failed to save calibration history:', histErr);
+    }
+
     return new Response(
       JSON.stringify({
         message: 'Calibration complete',
@@ -275,18 +423,14 @@ serve(async (req) => {
         forced_rebalance: forcedRebalance,
         total_analyses: analyses.length,
         general_rate: Math.round(generalRate * 100),
-        criterion_rates: criteriaKeys.reduce((obj, k, i) => {
-          obj[k] = Math.round(criterionRates[i] * 100);
-          return obj;
-        }, {} as Record<string, number>),
-        old_weights: weightKeys.reduce((obj, k) => {
-          obj[k] = (weights as any)[k];
-          return obj;
-        }, {} as Record<string, number>),
+        criterion_rates: criterionRatesObj,
+        old_weights: oldWeightsObj,
         new_weights: newWeights,
         old_thresholds: oldThresholds,
         new_thresholds: newThresholds,
         threshold_details: thresholdDetails,
+        patterns_detected: patterns,
+        changes_summary: changesSummary,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
