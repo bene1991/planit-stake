@@ -74,10 +74,10 @@ function normalize(value: number, min: number, max: number): number {
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
 }
 
-function classify(score: number): string {
+function classify(score: number, minScore: number = 65): string {
   if (score >= 85) return 'Muito Forte';
   if (score >= 75) return 'Forte';
-  if (score >= 65) return 'Moderado';
+  if (score >= minScore) return 'Moderado';
   return 'Não recomendado';
 }
 
@@ -174,6 +174,7 @@ serve(async (req) => {
 
     // Get user weights
     let weights: Weights;
+    let dynamicMinScore = 65;
     if (weights_override) {
       weights = weights_override;
     } else {
@@ -189,7 +190,9 @@ serve(async (req) => {
         min_home_goals_avg: 1.5, min_away_conceded_avg: 1.5,
         max_away_odd: 4.5, min_over15_combined: 70, max_h2h_0x1: 0,
       };
+      dynamicMinScore = (wData as any)?.min_score ?? 65;
     }
+    console.log(`[SCANNER] Dynamic min_score: ${dynamicMinScore}`);
 
     // Fetch blocked leagues
     const { data: blockedData } = await supabase
@@ -362,6 +365,8 @@ serve(async (req) => {
         const rawScore = (offensiveScore + defensiveScore + overScore + leagueScore + h2hScore + oddsScore) * 100;
         const scoreValue = Math.round(Math.max(0, Math.min(100, rawScore)));
 
+        const isApproved = allCriteriaMet && scoreValue >= dynamicMinScore;
+
         return {
           fixture_id: String(fixtureId),
           home_team: homeTeam,
@@ -369,9 +374,9 @@ serve(async (req) => {
           league,
           date: fixtureDate,
           time: fixtureTime,
-          approved: allCriteriaMet,
+          approved: isApproved,
           score_value: scoreValue,
-          classification: classify(scoreValue),
+          classification: classify(scoreValue, dynamicMinScore),
           criteria: {
             home_goals_avg: homeGoalsAvg,
             away_conceded_avg: awayConcededAvg,

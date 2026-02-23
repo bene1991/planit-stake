@@ -18,6 +18,7 @@ export interface CalibrationHistoryRecord {
   patterns_detected: Record<string, any>;
   changes_summary: string[];
   forced_rebalance: boolean;
+  ai_recommendations: Record<string, any>;
   created_at: string;
 }
 

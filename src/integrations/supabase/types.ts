@@ -516,6 +516,7 @@ export type Database = {
       }
       lay0x1_calibration_history: {
         Row: {
+          ai_recommendations: Json
           changes_summary: string[]
           created_at: string
           criterion_rates: Json
@@ -534,6 +535,7 @@ export type Database = {
           trigger_type: string
         }
         Insert: {
+          ai_recommendations?: Json
           changes_summary?: string[]
           created_at?: string
           criterion_rates?: Json
@@ -552,6 +554,7 @@ export type Database = {
           trigger_type?: string
         }
         Update: {
+          ai_recommendations?: Json
           changes_summary?: string[]
           created_at?: string
           criterion_rates?: Json
@@ -585,6 +588,7 @@ export type Database = {
           min_away_conceded_avg: number
           min_home_goals_avg: number
           min_over15_combined: number
+          min_score: number
           odds_weight: number
           offensive_weight: number
           over_weight: number
@@ -604,6 +608,7 @@ export type Database = {
           min_away_conceded_avg?: number
           min_home_goals_avg?: number
           min_over15_combined?: number
+          min_score?: number
           odds_weight?: number
           offensive_weight?: number
           over_weight?: number
@@ -623,6 +628,7 @@ export type Database = {
           min_away_conceded_avg?: number
           min_home_goals_avg?: number
           min_over15_combined?: number
+          min_score?: number
           odds_weight?: number
           offensive_weight?: number
           over_weight?: number

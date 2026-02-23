@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Brain, TrendingUp, TrendingDown, AlertTriangle, Shield, BarChart3, ArrowRight, RefreshCw } from 'lucide-react';
+import { Brain, TrendingUp, TrendingDown, AlertTriangle, Shield, BarChart3, ArrowRight, RefreshCw, Sparkles, Ban, Target } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -91,6 +91,12 @@ export const Lay0x1History = () => {
               </div>
             ))}
           </div>
+
+          {/* Dynamic min score indicator */}
+          <div className="mt-3 flex items-center gap-2 p-2 rounded bg-muted/50">
+            <Target className="w-4 h-4 text-primary" />
+            <span className="text-xs">Score Mínimo Dinâmico: <strong>{(weights as any).min_score ?? 65}</strong></span>
+          </div>
         </CardContent>
       </Card>
 
@@ -104,7 +110,6 @@ export const Lay0x1History = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {/* Top Red leagues */}
             {lastHistory.patterns_detected.top_red_leagues?.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">Ligas com mais Red</p>
@@ -118,7 +123,6 @@ export const Lay0x1History = () => {
               </div>
             )}
 
-            {/* Consecutive red leagues */}
             {lastHistory.patterns_detected.consecutive_red_leagues?.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">⚠️ 2+ Reds Consecutivos</p>
@@ -132,7 +136,6 @@ export const Lay0x1History = () => {
               </div>
             )}
 
-            {/* Odds performance */}
             {lastHistory.patterns_detected.odds_performance?.length > 0 && (
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1">Desempenho por Faixa de Odds</p>
@@ -150,7 +153,6 @@ export const Lay0x1History = () => {
               </div>
             )}
 
-            {/* Red offensive avg */}
             {lastHistory.patterns_detected.red_avg_offensive && (
               <div className="flex items-center gap-2 text-xs">
                 <TrendingDown className="w-3 h-3 text-red-500" />
@@ -198,6 +200,8 @@ export const Lay0x1History = () => {
 
 function CalibrationCard({ record }: { record: CalibrationHistoryRecord }) {
   const weightKeys = Object.keys(WEIGHT_LABELS);
+  const aiRec = record.ai_recommendations as any;
+  const hasAI = aiRec && Object.keys(aiRec).length > 0;
 
   const strengthened = weightKeys.filter(k => (record.new_weights[k] || 0) > (record.old_weights[k] || 0));
   const weakened = weightKeys.filter(k => (record.new_weights[k] || 0) < (record.old_weights[k] || 0));
@@ -214,6 +218,11 @@ function CalibrationCard({ record }: { record: CalibrationHistoryRecord }) {
               <RefreshCw className="w-3 h-3" /> Anti-overfitting
             </Badge>
           )}
+          {hasAI && (
+            <Badge className="text-xs gap-1 bg-purple-600">
+              <Sparkles className="w-3 h-3" /> IA
+            </Badge>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">
           {format(new Date(record.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
@@ -225,6 +234,45 @@ function CalibrationCard({ record }: { record: CalibrationHistoryRecord }) {
         <span>Jogos: <strong>{record.total_analyses}</strong></span>
         <span>Tipo: <strong>{record.trigger_type}</strong></span>
       </div>
+
+      {/* AI Recommendations Section */}
+      {hasAI && (
+        <div className="border border-purple-500/20 rounded-lg p-2.5 bg-purple-500/5 space-y-2">
+          <p className="text-xs font-medium flex items-center gap-1.5 text-purple-400">
+            <Sparkles className="w-3.5 h-3.5" /> Recomendações da IA
+          </p>
+          
+          {aiRec.strategic_summary && (
+            <p className="text-xs text-muted-foreground italic">"{aiRec.strategic_summary}"</p>
+          )}
+
+          {aiRec.trends?.length > 0 && (
+            <div>
+              <p className="text-[10px] font-medium text-muted-foreground">Tendências:</p>
+              {aiRec.trends.map((t: string, i: number) => (
+                <p key={i} className="text-[10px] text-muted-foreground">• {t}</p>
+              ))}
+            </div>
+          )}
+
+          {aiRec.leagues_to_block?.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Ban className="w-3 h-3 text-red-500" />
+              <span className="text-[10px] text-red-400">Ligas bloqueadas pela IA:</span>
+              {aiRec.leagues_to_block.map((l: string, i: number) => (
+                <Badge key={i} variant="destructive" className="text-[10px] h-4">{l}</Badge>
+              ))}
+            </div>
+          )}
+
+          {aiRec.recommended_min_score && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <Target className="w-3 h-3 text-primary" />
+              <span>Score mínimo recomendado: <strong>{aiRec.recommended_min_score}</strong></span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Weight deltas */}
       <div className="grid grid-cols-2 gap-1">
