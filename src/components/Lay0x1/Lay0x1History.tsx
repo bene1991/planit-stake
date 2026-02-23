@@ -31,6 +31,17 @@ export const Lay0x1History = () => {
   const currentRate = resolvedAnalyses.length > 0 ? Math.round((totalGreens / resolvedAnalyses.length) * 100) : 0;
   const roi = totalGreens - totalReds;
 
+  // Financial metrics (Lay 0x1, avg odd ~15)
+  const AVG_ODD = 15;
+  const COMMISSION = 0.045;
+  const GREEN_PROFIT_RATE = (1 / (AVG_ODD - 1)) * (1 - COMMISSION); // ~0.0682
+  const BREAKEVEN_RATE = 100 / (100 + GREEN_PROFIT_RATE * 100); // ~93.6%
+  const netProfitStakes = (totalGreens * GREEN_PROFIT_RATE) - totalReds;
+  const roiPercent = resolvedAnalyses.length > 0
+    ? ((netProfitStakes / resolvedAnalyses.length) * 100)
+    : 0;
+  const isAboveBreakeven = currentRate >= BREAKEVEN_RATE;
+
   const lastHistory = history[0];
   const previousRate = lastHistory ? Math.round(lastHistory.general_rate * 100) : currentRate;
 
@@ -77,6 +88,38 @@ export const Lay0x1History = () => {
               <p className={`text-xl font-bold ${roi >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {roi >= 0 ? '+' : ''}{roi}
               </p>
+            </div>
+          </div>
+
+          {/* Financial Metrics - Second Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Greens / Reds</p>
+              <p className="text-xl font-bold">
+                <span className="text-green-500">{totalGreens}</span>
+                <span className="text-muted-foreground mx-1">/</span>
+                <span className="text-red-500">{totalReds}</span>
+              </p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Break-even</p>
+              <p className="text-xl font-bold">{BREAKEVEN_RATE.toFixed(1)}%</p>
+              <Badge variant={isAboveBreakeven ? 'default' : 'destructive'} className="text-[10px] mt-0.5">
+                {isAboveBreakeven ? '✓ Seguro' : '✗ Abaixo'}
+              </Badge>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">ROI Financeiro</p>
+              <p className={`text-xl font-bold ${roiPercent >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {roiPercent >= 0 ? '+' : ''}{roiPercent.toFixed(2)}%
+              </p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-muted/50">
+              <p className="text-xs text-muted-foreground">Lucro Líquido</p>
+              <p className={`text-xl font-bold ${netProfitStakes >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {netProfitStakes >= 0 ? '+' : ''}{netProfitStakes.toFixed(2)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">stakes</p>
             </div>
           </div>
 
