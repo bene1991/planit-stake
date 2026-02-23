@@ -113,6 +113,7 @@ export const Lay0x1Scanner = () => {
     { label: '7d', days: 7 },
     { label: '15d', days: 15 },
     { label: '30d', days: 30 },
+    { label: '90d', days: 90 },
   ], []);
 
   const isBacktest = !rangeMode && selectedDate < todayStr;

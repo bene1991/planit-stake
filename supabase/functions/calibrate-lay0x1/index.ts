@@ -165,6 +165,15 @@ async function callAIForCalibration(data: {
   patterns: Record<string, any>;
   recentGames: any[];
   currentMinScore: number;
+  financialContext: {
+    avg_lay_odd: number;
+    profit_per_green_pct: number;
+    break_even_rate_pct: number;
+    greens_per_red: number;
+    current_roi_pct: number;
+    total_greens: number;
+    total_reds: number;
+  };
 }): Promise<any> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   if (!LOVABLE_API_KEY) {
@@ -172,11 +181,25 @@ async function callAIForCalibration(data: {
     return null;
   }
 
-  const prompt = `Você é um analista especialista em estratégia Lay 0x1 no futebol. Analise os dados de calibração abaixo e forneça recomendações estratégicas.
+  const fc = data.financialContext;
+
+  const prompt = `Você é um analista especialista em estratégia Lay 0x1 no futebol.
+
+## ⚠️ CONTEXTO FINANCEIRO CRÍTICO - LEIA ANTES DE TUDO
+
+Na estratégia Lay 0x1, apostamos CONTRA o placar 0x1. A odd média de entrada é **${fc.avg_lay_odd.toFixed(1)}**.
+Isso significa:
+- **Lucro por Green**: apenas **${fc.profit_per_green_pct.toFixed(2)}%** do liability (após comissão de 4.5%)
+- **Perda por Red**: **100%** do liability
+- **1 Red anula ${fc.greens_per_red} Greens**
+- **Break-even real**: taxa de acerto mínima de **${fc.break_even_rate_pct.toFixed(1)}%** para não ter prejuízo
+- ROI atual estimado: **${fc.current_roi_pct.toFixed(2)}%** (${fc.total_greens}G / ${fc.total_reds}R)
+
+IMPORTANTE: Taxas de acerto abaixo de ${Math.round(fc.break_even_rate_pct)}% geram PREJUÍZO. Uma taxa de 50% seria CATASTRÓFICA (-${(50 - fc.break_even_rate_pct).toFixed(0)}pp abaixo do break-even). Suas recomendações DEVEM priorizar MAXIMIZAR a taxa de acerto acima de ${Math.round(fc.break_even_rate_pct)}%, mesmo que isso signifique aprovar MUITO menos jogos.
 
 ## Dados da Calibração
 
-- Taxa de acerto geral: ${Math.round(data.generalRate * 100)}%
+- Taxa de acerto geral: ${Math.round(data.generalRate * 100)}% ${Math.round(data.generalRate * 100) < Math.round(fc.break_even_rate_pct) ? '⚠️ ABAIXO DO BREAK-EVEN!' : '✅ Acima do break-even'}
 - Score mínimo atual: ${data.currentMinScore}
 - Taxas por critério: ${JSON.stringify(data.criterionRates)}
 
@@ -194,7 +217,7 @@ ${JSON.stringify(data.patterns, null, 2)}
 ## Últimos 30 jogos (resultados)
 ${data.recentGames.map(g => `${g.home_team} vs ${g.away_team} (${g.league}) - Score: ${g.score_value} - ${g.result} ${g.was_0x1 ? '(0x1!)' : ''}`).join('\n')}
 
-Analise tudo e retorne recomendações usando a função fornecida.`;
+Com base no contexto financeiro (break-even de ${fc.break_even_rate_pct.toFixed(1)}%), analise tudo e retorne recomendações RIGOROSAS usando a função fornecida. Bloqueie ligas com QUALQUER Red se tiverem poucos jogos. Recomende score mínimo alto (75-90) se a taxa atual estiver abaixo do break-even.`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -246,9 +269,9 @@ Analise tudo e retorne recomendações usando a função fornecida.`;
                   items: { type: 'string' },
                   description: 'Ligas que devem ser bloqueadas automaticamente',
                 },
-                recommended_min_score: {
+              recommended_min_score: {
                   type: 'number',
-                  description: 'Score mínimo recomendado (60-80)',
+                  description: 'Score mínimo recomendado (65-90). Com break-even de ~93%, seja rigoroso.',
                 },
                 trends: {
                   type: 'array',
@@ -479,6 +502,31 @@ serve(async (req) => {
       was_0x1: a.was_0x1,
     }));
 
+    // ========== PHASE 4.1: Calculate financial context ==========
+    const allOdds = analyses
+      .map(a => (a.criteria_snapshot as any)?.away_odd)
+      .filter((v: any) => typeof v === 'number' && v > 1);
+    const avgLayOdd = allOdds.length > 0 ? allOdds.reduce((s: number, v: number) => s + v, 0) / allOdds.length : 15.0;
+    const profitPerGreen = (1 / (avgLayOdd - 1)) * 0.955;
+    const breakEvenRate = 1 / (1 + profitPerGreen);
+    const greensPerRed = Math.ceil(1 / profitPerGreen);
+    const totalReds = analyses.filter(a => a.result === 'Red').length;
+    const currentRoi = analyses.length > 0 
+      ? ((totalGreen * profitPerGreen - totalReds) / analyses.length) * 100 
+      : 0;
+
+    const financialContext = {
+      avg_lay_odd: avgLayOdd,
+      profit_per_green_pct: profitPerGreen * 100,
+      break_even_rate_pct: breakEvenRate * 100,
+      greens_per_red: greensPerRed,
+      current_roi_pct: currentRoi,
+      total_greens: totalGreen,
+      total_reds: totalReds,
+    };
+
+    console.log('[Calibration] Financial context:', JSON.stringify(financialContext));
+
     let aiRecommendations: any = null;
     const finalWeights = { ...mathWeights };
     const finalThresholds = { ...mathThresholds };
@@ -496,6 +544,7 @@ serve(async (req) => {
         patterns,
         recentGames,
         currentMinScore,
+        financialContext,
       });
     } catch (err) {
       console.error('[AI] Failed:', err);
@@ -535,7 +584,7 @@ serve(async (req) => {
 
       // Apply recommended min score
       if (aiRecommendations.recommended_min_score) {
-        newMinScore = clamp(aiRecommendations.recommended_min_score, 55, 80);
+        newMinScore = clamp(aiRecommendations.recommended_min_score, 55, 90);
         if (newMinScore !== currentMinScore) {
           autoActions.push(`IA: Score mínimo ${currentMinScore} → ${newMinScore}`);
         }
