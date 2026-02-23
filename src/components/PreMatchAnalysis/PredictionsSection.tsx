@@ -36,10 +36,27 @@ function PercentBar({ label, homePercent, awayPercent }: { label: string; homePe
   );
 }
 
+const comparisonLabels: Record<string, string> = {
+  form: 'Forma',
+  att: 'Ataque',
+  def: 'Defesa',
+  poisson_distribution: 'Distribuição Poisson',
+  h2h: 'Confronto Direto',
+  goals: 'Gols',
+  total: 'Total',
+};
+
 export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
   if (!prediction) return <p className="text-muted-foreground text-sm text-center py-4">Predições indisponíveis</p>;
 
   const { predictions, comparison } = prediction;
+
+  // Fix negative/invalid goal values - ensure they show as positive numbers
+  const formatGoals = (val: string) => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) return '0';
+    return val;
+  };
 
   return (
     <div className="space-y-4">
@@ -76,11 +93,11 @@ export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
         <div className="flex justify-center gap-6 text-xs">
           <div className="text-center">
             <span className="text-muted-foreground">Gols esperados:</span>
-            <span className="ml-1 font-semibold text-foreground">{predictions.goals.home} - {predictions.goals.away}</span>
+            <span className="ml-1 font-semibold text-foreground">{formatGoals(predictions.goals.home)} - {formatGoals(predictions.goals.away)}</span>
           </div>
           {predictions.under_over && (
             <div className="text-center">
-              <span className="text-muted-foreground">Over/Under:</span>
+              <span className="text-muted-foreground">Acima/Abaixo:</span>
               <span className="ml-1 font-semibold text-foreground">{predictions.under_over}</span>
             </div>
           )}
@@ -92,7 +109,7 @@ export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
         <div className="space-y-2 pt-2 border-t border-border/20">
           <h4 className="text-xs font-semibold text-muted-foreground text-center">Comparação</h4>
           {Object.entries(comparison).map(([key, val]) => (
-            <PercentBar key={key} label={key.replace(/_/g, ' ')} homePercent={val.home} awayPercent={val.away} />
+            <PercentBar key={key} label={comparisonLabels[key] || key.replace(/_/g, ' ')} homePercent={val.home} awayPercent={val.away} />
           ))}
         </div>
       )}
