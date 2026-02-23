@@ -89,8 +89,8 @@ export function usePreMatchAnalysis(fixtureId: string | undefined) {
         apiCall('teams/statistics', { team: homeTeamId, season, league: leagueId }),
         apiCall('teams/statistics', { team: awayTeamId, season, league: leagueId }),
         apiCall('fixtures/headtohead', { h2h: `${homeTeamId}-${awayTeamId}`, last: 10 }),
-        apiCall('fixtures', { team: homeTeamId, last: 10 }),
-        apiCall('fixtures', { team: awayTeamId, last: 10 }),
+        apiCall('fixtures', { team: homeTeamId, last: 20 }),
+        apiCall('fixtures', { team: awayTeamId, last: 20 }),
         apiCall('predictions', { fixture: fixtureId }),
       ]);
 
