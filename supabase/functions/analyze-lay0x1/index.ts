@@ -49,6 +49,7 @@ interface AnalysisResult {
   away_team: string;
   league: string;
   date: string;
+  time: string;
   approved: boolean;
   score_value: number;
   classification: string;
@@ -63,6 +64,9 @@ interface AnalysisResult {
     criteria_met: Record<string, boolean>;
   };
   reasons: string[];
+  final_score_home?: number;
+  final_score_away?: number;
+  fixture_status?: string;
 }
 
 function normalize(value: number, min: number, max: number): number {
@@ -260,6 +264,20 @@ serve(async (req) => {
         const league = fixture.league?.name || 'League';
         const fixtureDate = fixture.fixture?.date?.split('T')[0] || '';
 
+        // Convert to Brasilia time (UTC-3)
+        const fixtureDateTimeStr = fixture.fixture?.date || '';
+        const brasiliaDate = new Date(fixtureDateTimeStr);
+        const utcMs = brasiliaDate.getTime() + (brasiliaDate.getTimezoneOffset() * 60000);
+        const brasiliaMs = utcMs + (-3 * 3600000);
+        const bDate = new Date(brasiliaMs);
+        const fixtureTime = `${bDate.getHours().toString().padStart(2, '0')}:${bDate.getMinutes().toString().padStart(2, '0')}`;
+
+        // Final score if game finished
+        const fixtureStatus = fixture.fixture?.status?.short || 'NS';
+        const isFinished = ['FT', 'AET', 'PEN'].includes(fixtureStatus);
+        const finalScoreHome = isFinished ? fixture.goals?.home : undefined;
+        const finalScoreAway = isFinished ? fixture.goals?.away : undefined;
+
         if (!homeTeamId || !awayTeamId) continue;
 
         // Get odds (from map if date flow, else fetch)
@@ -359,6 +377,7 @@ serve(async (req) => {
           away_team: awayTeam,
           league,
           date: fixtureDate,
+          time: fixtureTime,
           approved: allCriteriaMet,
           score_value: scoreValue,
           classification: classify(scoreValue),
@@ -373,6 +392,9 @@ serve(async (req) => {
             criteria_met: criteriaMet,
           },
           reasons,
+          final_score_home: finalScoreHome,
+          final_score_away: finalScoreAway,
+          fixture_status: fixtureStatus,
         });
       } catch (err) {
         console.error(`Error analyzing fixture ${fixtureId}:`, err);
@@ -381,10 +403,10 @@ serve(async (req) => {
 
     console.log(`[SCANNER] Detailed analysis complete: ${results.length} results (${results.filter(r => r.approved).length} approved)`);
 
-    // Sort: approved first, then by score descending
+    // Sort: approved first, then by time ascending
     results.sort((a, b) => {
       if (a.approved !== b.approved) return a.approved ? -1 : 1;
-      return b.score_value - a.score_value;
+      return a.time.localeCompare(b.time);
     });
 
     return new Response(

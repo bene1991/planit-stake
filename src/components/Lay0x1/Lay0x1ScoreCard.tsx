@@ -1,7 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { CheckCircle, XCircle, Target } from 'lucide-react';
+import { CheckCircle, XCircle, Target, Clock } from 'lucide-react';
 
 interface CriteriaDetail {
   home_goals_avg: number;
@@ -13,10 +12,17 @@ interface CriteriaDetail {
   criteria_met: Record<string, boolean>;
 }
 
+interface BacktestResult {
+  scoreHome: number;
+  scoreAway: number;
+  was0x1: boolean;
+}
+
 interface ScoreCardProps {
   homeTeam: string;
   awayTeam: string;
   league: string;
+  time?: string;
   scoreValue: number;
   classification: string;
   approved: boolean;
@@ -24,6 +30,7 @@ interface ScoreCardProps {
   reasons: string[];
   onSave?: () => void;
   saving?: boolean;
+  backtestResult?: BacktestResult;
 }
 
 const classificationColor: Record<string, string> = {
@@ -33,7 +40,7 @@ const classificationColor: Record<string, string> = {
   'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, scoreValue, classification, approved, criteria, reasons, onSave, saving }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult }: ScoreCardProps) => {
   const criteriaList = [
     { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
     { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
@@ -45,10 +52,27 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, scoreValue, classi
   return (
     <Card className={`${approved ? 'border-primary/30' : 'border-border/40 opacity-75'}`}>
       <CardContent className="p-4 space-y-3">
+        {/* Backtest result badge */}
+        {backtestResult && (
+          <div className={`flex items-center justify-between p-2 rounded-lg text-xs font-semibold ${backtestResult.was0x1 ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+            <span>{backtestResult.scoreHome} x {backtestResult.scoreAway}</span>
+            <span>{backtestResult.was0x1 ? '❌ RED (0x1)' : '✅ GREEN'}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold">{homeTeam} vs {awayTeam}</p>
-            <p className="text-xs text-muted-foreground">{league}</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              {time && (
+                <>
+                  <Clock className="w-3 h-3" />
+                  <span className="font-medium">{time}</span>
+                  <span className="mx-0.5">•</span>
+                </>
+              )}
+              {league}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative w-14 h-14 flex items-center justify-center">
