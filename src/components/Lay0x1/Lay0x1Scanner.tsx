@@ -335,6 +335,23 @@ export const Lay0x1Scanner = () => {
     setSavingId(null);
   };
 
+  const handleForceAdd = async (result: AnalysisResult) => {
+    setSavingId(result.fixture_id);
+    await saveAnalysis({
+      fixture_id: result.fixture_id,
+      home_team: result.home_team,
+      away_team: result.away_team,
+      league: result.league,
+      date: result.date,
+      score_value: result.score_value,
+      classification: 'Manual',
+      criteria_snapshot: result.criteria,
+      weights_snapshot: weights,
+    });
+    toast.success(`${result.home_team} vs ${result.away_team} adicionado manualmente!`);
+    setSavingId(null);
+  };
+
   const handleWeightChange = (key: keyof Lay0x1Weights, value: number) => {
     saveWeights({ [key]: value });
   };
@@ -729,6 +746,8 @@ export const Lay0x1Scanner = () => {
                       criteria={r.criteria}
                       reasons={r.reasons}
                       backtestResult={getBacktestResult(r)}
+                      onForceAdd={!isBacktest && !rangeMode ? () => handleForceAdd(r) : undefined}
+                      forceAdding={savingId === r.fixture_id}
                     />
                   ))}
                 </div>
