@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp } from 'lucide-react';
+import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLay0x1Weights, type Lay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
@@ -37,11 +37,14 @@ const CACHE_KEY_PREFIX = 'lay0x1_results_';
 const CACHE_META_PREFIX = 'lay0x1_meta_';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-function getCachedResults(date: string): AnalysisResult[] | null {
+function getCachedResults(date: string, todayStr: string): AnalysisResult[] | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY_PREFIX + date);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
+    // Backtest (past dates): cache never expires
+    if (date < todayStr) return data;
+    // Today: expires after TTL
     if (Date.now() - ts > CACHE_TTL_MS) {
       localStorage.removeItem(CACHE_KEY_PREFIX + date);
       localStorage.removeItem(CACHE_META_PREFIX + date);
@@ -102,7 +105,7 @@ export const Lay0x1Scanner = () => {
 
   // Load from cache on mount / date change
   useEffect(() => {
-    const cached = getCachedResults(selectedDate);
+    const cached = getCachedResults(selectedDate, todayStr);
     if (cached && cached.length > 0) {
       setResults(cached);
       setMeta(getCachedMeta(selectedDate));
@@ -111,16 +114,26 @@ export const Lay0x1Scanner = () => {
       setResults([]);
       setMeta(null);
     }
-  }, [selectedDate]);
+  }, [selectedDate, todayStr]);
 
-  // Auto-fetch on mount if no cache
+  // Auto-fetch on mount if no cache (only for today/future, NOT backtest)
   useEffect(() => {
     if (autoFetchedRef.current === selectedDate) return;
-    const cached = getCachedResults(selectedDate);
+    if (selectedDate < todayStr) return; // Don't auto-fetch backtest
+    const cached = getCachedResults(selectedDate, todayStr);
     if (!cached) {
       autoFetchedRef.current = selectedDate;
       analyzeGames();
     }
+  }, [selectedDate, todayStr]);
+
+  const clearCache = useCallback(() => {
+    localStorage.removeItem(CACHE_KEY_PREFIX + selectedDate);
+    localStorage.removeItem(CACHE_META_PREFIX + selectedDate);
+    setResults([]);
+    setMeta(null);
+    autoFetchedRef.current = null;
+    toast.success('Cache limpo para ' + selectedDate);
   }, [selectedDate]);
 
   const analyzeGames = useCallback(async () => {
@@ -278,6 +291,11 @@ export const Lay0x1Scanner = () => {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isBacktest ? <FlaskConical className="w-4 h-4" /> : <Search className="w-4 h-4" />}
               {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar Jogos do Dia'}
             </Button>
+            {results.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
+                <Trash2 className="w-3 h-3" /> Limpar cache
+              </Button>
+            )}
           </div>
 
           {isBacktest && (
