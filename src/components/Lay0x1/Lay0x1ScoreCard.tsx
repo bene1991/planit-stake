@@ -31,6 +31,8 @@ interface ScoreCardProps {
   onSave?: () => void;
   saving?: boolean;
   backtestResult?: BacktestResult;
+  onForceAdd?: () => void;
+  forceAdding?: boolean;
 }
 
 const classificationColor: Record<string, string> = {
@@ -40,7 +42,7 @@ const classificationColor: Record<string, string> = {
   'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding }: ScoreCardProps) => {
   const criteriaList = [
     { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
     { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
@@ -128,6 +130,17 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
           >
             <Target className="w-3 h-3" />
             {saving ? 'Salvando...' : 'Salvar análise'}
+          </button>
+        )}
+
+        {!approved && onForceAdd && (
+          <button
+            onClick={onForceAdd}
+            disabled={forceAdding}
+            className="w-full mt-2 py-1.5 px-3 rounded-lg border border-primary/30 text-primary text-xs font-medium hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <Target className="w-3 h-3" />
+            {forceAdding ? 'Adicionando...' : 'Adicionar manualmente'}
           </button>
         )}
       </CardContent>

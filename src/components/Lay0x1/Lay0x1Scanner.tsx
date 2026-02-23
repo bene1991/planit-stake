@@ -729,6 +729,8 @@ export const Lay0x1Scanner = () => {
                       criteria={r.criteria}
                       reasons={r.reasons}
                       backtestResult={getBacktestResult(r)}
+                      onForceAdd={() => handleSave(r)}
+                      forceAdding={savingId === r.fixture_id}
                     />
                   ))}
                 </div>
