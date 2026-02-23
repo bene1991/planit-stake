@@ -95,7 +95,7 @@ function getAggregatedResults(days: number): AggregatedData {
 export const Lay0x1Scanner = () => {
   const { weights, saveWeights } = useLay0x1Weights();
   const { analyses, saveAnalysis } = useLay0x1Analyses();
-  const { blockedNames } = useLay0x1BlockedLeagues();
+  const { blockedNames, blockLeague } = useLay0x1BlockedLeagues();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(getNowInBrasilia(), 'yyyy-MM-dd'));
@@ -700,6 +700,7 @@ export const Lay0x1Scanner = () => {
                     onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
                     saving={savingId === r.fixture_id}
                     backtestResult={getBacktestResult(r)}
+                    onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
                   />
                 ))}
               </div>
@@ -731,6 +732,7 @@ export const Lay0x1Scanner = () => {
                       backtestResult={getBacktestResult(r)}
                       onForceAdd={() => handleSave(r)}
                       forceAdding={savingId === r.fixture_id}
+                      onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
                     />
                   ))}
                 </div>
