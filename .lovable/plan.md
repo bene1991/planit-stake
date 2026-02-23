@@ -1,38 +1,58 @@
 
-## Filtro de Quantidade de Jogos na Aba "Gols"
+## Correcao das Medias na Aba Gols
 
-### O que muda
-Adicionar um seletor (dropdown) na aba "Gols" da analise pre-jogo para escolher quantos jogos usar no calculo: **5, 10, 15, 20 ou Temporada completa**.
+### Problemas identificados
 
-### Como vai funcionar
-- Ao selecionar "Temporada" (padrao atual), continua usando as estatisticas completas da temporada que ja vem da API
-- Ao selecionar 5, 10, 15 ou 20 jogos, o sistema calcula as estatisticas a partir dos ultimos jogos de cada time (gols feitos, sofridos, medias, clean sheets, etc.)
+1. **Inconsistencia no modo Temporada**: Os percentuais de Over 1.5, Over 2.5 e BTTS sao calculados com base nos ultimos 20 jogos buscados da API, mas o label diz "Temporada completa". As medias de gols vem da API (temporada real), mas Over/BTTS sao de apenas 20 jogos.
 
-### Mudancas necessarias
+2. **Jogos com placar null**: A funcao `computeAllStats` trata gols `null` como 0, o que pode incluir jogos nao finalizados no calculo, distorcendo as medias.
 
-**1. Hook `usePreMatchAnalysis.ts`**
-- Aumentar o fetch de ultimos jogos de `last: 10` para `last: 20` para ambos os times, permitindo filtrar por qualquer quantidade ate 20
+3. **Apresentacao confusa**: Exibir "Gols Feitos (Total)" junto com "Media Gols/Jogo" mistura informacoes absolutas e relativas. O sistema de referencia mostra apenas medias, que sao mais uteis para comparacao.
 
-**2. Componente `GoalStatsSection.tsx`**
-- Adicionar um `Select` dropdown no topo com opcoes: 5, 10, 15, 20, Temporada
-- Receber tambem os dados de `homeLastMatches` e `awayLastMatches` como props
-- Receber `homeTeamId` e `awayTeamId` para identificar se o time jogou em casa ou fora
-- Quando uma quantidade especifica for selecionada, calcular as estatisticas (gols feitos, sofridos, medias, clean sheets, nao marcou) a partir dos fixtures filtrados
-- Quando "Temporada" for selecionada, usar os dados originais da API (`homeStats`/`awayStats`)
-- Exibir "Baseado em X jogos" abaixo do seletor
+### Solucao proposta
 
-**3. Componente `PreMatchModal.tsx`**
-- Passar os dados extras (`homeLastMatches`, `awayLastMatches`, `homeTeamId`, `awayTeamId`) para o `GoalStatsSection`
+**Arquivo: `src/components/PreMatchAnalysis/GoalStatsSection.tsx`**
+
+1. **Filtrar jogos invalidos**: Antes de calcular, ignorar fixtures onde `goals.home` ou `goals.away` seja `null` (jogos nao finalizados).
+
+2. **Reorganizar metricas na secao "Gols Global"**:
+   - Remover "Gols Feitos (Total)" e "Gols Sofridos (Total)" (numeros absolutos nao sao uteis para comparacao entre times com quantidade diferente de jogos)
+   - Manter apenas:
+     - Media Gols Marcados (por jogo)
+     - Media Gols Sofridos (por jogo)
+     - Clean Sheets (com percentual entre parenteses, ex: "5 (33%)")
+     - Nao Marcou (com percentual entre parenteses)
+     - % Over 1.5
+     - % Over 2.5
+     - BTTS %
+
+3. **Corrigir modo Temporada**: No modo Temporada, calcular Over/BTTS usando TODOS os fixtures disponíveis (nao apenas 20). Se os fixtures disponiveis forem menos que o total de jogos da temporada, exibir "(baseado em X jogos)" para transparencia.
+
+4. **Secao "Gols Casa/Fora"**: Manter as medias casa x fora como estao, pois ja estao corretas.
 
 ### Detalhes tecnicos
 
-O calculo client-side a partir dos fixtures funciona assim:
-- Cada fixture tem `goals.home` e `goals.away`
-- Para saber se o time marcou/sofreu, verifica se ele era `teams.home` ou `teams.away`
-- **Gols feitos**: soma dos gols do time nos N jogos
-- **Gols sofridos**: soma dos gols do adversario nos N jogos
-- **Media**: total dividido por N
-- **Clean sheet**: jogos onde o adversario fez 0 gols
-- **Nao marcou**: jogos onde o time fez 0 gols
+**Filtro de jogos validos** - adicionar no inicio de `computeAllStats`:
+```text
+const valid = fixtures.filter(f => f.goals.home !== null && f.goals.away !== null);
+const sliced = valid.slice(0, count);
+```
 
-Nenhuma chamada extra a API sera feita - apenas aumenta de 10 para 20 o parametro `last` que ja existe.
+**Clean Sheets e Nao Marcou com %** - calcular a porcentagem:
+```text
+cleanSheetsPct = n > 0 ? (cleanSheets / n) * 100 : 0
+failedToScorePct = n > 0 ? (failedToScore / n) * 100 : 0
+```
+
+**Exibicao com formato "X (Y%)"** - criar um novo formato:
+```text
+const fmtCountPct = (count, total) => `${count} (${total > 0 ? Math.round((count/total)*100) : 0}%)`
+```
+
+**Modo Temporada com Over/BTTS** - usar todos os fixtures disponiveis e indicar a amostra:
+```text
+// Já usa homeLastMatches.length, mas precisa informar ao usuario
+// que são os últimos 20 jogos, não a temporada completa
+```
+
+Nenhuma mudanca na API ou no hook - apenas correcoes de calculo e apresentacao no componente.
