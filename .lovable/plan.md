@@ -1,58 +1,33 @@
 
-## Correcao das Medias na Aba Gols
+## Correcao do erro na aba Gols
 
-### Problemas identificados
+### Problema
+O componente `GoalStatsSection` crasha com `Cannot read properties of undefined (reading 'played')` porque `homeStats.games` pode ser `undefined`. A verificacao na linha 162 so checa se `homeStats` existe, mas nao se `homeStats.games` existe.
 
-1. **Inconsistencia no modo Temporada**: Os percentuais de Over 1.5, Over 2.5 e BTTS sao calculados com base nos ultimos 20 jogos buscados da API, mas o label diz "Temporada completa". As medias de gols vem da API (temporada real), mas Over/BTTS sao de apenas 20 jogos.
+### Causa raiz
+A API retorna `homeStats` como objeto, porem a propriedade `games` pode nao estar presente na resposta. O codigo usa `homeStats!.games.played.total` sem verificar se `games` existe.
 
-2. **Jogos com placar null**: A funcao `computeAllStats` trata gols `null` como 0, o que pode incluir jogos nao finalizados no calculo, distorcendo as medias.
-
-3. **Apresentacao confusa**: Exibir "Gols Feitos (Total)" junto com "Media Gols/Jogo" mistura informacoes absolutas e relativas. O sistema de referencia mostra apenas medias, que sao mais uteis para comparacao.
-
-### Solucao proposta
+### Solucao
 
 **Arquivo: `src/components/PreMatchAnalysis/GoalStatsSection.tsx`**
 
-1. **Filtrar jogos invalidos**: Antes de calcular, ignorar fixtures onde `goals.home` ou `goals.away` seja `null` (jogos nao finalizados).
-
-2. **Reorganizar metricas na secao "Gols Global"**:
-   - Remover "Gols Feitos (Total)" e "Gols Sofridos (Total)" (numeros absolutos nao sao uteis para comparacao entre times com quantidade diferente de jogos)
-   - Manter apenas:
-     - Media Gols Marcados (por jogo)
-     - Media Gols Sofridos (por jogo)
-     - Clean Sheets (com percentual entre parenteses, ex: "5 (33%)")
-     - Nao Marcou (com percentual entre parenteses)
-     - % Over 1.5
-     - % Over 2.5
-     - BTTS %
-
-3. **Corrigir modo Temporada**: No modo Temporada, calcular Over/BTTS usando TODOS os fixtures disponíveis (nao apenas 20). Se os fixtures disponiveis forem menos que o total de jogos da temporada, exibir "(baseado em X jogos)" para transparencia.
-
-4. **Secao "Gols Casa/Fora"**: Manter as medias casa x fora como estao, pois ja estao corretas.
-
-### Detalhes tecnicos
-
-**Filtro de jogos validos** - adicionar no inicio de `computeAllStats`:
-```text
-const valid = fixtures.filter(f => f.goals.home !== null && f.goals.away !== null);
-const sliced = valid.slice(0, count);
+1. Melhorar a guarda inicial (linha 162) para tambem verificar se `games` existe:
+```
+if (isSeasonMode && (!homeStats?.games?.played || !awayStats?.games?.played)) {
+  return <p ...>Estatisticas indisponiveis</p>;
+}
 ```
 
-**Clean Sheets e Nao Marcou com %** - calcular a porcentagem:
-```text
-cleanSheetsPct = n > 0 ? (cleanSheets / n) * 100 : 0
-failedToScorePct = n > 0 ? (failedToScore / n) * 100 : 0
-```
+2. Usar optional chaining em todos os acessos a `homeStats.games` e `awayStats.games`:
+   - Linha 166: `homeStats?.games?.played?.total` (ja esta ok)
+   - Linha 209-210: Trocar `homeStats!.games.played.total` por `homeStats?.games?.played?.total ?? 0`
+   - Linha 267-268: Ja usa optional chaining (ok)
 
-**Exibicao com formato "X (Y%)"** - criar um novo formato:
-```text
-const fmtCountPct = (count, total) => `${count} (${total > 0 ? Math.round((count/total)*100) : 0}%)`
-```
+3. Proteger tambem os acessos a `goals`, `clean_sheet`, `failed_to_score` com optional chaining, pois qualquer propriedade pode vir undefined da API.
 
-**Modo Temporada com Over/BTTS** - usar todos os fixtures disponiveis e indicar a amostra:
-```text
-// Já usa homeLastMatches.length, mas precisa informar ao usuario
-// que são os últimos 20 jogos, não a temporada completa
-```
+### Mudancas especificas
 
-Nenhuma mudanca na API ou no hook - apenas correcoes de calculo e apresentacao no componente.
+- Linha 162: Alterar guarda para `(!homeStats?.goals || !awayStats?.goals)` - isso garante que se qualquer dado essencial faltar, mostra "indisponivel"
+- Linhas 207-210: Trocar `!` por `?.` e adicionar fallbacks `?? 0`
+- Linhas 238-246: Mesma protecao com optional chaining
+- Linha 166: Manter como esta (ja seguro)
