@@ -1,55 +1,44 @@
 
 
-## Corrigir Cache do Backtest -- Dados Historicos Nao Devem Expirar
+## Corrigir Re-analise Automatica -- Nunca Sobrescrever Resultados Existentes
 
 ### Problema
 
-Quando voce fez o backtest de ontem e viu 12 jogos, depois saiu e voltou, o cache de 6 horas expirou e o sistema rodou uma nova analise automaticamente. A nova analise retornou 8 jogos porque a API pode ter retornado dados ligeiramente diferentes (odds atualizadas, fixtures modificados).
-
-Para datas passadas (backtest), os resultados nao deveriam mudar -- uma vez analisados, deveriam ser guardados permanentemente.
+Toda vez que o usuario sai da pagina e volta, o componente remonta e o `autoFetchedRef` reseta para `null`. Isso faz o segundo `useEffect` (auto-fetch) rodar novamente, chamando a API mesmo quando ja havia cache. Alem disso, o cache de hoje expira em 6 horas, e a API pode retornar resultados diferentes (3 jogos virando 2, 12 virando 8).
 
 ### Solucao
 
-1. **Cache permanente para backtest**: Datas passadas terao cache sem expiracao (TTL infinito). Apenas o dia de hoje mantem o TTL de 6 horas para permitir re-analise.
-
-2. **Remover auto-fetch para backtest**: Quando trocar para uma data passada sem cache, NAO rodar analise automaticamente. Apenas exibir o botao "Backtest" para o usuario clicar quando quiser. Isso evita gastar creditos da API sem necessidade.
-
-3. **Botao "Limpar Cache" visivel**: Adicionar opcao de limpar o cache de uma data especifica caso o usuario queira forcar nova analise.
+Remover completamente o auto-fetch. O scanner so deve buscar jogos quando o usuario clicar no botao "Analisar" ou "Backtest" manualmente. O cache fica permanente para TODAS as datas (hoje, ontem, qualquer data). So e limpo quando o usuario clica em "Limpar cache".
 
 ### Detalhes Tecnicos
 
 **Arquivo: `src/components/Lay0x1/Lay0x1Scanner.tsx`**
 
-- Modificar `getCachedResults()`: se a data for anterior a hoje, ignorar o TTL (cache nunca expira)
-- Modificar o `useEffect` de auto-fetch (linha 117-124): so fazer auto-fetch se for a data de hoje. Datas passadas nao disparam auto-fetch
-- Adicionar botao discreto "Limpar cache" ao lado da data quando houver cache carregado, para permitir re-analise manual
+1. **Remover o segundo `useEffect` de auto-fetch** (linhas 119-128) -- eliminar completamente. Nunca mais rodar analise automatica.
 
-**Funcao `getCachedResults` atualizada:**
+2. **Remover TTL do cache** -- o cache nunca expira para nenhuma data. Tanto `getCachedResults` quanto `getCachedMeta` deixam de verificar timestamp. O cache so e removido manualmente via botao "Limpar cache".
 
+3. **Simplificar `getCachedResults`** -- apenas ler do localStorage sem verificar expiracao:
 ```text
-function getCachedResults(date, todayStr):
+function getCachedResults(date):
   raw = localStorage.getItem(key + date)
   if (!raw) return null
-  { data, ts } = parse(raw)
-  
-  // Cache de backtest (datas passadas) nunca expira
-  if (date < todayStr) return data
-  
-  // Cache de hoje expira em 6h
-  if (Date.now() - ts > CACHE_TTL_MS) return null
-  return data
+  return JSON.parse(raw).data
 ```
 
-**Auto-fetch condicional:**
+4. **Simplificar `getCachedMeta`** -- mesma logica, sem TTL.
 
-```text
-useEffect:
-  if (autoFetchedRef.current === selectedDate) return
-  if (selectedDate < todayStr) return  // NAO auto-fetch backtest
-  if (!getCachedResults(selectedDate)) analyzeGames()
-```
+5. **Remover `autoFetchedRef`** -- nao e mais necessario pois nao existe auto-fetch.
+
+6. **Manter o `useEffect` de carregamento de cache** (linhas 106-117) -- apenas carrega do cache quando troca de data, sem disparar fetch.
+
+### Resultado
+
+- Entrou na pagina com cache existente: mostra os resultados salvos, sem chamar API
+- Entrou na pagina sem cache: mostra vazio, usuario clica no botao para analisar
+- Clicou "Limpar cache": limpa os resultados, usuario pode re-analisar
+- Clicou "Analisar"/"Backtest": busca da API e salva no cache
 
 ### Arquivos Modificados
 
-- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- cache permanente para backtest, remover auto-fetch de datas passadas, botao limpar cache
-
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- remover auto-fetch, remover TTL do cache, simplificar logica
