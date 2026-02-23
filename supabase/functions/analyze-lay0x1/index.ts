@@ -370,7 +370,7 @@ serve(async (req) => {
         const rawScore = (offensiveScore + defensiveScore + overScore + leagueScore + h2hScore + oddsScore) * 100;
         const scoreValue = Math.round(Math.max(0, Math.min(100, rawScore)));
 
-        const isApproved = allCriteriaMet && scoreValue >= dynamicMinScore;
+        const isApproved = allCriteriaMet;
 
         return {
           fixture_id: String(fixtureId),
