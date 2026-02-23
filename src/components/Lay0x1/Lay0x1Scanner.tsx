@@ -37,6 +37,7 @@ interface AnalysisResult {
 
 const CACHE_KEY_PREFIX = 'lay0x1_results_';
 const CACHE_META_PREFIX = 'lay0x1_meta_';
+const CACHE_CONTEXT_KEY = 'lay0x1_last_context';
 
 function getCachedResults(date: string): AnalysisResult[] | null {
   try {
@@ -46,11 +47,46 @@ function getCachedResults(date: string): AnalysisResult[] | null {
   } catch { return null; }
 }
 
+/** Safe localStorage write with LRU pruning on quota error */
 function setCachedResults(date: string, results: AnalysisResult[], meta?: any) {
-  try {
+  const writeData = () => {
     localStorage.setItem(CACHE_KEY_PREFIX + date, JSON.stringify({ data: results, ts: Date.now() }));
     if (meta) localStorage.setItem(CACHE_META_PREFIX + date, JSON.stringify({ data: meta, ts: Date.now() }));
-  } catch { /* storage full */ }
+  };
+  try {
+    writeData();
+  } catch {
+    // Storage full — prune oldest Lay0x1 caches and retry
+    try {
+      pruneLay0x1Cache();
+      writeData();
+    } catch {
+      toast.error('Armazenamento local cheio. Limpe caches antigos manualmente.');
+    }
+  }
+}
+
+/** Remove oldest Lay0x1 cache entries to free space */
+function pruneLay0x1Cache() {
+  const entries: { key: string; ts: number }[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith(CACHE_KEY_PREFIX) || key.startsWith(CACHE_META_PREFIX))) {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+        entries.push({ key, ts: parsed.ts || 0 });
+      } catch {
+        entries.push({ key, ts: 0 });
+      }
+    }
+  }
+  // Sort oldest first and remove up to 10 entries
+  entries.sort((a, b) => a.ts - b.ts);
+  const toRemove = entries.slice(0, Math.min(10, entries.length));
+  toRemove.forEach(e => localStorage.removeItem(e.key));
+  if (toRemove.length > 0) {
+    toast.info(`Cache antigo limpo automaticamente (${toRemove.length} entradas)`);
+  }
 }
 
 function getCachedMeta(date: string): any {
@@ -58,6 +94,20 @@ function getCachedMeta(date: string): any {
     const raw = localStorage.getItem(CACHE_META_PREFIX + date);
     if (!raw) return null;
     return JSON.parse(raw).data;
+  } catch { return null; }
+}
+
+function saveLastContext(selectedDate: string, rangeMode: RangeMode | null) {
+  try {
+    localStorage.setItem(CACHE_CONTEXT_KEY, JSON.stringify({ selectedDate, rangeMode, ts: Date.now() }));
+  } catch { /* ignore */ }
+}
+
+function getLastContext(): { selectedDate: string; rangeMode: RangeMode | null } | null {
+  try {
+    const raw = localStorage.getItem(CACHE_CONTEXT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch { return null; }
 }
 
@@ -100,17 +150,21 @@ export const Lay0x1Scanner = () => {
   const { games, addGame } = useSupabaseGames();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(format(getNowInBrasilia(), 'yyyy-MM-dd'));
+  const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
+
+  // Restore last context on mount
+  const lastContext = useMemo(() => getLastContext(), []);
+  const [selectedDate, setSelectedDate] = useState(lastContext?.selectedDate || todayStr);
+  const [rangeMode, setRangeMode] = useState<RangeMode | null>(lastContext?.rangeMode || null);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sendingPlanningId, setSendingPlanningId] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
-  const [rangeMode, setRangeMode] = useState<RangeMode | null>(null);
   const [rangeData, setRangeData] = useState<AggregatedData | null>(null);
   const [analyzingMissing, setAnalyzingMissing] = useState(false);
   const [missingProgress, setMissingProgress] = useState({ current: 0, total: 0 });
   const [savingBacktest, setSavingBacktest] = useState(false);
-  const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
 
   // Set of fixture IDs already in planning
   const planningFixtureIds = useMemo(() => 
@@ -127,11 +181,17 @@ export const Lay0x1Scanner = () => {
 
   const isBacktest = !rangeMode && selectedDate < todayStr;
 
+  // Persist context whenever date/range changes
+  useEffect(() => {
+    saveLastContext(selectedDate, rangeMode);
+  }, [selectedDate, rangeMode]);
+
   // Load from cache on date change (single day mode only)
+  // Accept cached !== null (even if empty array) as valid cache
   useEffect(() => {
     if (rangeMode) return;
     const cached = getCachedResults(selectedDate);
-    if (cached && cached.length > 0) {
+    if (cached !== null) {
       setResults(cached);
       setMeta(getCachedMeta(selectedDate));
     } else {
@@ -344,8 +404,16 @@ export const Lay0x1Scanner = () => {
       const updated = prev.map(r =>
         r.fixture_id === result.fixture_id ? { ...r, approved: true } : r
       );
-      // Persist to localStorage so it survives navigation
-      setCachedResults(result.date, updated);
+      // Persist using the correct key:
+      // - In single-day mode, use selectedDate (current view context)
+      // - In range mode, persist per fixture date to avoid corrupting other days
+      if (rangeMode) {
+        // Only update the cache for this specific fixture's date
+        const dayResults = updated.filter(r => r.date === result.date);
+        setCachedResults(result.date, dayResults);
+      } else {
+        setCachedResults(selectedDate, updated);
+      }
       return updated;
     });
     toast.success('Análise salva!');
@@ -794,6 +862,22 @@ export const Lay0x1Scanner = () => {
             </Collapsible>
           )}
         </>
+      )}
+
+      {/* Empty state — no cache and not loading */}
+      {!loading && results.length === 0 && !rangeMode && (
+        <Card className="border-dashed border-muted-foreground/30">
+          <CardContent className="p-6 text-center space-y-3">
+            <Search className="w-8 h-8 mx-auto text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              Nenhuma busca salva para <strong>{selectedDate}</strong>
+            </p>
+            <Button onClick={analyzeGames} disabled={loading} size="sm" className="gap-2">
+              <Search className="w-4 h-4" />
+              {isBacktest ? 'Rodar Backtest' : 'Analisar Jogos do Dia'}
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
