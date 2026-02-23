@@ -28,7 +28,8 @@ interface Props {
 }
 
 function computeAllStats(fixtures: Fixture[], teamId: number, count: number) {
-  const sliced = fixtures.slice(0, count);
+  const valid = fixtures.filter(f => f.goals.home !== null && f.goals.away !== null);
+  const sliced = valid.slice(0, count);
   let goalsFor = 0, goalsAgainst = 0, cleanSheets = 0, failedToScore = 0;
   let over15 = 0, over25 = 0, btts = 0;
   let homeGoalsFor = 0, homeGoalsAgainst = 0, homeGames = 0;
@@ -37,8 +38,8 @@ function computeAllStats(fixtures: Fixture[], teamId: number, count: number) {
 
   for (const f of sliced) {
     const isHome = f.teams.home.id === teamId;
-    const scored = isHome ? (f.goals.home ?? 0) : (f.goals.away ?? 0);
-    const conceded = isHome ? (f.goals.away ?? 0) : (f.goals.home ?? 0);
+    const scored = isHome ? f.goals.home! : f.goals.away!;
+    const conceded = isHome ? f.goals.away! : f.goals.home!;
     const totalGoals = scored + conceded;
 
     goalsFor += scored;
@@ -65,6 +66,8 @@ function computeAllStats(fixtures: Fixture[], teamId: number, count: number) {
     avgFor: n > 0 ? goalsFor / n : 0,
     avgAgainst: n > 0 ? goalsAgainst / n : 0,
     cleanSheets, failedToScore, gamesUsed: n,
+    cleanSheetsPct: n > 0 ? (cleanSheets / n) * 100 : 0,
+    failedToScorePct: n > 0 ? (failedToScore / n) * 100 : 0,
     over15Pct: n > 0 ? (over15 / n) * 100 : 0,
     over25Pct: n > 0 ? (over25 / n) * 100 : 0,
     bttsPct: n > 0 ? (btts / n) * 100 : 0,
@@ -98,6 +101,30 @@ function StatBar({ label, homeVal, awayVal, format }: { label: string; homeVal: 
   );
 }
 
+function CountPctBar({ label, homeCount, homeTotal, awayCount, awayTotal }: { label: string; homeCount: number; homeTotal: number; awayCount: number; awayTotal: number }) {
+  const homePct = homeTotal > 0 ? (homeCount / homeTotal) * 100 : 0;
+  const awayPct = awayTotal > 0 ? (awayCount / awayTotal) * 100 : 0;
+  const max = Math.max(homePct, awayPct, 0.01);
+  const fmt = (count: number, total: number) => `${count} (${total > 0 ? Math.round((count / total) * 100) : 0}%)`;
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{fmt(homeCount, homeTotal)}</span>
+        <span>{label}</span>
+        <span className="font-medium text-foreground">{fmt(awayCount, awayTotal)}</span>
+      </div>
+      <div className="flex gap-1 h-2">
+        <div className="flex-1 bg-muted rounded-full overflow-hidden flex justify-end">
+          <div className="bg-primary/70 rounded-full" style={{ width: `${(homePct / max) * 100}%` }} />
+        </div>
+        <div className="flex-1 bg-muted rounded-full overflow-hidden">
+          <div className="bg-destructive/70 rounded-full" style={{ width: `${(awayPct / max) * 100}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border pb-1 mt-4 first:mt-0">
@@ -122,12 +149,12 @@ export function GoalStatsSection({ homeStats, awayStats, homeTeam, awayTeam, hom
     return { home, away };
   }, [gameCount, homeLastMatches, awayLastMatches, homeTeamId, awayTeamId, hasFixtures]);
 
-  // Season-mode Over/BTTS from fixtures (always computed if fixtures available)
-  const seasonOverBtts = useMemo(() => {
+  // Season-mode: compute from ALL available fixtures
+  const seasonComputed = useMemo(() => {
     if (!hasFixtures) return null;
-    const homeAll = computeAllStats(homeLastMatches!, homeTeamId!, homeLastMatches!.length);
-    const awayAll = computeAllStats(awayLastMatches!, awayTeamId!, awayLastMatches!.length);
-    return { home: homeAll, away: awayAll };
+    const home = computeAllStats(homeLastMatches!, homeTeamId!, homeLastMatches!.length);
+    const away = computeAllStats(awayLastMatches!, awayTeamId!, awayLastMatches!.length);
+    return { home, away };
   }, [homeLastMatches, awayLastMatches, homeTeamId, awayTeamId, hasFixtures]);
 
   const isSeasonMode = gameCount === "season" || !computed;
@@ -136,8 +163,13 @@ export function GoalStatsSection({ homeStats, awayStats, homeTeam, awayTeam, hom
     return <p className="text-muted-foreground text-sm text-center py-4">Estatísticas indisponíveis</p>;
   }
 
+  const seasonGamesTotal = homeStats?.games?.played?.total;
+  const fixturesAvailable = seasonComputed?.home.gamesUsed;
+
   const gamesLabel = isSeasonMode
-    ? `Temporada completa${homeStats?.games?.played?.total ? ` (${homeStats.games.played.total} jogos)` : ''}`
+    ? (fixturesAvailable && seasonGamesTotal && fixturesAvailable < seasonGamesTotal
+      ? `Temporada (baseado em ${fixturesAvailable} de ${seasonGamesTotal} jogos)`
+      : `Temporada completa${seasonGamesTotal ? ` (${seasonGamesTotal} jogos)` : ''}`)
     : `Baseado nos últimos ${computed!.home.gamesUsed} jogos`;
 
   return (
@@ -172,28 +204,24 @@ export function GoalStatsSection({ homeStats, awayStats, homeTeam, awayTeam, hom
 
       {isSeasonMode ? (
         <>
-          <StatBar label="Gols Feitos (Total)" homeVal={homeStats!.goals.for.total.total} awayVal={awayStats!.goals.for.total.total} />
-          <StatBar label="Gols Sofridos (Total)" homeVal={homeStats!.goals.against.total.total} awayVal={awayStats!.goals.against.total.total} />
-          <StatBar label="Média Gols/Jogo" homeVal={parseFloat(homeStats!.goals.for.average.total)} awayVal={parseFloat(awayStats!.goals.for.average.total)} format={fmtDec} />
-          <StatBar label="Média Sofridos/Jogo" homeVal={parseFloat(homeStats!.goals.against.average.total)} awayVal={parseFloat(awayStats!.goals.against.average.total)} format={fmtDec} />
-          <StatBar label="Clean Sheets" homeVal={homeStats!.clean_sheet.total} awayVal={awayStats!.clean_sheet.total} />
-          <StatBar label="Não Marcou" homeVal={homeStats!.failed_to_score.total} awayVal={awayStats!.failed_to_score.total} />
-          {seasonOverBtts && (
+          <StatBar label="Média Gols Marcados" homeVal={parseFloat(homeStats!.goals.for.average.total)} awayVal={parseFloat(awayStats!.goals.for.average.total)} format={fmtDec} />
+          <StatBar label="Média Gols Sofridos" homeVal={parseFloat(homeStats!.goals.against.average.total)} awayVal={parseFloat(awayStats!.goals.against.average.total)} format={fmtDec} />
+          <CountPctBar label="Clean Sheets" homeCount={homeStats!.clean_sheet.total} homeTotal={homeStats!.games.played.total} awayCount={awayStats!.clean_sheet.total} awayTotal={awayStats!.games.played.total} />
+          <CountPctBar label="Não Marcou" homeCount={homeStats!.failed_to_score.total} homeTotal={homeStats!.games.played.total} awayCount={awayStats!.failed_to_score.total} awayTotal={awayStats!.games.played.total} />
+          {seasonComputed && (
             <>
-              <StatBar label="% Over 1.5" homeVal={seasonOverBtts.home.over15Pct} awayVal={seasonOverBtts.away.over15Pct} format={fmtPct} />
-              <StatBar label="% Over 2.5" homeVal={seasonOverBtts.home.over25Pct} awayVal={seasonOverBtts.away.over25Pct} format={fmtPct} />
-              <StatBar label="BTTS %" homeVal={seasonOverBtts.home.bttsPct} awayVal={seasonOverBtts.away.bttsPct} format={fmtPct} />
+              <StatBar label="% Over 1.5" homeVal={seasonComputed.home.over15Pct} awayVal={seasonComputed.away.over15Pct} format={fmtPct} />
+              <StatBar label="% Over 2.5" homeVal={seasonComputed.home.over25Pct} awayVal={seasonComputed.away.over25Pct} format={fmtPct} />
+              <StatBar label="BTTS %" homeVal={seasonComputed.home.bttsPct} awayVal={seasonComputed.away.bttsPct} format={fmtPct} />
             </>
           )}
         </>
       ) : (
         <>
-          <StatBar label="Gols Feitos (Total)" homeVal={computed!.home.goalsFor} awayVal={computed!.away.goalsFor} />
-          <StatBar label="Gols Sofridos (Total)" homeVal={computed!.home.goalsAgainst} awayVal={computed!.away.goalsAgainst} />
-          <StatBar label="Média Gols/Jogo" homeVal={computed!.home.avgFor} awayVal={computed!.away.avgFor} format={fmtDec} />
-          <StatBar label="Média Sofridos/Jogo" homeVal={computed!.home.avgAgainst} awayVal={computed!.away.avgAgainst} format={fmtDec} />
-          <StatBar label="Clean Sheets" homeVal={computed!.home.cleanSheets} awayVal={computed!.away.cleanSheets} />
-          <StatBar label="Não Marcou" homeVal={computed!.home.failedToScore} awayVal={computed!.away.failedToScore} />
+          <StatBar label="Média Gols Marcados" homeVal={computed!.home.avgFor} awayVal={computed!.away.avgFor} format={fmtDec} />
+          <StatBar label="Média Gols Sofridos" homeVal={computed!.home.avgAgainst} awayVal={computed!.away.avgAgainst} format={fmtDec} />
+          <CountPctBar label="Clean Sheets" homeCount={computed!.home.cleanSheets} homeTotal={computed!.home.gamesUsed} awayCount={computed!.away.cleanSheets} awayTotal={computed!.away.gamesUsed} />
+          <CountPctBar label="Não Marcou" homeCount={computed!.home.failedToScore} homeTotal={computed!.home.gamesUsed} awayCount={computed!.away.failedToScore} awayTotal={computed!.away.gamesUsed} />
           <StatBar label="% Over 1.5" homeVal={computed!.home.over15Pct} awayVal={computed!.away.over15Pct} format={fmtPct} />
           <StatBar label="% Over 2.5" homeVal={computed!.home.over25Pct} awayVal={computed!.away.over25Pct} format={fmtPct} />
           <StatBar label="BTTS %" homeVal={computed!.home.bttsPct} awayVal={computed!.away.bttsPct} format={fmtPct} />
