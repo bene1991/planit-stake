@@ -2,7 +2,7 @@ import { Game, Method, GoalEvent } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, Minus, Trash2, Trophy, Settings, Sparkles } from "lucide-react";
+import { Shield, Check, X, Minus, Trash2, Trophy, Settings, Sparkles, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -16,6 +16,7 @@ import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
 import { LiveDominanceDisplay } from "@/components/LiveDominanceDisplay";
 import { useLdiHistory } from "@/hooks/useLdiHistory";
 import { useLiveMomentAI } from "@/hooks/useLiveMomentAI";
+import { PreMatchModal } from "@/components/PreMatchAnalysis/PreMatchModal";
 
 interface FixtureData {
   fixture: ApiFootballFixture;
@@ -45,6 +46,7 @@ export function GameCardCompact({
   globalPaused = false,
 }: GameCardCompactProps) {
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
+  const [showPreMatch, setShowPreMatch] = useState(false);
   const lastSyncRef = useRef<number>(0);
   
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
@@ -285,6 +287,7 @@ export function GameCardCompact({
   }, [fixtureData?.events, fixtureData?.fixture?.teams, game.goalEvents, game.finalScoreHome, game.finalScoreAway]);
 
   return (
+    <>
     <Card className={cn(
       "overflow-hidden transition-all duration-200",
       isLive ? "border-primary/50 shadow-glow" : "border-border/40 hover:border-primary/30"
@@ -425,6 +428,17 @@ export function GameCardCompact({
             </span>
           </div>
           <div className="flex items-center gap-1">
+            {game.api_fixture_id && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowPreMatch(true)}
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+                title="Análise pré-jogo"
+              >
+                <BarChart3 className="h-3 w-3" />
+              </Button>
+            )}
             {onEdit && (
               <Button 
                 variant="ghost" 
@@ -509,5 +523,16 @@ export function GameCardCompact({
         )}
       </div>
     </Card>
+
+    {game.api_fixture_id && (
+      <PreMatchModal
+        open={showPreMatch}
+        onOpenChange={setShowPreMatch}
+        fixtureId={game.api_fixture_id}
+        homeTeam={game.homeTeam}
+        awayTeam={game.awayTeam}
+      />
+    )}
+    </>
   );
 }
