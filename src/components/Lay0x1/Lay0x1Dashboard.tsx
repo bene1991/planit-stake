@@ -6,9 +6,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
+import { Progress } from '@/components/ui/progress';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export const Lay0x1Dashboard = () => {
@@ -17,6 +18,8 @@ export const Lay0x1Dashboard = () => {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [scoreInputs, setScoreInputs] = useState<Record<string, { home: string; away: string }>>({});
   const [calibrating, setCalibrating] = useState(false);
+  const [autoResolving, setAutoResolving] = useState(false);
+  const [resolveProgress, setResolveProgress] = useState({ current: 0, total: 0 });
 
   const pendingAnalyses = analyses.filter(a => !a.result);
   const resolvedAnalyses = analyses.filter(a => a.result);
@@ -97,6 +100,50 @@ export const Lay0x1Dashboard = () => {
     }
     setCalibrating(false);
   };
+
+  const handleAutoResolve = useCallback(async () => {
+    if (pendingAnalyses.length === 0) return;
+    setAutoResolving(true);
+    setResolveProgress({ current: 0, total: pendingAnalyses.length });
+
+    let resolvedCount = 0;
+    let skippedCount = 0;
+    const BATCH_SIZE = 5;
+
+    for (let i = 0; i < pendingAnalyses.length; i += BATCH_SIZE) {
+      const batch = pendingAnalyses.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (analysis) => {
+        try {
+          const res = await supabase.functions.invoke('api-football', {
+            body: { endpoint: 'fixtures', params: { id: analysis.fixture_id } },
+          });
+
+          const fixture = res.data?.response?.[0];
+          const status = fixture?.fixture?.status?.short;
+
+          if (['FT', 'AET', 'PEN'].includes(status)) {
+            const homeGoals = fixture.goals?.home ?? 0;
+            const awayGoals = fixture.goals?.away ?? 0;
+            await resolveAnalysis(analysis.id, homeGoals, awayGoals);
+            resolvedCount++;
+          } else {
+            skippedCount++;
+          }
+        } catch {
+          skippedCount++;
+        }
+        setResolveProgress(prev => ({ ...prev, current: prev.current + 1 }));
+      }));
+    }
+
+    setAutoResolving(false);
+    if (resolvedCount > 0) {
+      toast.success(`${resolvedCount} jogo(s) resolvido(s) automaticamente${skippedCount > 0 ? ` • ${skippedCount} ainda não terminaram` : ''}`);
+      refetch();
+    } else if (skippedCount > 0) {
+      toast.info(`Nenhum jogo terminou ainda (${skippedCount} pendentes)`);
+    }
+  }, [pendingAnalyses, resolveAnalysis, refetch]);
 
   return (
     <div className="space-y-4">
@@ -228,7 +275,22 @@ export const Lay0x1Dashboard = () => {
       {/* Pending */}
       {pendingAnalyses.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold mb-2">Pendentes ({pendingAnalyses.length})</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">Pendentes ({pendingAnalyses.length})</h3>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 text-xs"
+              disabled={autoResolving}
+              onClick={handleAutoResolve}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${autoResolving ? 'animate-spin' : ''}`} />
+              {autoResolving ? `Resolvendo ${resolveProgress.current}/${resolveProgress.total}...` : 'Resolver Pendentes'}
+            </Button>
+          </div>
+          {autoResolving && (
+            <Progress value={(resolveProgress.current / resolveProgress.total) * 100} className="h-1.5 mb-2" />
+          )}
           <div className="space-y-2">
             {pendingAnalyses.map(a => (
               <Card key={a.id}>
