@@ -74,12 +74,6 @@ function normalize(value: number, min: number, max: number): number {
   return Math.max(0, Math.min(1, (value - min) / (max - min)));
 }
 
-// Poisson P(X <= 1) = e^(-lambda) * (1 + lambda)
-function poissonProbUnder15(lambda: number): number {
-  if (lambda <= 0) return 1;
-  return Math.exp(-lambda) * (1 + lambda);
-}
-
 function classify(score: number, minScore: number = 65): string {
   if (score >= 85) return 'Muito Forte';
   if (score >= 75) return 'Forte';
@@ -133,9 +127,9 @@ async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: n
     const remainingPages: number[] = [];
     for (let p = 2; p <= totalPages; p++) remainingPages.push(p);
 
-    const BATCH_SIZE_ODDS = 5;
-    for (let i = 0; i < remainingPages.length; i += BATCH_SIZE_ODDS) {
-      const batch = remainingPages.slice(i, i + BATCH_SIZE_ODDS);
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < remainingPages.length; i += BATCH_SIZE) {
+      const batch = remainingPages.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(
         batch.map(page => callApiFootball('odds', { date, page }))
       );
@@ -335,40 +329,15 @@ serve(async (req) => {
         }
 
         const homeGoalsFor = homeStatsData?.response?.goals?.for;
-        let homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
-        if (homeGoalsAvg === 0 && homeGoalsFor?.average?.total) {
-          homeGoalsAvg = parseFloat(homeGoalsFor.average.total);
-        }
+        const homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
 
         const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
-        let awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
-        if (awayConcededAvg === 0 && awayGoalsAgainst?.average?.total) {
-          awayConcededAvg = parseFloat(awayGoalsAgainst.average.total);
-        }
+        const awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
 
-        // Poisson-based Over 1.5 probability (real, 0-100%)
-        const pUnderHome = poissonProbUnder15(homeGoalsAvg);
-        const pUnderAway = poissonProbUnder15(awayConcededAvg);
-        const probOverReal = (1 - pUnderHome * pUnderAway) * 100;
-        const over15Combined = Math.round(probOverReal * 10) / 10;
+        const homeOver15Pct = Math.min(100, (homeGoalsAvg / 2.0) * 100);
+        const awayOver15Pct = Math.min(100, (awayConcededAvg / 2.0) * 100);
+        const over15Combined = homeOver15Pct + awayOver15Pct;
         const leagueGoalsAvg = (homeGoalsAvg + awayConcededAvg) / 2;
-
-        // Probabilidade estimada de 0x1 (Poisson + H2H)
-        // P(home=0) * P(away=1) where away scores with awayConcededAvg as proxy for away attack
-        const prob0x1Poisson = Math.exp(-homeGoalsAvg) * (awayConcededAvg * Math.exp(-awayConcededAvg));
-        const prob0x1H2h = h2h0x1Count / 5;
-        const prob0x1 = prob0x1Poisson * 0.6 + prob0x1H2h * 0.4;
-
-        // Índice de Risco (volatilidade estatística)
-        let riskIndex = 0;
-        const divergence = Math.abs(homeGoalsAvg - awayConcededAvg);
-        if (divergence > 1.0) riskIndex += normalize(divergence, 1.0, 2.5) * 5;
-        if (homeOdd > 0 && awayOdd > 0) {
-          const expectedOddRatio = homeGoalsAvg / (awayConcededAvg || 0.5);
-          const actualOddRatio = awayOdd / homeOdd;
-          const oddsDivergence = Math.abs(expectedOddRatio - actualOddRatio);
-          if (oddsDivergence > 1.5) riskIndex += normalize(oddsDivergence, 1.5, 3.0) * 5;
-        }
 
         const criteriaMet: Record<string, boolean> = {
           home_odd_lower: homeOdd > 0 && awayOdd > 0 && homeOdd < awayOdd,
@@ -391,23 +360,17 @@ serve(async (req) => {
         const totalWeight = weights.offensive_weight + weights.defensive_weight + weights.over_weight +
           weights.league_avg_weight + weights.h2h_weight + weights.odds_weight;
 
-        const offensiveScore = normalize(homeGoalsAvg, 1.0, 2.2) * (weights.offensive_weight / totalWeight);
-        const defensiveScore = normalize(awayConcededAvg, 1.0, 2.2) * (weights.defensive_weight / totalWeight);
-        const overScore = normalize(probOverReal, 40, 85) * (weights.over_weight / totalWeight);
-        const leagueScore = normalize(leagueGoalsAvg, 1.3, 2.5) * (weights.league_avg_weight / totalWeight);
+        const offensiveScore = normalize(homeGoalsAvg, 0.5, 3.0) * (weights.offensive_weight / totalWeight);
+        const defensiveScore = normalize(awayConcededAvg, 0.5, 3.0) * (weights.defensive_weight / totalWeight);
+        const overScore = normalize(over15Combined, 40, 150) * (weights.over_weight / totalWeight);
+        const leagueScore = normalize(leagueGoalsAvg, 1.0, 3.5) * (weights.league_avg_weight / totalWeight);
         const h2hScore = normalize(5 - h2h0x1Count, 0, 5) * (weights.h2h_weight / totalWeight);
         const oddsScore = calculateOddsScore(awayOdd) * (weights.odds_weight / totalWeight);
 
-        const baseScore = (offensiveScore + defensiveScore + overScore + leagueScore + h2hScore + oddsScore) * 100;
-
-        // Penalização 1: risco de 0x1 (se > 12%, reduz proporcionalmente)
-        const penalty0x1 = prob0x1 > 0.12 ? (prob0x1 - 0.12) * 100 : 0;
-
-        // Score final = base - penalizações
-        const rawScore = baseScore - penalty0x1 - riskIndex;
+        const rawScore = (offensiveScore + defensiveScore + overScore + leagueScore + h2hScore + oddsScore) * 100;
         const scoreValue = Math.round(Math.max(0, Math.min(100, rawScore)));
 
-        const isApproved = allCriteriaMet;
+        const isApproved = allCriteriaMet && scoreValue >= dynamicMinScore;
 
         return {
           fixture_id: String(fixtureId),
@@ -425,9 +388,6 @@ serve(async (req) => {
             home_odd: homeOdd,
             away_odd: awayOdd,
             over15_combined: over15Combined,
-            prob_over_real: Math.round(probOverReal * 10) / 10,
-            prob_0x1: Math.round(prob0x1 * 1000) / 1000,
-            risk_index: Math.round(riskIndex * 10) / 10,
             h2h_0x1_count: h2h0x1Count,
             league_goals_avg: leagueGoalsAvg,
             criteria_met: criteriaMet,
@@ -444,7 +404,7 @@ serve(async (req) => {
     }
 
     // --- Process in parallel batches of 5 ---
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = 5;
     const results: AnalysisResult[] = [];
     const totalBatches = Math.ceil(fixtureIdsToAnalyze.length / BATCH_SIZE);
 
@@ -464,7 +424,6 @@ serve(async (req) => {
     // Sort: approved first, then by time ascending
     results.sort((a, b) => {
       if (a.approved !== b.approved) return a.approved ? -1 : 1;
-      if (a.approved && b.approved) return b.score_value - a.score_value;
       return a.time.localeCompare(b.time);
     });
 

@@ -335,23 +335,6 @@ export const Lay0x1Scanner = () => {
     setSavingId(null);
   };
 
-  const handleForceAdd = async (result: AnalysisResult) => {
-    setSavingId(result.fixture_id);
-    await saveAnalysis({
-      fixture_id: result.fixture_id,
-      home_team: result.home_team,
-      away_team: result.away_team,
-      league: result.league,
-      date: result.date,
-      score_value: result.score_value,
-      classification: 'Manual',
-      criteria_snapshot: result.criteria,
-      weights_snapshot: weights,
-    });
-    toast.success(`${result.home_team} vs ${result.away_team} adicionado manualmente!`);
-    setSavingId(null);
-  };
-
   const handleWeightChange = (key: keyof Lay0x1Weights, value: number) => {
     saveWeights({ [key]: value });
   };
@@ -675,7 +658,7 @@ export const Lay0x1Scanner = () => {
               </div>
               <div>
                 <Label className="text-xs">Mín. Over 1.5 combinado: {weights.min_over15_combined}%</Label>
-                <Slider value={[weights.min_over15_combined]} min={30} max={95} step={5}
+                <Slider value={[weights.min_over15_combined]} min={30} max={150} step={5}
                   onValueChange={([v]) => handleWeightChange('min_over15_combined', v)} />
               </div>
               <div>
@@ -746,8 +729,6 @@ export const Lay0x1Scanner = () => {
                       criteria={r.criteria}
                       reasons={r.reasons}
                       backtestResult={getBacktestResult(r)}
-                      onForceAdd={!isBacktest && !rangeMode ? () => handleForceAdd(r) : undefined}
-                      forceAdding={savingId === r.fixture_id}
                     />
                   ))}
                 </div>

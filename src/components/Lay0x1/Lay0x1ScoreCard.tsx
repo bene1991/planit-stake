@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Target, Clock, PlusCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Target, Clock } from 'lucide-react';
 
 interface CriteriaDetail {
   home_goals_avg: number;
@@ -31,8 +31,6 @@ interface ScoreCardProps {
   onSave?: () => void;
   saving?: boolean;
   backtestResult?: BacktestResult;
-  onForceAdd?: () => void;
-  forceAdding?: boolean;
 }
 
 const classificationColor: Record<string, string> = {
@@ -42,7 +40,7 @@ const classificationColor: Record<string, string> = {
   'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult }: ScoreCardProps) => {
   const criteriaList = [
     { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
     { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
@@ -130,17 +128,6 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
           >
             <Target className="w-3 h-3" />
             {saving ? 'Salvando...' : 'Salvar análise'}
-          </button>
-        )}
-
-        {!approved && onForceAdd && (
-          <button
-            onClick={onForceAdd}
-            disabled={forceAdding}
-            className="w-full mt-2 py-1.5 px-3 rounded-lg bg-yellow-500/15 text-yellow-400 text-xs font-medium hover:bg-yellow-500/25 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 border border-yellow-500/20"
-          >
-            <PlusCircle className="w-3 h-3" />
-            {forceAdding ? 'Adicionando...' : 'Adicionar manualmente'}
           </button>
         )}
       </CardContent>

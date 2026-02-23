@@ -25,7 +25,7 @@ const DEFAULT_THRESHOLDS: Record<string, number> = {
 const THRESHOLD_LIMITS: Record<string, [number, number]> = {
   min_home_goals_avg: [1.0, 2.5],
   min_away_conceded_avg: [1.0, 2.5],
-  min_over15_combined: [30, 95],
+  min_over15_combined: [50, 120],
   max_h2h_0x1: [0, 2],
 };
 
@@ -75,7 +75,7 @@ function clamp(value: number, min: number, max: number): number {
 
 // ========== Pattern Detection ==========
 
-function detectPatterns(analyses: any[]): { patterns: Record<string, any>; leagueStats: Record<string, { total: number; reds: number }> } {
+function detectPatterns(analyses: any[]): Record<string, any> {
   const patterns: Record<string, any> = {};
 
   const leagueStats: Record<string, { total: number; reds: number }> = {};
@@ -150,7 +150,7 @@ function detectPatterns(analyses: any[]): { patterns: Record<string, any>; leagu
     };
   }
 
-  return { patterns, leagueStats };
+  return patterns;
 }
 
 // ========== AI Analysis Phase ==========
@@ -490,7 +490,7 @@ serve(async (req) => {
     }
 
     // ========== PHASE 3: Pattern detection ==========
-    const { patterns, leagueStats } = detectPatterns(analyses);
+    const patterns = detectPatterns(analyses);
 
     // ========== PHASE 4: AI Analysis (Gemini) ==========
     const recentGames = analyses.slice(-30).map(a => ({
