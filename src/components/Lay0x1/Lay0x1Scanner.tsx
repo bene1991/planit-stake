@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,22 +35,12 @@ interface AnalysisResult {
 
 const CACHE_KEY_PREFIX = 'lay0x1_results_';
 const CACHE_META_PREFIX = 'lay0x1_meta_';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-function getCachedResults(date: string, todayStr: string): AnalysisResult[] | null {
+function getCachedResults(date: string): AnalysisResult[] | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY_PREFIX + date);
     if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
-    // Backtest (past dates): cache never expires
-    if (date < todayStr) return data;
-    // Today: expires after TTL
-    if (Date.now() - ts > CACHE_TTL_MS) {
-      localStorage.removeItem(CACHE_KEY_PREFIX + date);
-      localStorage.removeItem(CACHE_META_PREFIX + date);
-      return null;
-    }
-    return data;
+    return JSON.parse(raw).data;
   } catch { return null; }
 }
 
@@ -65,9 +55,7 @@ function getCachedMeta(date: string): any {
   try {
     const raw = localStorage.getItem(CACHE_META_PREFIX + date);
     if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL_MS) return null;
-    return data;
+    return JSON.parse(raw).data;
   } catch { return null; }
 }
 
@@ -80,10 +68,8 @@ export const Lay0x1Scanner = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
-  const autoFetchedRef = useRef<string | null>(null);
 
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
-  const isBacktest = selectedDate < todayStr;
 
   const dateShortcuts = useMemo(() => [
     { label: 'Ontem', date: format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') },
@@ -91,6 +77,8 @@ export const Lay0x1Scanner = () => {
     { label: '-15d', date: format(subDays(getNowInBrasilia(), 15), 'yyyy-MM-dd') },
     { label: '-30d', date: format(subDays(getNowInBrasilia(), 30), 'yyyy-MM-dd') },
   ], []);
+
+  const isBacktest = selectedDate < todayStr;
 
   // Backtest stats
   const backtestStats = useMemo(() => {
@@ -103,36 +91,23 @@ export const Lay0x1Scanner = () => {
     return { total: approved.length, finished: finished.length, greens: greens.length, reds: reds.length, winRate };
   }, [isBacktest, results]);
 
-  // Load from cache on mount / date change
+  // Load from cache on date change (never auto-fetch)
   useEffect(() => {
-    const cached = getCachedResults(selectedDate, todayStr);
+    const cached = getCachedResults(selectedDate);
     if (cached && cached.length > 0) {
       setResults(cached);
       setMeta(getCachedMeta(selectedDate));
-      autoFetchedRef.current = selectedDate;
     } else {
       setResults([]);
       setMeta(null);
     }
-  }, [selectedDate, todayStr]);
-
-  // Auto-fetch on mount if no cache (only for today/future, NOT backtest)
-  useEffect(() => {
-    if (autoFetchedRef.current === selectedDate) return;
-    if (selectedDate < todayStr) return; // Don't auto-fetch backtest
-    const cached = getCachedResults(selectedDate, todayStr);
-    if (!cached) {
-      autoFetchedRef.current = selectedDate;
-      analyzeGames();
-    }
-  }, [selectedDate, todayStr]);
+  }, [selectedDate]);
 
   const clearCache = useCallback(() => {
     localStorage.removeItem(CACHE_KEY_PREFIX + selectedDate);
     localStorage.removeItem(CACHE_META_PREFIX + selectedDate);
     setResults([]);
     setMeta(null);
-    autoFetchedRef.current = null;
     toast.success('Cache limpo para ' + selectedDate);
   }, [selectedDate]);
 
@@ -175,7 +150,7 @@ export const Lay0x1Scanner = () => {
       setResults(analysisResults);
       setMeta(resMeta);
       setCachedResults(selectedDate, analysisResults, resMeta);
-      autoFetchedRef.current = selectedDate;
+      
 
       // Only auto-save for today/future dates (not backtest)
       if (!isBacktest) {
