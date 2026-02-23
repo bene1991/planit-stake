@@ -1,69 +1,60 @@
 
 
-## Corrigir Backtest 90 Dias -- Odds Indisponiveis em Datas Antigas
+## Adicionar Metricas Financeiras ao Resumo do Modelo (Historico IA)
 
-### O Problema (confirmado nos logs)
+### Contexto
 
-Os logs do backend confirmam que para datas com mais de ~30 dias, o endpoint de odds em massa retorna **0 resultados**:
+O card "Resumo do Modelo Atual" em `src/components/Lay0x1/Lay0x1History.tsx` atualmente mostra apenas: Versao, Taxa de Acerto, Ajustes Realizados e ROI em unidades. O usuario quer ver metricas financeiras reais considerando odd media ~15.
 
-```
-[ODDS] Total: 1 pages, 0 fixtures with odds
-[SCANNER] Fixtures with odds data: 0/204
-[SCANNER] Pre-filtered (odds criteria): 0
-```
+### Calculos Financeiros (Lay 0x1, odd media 15)
 
-O scanner depende do endpoint `odds?date=YYYY-MM-DD` para buscar odds de todos os jogos de uma vez. Porem, a API-Football so mantem odds em massa para datas recentes (~30 dias). Para datas mais antigas, as odds so estao disponiveis via `odds?fixture=ID` (por jogo individual).
+- **Lucro por Green**: 1/(15-1) = 7,14% da responsabilidade (stake)
+- **Lucro liquido por Green**: 7,14% x (1 - 4,5%) = **6,82%** do stake
+- **Perda por Red**: -100% do stake
+- **Break-even**: 100 / (100 + 6,82) = **93,6%**
+- **ROI**: ((greens x 0,0682) - (reds x 1)) / total_operacoes x 100
 
-Como o pre-filtro exige odds para continuar (`if (!odds || odds.homeOdd <= 0) continue`), todos os jogos de datas antigas sao descartados.
+### Mudancas no Arquivo
 
-### A Solucao
+**Arquivo**: `src/components/Lay0x1/Lay0x1History.tsx`
 
-Quando o endpoint de odds em massa retorna 0 resultados, usar uma estrategia de fallback:
+1. Adicionar constantes para os calculos financeiros (odd media, comissao)
+2. Calcular break-even, lucro liquido total em % de stakes e ROI financeiro
+3. Expandir o grid de `grid-cols-2 sm:grid-cols-4` para `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4` com mais cards
+4. Adicionar os seguintes cards ao grid existente:
+   - **Greens / Reds**: Ex: "45 / 3" com cores verde e vermelho
+   - **Break-even**: "93,6%" com indicador se a taxa atual esta acima ou abaixo
+   - **ROI Financeiro**: Percentual calculado com lucro liquido (apos comissao)
+   - **Lucro Liquido**: Em unidades de stake (ex: "+0,75 stakes")
 
-1. **Primeiro**: Tentar odds em massa (atual, funciona para <30 dias)
-2. **Se retornar 0**: Pre-filtrar fixtures usando dados do proprio endpoint `fixtures` (que inclui status, gols, etc.) e buscar odds individualmente por fixture para os candidatos mais promissores
-3. **Otimizacao**: Limitar a busca individual de odds a fixtures que ja passam nos criterios basicos (liga nao bloqueada, jogo finalizado com placar disponivel)
+5. Manter os cards existentes (Versao, Taxa Acerto, Ajustes, ROI unidades) e adicionar os novos abaixo em uma segunda linha
 
 ### Detalhes Tecnicos
 
-**Arquivo**: `supabase/functions/analyze-lay0x1/index.ts`
+Calculos a adicionar antes do JSX:
 
-**Mudanca na funcao `serve`** (apos a chamada `fetchAllOddsPages`):
-
-Quando `oddsMap.size === 0` e a data e passada:
-
-1. Filtrar fixtures por ligas nao bloqueadas
-2. Para cada fixture candidata, buscar odds individualmente via `odds?fixture=ID` em lotes paralelos de 5
-3. Aplicar o mesmo pre-filtro de odds (home < away, away <= max)
-4. Continuar o fluxo normal de analise detalhada
-
-**Limite de seguranca**: Buscar odds individuais para no maximo 80 fixtures por dia (para nao estourar a cota da API). Priorizar fixtures ja finalizadas (FT) para backtest.
-
-**Codigo conceitual**:
 ```text
-if (oddsMap.size === 0 && isHistorical) {
-  // Filtrar fixtures finalizadas de ligas nao bloqueadas
-  const candidates = allFixtures.filter(f =>
-    ['FT','AET','PEN'].includes(f.fixture?.status?.short) &&
-    !blockedLeagues.has(f.league?.name)
-  ).slice(0, 80);
+const AVG_ODD = 15;
+const COMMISSION = 0.045;
+const GREEN_PROFIT_RATE = (1 / (AVG_ODD - 1)) * (1 - COMMISSION); // ~0.0682
+const BREAKEVEN_RATE = 100 / (100 + GREEN_PROFIT_RATE * 100); // ~93.6%
 
-  // Buscar odds em lotes paralelos de 5
-  for (batch of candidates) {
-    const oddsData = await callApiFootball('odds', { fixture: f.fixture.id });
-    // Extrair e adicionar ao oddsMap
-  }
-}
+const netProfitStakes = (totalGreens * GREEN_PROFIT_RATE) - totalReds;
+const roiPercent = resolvedAnalyses.length > 0 
+  ? ((netProfitStakes / resolvedAnalyses.length) * 100) 
+  : 0;
 ```
 
-### Resultado
+Novos cards no grid (segunda linha):
 
-- Backtest de 90 dias vai encontrar jogos em TODAS as datas, nao apenas nos ultimos ~30 dias
-- O fallback so e ativado quando odds em massa retornam vazio (sem impacto no fluxo normal)
-- Limite de 80 fixtures/dia protege a cota da API
-- Tempo de analise por dia pode aumentar um pouco (~10-15s por dia antigo), mas o resultado sera completo
+- Greens/Reds: `{totalGreens}G / {totalReds}R`
+- Break-even: `{BREAKEVEN_RATE.toFixed(1)}%` com badge indicando se taxa atual esta segura
+- ROI Financeiro: `{roiPercent.toFixed(2)}%`
+- Lucro Liquido: `{netProfitStakes >= 0 ? '+' : ''}{netProfitStakes.toFixed(2)} stakes`
 
-### Arquivos Modificados
+### Resultado Visual
 
-- `supabase/functions/analyze-lay0x1/index.ts` -- Adicionar fallback de odds individuais quando odds em massa retornam vazio
+O card "Resumo do Modelo Atual" tera 2 linhas de metricas:
+- Linha 1: Versao | Taxa Acerto | Ajustes | ROI (unidades) -- existente
+- Linha 2: Greens/Reds | Break-even | ROI Financeiro | Lucro Liquido -- novo
 
