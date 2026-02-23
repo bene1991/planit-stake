@@ -1,87 +1,77 @@
 
 
-## Completar Modelo Evolutivo Bayesiano - Lacunas Pendentes
+## Otimizacoes do Scanner Lay 0x1
 
-### Status Atual
+### Problemas Identificados
 
-A base do modelo ja esta implementada:
-- Pesos iniciais (20/20/20/15/15/10) - OK
-- Formula `novo_peso = peso_atual * (taxa_criterio / taxa_media)` - OK no `calibrate-lay0x1`
-- Limites min=5, max=30 com rebalanceamento para 100 - OK
-- Score = soma(criterio normalizado * peso adaptativo) - OK no `analyze-lay0x1`
+1. **Jogos somem ao sair da pagina**: O estado e mantido em `useState` local, que reseta ao desmontar o componente
+2. **Muito lento**: O scanner envia TODOS os jogos do dia para analise (potencialmente 200+ jogos), cada um gerando 4 chamadas de API
+3. **Falta criterio**: Odd da casa deve ser menor que odd do visitante (fundamental para Lay 0x1)
 
-### O que falta implementar
+---
 
-**1. Calibracao automatica a cada 30 jogos resolvidos**
+### Solucao 1 - Auto-fetch e persistencia
 
-Atualmente a calibracao so ocorre quando o usuario clica "Recalibrar Pesos" no Dashboard. O sistema deve disparar automaticamente apos cada resolucao de resultado quando `resolved_count % 30 === 0`.
+**Arquivo: `src/components/Lay0x1/Lay0x1Scanner.tsx`**
 
-Arquivo: `src/hooks/useLay0x1Analyses.ts`
-- Apos `resolveAnalysis` com sucesso, contar jogos resolvidos
-- Se `resolved_count % 30 === 0`, chamar `supabase.functions.invoke('calibrate-lay0x1')` automaticamente
-- Mostrar toast informando que recalibracao automatica ocorreu
+- Adicionar `useEffect` que busca fixtures automaticamente ao montar o componente (quando `selectedDate` muda)
+- Guardar fixtures e results em `sessionStorage` com chave por data, para que ao voltar a pagina os dados ja estejam la
+- Ao montar, verificar se ja existe cache em sessionStorage para a data atual antes de buscar
 
-**2. Analise pos-Red com 0x1 (insights automaticos)**
+### Solucao 2 - Performance (pre-filtragem de odds)
 
-Quando um resultado Red (0x1) e registrado, o sistema deve gerar insights textuais analisando qual criterio provavelmente falhou.
+**Arquivo: `supabase/functions/analyze-lay0x1/index.ts`**
 
-Arquivo: `src/hooks/useLay0x1Analyses.ts`
-- Apos detectar `was_0x1 === true`, analisar o `criteria_snapshot` do jogo
-- Gerar lista de insights, por exemplo:
-  - "Visitante tinha odd alta: X.XX (fora da faixa ideal 2.5-4.0)"
-  - "Over 1.5 combinado estava no limite: XX%"
-  - "H2H tinha historico proximo do limite"
-- Salvar insights no campo `criteria_snapshot` (adicionar chave `red_insights`)
-- Exibir toast com resumo
+Atualmente o fluxo e:
+1. Frontend busca TODOS os fixtures do dia (1 chamada API)
+2. Envia TODOS os IDs para a edge function
+3. Edge function faz 4 chamadas por jogo (fixture, h2h, stats home, stats away + odds)
 
-Arquivo: `src/components/Lay0x1/Lay0x1Dashboard.tsx`
-- Na secao de historico, quando `result === 'Red'`, exibir icone clicavel que mostra os insights do Red
+**Otimizacao**: Mover a busca de fixtures para dentro da edge function e fazer pre-filtragem por odds ANTES de analisar cada jogo em detalhe:
 
-**3. Rebalanceamento forcado a cada 100 jogos**
+1. Edge function recebe apenas a `date` (em vez de fixture_ids)
+2. Busca fixtures do dia (1 chamada)
+3. Busca odds de TODOS os jogos em lote (endpoint `odds` aceita `date`)
+4. Filtra apenas jogos onde `home_odd < away_odd` (criterio novo)
+5. So ENTAO analisa os jogos filtrados (H2H, stats)
+6. Isso reduz drasticamente o numero de chamadas - de ~800 (200 jogos x 4) para ~50-80 (pre-filtrados)
 
-Arquivo: `supabase/functions/calibrate-lay0x1/index.ts`
-- Adicionar logica: se `cycle_count % 10 === 0` (cada ciclo = 30 jogos, entao ciclo 3-4 ~ 100 jogos), aplicar rebalanceamento forcado
-- Rebalanceamento forcado: puxa os pesos mais proximo dos defaults (media entre peso atual e default), evitando distorcao extrema
+O frontend passa a fazer uma unica chamada com a data, sem precisar buscar fixtures separadamente.
 
-**4. Evolucao mensal e por liga no Dashboard**
+### Solucao 3 - Novo criterio: Odd casa < Odd visitante
 
-Arquivo: `src/components/Lay0x1/Lay0x1Dashboard.tsx`
-- Adicionar secao de evolucao mensal: agrupar analises por mes e mostrar win rate por mes
-- Adicionar secao de evolucao por liga: agrupar por liga e mostrar win rate por liga
-- Ambos com mini graficos de barras
+**Arquivo: `supabase/functions/analyze-lay0x1/index.ts`**
 
-**5. Historico de calibracoes na aba Config**
+- Extrair `home_odd` alem de `away_odd` na fase de odds
+- Adicionar criterio `home_odd_lower`: `home_odd < away_odd`
+- Incluir no criteria_met e nas reasons quando falhar
+- Incluir `home_odd` no objeto criteria retornado
 
-Arquivo: `src/components/Lay0x1/Lay0x1Evolution.tsx`
-- Exibir historico de quando cada calibracao ocorreu
-- Mostrar pesos antes/depois de cada calibracao (guardados no `weights_snapshot` das analises)
+**Arquivo: `src/components/Lay0x1/Lay0x1Scanner.tsx`**
+
+- Nao precisa mais do botao "Buscar Jogos" separado - um unico botao "Analisar" busca e analisa
+- Mostrar progresso durante a analise
 
 ---
 
 ### Detalhes Tecnicos
 
-**Alteracoes em `useLay0x1Analyses.ts`:**
-- `resolveAnalysis`: apos update com sucesso, verificar se `resolved.length % 30 === 0`; se sim, invocar `calibrate-lay0x1`
-- Se `was_0x1`, gerar insights localmente comparando `criteria_snapshot` com thresholds e salvar via update no `criteria_snapshot`
+**Mudancas em `analyze-lay0x1/index.ts`:**
+- Aceitar `{ date }` alem de `{ fixture_ids }` como input
+- Quando receber `date`: buscar fixtures, buscar odds em lote, pre-filtrar, analisar apenas os filtrados
+- Extrair home_odd do mesmo endpoint de odds
+- Novo criterio: `home_odd_lower: homeOdd > 0 && homeOdd < awayOdd`
+- Reason: `"Odd casa (X.XX) >= Odd visitante (X.XX)"`
 
-**Alteracoes em `calibrate-lay0x1/index.ts`:**
-- Adicionar campo `forced_rebalance` na resposta
-- Se `newCycleCount % 4 === 0` (aprox 120 jogos), aplicar anti-overfitting: `adjusted_weight = (current + default) / 2` antes da formula principal
+**Mudancas em `Lay0x1Scanner.tsx`:**
+- Remover estado `fixtures` separado e botao "Buscar Jogos"
+- Um unico botao "Analisar Jogos do Dia" que envia `{ date: selectedDate }` para a edge function
+- `useEffect` no mount: se ja tem resultados em sessionStorage para a data, carrega; senao, dispara analise automaticamente
+- Salvar `results` em `sessionStorage` com chave `lay0x1_results_${selectedDate}`
+- Ao mudar data, limpar resultados e buscar novamente
+- Mostrar contador de progresso durante analise
 
-**Alteracoes em `Lay0x1Dashboard.tsx`:**
-- Nova secao "Evolucao Mensal" com tabela agrupada por ano-mes
-- Nova secao "Performance por Liga" com tabela agrupada por liga
-- Icone de info nos Reds que mostra insights
-
-**Alteracoes em `Lay0x1Evolution.tsx`:**
-- Exibir numero do ciclo atual e data da ultima calibracao (ja existe)
-- Adicionar texto explicativo sobre o modelo bayesiano
-
-### Resumo de Arquivos
-
-**Modificados:**
-- `src/hooks/useLay0x1Analyses.ts` (auto-calibracao + insights pos-Red)
-- `src/components/Lay0x1/Lay0x1Dashboard.tsx` (evolucao mensal, por liga, insights Red)
-- `src/components/Lay0x1/Lay0x1Evolution.tsx` (historico calibracoes, texto explicativo)
-- `supabase/functions/calibrate-lay0x1/index.ts` (rebalanceamento forcado anti-overfitting)
+**Arquivos modificados:**
+- `supabase/functions/analyze-lay0x1/index.ts` (pre-filtragem por odds + novo criterio)
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` (auto-fetch + cache + UI simplificada)
 
