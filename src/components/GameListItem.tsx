@@ -1,7 +1,7 @@
 import { Game, Method, GoalEvent } from "@/types";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, Minus, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle, Sparkles } from "lucide-react";
+import { Shield, Check, X, Minus, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle, Sparkles, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PreMatchModal } from "@/components/PreMatchAnalysis/PreMatchModal";
 
 interface LiveScoreEvent {
   minute: number;
@@ -66,6 +67,7 @@ export function GameListItem({
   onRedCardDetected,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showPreMatch, setShowPreMatch] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
   const lastSyncRef = useRef<number>(0);
   
@@ -408,6 +410,12 @@ export function GameListItem({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {game.api_fixture_id && (
+                  <DropdownMenuItem onClick={() => setShowPreMatch(true)}>
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Análise pré-jogo
+                  </DropdownMenuItem>
+                )}
                 {onEdit && (
                   <DropdownMenuItem onClick={() => onEdit(game)}>
                     <Settings className="h-4 w-4 mr-2" />
@@ -592,6 +600,16 @@ export function GameListItem({
 
         </div>
       </CollapsibleContent>
+
+      {game.api_fixture_id && (
+        <PreMatchModal
+          open={showPreMatch}
+          onOpenChange={setShowPreMatch}
+          fixtureId={game.api_fixture_id}
+          homeTeam={game.homeTeam}
+          awayTeam={game.awayTeam}
+        />
+      )}
     </Collapsible>
   );
 }
