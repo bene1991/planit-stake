@@ -8,7 +8,7 @@ import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw, Trash2, Ban, ChevronDown, Brain, Loader2 } from 'lucide-react';
+import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw, Trash2, Ban, ChevronDown, Brain, Loader2, CalendarDays } from 'lucide-react';
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
@@ -51,6 +51,28 @@ export const Lay0x1Dashboard = () => {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, { greens, total }]) => ({
         month, winRate: Math.round((greens / total) * 100), total, greens,
+      }));
+  }, [resolvedAnalyses]);
+
+  // Daily results data
+  const dailyData = useMemo(() => {
+    const byDay: Record<string, { greens: number; reds: number; total: number }> = {};
+    resolvedAnalyses.forEach(a => {
+      const day = a.date || 'N/A';
+      if (!byDay[day]) byDay[day] = { greens: 0, reds: 0, total: 0 };
+      byDay[day].total++;
+      if (a.result === 'Green') byDay[day].greens++;
+      else byDay[day].reds++;
+    });
+    return Object.entries(byDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-30) // last 30 days
+      .map(([date, { greens, reds, total }]) => ({
+        date: date.substring(5), // MM-DD
+        greens,
+        reds: -reds, // negative for visual stacking
+        total,
+        winRate: Math.round((greens / total) * 100),
       }));
   }, [resolvedAnalyses]);
 
@@ -219,7 +241,40 @@ export const Lay0x1Dashboard = () => {
         </Card>
       )}
 
-      {/* League Performance with Block button */}
+      {/* Daily Results */}
+      {dailyData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <CalendarDays className="w-4 h-4" /> Resultados por Dia
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={dailyData} stackOffset="sign">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <RechartsTooltip
+                  formatter={(value: number, name: string) => {
+                    const absVal = Math.abs(value);
+                    return [absVal, name === 'greens' ? 'Greens' : 'Reds'];
+                  }}
+                  labelFormatter={(label) => `Dia: ${label}`}
+                />
+                <Bar dataKey="greens" fill="hsl(142 71% 45%)" radius={[4, 4, 0, 0]} stackId="stack" />
+                <Bar dataKey="reds" fill="hsl(0 84% 60%)" radius={[0, 0, 4, 4]} stackId="stack" />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex items-center justify-center gap-4 mt-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Greens</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Reds</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+
       {leagueData.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
