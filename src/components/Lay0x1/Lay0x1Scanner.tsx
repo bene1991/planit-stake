@@ -35,26 +35,36 @@ interface AnalysisResult {
 
 const CACHE_KEY_PREFIX = 'lay0x1_results_';
 const CACHE_META_PREFIX = 'lay0x1_meta_';
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function getCachedResults(date: string): AnalysisResult[] | null {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY_PREFIX + date);
+    const raw = localStorage.getItem(CACHE_KEY_PREFIX + date);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) {
+      localStorage.removeItem(CACHE_KEY_PREFIX + date);
+      localStorage.removeItem(CACHE_META_PREFIX + date);
+      return null;
+    }
+    return data;
   } catch { return null; }
 }
 
 function setCachedResults(date: string, results: AnalysisResult[], meta?: any) {
   try {
-    sessionStorage.setItem(CACHE_KEY_PREFIX + date, JSON.stringify(results));
-    if (meta) sessionStorage.setItem(CACHE_META_PREFIX + date, JSON.stringify(meta));
+    localStorage.setItem(CACHE_KEY_PREFIX + date, JSON.stringify({ data: results, ts: Date.now() }));
+    if (meta) localStorage.setItem(CACHE_META_PREFIX + date, JSON.stringify({ data: meta, ts: Date.now() }));
   } catch { /* storage full */ }
 }
 
 function getCachedMeta(date: string): any {
   try {
-    const raw = sessionStorage.getItem(CACHE_META_PREFIX + date);
-    return raw ? JSON.parse(raw) : null;
+    const raw = localStorage.getItem(CACHE_META_PREFIX + date);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null;
+    return data;
   } catch { return null; }
 }
 
