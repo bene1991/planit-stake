@@ -348,15 +348,52 @@ export const Lay0x1Scanner = () => {
     let saved = 0;
     for (const r of approved) {
       if (existingFixtureIds.has(r.fixture_id)) continue;
+      
+      // Check if game has final score (backtest data)
+      const hasResult = r.final_score_home != null && r.final_score_away != null;
+      const was0x1 = hasResult ? (r.final_score_home === 0 && r.final_score_away === 1) : undefined;
+      const result = hasResult ? (was0x1 ? 'Red' : 'Green') : undefined;
+
       const res = await saveAnalysis({
         fixture_id: r.fixture_id, home_team: r.home_team, away_team: r.away_team,
         league: r.league, date: r.date, score_value: r.score_value,
         classification: r.classification, criteria_snapshot: r.criteria, weights_snapshot: weights,
+        ...(hasResult ? {
+          final_score_home: r.final_score_home,
+          final_score_away: r.final_score_away,
+          was_0x1: was0x1,
+          result,
+          resolved_at: new Date().toISOString(),
+        } : {}),
       });
       if (res && !res.error) saved++;
     }
-    if (saved > 0) toast.success(`${saved} jogo(s) salvos para calibração`);
-    else toast.info('Todos já estavam salvos');
+    
+    if (saved > 0) {
+      toast.success(`${saved} jogo(s) salvos para calibração${saved > 0 ? ' (com resultado)' : ''}`);
+      
+      // Check if we should trigger auto-calibration
+      const resolvedCount = analyses.filter(a => a.result).length + saved;
+      if (resolvedCount > 0 && resolvedCount % 30 === 0) {
+        toast.info('🔄 Recalibração automática iniciada...', { duration: 3000 });
+        try {
+          const calRes = await supabase.functions.invoke('calibrate-lay0x1');
+          if (calRes.data?.error) {
+            toast.error('Erro na recalibração: ' + calRes.data.error);
+          } else {
+            const aiUsed = calRes.data?.ai_recommendations ? ' (com IA)' : '';
+            toast.success(`✅ Recalibração #${calRes.data?.cycle || '?'} concluída${aiUsed}!`, {
+              description: `Taxa geral: ${calRes.data?.general_rate || 0}%${calRes.data?.auto_actions?.length ? ` • ${calRes.data.auto_actions.length} ação(ões) automática(s)` : ''}`,
+              duration: 6000,
+            });
+          }
+        } catch {
+          toast.error('Erro na recalibração automática');
+        }
+      }
+    } else {
+      toast.info('Todos já estavam salvos');
+    }
     setSavingBacktest(false);
   }, [filteredResults, analyses, saveAnalysis, weights]);
 

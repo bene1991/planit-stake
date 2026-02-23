@@ -78,7 +78,6 @@ function clamp(value: number, min: number, max: number): number {
 function detectPatterns(analyses: any[]): Record<string, any> {
   const patterns: Record<string, any> = {};
 
-  // 1. Leagues with highest Red rate
   const leagueStats: Record<string, { total: number; reds: number }> = {};
   for (const a of analyses) {
     if (!leagueStats[a.league]) leagueStats[a.league] = { total: 0, reds: 0 };
@@ -92,7 +91,9 @@ function detectPatterns(analyses: any[]): Record<string, any> {
     .slice(0, 5);
   patterns.top_red_leagues = leagueRedRates;
 
-  // 2. Leagues with 2+ consecutive Reds (auto-escalation alert)
+  // Leagues to auto-block: Red rate > 50% with 3+ games
+  patterns.leagues_to_block = leagueRedRates.filter(l => l.rate > 0.5 && l.total >= 3).map(l => l.league);
+
   const leagueConsecutiveReds: string[] = [];
   const leagueLastResults: Record<string, string[]> = {};
   for (const a of analyses) {
@@ -108,7 +109,6 @@ function detectPatterns(analyses: any[]): Record<string, any> {
   }
   patterns.consecutive_red_leagues = leagueConsecutiveReds;
 
-  // 3. Odds ranges with worst performance
   const oddsRanges = [
     { label: '1.50-2.50', min: 1.5, max: 2.5 },
     { label: '2.50-3.50', min: 2.5, max: 3.5 },
@@ -129,7 +129,6 @@ function detectPatterns(analyses: any[]): Record<string, any> {
   });
   patterns.odds_performance = oddsPerformance;
 
-  // 4. Offensive averages not converting
   const redAnalyses = analyses.filter(a => a.result === 'Red');
   const redOffensiveAvgs = redAnalyses
     .map(a => (a.criteria_snapshot as any)?.home_goals_avg)
@@ -141,7 +140,6 @@ function detectPatterns(analyses: any[]): Record<string, any> {
     };
   }
 
-  // 5. Over 1.5 artificial trend
   const redOver15 = redAnalyses
     .map(a => (a.criteria_snapshot as any)?.over15_combined)
     .filter((v: any) => typeof v === 'number');
@@ -155,43 +153,139 @@ function detectPatterns(analyses: any[]): Record<string, any> {
   return patterns;
 }
 
-function buildChangesSummary(
-  weightKeys: string[],
-  oldWeightsObj: Record<string, number>,
-  newWeights: Record<string, number>,
-  oldThresholds: Record<string, number>,
-  newThresholds: Record<string, number>,
-  generalRate: number,
-  forcedRebalance: boolean,
-): string[] {
-  const changes: string[] = [];
+// ========== AI Analysis Phase ==========
 
-  for (const key of weightKeys) {
-    const oldVal = oldWeightsObj[key] ?? DEFAULT_WEIGHTS[key];
-    const newVal = newWeights[key];
-    if (Math.abs(oldVal - newVal) >= 0.5) {
-      const direction = newVal > oldVal ? 'fortalecido' : 'enfraquecido';
-      changes.push(`${WEIGHT_LABELS[key] || key}: ${oldVal} → ${newVal} (${direction})`);
+async function callAIForCalibration(data: {
+  generalRate: number;
+  criterionRates: Record<string, number>;
+  oldWeights: Record<string, number>;
+  newWeightsMath: Record<string, number>;
+  oldThresholds: Record<string, number>;
+  newThresholdsMath: Record<string, number>;
+  patterns: Record<string, any>;
+  recentGames: any[];
+  currentMinScore: number;
+}): Promise<any> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.log('[AI] LOVABLE_API_KEY not set, skipping AI phase');
+    return null;
+  }
+
+  const prompt = `Você é um analista especialista em estratégia Lay 0x1 no futebol. Analise os dados de calibração abaixo e forneça recomendações estratégicas.
+
+## Dados da Calibração
+
+- Taxa de acerto geral: ${Math.round(data.generalRate * 100)}%
+- Score mínimo atual: ${data.currentMinScore}
+- Taxas por critério: ${JSON.stringify(data.criterionRates)}
+
+## Pesos
+- Anteriores: ${JSON.stringify(data.oldWeights)}
+- Calculados matematicamente: ${JSON.stringify(data.newWeightsMath)}
+
+## Thresholds
+- Anteriores: ${JSON.stringify(data.oldThresholds)}
+- Calculados: ${JSON.stringify(data.newThresholdsMath)}
+
+## Padrões Detectados
+${JSON.stringify(data.patterns, null, 2)}
+
+## Últimos 30 jogos (resultados)
+${data.recentGames.map(g => `${g.home_team} vs ${g.away_team} (${g.league}) - Score: ${g.score_value} - ${g.result} ${g.was_0x1 ? '(0x1!)' : ''}`).join('\n')}
+
+Analise tudo e retorne recomendações usando a função fornecida.`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'Você é um analista de dados esportivos especializado em Lay 0x1. Responda SEMPRE usando a função fornecida.' },
+          { role: 'user', content: prompt },
+        ],
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'calibration_recommendations',
+            description: 'Retorna recomendações estruturadas de calibração da IA',
+            parameters: {
+              type: 'object',
+              properties: {
+                weight_adjustments: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string', description: 'Nome do peso (ex: offensive_weight)' },
+                      recommended_value: { type: 'number', description: 'Valor recomendado (5-30)' },
+                      reason: { type: 'string', description: 'Justificativa da alteração' },
+                    },
+                    required: ['key', 'recommended_value', 'reason'],
+                  },
+                },
+                threshold_adjustments: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      key: { type: 'string' },
+                      recommended_value: { type: 'number' },
+                      reason: { type: 'string' },
+                    },
+                    required: ['key', 'recommended_value', 'reason'],
+                  },
+                },
+                leagues_to_block: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Ligas que devem ser bloqueadas automaticamente',
+                },
+                recommended_min_score: {
+                  type: 'number',
+                  description: 'Score mínimo recomendado (60-80)',
+                },
+                trends: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Tendências identificadas',
+                },
+                strategic_summary: {
+                  type: 'string',
+                  description: 'Resumo estratégico em linguagem natural',
+                },
+              },
+              required: ['weight_adjustments', 'leagues_to_block', 'recommended_min_score', 'trends', 'strategic_summary'],
+            },
+          },
+        }],
+        tool_choice: { type: 'function', function: { name: 'calibration_recommendations' } },
+      }),
+    });
+
+    if (!response.ok) {
+      const status = response.status;
+      console.error(`[AI] Gateway error: ${status}`);
+      return null;
     }
-  }
 
-  for (const key of Object.keys(DEFAULT_THRESHOLDS)) {
-    const oldVal = oldThresholds[key];
-    const newVal = newThresholds[key];
-    if (oldVal !== newVal) {
-      changes.push(`Threshold ${THRESHOLD_LABELS[key] || key}: ${oldVal} → ${newVal}`);
+    const result = await response.json();
+    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const parsed = JSON.parse(toolCall.function.arguments);
+      console.log('[AI] Recommendations received:', JSON.stringify(parsed).slice(0, 200));
+      return parsed;
     }
+    return null;
+  } catch (err) {
+    console.error('[AI] Error calling AI:', err);
+    return null;
   }
-
-  if (forcedRebalance) {
-    changes.push('Anti-overfitting: rebalanceamento forçado aplicado');
-  }
-
-  if (generalRate < 0.65) {
-    changes.push(`⚠️ Taxa geral (${Math.round(generalRate * 100)}%) abaixo de 65% - recomendado elevar score mínimo`);
-  }
-
-  return changes;
 }
 
 serve(async (req) => {
@@ -209,6 +303,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const serviceSupabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const token = authHeader.replace('Bearer ', '');
@@ -245,9 +344,12 @@ serve(async (req) => {
       ...DEFAULT_WEIGHTS,
       ...DEFAULT_THRESHOLDS,
       cycle_count: 0,
+      min_score: 65,
     };
 
-    // ========== PHASE 1: Weight calibration ==========
+    const currentMinScore = (weights as any).min_score ?? 65;
+
+    // ========== PHASE 1: Weight calibration (mathematical) ==========
     const criteriaKeys = ['home_goals_avg', 'away_conceded_avg', 'over15_combined', 'league_goals_avg', 'h2h_0x1_count', 'away_odd'];
     const weightKeys = Object.keys(DEFAULT_WEIGHTS);
 
@@ -276,44 +378,40 @@ serve(async (req) => {
     const newCycleCount = (weights.cycle_count || 0) + 1;
     const forcedRebalance = newCycleCount % 4 === 0;
 
-    // Save old weights for history
     const oldWeightsObj: Record<string, number> = {};
     for (const k of weightKeys) {
       oldWeightsObj[k] = (weights as any)[k] ?? DEFAULT_WEIGHTS[k];
     }
 
-    const newWeights: Record<string, number> = {};
+    const mathWeights: Record<string, number> = {};
     let totalNewWeight = 0;
 
     for (let i = 0; i < weightKeys.length; i++) {
       let currentW = (weights as any)[weightKeys[i]] as number;
-
       if (forcedRebalance) {
         currentW = (currentW + DEFAULT_WEIGHTS[weightKeys[i]]) / 2;
       }
-
       const rate = criterionRates[i];
       let newW = currentW * (rate / (avgRate || 0.5));
       newW = Math.max(5, Math.min(30, newW));
-      newWeights[weightKeys[i]] = newW;
+      mathWeights[weightKeys[i]] = newW;
       totalNewWeight += newW;
     }
 
     const scale = 100 / totalNewWeight;
     for (const key of weightKeys) {
-      newWeights[key] = Math.round(newWeights[key] * scale * 10) / 10;
+      mathWeights[key] = Math.round(mathWeights[key] * scale * 10) / 10;
     }
-
-    const finalSum = weightKeys.reduce((s, k) => s + newWeights[k], 0);
+    const finalSum = weightKeys.reduce((s, k) => s + mathWeights[k], 0);
     const diff = 100 - finalSum;
-    newWeights[weightKeys[0]] = Math.round((newWeights[weightKeys[0]] + diff) * 10) / 10;
+    mathWeights[weightKeys[0]] = Math.round((mathWeights[weightKeys[0]] + diff) * 10) / 10;
 
-    // ========== PHASE 2: Threshold calibration ==========
+    // ========== PHASE 2: Threshold calibration (mathematical) ==========
     const greenAnalyses = analyses.filter(a => a.result === 'Green');
     const redAnalyses = analyses.filter(a => a.result === 'Red');
 
     const oldThresholds: Record<string, number> = {};
-    const newThresholds: Record<string, number> = {};
+    const mathThresholds: Record<string, number> = {};
     const thresholdDetails: Record<string, any> = {};
 
     for (const [thresholdKey, snapshotField] of Object.entries(THRESHOLD_TO_SNAPSHOT)) {
@@ -335,7 +433,7 @@ serve(async (req) => {
       const [limitMin, limitMax] = THRESHOLD_LIMITS[thresholdKey];
 
       if (greenValues.length < 3 || redValues.length < 2) {
-        newThresholds[thresholdKey] = currentValue;
+        mathThresholds[thresholdKey] = currentValue;
         thresholdDetails[thresholdKey] = { status: 'insufficient_data', green_count: greenValues.length, red_count: redValues.length };
         continue;
       }
@@ -356,7 +454,7 @@ serve(async (req) => {
         finalValue = Math.round(finalValue * 10) / 10;
       }
 
-      newThresholds[thresholdKey] = finalValue;
+      mathThresholds[thresholdKey] = finalValue;
       thresholdDetails[thresholdKey] = {
         status: 'calibrated',
         green_median: Math.round(getMedian(greenValues) * 100) / 100,
@@ -371,18 +469,149 @@ serve(async (req) => {
     // ========== PHASE 3: Pattern detection ==========
     const patterns = detectPatterns(analyses);
 
-    // ========== PHASE 4: Build changes summary ==========
-    const triggerType = forcedRebalance && newCycleCount % (100 / 30) === 0 ? 'rebalance_100' : (forcedRebalance ? 'auto_30' : 'auto_30');
-    const changesSummary = buildChangesSummary(weightKeys, oldWeightsObj, newWeights, oldThresholds, newThresholds, generalRate, forcedRebalance);
+    // ========== PHASE 4: AI Analysis (Gemini) ==========
+    const recentGames = analyses.slice(-30).map(a => ({
+      home_team: a.home_team,
+      away_team: a.away_team,
+      league: a.league,
+      score_value: a.score_value,
+      result: a.result,
+      was_0x1: a.was_0x1,
+    }));
 
-    // ========== PHASE 5: Upsert weights ==========
+    let aiRecommendations: any = null;
+    const finalWeights = { ...mathWeights };
+    const finalThresholds = { ...mathThresholds };
+    let newMinScore = currentMinScore;
+    const autoActions: string[] = [];
+
+    try {
+      aiRecommendations = await callAIForCalibration({
+        generalRate,
+        criterionRates: criterionRatesObj,
+        oldWeights: oldWeightsObj,
+        newWeightsMath: mathWeights,
+        oldThresholds,
+        newThresholdsMath: mathThresholds,
+        patterns,
+        recentGames,
+        currentMinScore,
+      });
+    } catch (err) {
+      console.error('[AI] Failed:', err);
+    }
+
+    // Apply AI recommendations if available
+    if (aiRecommendations) {
+      // Apply weight adjustments from AI
+      if (aiRecommendations.weight_adjustments?.length > 0) {
+        for (const adj of aiRecommendations.weight_adjustments) {
+          if (weightKeys.includes(adj.key)) {
+            const val = clamp(adj.recommended_value, 5, 30);
+            finalWeights[adj.key] = Math.round(val * 10) / 10;
+            autoActions.push(`IA: ${WEIGHT_LABELS[adj.key] || adj.key} → ${val} (${adj.reason})`);
+          }
+        }
+        // Re-normalize weights to sum to 100
+        const total = weightKeys.reduce((s, k) => s + finalWeights[k], 0);
+        const sc = 100 / total;
+        for (const k of weightKeys) {
+          finalWeights[k] = Math.round(finalWeights[k] * sc * 10) / 10;
+        }
+        const fs = weightKeys.reduce((s, k) => s + finalWeights[k], 0);
+        finalWeights[weightKeys[0]] = Math.round((finalWeights[weightKeys[0]] + (100 - fs)) * 10) / 10;
+      }
+
+      // Apply threshold adjustments from AI
+      if (aiRecommendations.threshold_adjustments?.length > 0) {
+        for (const adj of aiRecommendations.threshold_adjustments) {
+          if (THRESHOLD_LIMITS[adj.key]) {
+            const [lMin, lMax] = THRESHOLD_LIMITS[adj.key];
+            finalThresholds[adj.key] = clamp(adj.recommended_value, lMin, lMax);
+            autoActions.push(`IA: Threshold ${THRESHOLD_LABELS[adj.key] || adj.key} → ${finalThresholds[adj.key]} (${adj.reason})`);
+          }
+        }
+      }
+
+      // Apply recommended min score
+      if (aiRecommendations.recommended_min_score) {
+        newMinScore = clamp(aiRecommendations.recommended_min_score, 55, 80);
+        if (newMinScore !== currentMinScore) {
+          autoActions.push(`IA: Score mínimo ${currentMinScore} → ${newMinScore}`);
+        }
+      }
+
+      // Auto-block leagues recommended by AI
+      if (aiRecommendations.leagues_to_block?.length > 0) {
+        for (const league of aiRecommendations.leagues_to_block) {
+          const { error: blockErr } = await supabase
+            .from('lay0x1_blocked_leagues')
+            .upsert(
+              { owner_id: userId, league_name: league, reason: 'auto_ia' },
+              { onConflict: 'owner_id,league_name', ignoreDuplicates: true }
+            );
+          if (!blockErr) {
+            autoActions.push(`IA: Liga bloqueada automaticamente → ${league}`);
+          }
+        }
+      }
+    } else {
+      // Fallback: auto-block leagues with > 50% Red and 3+ games (pattern-based)
+      if (patterns.leagues_to_block?.length > 0) {
+        for (const league of patterns.leagues_to_block) {
+          const { error: blockErr } = await supabase
+            .from('lay0x1_blocked_leagues')
+            .upsert(
+              { owner_id: userId, league_name: league, reason: 'auto_pattern' },
+              { onConflict: 'owner_id,league_name', ignoreDuplicates: true }
+            );
+          if (!blockErr) {
+            autoActions.push(`Auto-bloqueio: ${league} (Red > 50%)`);
+          }
+        }
+      }
+
+      // Fallback: dynamic min_score based on general rate
+      if (generalRate < 0.65 && currentMinScore < 70) {
+        newMinScore = 70;
+        autoActions.push(`Score mínimo elevado: ${currentMinScore} → 70 (taxa geral ${Math.round(generalRate * 100)}%)`);
+      } else if (generalRate >= 0.75 && currentMinScore > 65) {
+        newMinScore = 65;
+        autoActions.push(`Score mínimo restaurado: ${currentMinScore} → 65 (taxa geral ${Math.round(generalRate * 100)}%)`);
+      }
+    }
+
+    // ========== PHASE 5: Build changes summary ==========
+    const changesSummary: string[] = [];
+    for (const key of weightKeys) {
+      const oldVal = oldWeightsObj[key];
+      const newVal = finalWeights[key];
+      if (Math.abs(oldVal - newVal) >= 0.5) {
+        const direction = newVal > oldVal ? 'fortalecido' : 'enfraquecido';
+        changesSummary.push(`${WEIGHT_LABELS[key] || key}: ${oldVal} → ${newVal} (${direction})`);
+      }
+    }
+    for (const key of Object.keys(DEFAULT_THRESHOLDS)) {
+      const oldVal = oldThresholds[key];
+      const newVal = finalThresholds[key];
+      if (oldVal !== newVal) {
+        changesSummary.push(`Threshold ${THRESHOLD_LABELS[key] || key}: ${oldVal} → ${newVal}`);
+      }
+    }
+    if (forcedRebalance) changesSummary.push('Anti-overfitting: rebalanceamento forçado aplicado');
+    changesSummary.push(...autoActions);
+
+    const triggerType = forcedRebalance && newCycleCount % (100 / 30) === 0 ? 'rebalance_100' : 'auto_30';
+
+    // ========== PHASE 6: Upsert weights ==========
     const { error: upsertErr } = await supabase
       .from('lay0x1_weights')
       .upsert({
         owner_id: userId,
-        ...newWeights,
-        ...newThresholds,
+        ...finalWeights,
+        ...finalThresholds,
         max_away_odd: (weights as any).max_away_odd ?? 4.5,
+        min_score: newMinScore,
         cycle_count: newCycleCount,
         last_calibration_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -390,7 +619,7 @@ serve(async (req) => {
 
     if (upsertErr) throw upsertErr;
 
-    // ========== PHASE 6: Save calibration history ==========
+    // ========== PHASE 7: Save calibration history ==========
     const historyRecord = {
       owner_id: userId,
       cycle_number: newCycleCount,
@@ -398,14 +627,15 @@ serve(async (req) => {
       total_analyses: analyses.length,
       general_rate: Math.round(generalRate * 100) / 100,
       old_weights: oldWeightsObj,
-      new_weights: newWeights,
+      new_weights: finalWeights,
       old_thresholds: oldThresholds,
-      new_thresholds: newThresholds,
+      new_thresholds: finalThresholds,
       criterion_rates: criterionRatesObj,
       threshold_details: thresholdDetails,
       patterns_detected: patterns,
       changes_summary: changesSummary,
       forced_rebalance: forcedRebalance,
+      ai_recommendations: aiRecommendations || {},
     };
 
     const { error: histErr } = await supabase
@@ -425,12 +655,15 @@ serve(async (req) => {
         general_rate: Math.round(generalRate * 100),
         criterion_rates: criterionRatesObj,
         old_weights: oldWeightsObj,
-        new_weights: newWeights,
+        new_weights: finalWeights,
         old_thresholds: oldThresholds,
-        new_thresholds: newThresholds,
+        new_thresholds: finalThresholds,
         threshold_details: thresholdDetails,
         patterns_detected: patterns,
         changes_summary: changesSummary,
+        ai_recommendations: aiRecommendations,
+        auto_actions: autoActions,
+        min_score: newMinScore,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
