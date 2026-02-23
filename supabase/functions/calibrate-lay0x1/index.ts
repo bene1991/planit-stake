@@ -267,7 +267,7 @@ Com base no contexto financeiro (break-even de ${fc.break_even_rate_pct.toFixed(
                 leagues_to_block: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'Ligas que devem ser bloqueadas automaticamente',
+                  description: 'Ligas que devem ser bloqueadas. SOMENTE ligas com pelo menos 1 Red no historico. NUNCA bloqueie ligas com 0 Reds.',
                 },
               recommended_min_score: {
                   type: 'number',
@@ -590,9 +590,14 @@ serve(async (req) => {
         }
       }
 
-      // Auto-block leagues recommended by AI
+      // Auto-block leagues recommended by AI — ONLY if they have reds
       if (aiRecommendations.leagues_to_block?.length > 0) {
         for (const league of aiRecommendations.leagues_to_block) {
+          const stats = leagueStats[league];
+          if (!stats || stats.reds === 0) {
+            console.log(`[AI] Skipping block for "${league}" — no reds (${stats?.total || 0} games, 0 reds)`);
+            continue;
+          }
           const { error: blockErr } = await supabase
             .from('lay0x1_blocked_leagues')
             .upsert(
