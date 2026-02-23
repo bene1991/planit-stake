@@ -225,6 +225,43 @@ serve(async (req) => {
       oddsMap = await fetchAllOddsPages(date);
       console.log(`[SCANNER] Fixtures with odds data: ${oddsMap.size}/${totalFixtures}`);
 
+      // 2b. FALLBACK: If bulk odds returned 0 results (historical date > ~30 days),
+      // fetch odds individually for up to 80 candidate fixtures
+      if (oddsMap.size === 0 && totalFixtures > 0) {
+        console.log(`[SCANNER] Bulk odds returned 0 — activating individual odds fallback`);
+        
+        // Filter: finished games from non-blocked leagues
+        const candidates = allFixtures.filter((f: any) => {
+          const status = f.fixture?.status?.short;
+          const leagueName = f.league?.name || '';
+          return ['FT', 'AET', 'PEN'].includes(status) && !blockedLeagues.has(leagueName);
+        }).slice(0, 80);
+
+        console.log(`[SCANNER] Fallback candidates: ${candidates.length} (finished, non-blocked)`);
+
+        // Fetch odds in parallel batches of 5
+        const ODDS_BATCH = 5;
+        for (let i = 0; i < candidates.length; i += ODDS_BATCH) {
+          const batch = candidates.slice(i, i + ODDS_BATCH);
+          const results = await Promise.all(
+            batch.map((f: any) => callApiFootball('odds', { fixture: f.fixture.id }))
+          );
+          for (let j = 0; j < results.length; j++) {
+            const oddsResp = results[j]?.response || [];
+            if (oddsResp.length > 0) {
+              const fId = candidates[i + j].fixture?.id;
+              if (fId) {
+                oddsMap.set(fId, extractOdds(oddsResp[0]?.bookmakers || []));
+              }
+            }
+          }
+          if (i + ODDS_BATCH < candidates.length) {
+            console.log(`[SCANNER] Fallback odds batch ${Math.floor(i / ODDS_BATCH) + 1} — oddsMap: ${oddsMap.size}`);
+          }
+        }
+        console.log(`[SCANNER] Fallback complete: ${oddsMap.size} fixtures with odds`);
+      }
+
       // 3. Pre-filter: home_odd < away_odd AND away_odd within range AND league not blocked
       for (const [fId, fixture] of fixtureMap.entries()) {
         const odds = oddsMap.get(fId);
