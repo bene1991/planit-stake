@@ -1,73 +1,38 @@
 
+## Filtro de Quantidade de Jogos na Aba "Gols"
 
-## Analise Pre-Jogo Completa
+### O que muda
+Adicionar um seletor (dropdown) na aba "Gols" da analise pre-jogo para escolher quantos jogos usar no calculo: **5, 10, 15, 20 ou Temporada completa**.
 
-### Objetivo
-Criar uma secao de analise pre-jogo acessivel a partir de cada card de jogo no planejamento, mostrando dados detalhados dos dois times usando a API-Football.
+### Como vai funcionar
+- Ao selecionar "Temporada" (padrao atual), continua usando as estatisticas completas da temporada que ja vem da API
+- Ao selecionar 5, 10, 15 ou 20 jogos, o sistema calcula as estatisticas a partir dos ultimos jogos de cada time (gols feitos, sofridos, medias, clean sheets, etc.)
 
-### Dados que serao exibidos
+### Mudancas necessarias
 
-**1. Classificacao (Standings)**
-- Posicao atual de cada time na liga
-- Pontos, jogos, vitorias, empates, derrotas
-- Saldo de gols
+**1. Hook `usePreMatchAnalysis.ts`**
+- Aumentar o fetch de ultimos jogos de `last: 10` para `last: 20` para ambos os times, permitindo filtrar por qualquer quantidade ate 20
 
-**2. Estatisticas de Gols (Team Statistics)**
-- Media de gols feitos e sofridos (geral, casa, fora)
-- Total de gols nos ultimos jogos
-- Clean sheets e "failed to score"
+**2. Componente `GoalStatsSection.tsx`**
+- Adicionar um `Select` dropdown no topo com opcoes: 5, 10, 15, 20, Temporada
+- Receber tambem os dados de `homeLastMatches` e `awayLastMatches` como props
+- Receber `homeTeamId` e `awayTeamId` para identificar se o time jogou em casa ou fora
+- Quando uma quantidade especifica for selecionada, calcular as estatisticas (gols feitos, sofridos, medias, clean sheets, nao marcou) a partir dos fixtures filtrados
+- Quando "Temporada" for selecionada, usar os dados originais da API (`homeStats`/`awayStats`)
+- Exibir "Baseado em X jogos" abaixo do seletor
 
-**3. Minutagem de Gols**
-- Distribuicao de gols por periodo (0-15, 16-30, 31-45, 46-60, 61-75, 76-90)
-- Mostra em qual momento do jogo cada time marca e sofre mais
+**3. Componente `PreMatchModal.tsx`**
+- Passar os dados extras (`homeLastMatches`, `awayLastMatches`, `homeTeamId`, `awayTeamId`) para o `GoalStatsSection`
 
-**4. Ultimos Resultados (Last 10 Fixtures)**
-- Sequencia de resultados recentes (V/E/D)
-- Placar de cada jogo
+### Detalhes tecnicos
 
-**5. Confrontos Diretos (Head to Head)**
-- Ultimos confrontos entre os dois times
-- Placar, data e competicao
+O calculo client-side a partir dos fixtures funciona assim:
+- Cada fixture tem `goals.home` e `goals.away`
+- Para saber se o time marcou/sofreu, verifica se ele era `teams.home` ou `teams.away`
+- **Gols feitos**: soma dos gols do time nos N jogos
+- **Gols sofridos**: soma dos gols do adversario nos N jogos
+- **Media**: total dividido por N
+- **Clean sheet**: jogos onde o adversario fez 0 gols
+- **Nao marcou**: jogos onde o time fez 0 gols
 
-**6. Predicoes da API (Predictions)**
-- Porcentagens de vitoria/empate de cada time
-- Conselho da API (se disponivel)
-
-### Como acessar
-- Um botao de "Analise Pre-Jogo" (icone de grafico/lupa) sera adicionado no card de cada jogo que tenha `api_fixture_id`
-- Ao clicar, abre um modal/dialog fullscreen com todas as informacoes organizadas em abas ou secoes com scroll
-
----
-
-### Detalhes Tecnicos
-
-**Novos endpoints usados via edge function `api-football` (ja suporta qualquer endpoint):**
-- `standings` - params: `{ league: leagueId, season }` 
-- `teams/statistics` - params: `{ team: teamId, season, league: leagueId }`
-- `fixtures/headtohead` - params: `{ h2h: "teamId1-teamId2", last: 10 }`
-- `fixtures` - params: `{ team: teamId, last: 10 }` (ultimos jogos)
-- `predictions` - params: `{ fixture: fixtureId }`
-
-**Novos arquivos:**
-1. `src/hooks/usePreMatchAnalysis.ts` - Hook que faz fetch de todos os dados pre-jogo em paralelo (standings, team stats, h2h, last fixtures, predictions). Usa o mesmo pattern de `useApiFootball` existente. Todos os dados sao cacheados via L1/L2 no backend.
-
-2. `src/components/PreMatchAnalysis/PreMatchModal.tsx` - Modal principal com abas: Classificacao, Estatisticas, Minutagem, Ultimos Jogos, Confrontos, Predicoes.
-
-3. `src/components/PreMatchAnalysis/StandingsSection.tsx` - Tabela de classificacao com destaque nos dois times do jogo.
-
-4. `src/components/PreMatchAnalysis/GoalStatsSection.tsx` - Cards comparativos de media de gols feitos/sofridos, com barras visuais.
-
-5. `src/components/PreMatchAnalysis/GoalMinutesSection.tsx` - Grafico de barras mostrando distribuicao de gols por periodo para cada time.
-
-6. `src/components/PreMatchAnalysis/LastMatchesSection.tsx` - Lista dos ultimos 10 jogos de cada time com sequencia V/E/D.
-
-7. `src/components/PreMatchAnalysis/HeadToHeadSection.tsx` - Historico de confrontos diretos.
-
-8. `src/components/PreMatchAnalysis/PredictionsSection.tsx` - Previsoes da API com porcentagens visuais.
-
-**Alteracao em arquivo existente:**
-- `src/components/GameCardCompact.tsx` - Adicionar botao "Pre-Jogo" ao lado dos botoes de editar/excluir. Ao clicar, abre o `PreMatchModal`.
-
-**Cache:** Todos os endpoints usam o cache L1+L2 ja implementado no edge function. Standings e team stats tem TTL de 1h+, minimizando consumo de creditos da API.
-
-**Dependencia de dados:** O `api_fixture_id` do jogo ja contem o fixture ID. A partir dele, o hook busca o fixture para obter `league.id`, `league.season`, `teams.home.id` e `teams.away.id`, e entao faz as demais chamadas em paralelo.
+Nenhuma chamada extra a API sera feita - apenas aumenta de 10 para 20 o parametro `last` que ja existe.
