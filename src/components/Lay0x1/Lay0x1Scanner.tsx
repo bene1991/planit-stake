@@ -198,16 +198,25 @@ export const Lay0x1Scanner = () => {
         return;
       }
 
-      for (let i = 0; i < missing.length; i++) {
-        setMissingProgress({ current: i + 1, total: missing.length });
-        const dateStr = missing[i];
+      const PARALLEL_DATES = 3;
+      for (let i = 0; i < missing.length; i += PARALLEL_DATES) {
+        const batch = missing.slice(i, i + PARALLEL_DATES);
+        setMissingProgress({ current: Math.min(i + PARALLEL_DATES, missing.length), total: missing.length });
 
-        try {
-          const res = await supabase.functions.invoke('analyze-lay0x1', {
+        const promises = batch.map(dateStr =>
+          supabase.functions.invoke('analyze-lay0x1', {
             body: { date: dateStr },
-          });
+          }).then(res => ({ dateStr, res, error: null }))
+            .catch(error => ({ dateStr, res: null, error }))
+        );
 
-          if (!res.error && res.data?.results) {
+        const results = await Promise.all(promises);
+        for (const { dateStr, res, error } of results) {
+          if (error) {
+            console.error(`Erro ao analisar ${dateStr}:`, error);
+            continue;
+          }
+          if (res && !res.error && res.data?.results) {
             const analysisResults: AnalysisResult[] = res.data.results;
             const resMeta = {
               total_fixtures: res.data.total_fixtures || 0,
@@ -216,8 +225,6 @@ export const Lay0x1Scanner = () => {
             };
             setCachedResults(dateStr, analysisResults, resMeta);
           }
-        } catch (err) {
-          console.error(`Erro ao analisar ${dateStr}:`, err);
         }
       }
 
