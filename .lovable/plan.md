@@ -1,72 +1,117 @@
 
 
-## Corrigir Ranges de Normalizacao do Score Inteligente
+## Correcoes: Velocidade + Aprovacao por Criterios + Fix Stats Zeradas
 
-### Problema
+### 1. Velocidade da Analise
 
-Os ranges de normalizacao no `analyze-lay0x1/index.ts` sao muito largos, comprimindo scores de jogos bons para valores mediocres:
+**Problema**: A analise leva ~30s porque faz chamadas sequenciais em lotes de 5, com 3 chamadas API por fixture (H2H, home stats, away stats).
 
-| Componente | Valor real | Range atual | Score | Range correto | Score corrigido |
-|---|---|---|---|---|---|
-| Ofensivo (1.9 gols) | 1.90 | [0.5, 3.0] | 56% | [1.0, 2.2] | **75%** |
-| Defensivo (1.7 gols) | 1.70 | [0.5, 3.0] | 48% | [1.0, 2.2] | **58%** |
-| Over Poisson (79%) | 78.6 | [30, 95] | 75% | [40, 85] | **86%** |
-| Liga (proxy) | 1.80 | [1.0, 3.5] | 32% | [1.3, 2.5] | **42%** |
-| H2H (0 de 5) | 5 | [0, 5] | 100% | sem mudanca | **100%** |
-| Odds (3.85) | 1.0 | ideal | 100% | sem mudanca | **100%** |
+**Solucao**: Aumentar batch size de 5 para 10, e fazer o fetch de odds em paralelo com batches maiores (5 paginas simultaneas em vez de 3).
 
-**Score atual**: 65.5 arredondado para **66** (abaixo do min_score 75 do usuario)
-**Score corrigido**: ~76 (acima do min_score, seria Aprovado)
+**Arquivo**: `supabase/functions/analyze-lay0x1/index.ts`
+- Linha 441: `BATCH_SIZE = 5` -> `BATCH_SIZE = 10`
+- Linha 136: Batch de paginas de odds de 3 para 5
 
-### Mudancas
+Resultado esperado: reducao de ~30s para ~15s.
 
-**Arquivo unico: `supabase/functions/analyze-lay0x1/index.ts`**
+---
 
-1. **Ajustar ranges de normalizacao** (linhas 388-393):
+### 2. Jogos que passam em TODOS os criterios devem aparecer como aprovados
 
-```text
-// ANTES (ranges irrealistas):
-normalize(homeGoalsAvg, 0.5, 3.0)    // 1.9 -> 0.56
-normalize(awayConcededAvg, 0.5, 3.0) // 1.7 -> 0.48
-normalize(probOverReal, 30, 95)       // 78.6 -> 0.75
-normalize(leagueGoalsAvg, 1.0, 3.5)  // 1.8 -> 0.32
+**Problema**: Linha 404 exige `allCriteriaMet && scoreValue >= dynamicMinScore`. Jogos com todos os criterios OK mas score 66 sao rejeitados.
 
-// DEPOIS (ranges realistas de futebol):
-normalize(homeGoalsAvg, 1.0, 2.2)    // 1.9 -> 0.75
-normalize(awayConcededAvg, 1.0, 2.2) // 1.7 -> 0.58
-normalize(probOverReal, 40, 85)       // 78.6 -> 0.86
-normalize(leagueGoalsAvg, 1.3, 2.5)  // 1.8 -> 0.42
-```
-
-Justificativa dos novos ranges:
-- **[1.0, 2.2] para gols**: a grande maioria dos times esta entre 1.0 e 2.2 de media. Times com 2.2+ sao excepcionais (score 100%)
-- **[40, 85] para Over Poisson**: probabilidades reais de Over 1.5 ficam nesse range. Acima de 85% e excelente
-- **[1.3, 2.5] para liga**: proxy mais realista para qualidade da liga baseada nos stats do jogo
-
-### Simulacao com os novos ranges
-
-Para Brondby vs Sonderjyske (1.9/1.7/3.85/79%/0 h2h):
+**Solucao**: Mudar a logica de aprovacao:
+- Se TODOS os criterios passaram -> aprovado (independente do score)
+- O score continua sendo calculado e exibido para ranking/prioridade
 
 ```text
-offensiveScore = 0.75 * 0.20 = 0.150
-defensiveScore = 0.58 * 0.20 = 0.117
-overScore      = 0.86 * 0.20 = 0.172
-leagueScore    = 0.42 * 0.15 = 0.063
-h2hScore       = 1.00 * 0.15 = 0.150
-oddsScore      = 1.00 * 0.10 = 0.100
+// ANTES (linha 404):
+const isApproved = allCriteriaMet && scoreValue >= dynamicMinScore;
 
-baseScore = 75.2
-penalty0x1 = 0 (prob0x1 < 12%)
-riskIndex = 0 (divergencia < 1.0)
-
-Score final = 75 -> APROVADO (>= min_score 75)
-Classification = "Forte"
+// DEPOIS:
+const isApproved = allCriteriaMet;
 ```
+
+O `dynamicMinScore` passa a ser usado apenas para a classificacao visual (badge "Forte", "Moderado", etc.), nao como filtro de aprovacao.
+
+---
+
+### 3. Fix: awayConcededAvg zerada (Brondby/Lechai)
+
+**Problema**: Linhas 340-341 leem `awayGoalsAgainst?.average?.away` que retorna `null` ou `"0"` para times no inicio da temporada ou com poucos jogos fora. Resultado: `awayConcededAvg = 0`, criterio falha, jogo e rejeitado.
+
+**Solucao**: Adicionar fallback para usar media geral (home+away) quando a media especifica `away` for 0:
+
+```text
+// ANTES:
+const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
+const awayConcededAvg = awayGoalsAgainst?.average?.away 
+  ? parseFloat(awayGoalsAgainst.average.away) : 0;
+
+// DEPOIS:
+const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
+let awayConcededAvg = awayGoalsAgainst?.average?.away 
+  ? parseFloat(awayGoalsAgainst.average.away) : 0;
+
+// Fallback: se away=0, usar media total (home+away combinada)
+if (awayConcededAvg === 0 && awayGoalsAgainst?.average?.total) {
+  awayConcededAvg = parseFloat(awayGoalsAgainst.average.total);
+}
+```
+
+Mesma logica para `homeGoalsAvg`:
+
+```text
+// ANTES:
+const homeGoalsFor = homeStatsData?.response?.goals?.for;
+const homeGoalsAvg = homeGoalsFor?.average?.home 
+  ? parseFloat(homeGoalsFor.average.home) : 0;
+
+// DEPOIS:
+const homeGoalsFor = homeStatsData?.response?.goals?.for;
+let homeGoalsAvg = homeGoalsFor?.average?.home 
+  ? parseFloat(homeGoalsFor.average.home) : 0;
+
+// Fallback: se home=0, usar media total
+if (homeGoalsAvg === 0 && homeGoalsFor?.average?.total) {
+  homeGoalsAvg = parseFloat(homeGoalsFor.average.total);
+}
+```
+
+---
+
+### 4. Ordenacao dos resultados aprovados
+
+Com a nova logica (todos que passam criterios sao aprovados), ordenar por score descendente para que os melhores jogos aparecam primeiro:
+
+```text
+// ANTES (linha 459-462):
+results.sort((a, b) => {
+  if (a.approved !== b.approved) return a.approved ? -1 : 1;
+  return a.time.localeCompare(b.time);
+});
+
+// DEPOIS:
+results.sort((a, b) => {
+  if (a.approved !== b.approved) return a.approved ? -1 : 1;
+  if (a.approved && b.approved) return b.score_value - a.score_value;
+  return a.time.localeCompare(b.time);
+});
+```
+
+---
+
+### Resumo de Mudancas
+
+| Arquivo | Mudanca |
+|---|---|
+| `supabase/functions/analyze-lay0x1/index.ts` | Batch 10, odds pages 5, aprovacao por criterios, fallback stats zeradas, sort por score |
+
+Apenas 1 arquivo precisa ser editado.
 
 ### Impacto
 
-- Jogos que atendem todos os criterios com stats decentes passam a ter scores 70-85 (realistas)
-- Jogos excepcionais (media 2.0+ gols, over 85%+) atingem 85-95
-- Jogos marginais (media ~1.5, over ~50%) ficam em 55-65 (corretamente reprovados)
-- Nenhuma outra mudanca necessaria -- apenas os 4 numeros de range
-
+- Analise ~2x mais rapida (~15s em vez de ~30s)
+- Brondby e Lechai voltam a aparecer (fallback de stats)
+- Todos os jogos que passam nos criterios aparecem como aprovados
+- Score continua visivel para ranking/priorizacao
