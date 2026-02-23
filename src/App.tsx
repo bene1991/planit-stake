@@ -20,6 +20,7 @@ import Auth from "./pages/Auth";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound";
 import MatchbookOdds from "./pages/MatchbookOdds";
+import Lay0x1 from "./pages/Lay0x1";
 
 const AppContent = () => {
   const { games } = useSupabaseGames();
@@ -89,6 +90,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <Layout><MatchbookOdds /></Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lay-0x1"
+          element={
+            <ProtectedRoute>
+              <Layout><Lay0x1 /></Layout>
             </ProtectedRoute>
           }
         />

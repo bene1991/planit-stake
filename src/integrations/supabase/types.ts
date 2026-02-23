@@ -430,6 +430,126 @@ export type Database = {
         }
         Relationships: []
       }
+      lay0x1_analyses: {
+        Row: {
+          away_team: string
+          classification: string
+          created_at: string
+          criteria_snapshot: Json
+          date: string
+          final_score_away: number | null
+          final_score_home: number | null
+          fixture_id: string
+          home_team: string
+          id: string
+          league: string
+          owner_id: string
+          resolved_at: string | null
+          result: string | null
+          score_value: number
+          was_0x1: boolean | null
+          weights_snapshot: Json
+        }
+        Insert: {
+          away_team: string
+          classification?: string
+          created_at?: string
+          criteria_snapshot?: Json
+          date: string
+          final_score_away?: number | null
+          final_score_home?: number | null
+          fixture_id: string
+          home_team: string
+          id?: string
+          league: string
+          owner_id: string
+          resolved_at?: string | null
+          result?: string | null
+          score_value?: number
+          was_0x1?: boolean | null
+          weights_snapshot?: Json
+        }
+        Update: {
+          away_team?: string
+          classification?: string
+          created_at?: string
+          criteria_snapshot?: Json
+          date?: string
+          final_score_away?: number | null
+          final_score_home?: number | null
+          fixture_id?: string
+          home_team?: string
+          id?: string
+          league?: string
+          owner_id?: string
+          resolved_at?: string | null
+          result?: string | null
+          score_value?: number
+          was_0x1?: boolean | null
+          weights_snapshot?: Json
+        }
+        Relationships: []
+      }
+      lay0x1_weights: {
+        Row: {
+          created_at: string
+          cycle_count: number
+          defensive_weight: number
+          h2h_weight: number
+          id: string
+          last_calibration_at: string | null
+          league_avg_weight: number
+          max_away_odd: number
+          max_h2h_0x1: number
+          min_away_conceded_avg: number
+          min_home_goals_avg: number
+          min_over15_combined: number
+          odds_weight: number
+          offensive_weight: number
+          over_weight: number
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_count?: number
+          defensive_weight?: number
+          h2h_weight?: number
+          id?: string
+          last_calibration_at?: string | null
+          league_avg_weight?: number
+          max_away_odd?: number
+          max_h2h_0x1?: number
+          min_away_conceded_avg?: number
+          min_home_goals_avg?: number
+          min_over15_combined?: number
+          odds_weight?: number
+          offensive_weight?: number
+          over_weight?: number
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          cycle_count?: number
+          defensive_weight?: number
+          h2h_weight?: number
+          id?: string
+          last_calibration_at?: string | null
+          league_avg_weight?: number
+          max_away_odd?: number
+          max_h2h_0x1?: number
+          min_away_conceded_avg?: number
+          min_home_goals_avg?: number
+          min_over15_combined?: number
+          odds_weight?: number
+          offensive_weight?: number
+          over_weight?: number
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       live_monitor_state: {
         Row: {
           fixture_id: string

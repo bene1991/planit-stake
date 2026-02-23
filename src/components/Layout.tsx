@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Home, BarChart3, Wallet, CalendarDays, FlaskConical, Activity } from "lucide-react";
+import { Menu, Home, BarChart3, Wallet, CalendarDays, FlaskConical, Activity, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
     { to: "/method-analysis", label: "Análise", icon: FlaskConical },
     { to: "/monitor", label: "Monitor", icon: Activity },
+    { to: "/lay-0x1", label: "Lay 0x1", icon: Target },
   ];
 
   const isActive = (path: string) => location.pathname === path;
