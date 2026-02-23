@@ -191,6 +191,14 @@ serve(async (req) => {
       };
     }
 
+    // Fetch blocked leagues
+    const { data: blockedData } = await supabase
+      .from('lay0x1_blocked_leagues')
+      .select('league_name')
+      .eq('owner_id', userId);
+    const blockedLeagues = new Set((blockedData || []).map((b: any) => b.league_name));
+    console.log(`[SCANNER] Blocked leagues: ${blockedLeagues.size}`);
+
     let fixtureIdsToAnalyze: number[] = [];
     let fixtureMap: Map<number, any> = new Map();
     let oddsMap: Map<number, { homeOdd: number; awayOdd: number }> = new Map();
@@ -214,10 +222,12 @@ serve(async (req) => {
       oddsMap = await fetchAllOddsPages(date);
       console.log(`[SCANNER] Fixtures with odds data: ${oddsMap.size}/${totalFixtures}`);
 
-      // 3. Pre-filter: home_odd < away_odd AND away_odd within range
+      // 3. Pre-filter: home_odd < away_odd AND away_odd within range AND league not blocked
       for (const [fId, fixture] of fixtureMap.entries()) {
         const odds = oddsMap.get(fId);
         if (!odds || odds.homeOdd <= 0 || odds.awayOdd <= 0) continue;
+        const leagueName = fixture.league?.name || '';
+        if (blockedLeagues.has(leagueName)) continue;
         if (odds.homeOdd < odds.awayOdd && odds.awayOdd <= weights.max_away_odd) {
           fixtureIdsToAnalyze.push(fId);
         }
