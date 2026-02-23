@@ -1,101 +1,117 @@
 
 
-## Historico de Avaliacao da IA + Melhorias do Modelo Evolutivo
+## IA Evolutiva Real -- De Filtro Estatistico para Inteligencia Adaptativa
 
-### O que ja existe
+### Problemas Identificados
 
-O sistema Lay 0x1 ja tem implementado:
-- Scanner com 6 criterios eliminatorios e score ponderado 0-100
-- Classificacao (Muito Forte, Forte, Moderado, Nao Recomendado)
-- Salvamento automatico, auto-resolucao e analise pos-Red com IA (Gemini)
-- Calibracao a cada 30 jogos com ajuste de pesos (limites 5-30) e thresholds
-- Anti-overfitting a cada 4 ciclos
-- Dashboard com equity, evolucao mensal, performance por liga
-- Ligas bloqueadas e backtest acumulado
+1. **Backtest NAO alimenta a calibracao**: O botao "Salvar para Calibracao" salva jogos no banco, mas NAO registra o resultado final (Green/Red) mesmo tendo o placar disponivel. Esses jogos ficam como "pendentes" e nunca entram na calibracao.
 
-### O que falta implementar
+2. **Calibracao e puramente matematica**: A funcao `calibrate-lay0x1` apenas multiplica peso atual pela razao (taxa criterio / taxa media). Nao ha inteligencia artificial real analisando os padroes.
 
-#### 1. Nova tabela `lay0x1_calibration_history`
+3. **Padroes detectados mas nao aplicados**: O sistema detecta ligas com mais Reds e faixas de odds fracas, mas NAO toma nenhuma acao automatica (nao bloqueia ligas, nao ajusta thresholds com base em padroes).
 
-Armazena cada ciclo de calibracao com detalhes completos:
+### Solucao em 3 Frentes
 
-```text
-Campos:
-- id (uuid)
-- owner_id (uuid)
-- cycle_number (integer)
-- trigger_type (text): "auto_30", "manual", "rebalance_100"
-- total_analyses (integer)
-- general_rate (numeric) -- taxa de acerto geral
-- old_weights (jsonb)
-- new_weights (jsonb)
-- old_thresholds (jsonb)
-- new_thresholds (jsonb)
-- criterion_rates (jsonb) -- taxa de sucesso individual de cada criterio
-- threshold_details (jsonb) -- detalhes de cada ajuste de threshold
-- patterns_detected (jsonb) -- padroes identificados (ligas com mais Red, faixas de odds fracas)
-- changes_summary (text[]) -- lista de alteracoes feitas
-- forced_rebalance (boolean)
-- created_at (timestamptz)
-```
+---
 
-RLS: owner_id = auth.uid() para SELECT e INSERT.
+#### 1. Backtest com Auto-Resolucao Imediata
 
-#### 2. Atualizar Edge Function `calibrate-lay0x1`
+**Problema**: `saveBacktestForCalibration` salva jogos sem resultado.
 
-Adicionar ao final da calibracao:
-- **Salvar historico**: Inserir registro completo na nova tabela com pesos antigos, novos, taxas, padroes
-- **Deteccao de padroes**: Calcular ligas com maior indice de Red, faixas de odds com pior desempenho, medias ofensivas que nao convertem
-- **Liga auto-escalacao**: Se 2 Reds consecutivos na mesma liga, registrar alerta no historico
-- **Score minimo dinamico**: Se taxa geral < 65%, registrar recomendacao de elevar score minimo
+**Correcao**: Ao salvar jogos do backtest, usar os dados de `final_score_home` e `final_score_away` que ja existem nos resultados do backtest para salvar o jogo JA RESOLVIDO no banco.
 
-#### 3. Novo componente `Lay0x1History.tsx`
+**Fluxo corrigido**:
+- Para cada jogo aprovado do backtest que tem placar final:
+  - Salvar com `final_score_home`, `final_score_away`, `was_0x1`, `result`, `resolved_at`
+  - Jogo ja entra como "resolvido" no banco
+- Apos salvar todos, verificar se atingiu multiplo de 30 jogos resolvidos
+- Se sim, disparar calibracao automatica
 
-Painel de auditoria com as seguintes secoes:
+**Arquivo**: `src/components/Lay0x1/Lay0x1Scanner.tsx` (funcao `saveBacktestForCalibration`)
 
-**Resumo do Modelo Atual**
-- Versao (ciclo atual)
-- Taxa de acerto atual vs antes do ultimo ajuste
-- Total de ajustes realizados
-- ROI acumulado (Greens - Reds em unidades)
+---
 
-**Timeline de Calibracoes**
-- Cards cronologicos mostrando cada ciclo
-- Para cada ciclo: criterios fortalecidos, enfraquecidos, score minimo recomendado
-- Delta visual (peso anterior -> novo peso) com setas coloridas
+#### 2. Calibracao com IA Real (Gemini)
 
-**Padroes Identificados**
-- Ligas com maior indice de Red (top 5)
-- Faixa de odds com menor desempenho
-- Medias ofensivas que nao estao convertendo
-- Tendencia Over artificial detectada
+**Problema**: A calibracao atual e uma formula fixa. Nao pensa, nao contextualiza, nao faz recomendacoes inteligentes.
 
-**Relatorio de Atualizacao do Modelo**
-- Gerado a cada 30 jogos
-- Criterios fortalecidos e enfraquecidos
-- Mudanca estrategica aplicada
+**Solucao**: Adicionar uma fase de analise com IA (Gemini 2.5 Flash) na edge function `calibrate-lay0x1` que:
 
-#### 4. Nova aba na pagina Lay0x1
+- Recebe todos os dados da calibracao (taxas por criterio, padroes detectados, historico de Reds, ligas problematicas)
+- A IA analisa e retorna:
+  - **Recomendacoes de ajuste de pesos** com justificativa (ex: "Reduzir peso Over de 22 para 16 porque a correlacao com sucesso caiu de 78% para 61%")
+  - **Ligas para bloquear automaticamente** (se taxa Red > 50% com 3+ jogos)
+  - **Ajustes de thresholds recomendados** com motivo
+  - **Score minimo dinamico** recomendado com base no contexto geral
+  - **Tendencias identificadas** (ex: "jogos com odd visitante > 3.8 tem 40% de Red")
+  - **Resumo estrategico** em linguagem natural
 
-Adicionar 4a aba "Historico IA" com icone `History` no `TabsList`, mudando de `grid-cols-3` para `grid-cols-4`.
+- Os ajustes recomendados pela IA sao APLICADOS automaticamente (pesos, thresholds)
+- Ligas recomendadas para bloqueio sao bloqueadas automaticamente
+- Tudo e registrado no historico de calibracao com campo `ai_recommendations`
+
+**Arquivo**: `supabase/functions/calibrate-lay0x1/index.ts`
+
+**Novo campo no historico**: `ai_recommendations` (jsonb) na tabela `lay0x1_calibration_history`
+
+---
+
+#### 3. Acoes Automaticas sobre Padroes
+
+**Problema**: Detecta "liga X tem 60% de Red" mas nao faz nada.
+
+**Solucao**: Apos a IA analisar, o sistema executa acoes automaticas:
+
+- **Auto-bloqueio de ligas**: Se taxa Red > 50% com 3+ jogos na liga, bloquear automaticamente e registrar motivo "auto_ia"
+- **Score minimo dinamico**: Se taxa geral < 65%, elevar score minimo de 65 para 70 automaticamente (salvar no campo `min_score` em `lay0x1_weights`)
+- **Alertas proativos**: Registrar no historico quais acoes foram tomadas automaticamente
+
+**Arquivos**: `supabase/functions/calibrate-lay0x1/index.ts`, `supabase/functions/analyze-lay0x1/index.ts` (usar min_score dinamico)
+
+---
 
 ### Detalhes Tecnicos
 
-**Migration SQL:**
-- Criar tabela `lay0x1_calibration_history` com RLS
-- Policies: SELECT e INSERT para owner_id = auth.uid()
+**Migration SQL**:
+- Adicionar coluna `ai_recommendations` (jsonb, default '{}') na tabela `lay0x1_calibration_history`
+- Adicionar coluna `min_score` (numeric, default 65) na tabela `lay0x1_weights`
 
-**Arquivos modificados:**
-- `supabase/functions/calibrate-lay0x1/index.ts` -- salvar historico na nova tabela, detectar padroes (ligas com mais Red, faixas de odds fracas), registrar alertas de liga auto-escalacao
-- `src/pages/Lay0x1.tsx` -- adicionar 4a aba "Historico IA"
+**Edge Function `calibrate-lay0x1` -- Nova fase IA**:
+- Apos calcular pesos e thresholds matematicamente, chamar Lovable AI (Gemini 2.5 Flash) com prompt estruturado contendo:
+  - Taxas por criterio e taxa geral
+  - Pesos atuais e novos calculados
+  - Padroes detectados (ligas com Red, odds fracas)
+  - Historico de ultimos 30 jogos com resultados
+- A IA retorna via tool calling um JSON estruturado com recomendacoes
+- Aplicar recomendacoes automaticamente (pesos, bloqueios de liga, score minimo)
+- Salvar tudo no historico
 
-**Arquivos novos:**
-- `src/components/Lay0x1/Lay0x1History.tsx` -- componente completo do painel de auditoria
-- `src/hooks/useLay0x1CalibrationHistory.ts` -- hook para buscar historico de calibracoes do banco
+**Edge Function `analyze-lay0x1` -- Score minimo dinamico**:
+- Buscar `min_score` dos pesos do usuario
+- Filtrar jogos com score abaixo do minimo dinamico (em vez do fixo 65)
 
-**Fluxo:**
-1. A cada 30 jogos resolvidos, `calibrate-lay0x1` roda automaticamente
-2. Alem de ajustar pesos/thresholds, insere registro detalhado em `lay0x1_calibration_history`
-3. O registro inclui padroes detectados (ligas problematicas, faixas de odds, etc.)
-4. A aba "Historico IA" exibe todos esses registros em formato de timeline auditavel
+**`Lay0x1Scanner.tsx` -- Backtest auto-resolve**:
+- `saveBacktestForCalibration` agora salva jogos com resultado final incluso
+- Dispara calibracao automatica ao atingir multiplo de 30
+
+**`Lay0x1History.tsx` -- Exibir recomendacoes IA**:
+- Novo card "Recomendacoes da IA" em cada ciclo de calibracao
+- Mostrar acoes automaticas tomadas (ligas bloqueadas, score ajustado)
+
+### Arquivos Modificados
+
+- `supabase/functions/calibrate-lay0x1/index.ts` -- Adicionar chamada IA, auto-bloqueio de ligas, score minimo dinamico
+- `supabase/functions/analyze-lay0x1/index.ts` -- Usar min_score dinamico do usuario
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- Backtest salvar com resultado final + auto-calibracao
+- `src/components/Lay0x1/Lay0x1History.tsx` -- Exibir recomendacoes IA no historico
+- Migration SQL -- Adicionar colunas `ai_recommendations` e `min_score`
+
+### Resultado Final
+
+- Backtest alimenta a calibracao IMEDIATAMENTE com jogos ja resolvidos
+- A cada 30 jogos, a IA (Gemini) analisa o contexto completo e faz recomendacoes inteligentes
+- Ligas problematicas sao bloqueadas automaticamente pela IA
+- Score minimo e ajustado dinamicamente conforme desempenho
+- Toda decisao da IA fica registrada e auditavel na aba Historico IA
+- O modelo evolui de verdade: nao e mais um filtro fixo, e uma IA que aprende com cada resultado
 
