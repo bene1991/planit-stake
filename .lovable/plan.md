@@ -1,44 +1,81 @@
 
 
-## Corrigir Re-analise Automatica -- Nunca Sobrescrever Resultados Existentes
+## Backtest Acumulado -- Atalhos de Periodo (7d, 15d, 30d)
 
-### Problema
+### Problema Atual
 
-Toda vez que o usuario sai da pagina e volta, o componente remonta e o `autoFetchedRef` reseta para `null`. Isso faz o segundo `useEffect` (auto-fetch) rodar novamente, chamando a API mesmo quando ja havia cache. Alem disso, o cache de hoje expira em 6 horas, e a API pode retornar resultados diferentes (3 jogos virando 2, 12 virando 8).
+Os botoes "-7d", "-15d", "-30d" apontam para uma data unica (ex: -7d vai para o dia 16/02 especificamente). O usuario quer ver o **acumulado** de todos os dias do periodo -- ex: "-7d" mostra o resumo combinado dos ultimos 7 dias.
 
 ### Solucao
 
-Remover completamente o auto-fetch. O scanner so deve buscar jogos quando o usuario clicar no botao "Analisar" ou "Backtest" manualmente. O cache fica permanente para TODAS as datas (hoje, ontem, qualquer data). So e limpo quando o usuario clica em "Limpar cache".
+Transformar os atalhos em **modo de periodo acumulado**. Ao clicar em "-7d", o sistema carrega os resultados cacheados de cada dia dos ultimos 7 dias, combina todos os jogos aprovados e exibe um resumo acumulado com Green, Red e Win Rate do periodo inteiro.
+
+### Como Funciona
+
+1. **Novo estado `rangeMode`**: Quando o usuario clica em um atalho de periodo (-7d, -15d, -30d), o scanner entra em modo de range. Os botoes "Ontem" e "Hoje" continuam funcionando como data unica.
+
+2. **Agregar cache existente**: O sistema percorre todos os dias do periodo (ex: ultimos 7 dias) e coleta os resultados ja cacheados no localStorage. Dias sem cache ficam marcados como "nao analisados".
+
+3. **Exibir resumo acumulado**: Card de resumo mostrando:
+   - Total de dias no periodo
+   - Dias ja analisados (com cache) vs dias faltando
+   - Total de aprovados acumulado
+   - Greens / Reds / Win Rate do periodo inteiro
+   - Lista dos jogos aprovados de todos os dias combinados
+
+4. **Analisar dias faltantes**: Botao "Analisar dias faltantes" que roda backtest apenas nos dias que ainda nao tem cache, sem tocar nos dias ja analisados.
+
+5. **Manter input de data individual**: O input de data e os botoes "Ontem"/"Hoje" continuam selecionando um dia especifico como antes.
 
 ### Detalhes Tecnicos
 
 **Arquivo: `src/components/Lay0x1/Lay0x1Scanner.tsx`**
 
-1. **Remover o segundo `useEffect` de auto-fetch** (linhas 119-128) -- eliminar completamente. Nunca mais rodar analise automatica.
+- Adicionar estado `rangeMode: { label: string, days: number } | null`
+- Mudar `dateShortcuts` para guardar `days` em vez de `date`:
+  ```text
+  rangeShortcuts = [
+    { label: '7d', days: 7 },
+    { label: '15d', days: 15 },
+    { label: '30d', days: 30 },
+  ]
+  ```
+- Ao clicar num shortcut de range, setar `rangeMode` e agregar resultados:
+  ```text
+  function getAggregatedResults(days):
+    allResults = []
+    analyzedDays = 0
+    for i = 1..days:
+      dateStr = format(subDays(today, i))
+      cached = getCachedResults(dateStr)
+      if cached:
+        allResults.push(...cached)
+        analyzedDays++
+    return { results: allResults, analyzedDays, totalDays: days }
+  ```
+- `backtestStats` recalculado a partir dos resultados agregados
+- Novo card de resumo do periodo mostrando dias analisados e metricas acumuladas
+- Funcao `analyzeMissingDays` que itera sobre os dias sem cache e chama a API sequencialmente para cada dia faltante
+- Ao clicar "Ontem", "Hoje" ou trocar data no input, sai do `rangeMode` e volta ao modo dia unico
 
-2. **Remover TTL do cache** -- o cache nunca expira para nenhuma data. Tanto `getCachedResults` quanto `getCachedMeta` deixam de verificar timestamp. O cache so e removido manualmente via botao "Limpar cache".
+### Resultado Visual
 
-3. **Simplificar `getCachedResults`** -- apenas ler do localStorage sem verificar expiracao:
+Botoes ficam:
 ```text
-function getCachedResults(date):
-  raw = localStorage.getItem(key + date)
-  if (!raw) return null
-  return JSON.parse(raw).data
+[Ontem] [7d] [15d] [30d] [Hoje]
 ```
 
-4. **Simplificar `getCachedMeta`** -- mesma logica, sem TTL.
+Ao clicar em "7d", mostra:
+```text
+Periodo: Ultimos 7 dias (5/7 analisados)
+[Analisar 2 dias faltantes]
 
-5. **Remover `autoFetchedRef`** -- nao e mais necessario pois nao existe auto-fetch.
+Acumulado: 18 Aprovados | 15 Green | 3 Red | 83% Win Rate
+```
 
-6. **Manter o `useEffect` de carregamento de cache** (linhas 106-117) -- apenas carrega do cache quando troca de data, sem disparar fetch.
-
-### Resultado
-
-- Entrou na pagina com cache existente: mostra os resultados salvos, sem chamar API
-- Entrou na pagina sem cache: mostra vazio, usuario clica no botao para analisar
-- Clicou "Limpar cache": limpa os resultados, usuario pode re-analisar
-- Clicou "Analisar"/"Backtest": busca da API e salva no cache
+E abaixo, os cards dos jogos aprovados de todos os dias.
 
 ### Arquivos Modificados
 
-- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- remover auto-fetch, remover TTL do cache, simplificar logica
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- adicionar modo range, agregar cache multi-dia, card de resumo acumulado
+
