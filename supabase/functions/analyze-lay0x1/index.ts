@@ -133,9 +133,9 @@ async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: n
     const remainingPages: number[] = [];
     for (let p = 2; p <= totalPages; p++) remainingPages.push(p);
 
-    const BATCH_SIZE = 3;
-    for (let i = 0; i < remainingPages.length; i += BATCH_SIZE) {
-      const batch = remainingPages.slice(i, i + BATCH_SIZE);
+    const BATCH_SIZE_ODDS = 5;
+    for (let i = 0; i < remainingPages.length; i += BATCH_SIZE_ODDS) {
+      const batch = remainingPages.slice(i, i + BATCH_SIZE_ODDS);
       const results = await Promise.all(
         batch.map(page => callApiFootball('odds', { date, page }))
       );
@@ -335,10 +335,16 @@ serve(async (req) => {
         }
 
         const homeGoalsFor = homeStatsData?.response?.goals?.for;
-        const homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
+        let homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
+        if (homeGoalsAvg === 0 && homeGoalsFor?.average?.total) {
+          homeGoalsAvg = parseFloat(homeGoalsFor.average.total);
+        }
 
         const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
-        const awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
+        let awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
+        if (awayConcededAvg === 0 && awayGoalsAgainst?.average?.total) {
+          awayConcededAvg = parseFloat(awayGoalsAgainst.average.total);
+        }
 
         // Poisson-based Over 1.5 probability (real, 0-100%)
         const pUnderHome = poissonProbUnder15(homeGoalsAvg);
@@ -401,7 +407,7 @@ serve(async (req) => {
         const rawScore = baseScore - penalty0x1 - riskIndex;
         const scoreValue = Math.round(Math.max(0, Math.min(100, rawScore)));
 
-        const isApproved = allCriteriaMet && scoreValue >= dynamicMinScore;
+        const isApproved = allCriteriaMet;
 
         return {
           fixture_id: String(fixtureId),
@@ -438,7 +444,7 @@ serve(async (req) => {
     }
 
     // --- Process in parallel batches of 5 ---
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = 10;
     const results: AnalysisResult[] = [];
     const totalBatches = Math.ceil(fixtureIdsToAnalyze.length / BATCH_SIZE);
 
@@ -458,6 +464,7 @@ serve(async (req) => {
     // Sort: approved first, then by time ascending
     results.sort((a, b) => {
       if (a.approved !== b.approved) return a.approved ? -1 : 1;
+      if (a.approved && b.approved) return b.score_value - a.score_value;
       return a.time.localeCompare(b.time);
     });
 
