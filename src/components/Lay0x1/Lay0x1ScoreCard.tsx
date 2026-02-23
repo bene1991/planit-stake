@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Target, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Target, Clock, Ban } from 'lucide-react';
 
 interface CriteriaDetail {
   home_goals_avg: number;
@@ -33,6 +33,7 @@ interface ScoreCardProps {
   backtestResult?: BacktestResult;
   onForceAdd?: () => void;
   forceAdding?: boolean;
+  onBlockLeague?: (leagueName: string) => void;
 }
 
 const classificationColor: Record<string, string> = {
@@ -42,7 +43,7 @@ const classificationColor: Record<string, string> = {
   'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague }: ScoreCardProps) => {
   const criteriaList = [
     { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
     { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
@@ -73,7 +74,16 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
                   <span className="mx-0.5">•</span>
                 </>
               )}
-              {league}
+              <span>{league}</span>
+              {onBlockLeague && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onBlockLeague(league); }}
+                  className="ml-1 inline-flex items-center gap-0.5 text-red-400/60 hover:text-red-400 transition-colors"
+                  title="Bloquear liga"
+                >
+                  <Ban className="w-3 h-3" />
+                </button>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
