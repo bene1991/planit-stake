@@ -198,7 +198,7 @@ export const Lay0x1Scanner = () => {
         return;
       }
 
-      const PARALLEL_DATES = 3;
+      const PARALLEL_DATES = 5; // Aumentado de 3 para 5 para maior velocidade
       for (let i = 0; i < missing.length; i += PARALLEL_DATES) {
         const batch = missing.slice(i, i + PARALLEL_DATES);
         setMissingProgress({ current: Math.min(i + PARALLEL_DATES, missing.length), total: missing.length });
