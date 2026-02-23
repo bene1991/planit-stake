@@ -100,6 +100,53 @@ function extractOdds(bookmakers: any[]): { homeOdd: number; awayOdd: number } {
   return { homeOdd, awayOdd };
 }
 
+// Fetch ALL pages of odds for a given date
+async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: number; awayOdd: number }>> {
+  const oddsMap = new Map<number, { homeOdd: number; awayOdd: number }>();
+
+  // Page 1
+  const firstPage = await callApiFootball('odds', { date, page: 1 });
+  const firstResponse = firstPage?.response || [];
+  const totalPages = firstPage?.paging?.total || 1;
+  const currentPage = firstPage?.paging?.current || 1;
+
+  console.log(`[ODDS] Page 1/${totalPages} returned ${firstResponse.length} entries`);
+
+  for (const entry of firstResponse) {
+    const fId = entry.fixture?.id;
+    if (!fId) continue;
+    oddsMap.set(fId, extractOdds(entry.bookmakers || []));
+  }
+
+  // Fetch remaining pages in batches of 3
+  if (totalPages > 1) {
+    const remainingPages: number[] = [];
+    for (let p = 2; p <= totalPages; p++) remainingPages.push(p);
+
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < remainingPages.length; i += BATCH_SIZE) {
+      const batch = remainingPages.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(page => callApiFootball('odds', { date, page }))
+      );
+      for (const result of results) {
+        const entries = result?.response || [];
+        for (const entry of entries) {
+          const fId = entry.fixture?.id;
+          if (!fId) continue;
+          oddsMap.set(fId, extractOdds(entry.bookmakers || []));
+        }
+      }
+      console.log(`[ODDS] Fetched pages ${batch.join(',')} — oddsMap size: ${oddsMap.size}`);
+    }
+  }
+
+  console.log(`[ODDS] Total: ${totalPages} pages, ${oddsMap.size} fixtures with odds`);
+  return oddsMap;
+}
+
+const MAX_DETAILED_ANALYSES = 50;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -145,43 +192,45 @@ serve(async (req) => {
     let oddsMap: Map<number, { homeOdd: number; awayOdd: number }> = new Map();
     let totalFixtures = 0;
     let preFilteredCount = 0;
+    let totalOddsPages = 0;
 
     if (date) {
-      // === NEW DATE-BASED FLOW ===
       // 1. Fetch all fixtures for the date
       const fixturesData = await callApiFootball('fixtures', { date });
       const allFixtures = fixturesData?.response || [];
       totalFixtures = allFixtures.length;
+      console.log(`[SCANNER] Total fixtures for ${date}: ${totalFixtures}`);
 
-      // Build fixture map
       for (const f of allFixtures) {
         const fId = f.fixture?.id;
         if (fId) fixtureMap.set(fId, f);
       }
 
-      // 2. Fetch odds for the date (batch - single API call)
-      const oddsData = await callApiFootball('odds', { date });
-      const oddsResponse = oddsData?.response || [];
+      // 2. Fetch ALL pages of odds
+      oddsMap = await fetchAllOddsPages(date);
+      console.log(`[SCANNER] Fixtures with odds data: ${oddsMap.size}/${totalFixtures}`);
 
-      // Build odds map
-      for (const oddEntry of oddsResponse) {
-        const fId = oddEntry.fixture?.id;
-        if (!fId) continue;
-        const bookmakers = oddEntry.bookmakers || [];
-        const odds = extractOdds(bookmakers);
-        oddsMap.set(fId, odds);
-      }
-
-      // 3. Pre-filter: only analyze games where home_odd < away_odd AND away_odd within range
+      // 3. Pre-filter: home_odd < away_odd AND away_odd within range
       for (const [fId, fixture] of fixtureMap.entries()) {
         const odds = oddsMap.get(fId);
         if (!odds || odds.homeOdd <= 0 || odds.awayOdd <= 0) continue;
-        // Pre-filter: home must be favorite (lower odd)
         if (odds.homeOdd < odds.awayOdd && odds.awayOdd <= weights.max_away_odd) {
           fixtureIdsToAnalyze.push(fId);
         }
       }
       preFilteredCount = fixtureIdsToAnalyze.length;
+      console.log(`[SCANNER] Pre-filtered (odds criteria): ${preFilteredCount}`);
+
+      // 4. Safety limit: if too many, pick top 50 by best home/away odd ratio
+      if (fixtureIdsToAnalyze.length > MAX_DETAILED_ANALYSES) {
+        fixtureIdsToAnalyze.sort((a, b) => {
+          const oddsA = oddsMap.get(a)!;
+          const oddsB = oddsMap.get(b)!;
+          return (oddsA.homeOdd / oddsA.awayOdd) - (oddsB.homeOdd / oddsB.awayOdd);
+        });
+        fixtureIdsToAnalyze = fixtureIdsToAnalyze.slice(0, MAX_DETAILED_ANALYSES);
+        console.log(`[SCANNER] Limited to top ${MAX_DETAILED_ANALYSES} by home/away ratio`);
+      }
 
     } else if (fixture_ids && Array.isArray(fixture_ids) && fixture_ids.length > 0) {
       // Legacy flow: fixture_ids provided directly
@@ -330,6 +379,8 @@ serve(async (req) => {
       }
     }
 
+    console.log(`[SCANNER] Detailed analysis complete: ${results.length} results (${results.filter(r => r.approved).length} approved)`);
+
     // Sort: approved first, then by score descending
     results.sort((a, b) => {
       if (a.approved !== b.approved) return a.approved ? -1 : 1;
@@ -341,6 +392,7 @@ serve(async (req) => {
         results, 
         weights_used: weights,
         total_fixtures: totalFixtures || fixtureIdsToAnalyze.length,
+        fixtures_with_odds: oddsMap.size,
         pre_filtered: preFilteredCount || fixtureIdsToAnalyze.length,
         analyzed: results.length,
       }),
