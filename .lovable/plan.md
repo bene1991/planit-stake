@@ -1,108 +1,101 @@
 
 
-## Dashboard Lay 0x1 -- Correcoes e Melhorias Completas
+## Historico de Avaliacao da IA + Melhorias do Modelo Evolutivo
 
-### 1. Corrigir Jogos Duplicados no Dashboard
+### O que ja existe
 
-**Problema**: Quando o scanner roda a analise novamente (ex: clicou "Analisar" duas vezes), ele salva jogos aprovados que ja existem no banco. Ja existem duplicatas reais no banco de dados (ex: Brondby vs Sonderjyske aparece 2x, Lechia vs Zaglebie 3x).
+O sistema Lay 0x1 ja tem implementado:
+- Scanner com 6 criterios eliminatorios e score ponderado 0-100
+- Classificacao (Muito Forte, Forte, Moderado, Nao Recomendado)
+- Salvamento automatico, auto-resolucao e analise pos-Red com IA (Gemini)
+- Calibracao a cada 30 jogos com ajuste de pesos (limites 5-30) e thresholds
+- Anti-overfitting a cada 4 ciclos
+- Dashboard com equity, evolucao mensal, performance por liga
+- Ligas bloqueadas e backtest acumulado
 
-**Solucao**:
-- **Prevenir futuros duplicados**: Adicionar constraint `UNIQUE(owner_id, fixture_id)` na tabela `lay0x1_analyses` via migration SQL, com `ON CONFLICT DO NOTHING` no insert
-- **Limpar duplicatas existentes**: Migration SQL que deleta registros duplicados mantendo o mais antigo
-- **Frontend**: Adicionar `ON CONFLICT` no `saveAnalysis` do hook `useLay0x1Analyses.ts`
+### O que falta implementar
 
-### 2. Analise Pos-Red com IA Completa
+#### 1. Nova tabela `lay0x1_calibration_history`
 
-**Problema atual**: A analise pos-Red e apenas uma funcao local (`generateRedInsights`) com regras fixas simples. Nao usa IA de verdade.
+Armazena cada ciclo de calibracao com detalhes completos:
 
-**Solucao**: Criar uma analise pos-Red enriquecida usando a IA (Gemini) via edge function que:
-- Recebe os dados do jogo (criterios, odds, medias, H2H, liga)
-- Analisa por que o 0x1 aconteceu apesar dos criterios aprovados
-- Gera insights acionaveis: padrao da liga, horario do gol, fraquezas nao capturadas
-- Sugere se a liga deve ser removida ou os thresholds ajustados
+```text
+Campos:
+- id (uuid)
+- owner_id (uuid)
+- cycle_number (integer)
+- trigger_type (text): "auto_30", "manual", "rebalance_100"
+- total_analyses (integer)
+- general_rate (numeric) -- taxa de acerto geral
+- old_weights (jsonb)
+- new_weights (jsonb)
+- old_thresholds (jsonb)
+- new_thresholds (jsonb)
+- criterion_rates (jsonb) -- taxa de sucesso individual de cada criterio
+- threshold_details (jsonb) -- detalhes de cada ajuste de threshold
+- patterns_detected (jsonb) -- padroes identificados (ligas com mais Red, faixas de odds fracas)
+- changes_summary (text[]) -- lista de alteracoes feitas
+- forced_rebalance (boolean)
+- created_at (timestamptz)
+```
 
-**Implementacao**:
-- Nova edge function `analyze-red-lay0x1` que usa Lovable AI (Gemini 2.5 Flash)
-- Chamada automaticamente quando um jogo e resolvido como Red (0x1)
-- Resultado salvo no `criteria_snapshot.ai_red_analysis` do registro
-- Dashboard exibe a analise completa da IA em um card expandivel ao lado do jogo Red
+RLS: owner_id = auth.uid() para SELECT e INSERT.
 
-### 3. Usar Resultados do Backtest para Calibracao
+#### 2. Atualizar Edge Function `calibrate-lay0x1`
 
-**Problema**: O backtest gera dados valiosos (aprovados vs Green/Red), mas esses dados nao sao salvos no banco para calibracao. Somente jogos do dia de hoje sao salvos.
+Adicionar ao final da calibracao:
+- **Salvar historico**: Inserir registro completo na nova tabela com pesos antigos, novos, taxas, padroes
+- **Deteccao de padroes**: Calcular ligas com maior indice de Red, faixas de odds com pior desempenho, medias ofensivas que nao convertem
+- **Liga auto-escalacao**: Se 2 Reds consecutivos na mesma liga, registrar alerta no historico
+- **Score minimo dinamico**: Se taxa geral < 65%, registrar recomendacao de elevar score minimo
 
-**Solucao**: Adicionar botao "Salvar para Calibracao" no modo backtest acumulado que:
-- Salva os jogos aprovados do backtest na tabela `lay0x1_analyses` (com `ON CONFLICT DO NOTHING` para evitar duplicatas)
-- Dispara auto-resolucao imediata (jogos passados ja tem placar final disponivel)
-- Permite que a calibracao use esses dados historicos
+#### 3. Novo componente `Lay0x1History.tsx`
 
-### 4. Excluir Jogos Adiados/Cancelados do Dashboard
+Painel de auditoria com as seguintes secoes:
 
-**Problema**: Jogos adiados ficam como "Pendentes" eternamente no dashboard sem opcao de remover.
+**Resumo do Modelo Atual**
+- Versao (ciclo atual)
+- Taxa de acerto atual vs antes do ultimo ajuste
+- Total de ajustes realizados
+- ROI acumulado (Greens - Reds em unidades)
 
-**Solucao**:
-- Adicionar botao de excluir (icone lixeira) em cada jogo pendente no Dashboard
-- Nova funcao `deleteAnalysis` no hook `useLay0x1Analyses.ts`
-- Confirmacao simples antes de excluir
+**Timeline de Calibracoes**
+- Cards cronologicos mostrando cada ciclo
+- Para cada ciclo: criterios fortalecidos, enfraquecidos, score minimo recomendado
+- Delta visual (peso anterior -> novo peso) com setas coloridas
 
-### 5. Lista de Ligas Bloqueadas (Blacklist)
+**Padroes Identificados**
+- Ligas com maior indice de Red (top 5)
+- Faixa de odds com menor desempenho
+- Medias ofensivas que nao estao convertendo
+- Tendencia Over artificial detectada
 
-**Problema**: Algumas ligas nao estao disponiveis na casa de apostas do usuario, ou tem performance ruim. O scanner continua mostrando jogos dessas ligas.
+**Relatorio de Atualizacao do Modelo**
+- Gerado a cada 30 jogos
+- Criterios fortalecidos e enfraquecidos
+- Mudanca estrategica aplicada
 
-**Solucao**:
-- Nova tabela `lay0x1_blocked_leagues` com campos: `owner_id`, `league_name`, `reason` (nao_disponivel, performance_ruim), `created_at`
-- No Dashboard, botao "Bloquear Liga" ao lado de cada liga na secao "Performance por Liga" e nos jogos pendentes
-- No Scanner (edge function `analyze-lay0x1`), filtrar jogos de ligas bloqueadas ANTES da analise detalhada
-- Na aba Config (Lay0x1Evolution), nova secao "Ligas Bloqueadas" com lista e botao para desbloquear
+#### 4. Nova aba na pagina Lay0x1
+
+Adicionar 4a aba "Historico IA" com icone `History` no `TabsList`, mudando de `grid-cols-3` para `grid-cols-4`.
 
 ### Detalhes Tecnicos
 
-**Migration SQL**:
+**Migration SQL:**
+- Criar tabela `lay0x1_calibration_history` com RLS
+- Policies: SELECT e INSERT para owner_id = auth.uid()
 
-```text
--- 1. Remove duplicates (keep oldest)
-DELETE FROM lay0x1_analyses a
-USING lay0x1_analyses b
-WHERE a.owner_id = b.owner_id
-  AND a.fixture_id = b.fixture_id
-  AND a.created_at > b.created_at;
+**Arquivos modificados:**
+- `supabase/functions/calibrate-lay0x1/index.ts` -- salvar historico na nova tabela, detectar padroes (ligas com mais Red, faixas de odds fracas), registrar alertas de liga auto-escalacao
+- `src/pages/Lay0x1.tsx` -- adicionar 4a aba "Historico IA"
 
--- 2. Add unique constraint
-ALTER TABLE lay0x1_analyses
-  ADD CONSTRAINT unique_owner_fixture UNIQUE (owner_id, fixture_id);
+**Arquivos novos:**
+- `src/components/Lay0x1/Lay0x1History.tsx` -- componente completo do painel de auditoria
+- `src/hooks/useLay0x1CalibrationHistory.ts` -- hook para buscar historico de calibracoes do banco
 
--- 3. Create blocked leagues table
-CREATE TABLE lay0x1_blocked_leagues (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id uuid NOT NULL,
-  league_name text NOT NULL,
-  reason text NOT NULL DEFAULT 'nao_disponivel',
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(owner_id, league_name)
-);
-
-ALTER TABLE lay0x1_blocked_leagues ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view own blocked leagues" ON lay0x1_blocked_leagues FOR SELECT USING (auth.uid() = owner_id);
-CREATE POLICY "Users can insert own blocked leagues" ON lay0x1_blocked_leagues FOR INSERT WITH CHECK (auth.uid() = owner_id);
-CREATE POLICY "Users can delete own blocked leagues" ON lay0x1_blocked_leagues FOR DELETE USING (auth.uid() = owner_id);
-```
-
-**Arquivos novos**:
-- `supabase/functions/analyze-red-lay0x1/index.ts` -- Edge function de analise pos-Red com IA
-- `src/hooks/useLay0x1BlockedLeagues.ts` -- Hook para gerenciar ligas bloqueadas
-
-**Arquivos modificados**:
-- `src/hooks/useLay0x1Analyses.ts` -- Adicionar `deleteAnalysis`, usar `upsert` com `onConflict`, chamar analise pos-Red com IA
-- `src/components/Lay0x1/Lay0x1Dashboard.tsx` -- Botao excluir em pendentes, botao bloquear liga, card expandivel de analise IA pos-Red, deduplicacao visual
-- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- Botao "Salvar para Calibracao" no backtest, filtrar ligas bloqueadas dos resultados
-- `src/components/Lay0x1/Lay0x1Evolution.tsx` -- Secao "Ligas Bloqueadas" com lista e botao desbloquear
-- `supabase/functions/analyze-lay0x1/index.ts` -- Buscar ligas bloqueadas do usuario e filtrar antes da analise
-
-### Resultado Final
-
-- Dashboard sem duplicatas
-- Jogos adiados podem ser excluidos
-- Analise pos-Red completa pela IA com insights profundos
-- Backtest alimenta a calibracao automaticamente
-- Ligas indesejaveis sao bloqueadas e nao aparecem mais no scanner
+**Fluxo:**
+1. A cada 30 jogos resolvidos, `calibrate-lay0x1` roda automaticamente
+2. Alem de ajustar pesos/thresholds, insere registro detalhado em `lay0x1_calibration_history`
+3. O registro inclui padroes detectados (ligas problematicas, faixas de odds, etc.)
+4. A aba "Historico IA" exibe todos esses registros em formato de timeline auditavel
 
