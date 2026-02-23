@@ -2,13 +2,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, TrendingDown, Target, Trophy, AlertTriangle, BarChart3 } from 'lucide-react';
-import { useState } from 'react';
+import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info } from 'lucide-react';
+import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export const Lay0x1Dashboard = () => {
   const { analyses, metrics, resolveAnalysis, refetch } = useLay0x1Analyses();
@@ -21,17 +22,53 @@ export const Lay0x1Dashboard = () => {
   const resolvedAnalyses = analyses.filter(a => a.result);
 
   // Equity chart data
-  const equityData = resolvedAnalyses
+  const equityData = useMemo(() => resolvedAnalyses
     .slice()
     .reverse()
     .reduce((acc: { name: string; equity: number }[], a, i) => {
       const prev = acc.length > 0 ? acc[acc.length - 1].equity : 0;
-      acc.push({
-        name: `#${i + 1}`,
-        equity: prev + (a.result === 'Green' ? 1 : -1),
-      });
+      acc.push({ name: `#${i + 1}`, equity: prev + (a.result === 'Green' ? 1 : -1) });
       return acc;
-    }, []);
+    }, []), [resolvedAnalyses]);
+
+  // Monthly evolution data
+  const monthlyData = useMemo(() => {
+    const byMonth: Record<string, { greens: number; total: number }> = {};
+    resolvedAnalyses.forEach(a => {
+      const month = a.date?.substring(0, 7) || 'N/A';
+      if (!byMonth[month]) byMonth[month] = { greens: 0, total: 0 };
+      byMonth[month].total++;
+      if (a.result === 'Green') byMonth[month].greens++;
+    });
+    return Object.entries(byMonth)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, { greens, total }]) => ({
+        month,
+        winRate: Math.round((greens / total) * 100),
+        total,
+        greens,
+      }));
+  }, [resolvedAnalyses]);
+
+  // League performance data
+  const leagueData = useMemo(() => {
+    const byLeague: Record<string, { greens: number; total: number }> = {};
+    resolvedAnalyses.forEach(a => {
+      const league = a.league || 'N/A';
+      if (!byLeague[league]) byLeague[league] = { greens: 0, total: 0 };
+      byLeague[league].total++;
+      if (a.result === 'Green') byLeague[league].greens++;
+    });
+    return Object.entries(byLeague)
+      .map(([league, { greens, total }]) => ({
+        league: league.length > 20 ? league.substring(0, 18) + '…' : league,
+        winRate: Math.round((greens / total) * 100),
+        total,
+        greens,
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [resolvedAnalyses]);
 
   const handleResolve = async (id: string) => {
     const input = scoreInputs[id];
@@ -107,10 +144,65 @@ export const Lay0x1Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip />
+                <RechartsTooltip />
                 <Line type="monotone" dataKey="equity" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Monthly Evolution */}
+      {monthlyData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" /> Evolução Mensal
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" domain={[0, 100]} />
+                <RechartsTooltip formatter={(value: number) => `${value}%`} />
+                <Bar dataKey="winRate" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* League Performance */}
+      {leagueData.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" /> Performance por Liga
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="space-y-2">
+              {leagueData.map(l => (
+                <div key={l.league} className="flex items-center justify-between text-xs">
+                  <span className="truncate flex-1 mr-2">{l.league}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${l.winRate}%`,
+                          backgroundColor: l.winRate >= 70 ? 'hsl(var(--primary))' : l.winRate >= 50 ? 'hsl(45 93% 47%)' : 'hsl(0 84% 60%)',
+                        }}
+                      />
+                    </div>
+                    <span className="w-10 text-right font-medium">{l.winRate}%</span>
+                    <span className="w-8 text-right text-muted-foreground">({l.total})</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -123,6 +215,7 @@ export const Lay0x1Dashboard = () => {
               <p className="text-sm font-medium">Modelo Evolutivo</p>
               <p className="text-xs text-muted-foreground">
                 Ciclo #{weights.cycle_count} • {metrics.resolved} jogos resolvidos
+                {metrics.resolved > 0 && ` • Próx. calibração: ${30 - (metrics.resolved % 30)} jogos`}
               </p>
             </div>
             <Button size="sm" variant="outline" onClick={handleCalibrate} disabled={calibrating}>
@@ -145,28 +238,15 @@ export const Lay0x1Dashboard = () => {
                     <p className="text-xs text-muted-foreground">{a.league} • Score: {a.score_value}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Input
-                      placeholder="H"
-                      className="w-12 h-8 text-center text-xs"
+                    <Input placeholder="H" className="w-12 h-8 text-center text-xs"
                       value={scoreInputs[a.id]?.home || ''}
-                      onChange={(e) => setScoreInputs(prev => ({
-                        ...prev,
-                        [a.id]: { ...prev[a.id], home: e.target.value }
-                      }))}
-                    />
+                      onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], home: e.target.value } }))} />
                     <span className="text-xs">x</span>
-                    <Input
-                      placeholder="A"
-                      className="w-12 h-8 text-center text-xs"
+                    <Input placeholder="A" className="w-12 h-8 text-center text-xs"
                       value={scoreInputs[a.id]?.away || ''}
-                      onChange={(e) => setScoreInputs(prev => ({
-                        ...prev,
-                        [a.id]: { ...prev[a.id], away: e.target.value }
-                      }))}
-                    />
+                      onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], away: e.target.value } }))} />
                     <Button size="sm" variant="outline" className="h-8 text-xs"
-                      disabled={resolvingId === a.id}
-                      onClick={() => handleResolve(a.id)}>
+                      disabled={resolvingId === a.id} onClick={() => handleResolve(a.id)}>
                       {resolvingId === a.id ? '...' : 'OK'}
                     </Button>
                   </div>
@@ -182,25 +262,45 @@ export const Lay0x1Dashboard = () => {
         <div>
           <h3 className="text-sm font-semibold mb-2">Histórico ({resolvedAnalyses.length})</h3>
           <div className="space-y-1.5">
-            {resolvedAnalyses.slice(0, 20).map(a => (
-              <Card key={a.id}>
-                <CardContent className="p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
-                    <p className="text-xs text-muted-foreground">{a.league} • {a.date}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {a.final_score_home}-{a.final_score_away}
-                    </span>
-                    <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
-                      {a.result}
-                    </Badge>
-                    {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {resolvedAnalyses.slice(0, 20).map(a => {
+              const redInsights = a.criteria_snapshot?.red_insights as string[] | undefined;
+              return (
+                <Card key={a.id}>
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
+                      <p className="text-xs text-muted-foreground">{a.league} • {a.date}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {a.final_score_home}-{a.final_score_away}
+                      </span>
+                      <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
+                        {a.result}
+                      </Badge>
+                      {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
+                      {redInsights && redInsights.length > 0 && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="w-4 h-4 text-red-400 cursor-pointer" />
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-xs">
+                              <p className="font-semibold text-xs mb-1">Análise do Red:</p>
+                              <ul className="text-xs space-y-0.5">
+                                {redInsights.map((insight, i) => (
+                                  <li key={i}>• {insight}</li>
+                                ))}
+                              </ul>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}

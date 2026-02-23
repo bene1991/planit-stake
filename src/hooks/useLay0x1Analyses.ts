@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 export interface Lay0x1Analysis {
   id: string;
@@ -20,6 +21,48 @@ export interface Lay0x1Analysis {
   result?: string;
   resolved_at?: string;
   created_at: string;
+}
+
+// Generate insights for a Red (0x1) result
+function generateRedInsights(criteriaSnapshot: any): string[] {
+  const insights: string[] = [];
+  if (!criteriaSnapshot) return insights;
+
+  const { criteria_met, away_odd, over15_combined, home_goals_avg, away_conceded_avg, h2h_0x1_count } = criteriaSnapshot;
+
+  if (away_odd !== undefined) {
+    if (away_odd < 2.5) insights.push(`Odd do visitante muito baixa: ${away_odd} (visitante forte demais)`);
+    else if (away_odd > 4.0) insights.push(`Odd do visitante alta: ${away_odd} (fora da faixa ideal 2.5-4.0)`);
+  }
+
+  if (over15_combined !== undefined && over15_combined < 75) {
+    insights.push(`Over 1.5 combinado no limite: ${over15_combined}% (ideal >75%)`);
+  }
+
+  if (home_goals_avg !== undefined && home_goals_avg < 1.8) {
+    insights.push(`Mandante com média ofensiva fraca: ${home_goals_avg} gols/jogo`);
+  }
+
+  if (away_conceded_avg !== undefined && away_conceded_avg < 1.5) {
+    insights.push(`Visitante com defesa sólida fora: sofre apenas ${away_conceded_avg} gols/jogo`);
+  }
+
+  if (h2h_0x1_count !== undefined && h2h_0x1_count > 0) {
+    insights.push(`H2H com ${h2h_0x1_count} resultado(s) 0x1 no histórico`);
+  }
+
+  if (criteria_met) {
+    const failedCriteria = Object.entries(criteria_met).filter(([, v]) => v === false);
+    if (failedCriteria.length > 0) {
+      insights.push(`Critérios não atendidos: ${failedCriteria.map(([k]) => k).join(', ')}`);
+    }
+  }
+
+  if (insights.length === 0) {
+    insights.push('Todos os critérios estavam dentro dos limites — Red inesperado');
+  }
+
+  return insights;
 }
 
 export const useLay0x1Analyses = () => {
@@ -61,6 +104,9 @@ export const useLay0x1Analyses = () => {
     const was0x1 = scoreHome === 0 && scoreAway === 1;
     const result = was0x1 ? 'Red' : 'Green';
 
+    // Find the analysis to get criteria_snapshot
+    const analysis = analyses.find(a => a.id === id);
+
     const { error } = await (supabase as any)
       .from('lay0x1_analyses')
       .update({
@@ -74,13 +120,55 @@ export const useLay0x1Analyses = () => {
       .eq('owner_id', user.id);
 
     if (!error) {
+      // Update local state
       setAnalyses(prev => prev.map(a => a.id === id ? {
         ...a, final_score_home: scoreHome, final_score_away: scoreAway,
         was_0x1: was0x1, result, resolved_at: new Date().toISOString(),
       } : a));
+
+      // Post-Red insights
+      if (was0x1 && analysis?.criteria_snapshot) {
+        const insights = generateRedInsights(analysis.criteria_snapshot);
+        const updatedSnapshot = { ...analysis.criteria_snapshot, red_insights: insights };
+        
+        await (supabase as any)
+          .from('lay0x1_analyses')
+          .update({ criteria_snapshot: updatedSnapshot })
+          .eq('id', id)
+          .eq('owner_id', user.id);
+
+        // Update local state with insights
+        setAnalyses(prev => prev.map(a => a.id === id ? {
+          ...a, criteria_snapshot: updatedSnapshot,
+        } : a));
+
+        toast.warning('🔴 Análise de Red gerada', {
+          description: insights[0],
+          duration: 5000,
+        });
+      }
+
+      // Auto-calibration every 30 resolved games
+      const resolvedCount = analyses.filter(a => a.result || a.id === id).length;
+      if (resolvedCount > 0 && resolvedCount % 30 === 0) {
+        toast.info('🔄 Recalibração automática iniciada...', { duration: 3000 });
+        try {
+          const res = await supabase.functions.invoke('calibrate-lay0x1');
+          if (res.data?.error) {
+            toast.error('Erro na recalibração: ' + res.data.error);
+          } else {
+            toast.success(`✅ Recalibração #${res.data?.cycle || '?'} concluída automaticamente!`, {
+              description: `Taxa geral: ${res.data?.general_rate || 0}%${res.data?.forced_rebalance ? ' (com anti-overfitting)' : ''}`,
+              duration: 6000,
+            });
+          }
+        } catch {
+          toast.error('Erro na recalibração automática');
+        }
+      }
     }
     return error;
-  }, [user]);
+  }, [user, analyses]);
 
   // Metrics
   const resolved = analyses.filter(a => a.result);

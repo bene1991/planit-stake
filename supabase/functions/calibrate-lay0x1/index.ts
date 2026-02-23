@@ -6,6 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const DEFAULT_WEIGHTS: Record<string, number> = {
+  offensive_weight: 20,
+  defensive_weight: 20,
+  over_weight: 20,
+  league_avg_weight: 15,
+  h2h_weight: 15,
+  odds_weight: 10,
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -54,14 +63,12 @@ serve(async (req) => {
       .maybeSingle();
 
     const weights = currentWeights || {
-      offensive_weight: 20, defensive_weight: 20, over_weight: 20,
-      league_avg_weight: 15, h2h_weight: 15, odds_weight: 10,
+      ...DEFAULT_WEIGHTS,
       cycle_count: 0,
     };
 
-    // Calculate success rate per criterion
     const criteriaKeys = ['home_goals_avg', 'away_conceded_avg', 'over15_combined', 'league_goals_avg', 'h2h_0x1_count', 'away_odd'];
-    const weightKeys = ['offensive_weight', 'defensive_weight', 'over_weight', 'league_avg_weight', 'h2h_weight', 'odds_weight'];
+    const weightKeys = Object.keys(DEFAULT_WEIGHTS);
 
     const totalGreen = analyses.filter(a => a.result === 'Green').length;
     const generalRate = totalGreen / analyses.length;
@@ -73,14 +80,7 @@ serve(async (req) => {
       const strongGames = analyses.filter(a => {
         const snapshot = a.criteria_snapshot as any;
         if (!snapshot?.criteria_met) return false;
-
-        // Map criteria key to criteria_met key
-        const metKey = key === 'home_goals_avg' ? 'home_goals_avg' :
-          key === 'away_conceded_avg' ? 'away_conceded_avg' :
-          key === 'over15_combined' ? 'over15_combined' :
-          key === 'h2h_0x1_count' ? 'h2h_no_0x1' :
-          key === 'away_odd' ? 'away_odd' : key;
-
+        const metKey = key === 'h2h_0x1_count' ? 'h2h_no_0x1' : key;
         return snapshot.criteria_met[metKey] === true;
       });
 
@@ -89,14 +89,23 @@ serve(async (req) => {
       criterionRates.push(rate);
     }
 
-    // Apply formula: new_weight = current_weight * (criterion_rate / general_rate)
     const avgRate = criterionRates.reduce((s, r) => s + r, 0) / criterionRates.length || generalRate;
+    const newCycleCount = (weights.cycle_count || 0) + 1;
+
+    // Check if forced rebalance is needed (anti-overfitting every ~120 games / cycle 4)
+    const forcedRebalance = newCycleCount % 4 === 0;
 
     const newWeights: Record<string, number> = {};
     let totalNewWeight = 0;
 
     for (let i = 0; i < weightKeys.length; i++) {
-      const currentW = (weights as any)[weightKeys[i]] as number;
+      let currentW = (weights as any)[weightKeys[i]] as number;
+
+      // Forced rebalance: pull weights towards defaults before applying formula
+      if (forcedRebalance) {
+        currentW = (currentW + DEFAULT_WEIGHTS[weightKeys[i]]) / 2;
+      }
+
       const rate = criterionRates[i];
       let newW = currentW * (rate / (avgRate || 0.5));
 
@@ -117,8 +126,6 @@ serve(async (req) => {
     const diff = 100 - finalSum;
     newWeights[weightKeys[0]] = Math.round((newWeights[weightKeys[0]] + diff) * 10) / 10;
 
-    const newCycleCount = (weights.cycle_count || 0) + 1;
-
     // Upsert weights
     const { error: upsertErr } = await supabase
       .from('lay0x1_weights')
@@ -136,6 +143,7 @@ serve(async (req) => {
       JSON.stringify({
         message: 'Calibration complete',
         cycle: newCycleCount,
+        forced_rebalance: forcedRebalance,
         total_analyses: analyses.length,
         general_rate: Math.round(generalRate * 100),
         criterion_rates: criteriaKeys.reduce((obj, k, i) => {
