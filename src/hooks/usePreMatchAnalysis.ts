@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface TeamStats {
-  games: { played: { total: number } };
+  games: { played: { total: number; home: number; away: number } };
   goals: {
     for: { total: { total: number; home: number; away: number }; average: { total: string; home: string; away: string }; minute: Record<string, { total: number | null; percentage: string | null }> };
     against: { total: { total: number; home: number; away: number }; average: { total: string; home: string; away: string }; minute: Record<string, { total: number | null; percentage: string | null }> };
