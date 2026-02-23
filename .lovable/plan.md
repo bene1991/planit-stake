@@ -1,183 +1,72 @@
 
 
-## Correcoes no Scanner Lay 0x1: Calculo Over Real + Score Inteligente + Prob 0x1 + Indice de Risco + Modo Evolutivo
+## Corrigir Ranges de Normalizacao do Score Inteligente
 
-### Problemas Identificados
+### Problema
 
-**1. Calculo Over 1.5 incorreto** (analyze-lay0x1, linhas 337-339)
-- Soma percentuais linearmente: `homeGoalsAvg/2*100 + awayConcededAvg/2*100` = valores acima de 100%
-- Sem significado probabilistico
+Os ranges de normalizacao no `analyze-lay0x1/index.ts` sao muito largos, comprimindo scores de jogos bons para valores mediocres:
 
-**2. Score sem penalizacao por risco 0x1**
-- Nao estima probabilidade real de 0x1
-- Nao penaliza jogos com alta volatilidade
+| Componente | Valor real | Range atual | Score | Range correto | Score corrigido |
+|---|---|---|---|---|---|
+| Ofensivo (1.9 gols) | 1.90 | [0.5, 3.0] | 56% | [1.0, 2.2] | **75%** |
+| Defensivo (1.7 gols) | 1.70 | [0.5, 3.0] | 48% | [1.0, 2.2] | **58%** |
+| Over Poisson (79%) | 78.6 | [30, 95] | 75% | [40, 85] | **86%** |
+| Liga (proxy) | 1.80 | [1.0, 3.5] | 32% | [1.3, 2.5] | **42%** |
+| H2H (0 de 5) | 5 | [0, 5] | 100% | sem mudanca | **100%** |
+| Odds (3.85) | 1.0 | ideal | 100% | sem mudanca | **100%** |
 
-**3. Bug critico na validacao de bloqueio de ligas** (calibrate-lay0x1, linha 596)
-- A variavel `leagueStats` referenciada na validacao de bloqueio da IA esta **fora de escopo** -- ela e local da funcao `detectPatterns()` (linha 81)
-- A validacao adicionada anteriormente **nao funciona** porque `leagueStats` e `undefined` no contexto do `serve()`
+**Score atual**: 65.5 arredondado para **66** (abaixo do min_score 75 do usuario)
+**Score corrigido**: ~76 (acima do min_score, seria Aprovado)
 
-**4. Calibracao nao esta alinhada com o novo modelo**
-- Thresholds de `min_over15_combined` usam range [50, 120] (invalido para probabilidade real 0-100%)
-- Modo evolutivo ja existe mas precisa do ciclo de 50 jogos
+### Mudancas
 
----
+**Arquivo unico: `supabase/functions/analyze-lay0x1/index.ts`**
 
-### Solucao Completa
-
-#### Arquivo 1: `supabase/functions/analyze-lay0x1/index.ts`
-
-**A. Nova funcao Poisson para Over 1.5 real**
+1. **Ajustar ranges de normalizacao** (linhas 388-393):
 
 ```text
-function poissonProbUnder15(lambda: number): number {
-  // P(X<=1) = e^(-lambda) * (1 + lambda)
-  return Math.exp(-lambda) * (1 + lambda);
-}
+// ANTES (ranges irrealistas):
+normalize(homeGoalsAvg, 0.5, 3.0)    // 1.9 -> 0.56
+normalize(awayConcededAvg, 0.5, 3.0) // 1.7 -> 0.48
+normalize(probOverReal, 30, 95)       // 78.6 -> 0.75
+normalize(leagueGoalsAvg, 1.0, 3.5)  // 1.8 -> 0.32
+
+// DEPOIS (ranges realistas de futebol):
+normalize(homeGoalsAvg, 1.0, 2.2)    // 1.9 -> 0.75
+normalize(awayConcededAvg, 1.0, 2.2) // 1.7 -> 0.58
+normalize(probOverReal, 40, 85)       // 78.6 -> 0.86
+normalize(leagueGoalsAvg, 1.3, 2.5)  // 1.8 -> 0.42
 ```
 
-**B. Substituir calculo Over** (linhas 337-340)
+Justificativa dos novos ranges:
+- **[1.0, 2.2] para gols**: a grande maioria dos times esta entre 1.0 e 2.2 de media. Times com 2.2+ sao excepcionais (score 100%)
+- **[40, 85] para Over Poisson**: probabilidades reais de Over 1.5 ficam nesse range. Acima de 85% e excelente
+- **[1.3, 2.5] para liga**: proxy mais realista para qualidade da liga baseada nos stats do jogo
 
-De:
-```text
-homeOver15Pct = min(100, (homeGoalsAvg / 2.0) * 100)
-awayOver15Pct = min(100, (awayConcededAvg / 2.0) * 100)
-over15Combined = soma dos dois
-```
+### Simulacao com os novos ranges
 
-Para:
-```text
-pUnderHome = poissonProbUnder15(homeGoalsAvg)
-pUnderAway = poissonProbUnder15(awayConcededAvg)
-probOverReal = (1 - pUnderHome * pUnderAway) * 100  // 0-100%
-over15Combined = round(probOverReal, 1)
-```
-
-**C. Probabilidade estimada de 0x1** (novo calculo)
-
-Buscar dados adicionais do visitante para calcular frequencia de 0x1:
-```text
-// Dados ja disponiveis:
-// - h2h0x1Count: quantas vezes deu 0x1 nos ultimos 5 H2H
-// - awayConcededAvg: media gols sofridos fora pelo visitante
-// - homeGoalsAvg: media gols do mandante em casa
-
-// Estimativa de prob 0x1 usando Poisson:
-// P(home=0) * P(away=1) 
-prob0x1_poisson = Math.exp(-homeGoalsAvg) * (awayConcededAvg * Math.exp(-awayConcededAvg))
-
-// Combinacao com H2H
-prob0x1_h2h = h2h0x1Count / 5
-
-// Prob combinada (ponderada)
-prob0x1 = prob0x1_poisson * 0.6 + prob0x1_h2h * 0.4
-```
-
-Se `prob0x1 > 0.12` (12%), reduzir score proporcionalmente.
-
-**D. Indice de Risco (volatilidade)**
-
-Calcular consistencia estatistica e penalizar jogos com dados inconsistentes:
-```text
-// Quanto mais distantes os indicadores, maior o risco
-riskIndex = 0
-
-// Divergencia ofensiva/defensiva (mandante ataca muito mas visitante nao sofre)
-divergence = Math.abs(homeGoalsAvg - awayConcededAvg)
-if (divergence > 1.0) riskIndex += normalize(divergence, 1.0, 2.5) * 5
-
-// Odds divergentes do perfil estatistico
-expectedOddRatio = homeGoalsAvg / (awayConcededAvg || 0.5)
-actualOddRatio = awayOdd / homeOdd
-oddsDivergence = Math.abs(expectedOddRatio - actualOddRatio)
-if (oddsDivergence > 1.5) riskIndex += normalize(oddsDivergence, 1.5, 3.0) * 5
-```
-
-**E. Score Inteligente final** (substituir linhas 360-371)
+Para Brondby vs Sonderjyske (1.9/1.7/3.85/79%/0 h2h):
 
 ```text
-// Score base ponderado (igual ao atual, mas com overScore usando probOverReal)
-overScore = normalize(probOverReal, 30, 95) * (over_weight / totalWeight)
-// ... demais componentes iguais
+offensiveScore = 0.75 * 0.20 = 0.150
+defensiveScore = 0.58 * 0.20 = 0.117
+overScore      = 0.86 * 0.20 = 0.172
+leagueScore    = 0.42 * 0.15 = 0.063
+h2hScore       = 1.00 * 0.15 = 0.150
+oddsScore      = 1.00 * 0.10 = 0.100
 
-baseScore = (todos os componentes) * 100
+baseScore = 75.2
+penalty0x1 = 0 (prob0x1 < 12%)
+riskIndex = 0 (divergencia < 1.0)
 
-// Penalizacao 1: risco de 0x1
-penalty0x1 = 0
-if (prob0x1 > 0.12) {
-  penalty0x1 = (prob0x1 - 0.12) * 100  // proporcional ao excesso
-}
-
-// Penalizacao 2: indice de risco (volatilidade)
-// riskIndex ja calculado acima (0-10)
-
-finalScore = baseScore - penalty0x1 - riskIndex
-scoreValue = clamp(round(finalScore), 0, 100)
+Score final = 75 -> APROVADO (>= min_score 75)
+Classification = "Forte"
 ```
-
-**F. Novos campos no criteria snapshot**
-
-Adicionar ao retorno:
-- `prob_over_real`: probabilidade Over 1.5 real (Poisson)
-- `prob_0x1`: probabilidade estimada de 0x1
-- `risk_index`: indice de risco/volatilidade
-
----
-
-#### Arquivo 2: `supabase/functions/calibrate-lay0x1/index.ts`
-
-**A. Corrigir bug do leagueStats fora de escopo**
-
-A funcao `detectPatterns()` calcula `leagueStats` internamente mas nao o retorna. Na linha 596, o codigo tenta usar `leagueStats[league]` que e undefined.
-
-Solucao: fazer `detectPatterns()` retornar tambem o `leagueStats` para uso na validacao de bloqueio:
-
-```text
-// detectPatterns agora retorna { patterns, leagueStats }
-function detectPatterns(analyses: any[]): { patterns: Record<string, any>, leagueStats: Record<string, { total: number; reds: number }> } {
-  // ... codigo existente ...
-  return { patterns, leagueStats };
-}
-```
-
-E na chamada (linha 493):
-```text
-const { patterns, leagueStats } = detectPatterns(analyses);
-```
-
-**B. Ajustar THRESHOLD_LIMITS** (linha 28)
-
-```text
-min_over15_combined: [30, 95],  // antes era [50, 120]
-```
-
-**C. Modo Evolutivo a cada 50 jogos**
-
-A calibracao ja roda automaticamente. Ajustar para usar ciclos de 50 (ja e configuravel pelo `cycle_count`). Nao precisa mudar a logica existente, apenas o trigger no frontend que ja dispara a cada N jogos resolvidos.
-
----
-
-#### Arquivo 3: `src/components/Lay0x1/Lay0x1Scanner.tsx`
-
-**A. Ajustar slider Over 1.5** (linha 661)
-
-```text
-<Slider value={[weights.min_over15_combined]} min={30} max={95} step={5} .../>
-```
-
----
-
-### Resumo de Arquivos
-
-| Arquivo | Mudancas |
-|---|---|
-| `supabase/functions/analyze-lay0x1/index.ts` | Poisson Over, Prob 0x1, Indice de Risco, Score Inteligente |
-| `supabase/functions/calibrate-lay0x1/index.ts` | Fix leagueStats scope, threshold limits [30,95] |
-| `src/components/Lay0x1/Lay0x1Scanner.tsx` | Slider max 150 para 95 |
 
 ### Impacto
 
-- Todos os scores serao recalculados com o novo modelo
-- O `min_over15_combined` salvo do usuario pode precisar de ajuste se estiver acima de 95
-- A penalizacao por 0x1 vai reduzir scores de jogos com perfil perigoso
-- O bug de leagueStats sera corrigido para que a validacao de bloqueio funcione de verdade
+- Jogos que atendem todos os criterios com stats decentes passam a ter scores 70-85 (realistas)
+- Jogos excepcionais (media 2.0+ gols, over 85%+) atingem 85-95
+- Jogos marginais (media ~1.5, over ~50%) ficam em 55-65 (corretamente reprovados)
+- Nenhuma outra mudanca necessaria -- apenas os 4 numeros de range
 
