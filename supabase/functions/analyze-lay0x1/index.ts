@@ -14,13 +14,6 @@ function getSupabaseClient(authHeader: string) {
   );
 }
 
-function getServiceClient() {
-  return createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  );
-}
-
 async function callApiFootball(endpoint: string, params: Record<string, unknown>) {
   const url = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -62,6 +55,7 @@ interface AnalysisResult {
   criteria: {
     home_goals_avg: number;
     away_conceded_avg: number;
+    home_odd: number;
     away_odd: number;
     over15_combined: number;
     h2h_0x1_count: number;
@@ -84,11 +78,26 @@ function classify(score: number): string {
 }
 
 function calculateOddsScore(odd: number): number {
-  // Ideal range: 2.5-4.0 = max score, outside = penalty
   if (odd >= 2.5 && odd <= 4.0) return 1.0;
   if (odd < 2.5) return normalize(odd, 1.0, 2.5);
-  // 4.0 to 4.5 = diminishing
   return normalize(4.5 - odd, 0, 0.5);
+}
+
+// Extract odds from bookmakers data for a fixture
+function extractOdds(bookmakers: any[]): { homeOdd: number; awayOdd: number } {
+  let homeOdd = 0;
+  let awayOdd = 0;
+  for (const bk of bookmakers) {
+    const matchWinner = bk.bets?.find((b: any) => b.id === 1);
+    if (matchWinner) {
+      const homeValue = matchWinner.values?.find((v: any) => v.value === 'Home');
+      const awayValue = matchWinner.values?.find((v: any) => v.value === 'Away');
+      if (homeValue) homeOdd = parseFloat(homeValue.odd);
+      if (awayValue) awayOdd = parseFloat(awayValue.odd);
+      if (homeOdd > 0 && awayOdd > 0) break;
+    }
+  }
+  return { homeOdd, awayOdd };
 }
 
 serve(async (req) => {
@@ -103,17 +112,14 @@ serve(async (req) => {
     }
 
     const supabase = getSupabaseClient(authHeader);
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }
-    const userId = claimsData.claims.sub;
+    const userId = user.id;
 
-    const { fixture_ids, weights_override } = await req.json();
-    if (!fixture_ids || !Array.isArray(fixture_ids) || fixture_ids.length === 0) {
-      return new Response(JSON.stringify({ error: 'fixture_ids array required' }), { status: 400, headers: corsHeaders });
-    }
+    const body = await req.json();
+    const { date, fixture_ids, weights_override } = body;
 
     // Get user weights
     let weights: Weights;
@@ -134,14 +140,67 @@ serve(async (req) => {
       };
     }
 
+    let fixtureIdsToAnalyze: number[] = [];
+    let fixtureMap: Map<number, any> = new Map();
+    let oddsMap: Map<number, { homeOdd: number; awayOdd: number }> = new Map();
+    let totalFixtures = 0;
+    let preFilteredCount = 0;
+
+    if (date) {
+      // === NEW DATE-BASED FLOW ===
+      // 1. Fetch all fixtures for the date
+      const fixturesData = await callApiFootball('fixtures', { date });
+      const allFixtures = fixturesData?.response || [];
+      totalFixtures = allFixtures.length;
+
+      // Build fixture map
+      for (const f of allFixtures) {
+        const fId = f.fixture?.id;
+        if (fId) fixtureMap.set(fId, f);
+      }
+
+      // 2. Fetch odds for the date (batch - single API call)
+      const oddsData = await callApiFootball('odds', { date });
+      const oddsResponse = oddsData?.response || [];
+
+      // Build odds map
+      for (const oddEntry of oddsResponse) {
+        const fId = oddEntry.fixture?.id;
+        if (!fId) continue;
+        const bookmakers = oddEntry.bookmakers || [];
+        const odds = extractOdds(bookmakers);
+        oddsMap.set(fId, odds);
+      }
+
+      // 3. Pre-filter: only analyze games where home_odd < away_odd AND away_odd within range
+      for (const [fId, fixture] of fixtureMap.entries()) {
+        const odds = oddsMap.get(fId);
+        if (!odds || odds.homeOdd <= 0 || odds.awayOdd <= 0) continue;
+        // Pre-filter: home must be favorite (lower odd)
+        if (odds.homeOdd < odds.awayOdd && odds.awayOdd <= weights.max_away_odd) {
+          fixtureIdsToAnalyze.push(fId);
+        }
+      }
+      preFilteredCount = fixtureIdsToAnalyze.length;
+
+    } else if (fixture_ids && Array.isArray(fixture_ids) && fixture_ids.length > 0) {
+      // Legacy flow: fixture_ids provided directly
+      fixtureIdsToAnalyze = fixture_ids;
+    } else {
+      return new Response(JSON.stringify({ error: 'date or fixture_ids required' }), { status: 400, headers: corsHeaders });
+    }
+
     const results: AnalysisResult[] = [];
 
-    for (const fixtureId of fixture_ids) {
+    for (const fixtureId of fixtureIdsToAnalyze) {
       try {
-        // 1. Get fixture details
-        const fixtureData = await callApiFootball('fixtures', { id: fixtureId });
-        const fixture = fixtureData?.response?.[0];
-        if (!fixture) continue;
+        // Get fixture details (from map if date flow, else fetch)
+        let fixture = fixtureMap.get(fixtureId);
+        if (!fixture) {
+          const fixtureData = await callApiFootball('fixtures', { id: fixtureId });
+          fixture = fixtureData?.response?.[0];
+          if (!fixture) continue;
+        }
 
         const homeTeamId = fixture.teams?.home?.id;
         const awayTeamId = fixture.teams?.away?.id;
@@ -150,19 +209,41 @@ serve(async (req) => {
         const homeTeam = fixture.teams?.home?.name || 'Home';
         const awayTeam = fixture.teams?.away?.name || 'Away';
         const league = fixture.league?.name || 'League';
-        const date = fixture.fixture?.date?.split('T')[0] || '';
+        const fixtureDate = fixture.fixture?.date?.split('T')[0] || '';
 
         if (!homeTeamId || !awayTeamId) continue;
 
-        // 2. Fetch data in parallel
-        const [h2hData, homeStatsData, awayStatsData, oddsData] = await Promise.all([
+        // Get odds (from map if date flow, else fetch)
+        let homeOdd = 0;
+        let awayOdd = 0;
+        const cachedOdds = oddsMap.get(fixtureId);
+        if (cachedOdds) {
+          homeOdd = cachedOdds.homeOdd;
+          awayOdd = cachedOdds.awayOdd;
+        }
+
+        // Fetch remaining data in parallel (H2H + stats; skip odds fetch if already have them)
+        const parallelCalls: Promise<any>[] = [
           callApiFootball('fixtures/headtohead', { h2h: `${homeTeamId}-${awayTeamId}`, last: 5 }),
           callApiFootball('teams/statistics', { team: homeTeamId, league: leagueId, season }),
           callApiFootball('teams/statistics', { team: awayTeamId, league: leagueId, season }),
-          callApiFootball('odds', { fixture: fixtureId }),
-        ]);
+        ];
+        if (homeOdd === 0 || awayOdd === 0) {
+          parallelCalls.push(callApiFootball('odds', { fixture: fixtureId }));
+        }
 
-        // 3. Extract stats
+        const [h2hData, homeStatsData, awayStatsData, oddsDataSingle] = await Promise.all(parallelCalls);
+
+        // Extract odds from single-fixture fetch if needed
+        if ((homeOdd === 0 || awayOdd === 0) && oddsDataSingle) {
+          const oddsResp = oddsDataSingle?.response || [];
+          if (oddsResp.length > 0) {
+            const extracted = extractOdds(oddsResp[0]?.bookmakers || []);
+            homeOdd = extracted.homeOdd;
+            awayOdd = extracted.awayOdd;
+          }
+        }
+
         // H2H: count 0x1 results
         const h2hMatches = h2hData?.response || [];
         let h2h0x1Count = 0;
@@ -175,52 +256,24 @@ serve(async (req) => {
         // Home goals avg (at home)
         const homeGoalsFor = homeStatsData?.response?.goals?.for;
         const homeGoalsAvg = homeGoalsFor?.average?.home
-          ? parseFloat(homeGoalsFor.average.home)
-          : 0;
+          ? parseFloat(homeGoalsFor.average.home) : 0;
 
         // Away conceded avg (away)
         const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
         const awayConcededAvg = awayGoalsAgainst?.average?.away
-          ? parseFloat(awayGoalsAgainst.average.away)
-          : 0;
-
-        // Away odd
-        let awayOdd = 0;
-        const oddsResponse = oddsData?.response || [];
-        if (oddsResponse.length > 0) {
-          const bookmakers = oddsResponse[0]?.bookmakers || [];
-          for (const bk of bookmakers) {
-            const matchWinner = bk.bets?.find((b: any) => b.id === 1);
-            if (matchWinner) {
-              const awayValue = matchWinner.values?.find((v: any) => v.value === 'Away');
-              if (awayValue) {
-                awayOdd = parseFloat(awayValue.odd);
-                break;
-              }
-            }
-          }
-        }
+          ? parseFloat(awayGoalsAgainst.average.away) : 0;
 
         // Over 1.5 combined
-        // Home: goals scored at home >= 1.5 in % of matches
-        const homeFixturesPlayed = homeStatsData?.response?.fixtures?.played?.home || 1;
-        const homeGoalsTotal = homeGoalsFor?.total?.home || 0;
-        // Simplified: use goals avg to estimate over 1.5 tendency
         const homeOver15Pct = Math.min(100, (homeGoalsAvg / 2.0) * 100);
-
-        const awayFixturesPlayed = awayStatsData?.response?.fixtures?.played?.away || 1;
-        const awayGoalsForAvg = awayStatsData?.response?.goals?.for?.average?.away
-          ? parseFloat(awayStatsData.response.goals.for.average.away)
-          : 0;
         const awayOver15Pct = Math.min(100, (awayConcededAvg / 2.0) * 100);
-
         const over15Combined = homeOver15Pct + awayOver15Pct;
 
         // League goals avg
         const leagueGoalsAvg = ((homeGoalsAvg + awayConcededAvg) / 2);
 
-        // 4. Check criteria
+        // Check criteria (including new home_odd_lower)
         const criteriaMet: Record<string, boolean> = {
+          home_odd_lower: homeOdd > 0 && awayOdd > 0 && homeOdd < awayOdd,
           h2h_no_0x1: h2h0x1Count <= weights.max_h2h_0x1,
           home_goals_avg: homeGoalsAvg >= weights.min_home_goals_avg,
           away_conceded_avg: awayConcededAvg >= weights.min_away_conceded_avg,
@@ -230,13 +283,14 @@ serve(async (req) => {
 
         const allCriteriaMet = Object.values(criteriaMet).every(v => v);
         const reasons: string[] = [];
+        if (!criteriaMet.home_odd_lower) reasons.push(`Odd casa (${homeOdd.toFixed(2)}) >= Odd visitante (${awayOdd.toFixed(2)})`);
         if (!criteriaMet.h2h_no_0x1) reasons.push(`H2H tem ${h2h0x1Count} resultado(s) 0x1 nos últimos 5 jogos`);
         if (!criteriaMet.home_goals_avg) reasons.push(`Média gols mandante em casa: ${homeGoalsAvg.toFixed(2)} (mín: ${weights.min_home_goals_avg})`);
         if (!criteriaMet.away_conceded_avg) reasons.push(`Média gols sofridos visitante fora: ${awayConcededAvg.toFixed(2)} (mín: ${weights.min_away_conceded_avg})`);
         if (!criteriaMet.away_odd) reasons.push(`Odd visitante: ${awayOdd.toFixed(2)} (máx: ${weights.max_away_odd})`);
         if (!criteriaMet.over15_combined) reasons.push(`Over 1.5 combinado: ${over15Combined.toFixed(0)}% (mín: ${weights.min_over15_combined}%)`);
 
-        // 5. Calculate score
+        // Calculate score
         const totalWeight = weights.offensive_weight + weights.defensive_weight + weights.over_weight +
           weights.league_avg_weight + weights.h2h_weight + weights.odds_weight;
 
@@ -255,13 +309,14 @@ serve(async (req) => {
           home_team: homeTeam,
           away_team: awayTeam,
           league,
-          date,
+          date: fixtureDate,
           approved: allCriteriaMet,
           score_value: scoreValue,
           classification: classify(scoreValue),
           criteria: {
             home_goals_avg: homeGoalsAvg,
             away_conceded_avg: awayConcededAvg,
+            home_odd: homeOdd,
             away_odd: awayOdd,
             over15_combined: over15Combined,
             h2h_0x1_count: h2h0x1Count,
@@ -282,7 +337,13 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ results, weights_used: weights }),
+      JSON.stringify({ 
+        results, 
+        weights_used: weights,
+        total_fixtures: totalFixtures || fixtureIdsToAnalyze.length,
+        pre_filtered: preFilteredCount || fixtureIdsToAnalyze.length,
+        analyzed: results.length,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
