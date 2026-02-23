@@ -54,7 +54,7 @@ function getCachedMeta(date: string): any {
 
 export const Lay0x1Scanner = () => {
   const { weights, saveWeights } = useLay0x1Weights();
-  const { saveAnalysis } = useLay0x1Analyses();
+  const { analyses, saveAnalysis } = useLay0x1Analyses();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -119,15 +119,42 @@ export const Lay0x1Scanner = () => {
       setCachedResults(selectedDate, analysisResults, resMeta);
       autoFetchedRef.current = selectedDate;
 
-      const approved = analysisResults.filter(r => r.approved).length;
-      toast.success(`${resMeta.total_fixtures} jogos → ${resMeta.pre_filtered} pré-filtrados → ${approved} aprovados`);
+      // Auto-save approved results
+      const approvedResults = analysisResults.filter(r => r.approved);
+      const existingFixtureIds = new Set(analyses.map(a => a.fixture_id));
+      const toSave = approvedResults.filter(r => !existingFixtureIds.has(r.fixture_id));
+      
+      let savedCount = 0;
+      for (const r of toSave) {
+        const result = await saveAnalysis({
+          fixture_id: r.fixture_id,
+          home_team: r.home_team,
+          away_team: r.away_team,
+          league: r.league,
+          date: r.date,
+          score_value: r.score_value,
+          classification: r.classification,
+          criteria_snapshot: r.criteria,
+          weights_snapshot: weights,
+        });
+        if (result && !result.error) savedCount++;
+      }
+
+      const skipped = approvedResults.length - toSave.length;
+      if (savedCount > 0) {
+        toast.success(`${savedCount} jogo(s) aprovado(s) salvo(s) automaticamente${skipped > 0 ? ` (${skipped} já existiam)` : ''}`);
+      } else if (approvedResults.length > 0 && skipped === approvedResults.length) {
+        toast.info(`${approvedResults.length} aprovado(s) já estavam salvos`);
+      } else {
+        toast.success(`${resMeta.total_fixtures} jogos analisados → 0 aprovados`);
+      }
     } catch (err) {
       console.error(err);
       toast.error('Erro na análise');
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, weights, analyses, saveAnalysis]);
 
   const handleSave = async (result: AnalysisResult) => {
     setSavingId(result.fixture_id);
