@@ -27,7 +27,17 @@ export const Lay0x1Dashboard = () => {
   const [analyzingRedId, setAnalyzingRedId] = useState<string | null>(null);
 
   const pendingAnalyses = analyses.filter(a => !a.result);
-  const resolvedAnalyses = analyses.filter(a => a.result);
+  const resolvedAnalyses = analyses.filter(a => a.result && a.classification !== 'Não recomendado');
+
+  // Override metrics to only count approved games
+  const filteredMetrics = useMemo(() => {
+    const approved = analyses.filter(a => a.classification !== 'Não recomendado');
+    const resolved = approved.filter(a => a.result);
+    const greens = resolved.filter(a => a.result === 'Green').length;
+    const reds = resolved.filter(a => a.result === 'Red').length;
+    const winRate = resolved.length > 0 ? Math.round((greens / resolved.length) * 1000) / 10 : 0;
+    return { total: approved.length, resolved: resolved.length, pending: approved.filter(a => !a.result).length, greens, reds, winRate };
+  }, [analyses]);
 
   // Equity chart data
   const equityData = useMemo(() => resolvedAnalyses
@@ -172,28 +182,28 @@ export const Lay0x1Dashboard = () => {
         <Card>
           <CardContent className="p-4 text-center">
             <Target className="w-5 h-5 mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold">{metrics.total}</p>
+            <p className="text-2xl font-bold">{filteredMetrics.total}</p>
             <p className="text-xs text-muted-foreground">Total</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <Trophy className="w-5 h-5 mx-auto text-emerald-400 mb-1" />
-            <p className="text-2xl font-bold text-emerald-400">{metrics.greens}</p>
+            <p className="text-2xl font-bold text-emerald-400">{filteredMetrics.greens}</p>
             <p className="text-xs text-muted-foreground">Greens</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <AlertTriangle className="w-5 h-5 mx-auto text-red-400 mb-1" />
-            <p className="text-2xl font-bold text-red-400">{metrics.reds}</p>
+            <p className="text-2xl font-bold text-red-400">{filteredMetrics.reds}</p>
             <p className="text-xs text-muted-foreground">Reds</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <BarChart3 className="w-5 h-5 mx-auto text-blue-400 mb-1" />
-            <p className="text-2xl font-bold">{metrics.winRate}%</p>
+            <p className="text-2xl font-bold">{filteredMetrics.winRate}%</p>
             <p className="text-xs text-muted-foreground">Win Rate</p>
           </CardContent>
         </Card>
@@ -324,14 +334,14 @@ export const Lay0x1Dashboard = () => {
       )}
 
       {/* Calibration */}
-      {metrics.resolved >= 10 && (
+      {filteredMetrics.resolved >= 10 && (
         <Card>
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Modelo Evolutivo</p>
               <p className="text-xs text-muted-foreground">
-                Ciclo #{weights.cycle_count} • {metrics.resolved} jogos resolvidos
-                {metrics.resolved > 0 && ` • Próx. calibração: ${30 - (metrics.resolved % 30)} jogos`}
+                Ciclo #{weights.cycle_count} • {filteredMetrics.resolved} jogos resolvidos
+                {filteredMetrics.resolved > 0 && ` • Próx. calibração: ${30 - (filteredMetrics.resolved % 30)} jogos`}
               </p>
             </div>
             <Button size="sm" variant="outline" onClick={handleCalibrate} disabled={calibrating}>
