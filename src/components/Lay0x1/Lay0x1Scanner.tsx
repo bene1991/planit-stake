@@ -331,6 +331,9 @@ export const Lay0x1Scanner = () => {
       criteria_snapshot: result.criteria,
       weights_snapshot: weights,
     });
+    setResults(prev => prev.map(r =>
+      r.fixture_id === result.fixture_id ? { ...r, approved: true } : r
+    ));
     toast.success('Análise salva!');
     setSavingId(null);
   };
