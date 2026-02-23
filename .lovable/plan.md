@@ -1,81 +1,108 @@
 
 
-## Backtest Acumulado -- Atalhos de Periodo (7d, 15d, 30d)
+## Dashboard Lay 0x1 -- Correcoes e Melhorias Completas
 
-### Problema Atual
+### 1. Corrigir Jogos Duplicados no Dashboard
 
-Os botoes "-7d", "-15d", "-30d" apontam para uma data unica (ex: -7d vai para o dia 16/02 especificamente). O usuario quer ver o **acumulado** de todos os dias do periodo -- ex: "-7d" mostra o resumo combinado dos ultimos 7 dias.
+**Problema**: Quando o scanner roda a analise novamente (ex: clicou "Analisar" duas vezes), ele salva jogos aprovados que ja existem no banco. Ja existem duplicatas reais no banco de dados (ex: Brondby vs Sonderjyske aparece 2x, Lechia vs Zaglebie 3x).
 
-### Solucao
+**Solucao**:
+- **Prevenir futuros duplicados**: Adicionar constraint `UNIQUE(owner_id, fixture_id)` na tabela `lay0x1_analyses` via migration SQL, com `ON CONFLICT DO NOTHING` no insert
+- **Limpar duplicatas existentes**: Migration SQL que deleta registros duplicados mantendo o mais antigo
+- **Frontend**: Adicionar `ON CONFLICT` no `saveAnalysis` do hook `useLay0x1Analyses.ts`
 
-Transformar os atalhos em **modo de periodo acumulado**. Ao clicar em "-7d", o sistema carrega os resultados cacheados de cada dia dos ultimos 7 dias, combina todos os jogos aprovados e exibe um resumo acumulado com Green, Red e Win Rate do periodo inteiro.
+### 2. Analise Pos-Red com IA Completa
 
-### Como Funciona
+**Problema atual**: A analise pos-Red e apenas uma funcao local (`generateRedInsights`) com regras fixas simples. Nao usa IA de verdade.
 
-1. **Novo estado `rangeMode`**: Quando o usuario clica em um atalho de periodo (-7d, -15d, -30d), o scanner entra em modo de range. Os botoes "Ontem" e "Hoje" continuam funcionando como data unica.
+**Solucao**: Criar uma analise pos-Red enriquecida usando a IA (Gemini) via edge function que:
+- Recebe os dados do jogo (criterios, odds, medias, H2H, liga)
+- Analisa por que o 0x1 aconteceu apesar dos criterios aprovados
+- Gera insights acionaveis: padrao da liga, horario do gol, fraquezas nao capturadas
+- Sugere se a liga deve ser removida ou os thresholds ajustados
 
-2. **Agregar cache existente**: O sistema percorre todos os dias do periodo (ex: ultimos 7 dias) e coleta os resultados ja cacheados no localStorage. Dias sem cache ficam marcados como "nao analisados".
+**Implementacao**:
+- Nova edge function `analyze-red-lay0x1` que usa Lovable AI (Gemini 2.5 Flash)
+- Chamada automaticamente quando um jogo e resolvido como Red (0x1)
+- Resultado salvo no `criteria_snapshot.ai_red_analysis` do registro
+- Dashboard exibe a analise completa da IA em um card expandivel ao lado do jogo Red
 
-3. **Exibir resumo acumulado**: Card de resumo mostrando:
-   - Total de dias no periodo
-   - Dias ja analisados (com cache) vs dias faltando
-   - Total de aprovados acumulado
-   - Greens / Reds / Win Rate do periodo inteiro
-   - Lista dos jogos aprovados de todos os dias combinados
+### 3. Usar Resultados do Backtest para Calibracao
 
-4. **Analisar dias faltantes**: Botao "Analisar dias faltantes" que roda backtest apenas nos dias que ainda nao tem cache, sem tocar nos dias ja analisados.
+**Problema**: O backtest gera dados valiosos (aprovados vs Green/Red), mas esses dados nao sao salvos no banco para calibracao. Somente jogos do dia de hoje sao salvos.
 
-5. **Manter input de data individual**: O input de data e os botoes "Ontem"/"Hoje" continuam selecionando um dia especifico como antes.
+**Solucao**: Adicionar botao "Salvar para Calibracao" no modo backtest acumulado que:
+- Salva os jogos aprovados do backtest na tabela `lay0x1_analyses` (com `ON CONFLICT DO NOTHING` para evitar duplicatas)
+- Dispara auto-resolucao imediata (jogos passados ja tem placar final disponivel)
+- Permite que a calibracao use esses dados historicos
+
+### 4. Excluir Jogos Adiados/Cancelados do Dashboard
+
+**Problema**: Jogos adiados ficam como "Pendentes" eternamente no dashboard sem opcao de remover.
+
+**Solucao**:
+- Adicionar botao de excluir (icone lixeira) em cada jogo pendente no Dashboard
+- Nova funcao `deleteAnalysis` no hook `useLay0x1Analyses.ts`
+- Confirmacao simples antes de excluir
+
+### 5. Lista de Ligas Bloqueadas (Blacklist)
+
+**Problema**: Algumas ligas nao estao disponiveis na casa de apostas do usuario, ou tem performance ruim. O scanner continua mostrando jogos dessas ligas.
+
+**Solucao**:
+- Nova tabela `lay0x1_blocked_leagues` com campos: `owner_id`, `league_name`, `reason` (nao_disponivel, performance_ruim), `created_at`
+- No Dashboard, botao "Bloquear Liga" ao lado de cada liga na secao "Performance por Liga" e nos jogos pendentes
+- No Scanner (edge function `analyze-lay0x1`), filtrar jogos de ligas bloqueadas ANTES da analise detalhada
+- Na aba Config (Lay0x1Evolution), nova secao "Ligas Bloqueadas" com lista e botao para desbloquear
 
 ### Detalhes Tecnicos
 
-**Arquivo: `src/components/Lay0x1/Lay0x1Scanner.tsx`**
+**Migration SQL**:
 
-- Adicionar estado `rangeMode: { label: string, days: number } | null`
-- Mudar `dateShortcuts` para guardar `days` em vez de `date`:
-  ```text
-  rangeShortcuts = [
-    { label: '7d', days: 7 },
-    { label: '15d', days: 15 },
-    { label: '30d', days: 30 },
-  ]
-  ```
-- Ao clicar num shortcut de range, setar `rangeMode` e agregar resultados:
-  ```text
-  function getAggregatedResults(days):
-    allResults = []
-    analyzedDays = 0
-    for i = 1..days:
-      dateStr = format(subDays(today, i))
-      cached = getCachedResults(dateStr)
-      if cached:
-        allResults.push(...cached)
-        analyzedDays++
-    return { results: allResults, analyzedDays, totalDays: days }
-  ```
-- `backtestStats` recalculado a partir dos resultados agregados
-- Novo card de resumo do periodo mostrando dias analisados e metricas acumuladas
-- Funcao `analyzeMissingDays` que itera sobre os dias sem cache e chama a API sequencialmente para cada dia faltante
-- Ao clicar "Ontem", "Hoje" ou trocar data no input, sai do `rangeMode` e volta ao modo dia unico
-
-### Resultado Visual
-
-Botoes ficam:
 ```text
-[Ontem] [7d] [15d] [30d] [Hoje]
+-- 1. Remove duplicates (keep oldest)
+DELETE FROM lay0x1_analyses a
+USING lay0x1_analyses b
+WHERE a.owner_id = b.owner_id
+  AND a.fixture_id = b.fixture_id
+  AND a.created_at > b.created_at;
+
+-- 2. Add unique constraint
+ALTER TABLE lay0x1_analyses
+  ADD CONSTRAINT unique_owner_fixture UNIQUE (owner_id, fixture_id);
+
+-- 3. Create blocked leagues table
+CREATE TABLE lay0x1_blocked_leagues (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id uuid NOT NULL,
+  league_name text NOT NULL,
+  reason text NOT NULL DEFAULT 'nao_disponivel',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(owner_id, league_name)
+);
+
+ALTER TABLE lay0x1_blocked_leagues ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own blocked leagues" ON lay0x1_blocked_leagues FOR SELECT USING (auth.uid() = owner_id);
+CREATE POLICY "Users can insert own blocked leagues" ON lay0x1_blocked_leagues FOR INSERT WITH CHECK (auth.uid() = owner_id);
+CREATE POLICY "Users can delete own blocked leagues" ON lay0x1_blocked_leagues FOR DELETE USING (auth.uid() = owner_id);
 ```
 
-Ao clicar em "7d", mostra:
-```text
-Periodo: Ultimos 7 dias (5/7 analisados)
-[Analisar 2 dias faltantes]
+**Arquivos novos**:
+- `supabase/functions/analyze-red-lay0x1/index.ts` -- Edge function de analise pos-Red com IA
+- `src/hooks/useLay0x1BlockedLeagues.ts` -- Hook para gerenciar ligas bloqueadas
 
-Acumulado: 18 Aprovados | 15 Green | 3 Red | 83% Win Rate
-```
+**Arquivos modificados**:
+- `src/hooks/useLay0x1Analyses.ts` -- Adicionar `deleteAnalysis`, usar `upsert` com `onConflict`, chamar analise pos-Red com IA
+- `src/components/Lay0x1/Lay0x1Dashboard.tsx` -- Botao excluir em pendentes, botao bloquear liga, card expandivel de analise IA pos-Red, deduplicacao visual
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- Botao "Salvar para Calibracao" no backtest, filtrar ligas bloqueadas dos resultados
+- `src/components/Lay0x1/Lay0x1Evolution.tsx` -- Secao "Ligas Bloqueadas" com lista e botao desbloquear
+- `supabase/functions/analyze-lay0x1/index.ts` -- Buscar ligas bloqueadas do usuario e filtrar antes da analise
 
-E abaixo, os cards dos jogos aprovados de todos os dias.
+### Resultado Final
 
-### Arquivos Modificados
-
-- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- adicionar modo range, agregar cache multi-dia, card de resumo acumulado
+- Dashboard sem duplicatas
+- Jogos adiados podem ser excluidos
+- Analise pos-Red completa pela IA com insights profundos
+- Backtest alimenta a calibracao automaticamente
+- Ligas indesejaveis sao bloqueadas e nao aparecem mais no scanner
 
