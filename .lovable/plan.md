@@ -1,59 +1,46 @@
 
 
-## Aprovar jogos com todos os criterios atendidos + Botao manual
+## Adicionar botao "Bloquear Liga" nos cards do Scanner
 
-### Problema Identificado
+### Objetivo
 
-O `min_score` atual esta em **75**, entao jogos como Brondby (score 71) e Lechia Gdansk (score 65) sao reprovados mesmo com **todos os criterios verdes**. O score e apenas uma pontuacao ponderada, mas se todos os filtros eliminatorios passam, o jogo deveria ser aprovado.
+Permitir bloquear ligas diretamente nos cards de jogos reprovados (e aprovados) no Scanner, sem precisar ir ate a aba Config.
 
-### Mudanca 1: Aprovar automaticamente quando todos os criterios sao atendidos
+### Mudancas
 
-**Arquivo**: `supabase/functions/analyze-lay0x1/index.ts`
+#### 1. Lay0x1ScoreCard.tsx — Nova prop `onBlockLeague`
 
-Alterar a logica de aprovacao (linha ~256):
+- Adicionar prop opcional `onBlockLeague?: (leagueName: string) => void`
+- Exibir um botao pequeno (icone `Ban` + texto "Bloquear liga") ao lado do nome da liga
+- O botao chama `onBlockLeague(league)` ao ser clicado
+- Estilo discreto: ghost/outline vermelho, tamanho pequeno
 
-De:
-```
-const isApproved = allCriteriaMet && scoreValue >= dynamicMinScore;
-```
+#### 2. Lay0x1Scanner.tsx — Passar a funcao de bloqueio
 
-Para:
-```
-const isApproved = allCriteriaMet;
-```
+- Importar `blockLeague` do hook `useLay0x1BlockedLeagues` (ja importado via `blockedNames`)
+- Passar `onBlockLeague={blockLeague}` para todos os `Lay0x1ScoreCard` (aprovados e reprovados)
+- Como `blockedNames` ja filtra os resultados exibidos (`filteredResults`), ao bloquear uma liga os cards dessa liga desaparecem automaticamente da lista
 
-A classificacao continua usando o score para mostrar "Forte", "Moderado" etc., mas a aprovacao depende apenas dos criterios eliminatorios (odd casa < visitante, H2H, media gols, odd visitante, over 1.5).
+### Fluxo do usuario
 
-### Mudanca 2: Botao "Adicionar" nos jogos reprovados
+1. Ve um jogo de uma liga indesejada nos resultados
+2. Clica no botao "Bloquear" no card
+3. A liga e adicionada a `lay0x1_blocked_leagues` com reason `nao_disponivel`
+4. Todos os cards daquela liga somem imediatamente da lista
+5. Para desbloquear, vai na aba Config > Ligas Bloqueadas
 
-**Arquivo**: `src/components/Lay0x1/Lay0x1ScoreCard.tsx`
-
-- Adicionar nova prop `onForceAdd` (opcional) ao componente
-- Nos cards reprovados, exibir um botao "Adicionar manualmente" que chama `onForceAdd`
-
-**Arquivo**: `src/components/Lay0x1/Lay0x1Scanner.tsx`
-
-- Passar `onForceAdd` para os `Lay0x1ScoreCard` dos jogos reprovados (na secao "Reprovados")
-- A funcao `onForceAdd` vai chamar o mesmo `handleSave` que ja existe, salvando o jogo na tabela `lay0x1_analyses`
-- Funciona tanto no modo dia quanto no modo backtest
-
-### Resultado
-
-- Jogos com todos os criterios verdes: aprovados automaticamente (independente do score numerico)
-- Jogos reprovados (algum criterio falhou): exibem botao "Adicionar" para inclusao manual pelo usuario
-- O score continua sendo exibido como referencia de qualidade, mas nao bloqueia mais a aprovacao
-
-### Detalhes Tecnicos
-
-**Backend** (`analyze-lay0x1/index.ts`):
-- Remover `scoreValue >= dynamicMinScore` da condicao de aprovacao
-- Manter `dynamicMinScore` apenas para a funcao `classify()` (labels visuais)
+### Detalhes tecnicos
 
 **ScoreCard** (`Lay0x1ScoreCard.tsx`):
-- Nova prop: `onForceAdd?: () => void`
-- Botao aparece apenas quando `!approved && onForceAdd`
-- Estilo: botao outline com icone "+" e texto "Adicionar"
+- Nova prop: `onBlockLeague?: (leagueName: string) => void`
+- Botao posicionado proximo ao nome da liga, com icone `Ban` e tooltip/texto "Bloquear liga"
 
 **Scanner** (`Lay0x1Scanner.tsx`):
-- Nos rejected cards, passar `onForceAdd={() => handleSave(r)}` (apenas quando nao e backtest puro)
-- No modo backtest com range, permitir adicionar tambem para calibracao
+- Desestruturar `blockLeague` do `useLay0x1BlockedLeagues()` (linha 98)
+- Passar `onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}` em cada `Lay0x1ScoreCard`
+
+### Arquivos modificados
+
+- `src/components/Lay0x1/Lay0x1ScoreCard.tsx`
+- `src/components/Lay0x1/Lay0x1Scanner.tsx`
+
