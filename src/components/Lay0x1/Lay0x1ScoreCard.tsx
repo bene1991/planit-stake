@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Target, Clock, Ban } from 'lucide-react';
+import { CheckCircle, XCircle, Target, Clock, Ban, CalendarPlus, Check } from 'lucide-react';
 
 interface CriteriaDetail {
   home_goals_avg: number;
@@ -34,6 +34,9 @@ interface ScoreCardProps {
   onForceAdd?: () => void;
   forceAdding?: boolean;
   onBlockLeague?: (leagueName: string) => void;
+  onSendToPlanning?: () => void;
+  sendingToPlanning?: boolean;
+  alreadyInPlanning?: boolean;
 }
 
 const classificationColor: Record<string, string> = {
@@ -43,7 +46,7 @@ const classificationColor: Record<string, string> = {
   'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning }: ScoreCardProps) => {
   const criteriaList = [
     { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
     { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
@@ -151,6 +154,26 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
           >
             <Target className="w-3 h-3" />
             {forceAdding ? 'Adicionando...' : 'Adicionar manualmente'}
+          </button>
+        )}
+
+        {onSendToPlanning && (
+          <button
+            onClick={onSendToPlanning}
+            disabled={sendingToPlanning || alreadyInPlanning}
+            className={`w-full mt-2 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+              alreadyInPlanning 
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
+            }`}
+          >
+            {alreadyInPlanning ? (
+              <><Check className="w-3 h-3" /> Já no planejamento</>
+            ) : sendingToPlanning ? (
+              <><CalendarPlus className="w-3 h-3 animate-pulse" /> Enviando...</>
+            ) : (
+              <><CalendarPlus className="w-3 h-3" /> Enviar p/ Planejamento</>
+            )}
           </button>
         )}
       </CardContent>
