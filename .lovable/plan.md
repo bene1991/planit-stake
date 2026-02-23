@@ -1,46 +1,50 @@
 
 
-## Adicionar botao "Bloquear Liga" nos cards do Scanner
+## Corrigir: jogo adicionado manualmente deve ir para a lista de Aprovados
 
-### Objetivo
+### Problema
 
-Permitir bloquear ligas diretamente nos cards de jogos reprovados (e aprovados) no Scanner, sem precisar ir ate a aba Config.
+Ao clicar "Adicionar manualmente" em um jogo reprovado, a analise e salva no banco com sucesso (toast "Analise salva!"), mas o card continua na secao "Reprovados" porque o estado local (`results`) nao e atualizado -- o campo `approved` permanece `false`.
 
-### Mudancas
+### Solucao
 
-#### 1. Lay0x1ScoreCard.tsx — Nova prop `onBlockLeague`
+Apos salvar com sucesso via `handleSave` (chamado pelo `onForceAdd`), atualizar o array `results` no estado local, marcando `approved = true` para o jogo correspondente. Isso faz o card migrar automaticamente de "Reprovados" para "Aprovados".
 
-- Adicionar prop opcional `onBlockLeague?: (leagueName: string) => void`
-- Exibir um botao pequeno (icone `Ban` + texto "Bloquear liga") ao lado do nome da liga
-- O botao chama `onBlockLeague(league)` ao ser clicado
-- Estilo discreto: ghost/outline vermelho, tamanho pequeno
+### Mudanca
 
-#### 2. Lay0x1Scanner.tsx — Passar a funcao de bloqueio
+**Arquivo**: `src/components/Lay0x1/Lay0x1Scanner.tsx`
 
-- Importar `blockLeague` do hook `useLay0x1BlockedLeagues` (ja importado via `blockedNames`)
-- Passar `onBlockLeague={blockLeague}` para todos os `Lay0x1ScoreCard` (aprovados e reprovados)
-- Como `blockedNames` ja filtra os resultados exibidos (`filteredResults`), ao bloquear uma liga os cards dessa liga desaparecem automaticamente da lista
+Na funcao `handleSave` (linhas 321-336), apos o `saveAnalysis` retornar com sucesso, chamar `setResults` para atualizar o campo `approved` do jogo:
 
-### Fluxo do usuario
+```text
+De:
+  const handleSave = async (result: AnalysisResult) => {
+    setSavingId(result.fixture_id);
+    await saveAnalysis({ ... });
+    toast.success('Análise salva!');
+    setSavingId(null);
+  };
 
-1. Ve um jogo de uma liga indesejada nos resultados
-2. Clica no botao "Bloquear" no card
-3. A liga e adicionada a `lay0x1_blocked_leagues` com reason `nao_disponivel`
-4. Todos os cards daquela liga somem imediatamente da lista
-5. Para desbloquear, vai na aba Config > Ligas Bloqueadas
+Para:
+  const handleSave = async (result: AnalysisResult) => {
+    setSavingId(result.fixture_id);
+    await saveAnalysis({ ... });
+    // Mover para lista de aprovados no estado local
+    setResults(prev => prev.map(r =>
+      r.fixture_id === result.fixture_id ? { ...r, approved: true } : r
+    ));
+    toast.success('Análise salva!');
+    setSavingId(null);
+  };
+```
 
-### Detalhes tecnicos
+### Resultado
 
-**ScoreCard** (`Lay0x1ScoreCard.tsx`):
-- Nova prop: `onBlockLeague?: (leagueName: string) => void`
-- Botao posicionado proximo ao nome da liga, com icone `Ban` e tooltip/texto "Bloquear liga"
-
-**Scanner** (`Lay0x1Scanner.tsx`):
-- Desestruturar `blockLeague` do `useLay0x1BlockedLeagues()` (linha 98)
-- Passar `onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}` em cada `Lay0x1ScoreCard`
+- Ao clicar "Adicionar manualmente", o card some da secao "Reprovados" e aparece na secao "Aprovados" instantaneamente
+- O contador de aprovados/reprovados se atualiza automaticamente
+- Nenhuma outra mudanca necessaria -- apenas 3 linhas adicionadas
 
 ### Arquivos modificados
 
-- `src/components/Lay0x1/Lay0x1ScoreCard.tsx`
-- `src/components/Lay0x1/Lay0x1Scanner.tsx`
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` (funcao `handleSave`)
 
