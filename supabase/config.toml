@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.matchbook-proxy]
 verify_jwt = false
+
+[functions.analyze-lay0x1]
+verify_jwt = false
+
+[functions.calibrate-lay0x1]
+verify_jwt = false
