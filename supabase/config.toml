@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.calibrate-lay0x1]
 verify_jwt = false
+
+[functions.analyze-red-lay0x1]
+verify_jwt = false

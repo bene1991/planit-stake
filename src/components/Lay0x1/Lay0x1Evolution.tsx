@@ -1,7 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
-import { RotateCcw, Brain, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
+import { RotateCcw, Brain, TrendingUp, TrendingDown, Minus, Ban, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const WEIGHT_LABELS: Record<string, string> = {
@@ -30,7 +32,8 @@ const THRESHOLD_CONFIG: { key: string; label: string; suffix: string; defaultVal
 ];
 
 export const Lay0x1Evolution = () => {
-  const { weights, resetWeights, loading } = useLay0x1Weights();
+  const { weights, resetWeights } = useLay0x1Weights();
+  const { blockedLeagues, unblockLeague } = useLay0x1BlockedLeagues();
 
   const weightKeys = Object.keys(WEIGHT_LABELS) as (keyof typeof WEIGHT_LABELS)[];
   const totalWeight = weightKeys.reduce((sum, k) => sum + ((weights as any)[k] || 0), 0);
@@ -49,6 +52,7 @@ export const Lay0x1Evolution = () => {
 
   return (
     <div className="space-y-4">
+      {/* Weights */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -69,10 +73,8 @@ export const Lay0x1Evolution = () => {
                   <span className="font-medium">{value.toFixed(1)} ({pct.toFixed(0)}%)</span>
                 </div>
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${WEIGHT_COLORS[key]}`}
-                    style={{ width: `${(value / 30) * 100}%` }}
-                  />
+                  <div className={`h-full rounded-full transition-all ${WEIGHT_COLORS[key]}`}
+                    style={{ width: `${(value / 30) * 100}%` }} />
                 </div>
               </div>
             );
@@ -80,6 +82,7 @@ export const Lay0x1Evolution = () => {
         </CardContent>
       </Card>
 
+      {/* Thresholds */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
@@ -95,7 +98,6 @@ export const Lay0x1Evolution = () => {
             {THRESHOLD_CONFIG.map(({ key, label, suffix, defaultValue }) => {
               const value = (weights as any)[key] ?? defaultValue;
               const delta = getThresholdDelta(key, defaultValue);
-
               return (
                 <div key={key} className="bg-muted/30 rounded-lg p-3 relative">
                   <p className="text-muted-foreground">{label}</p>
@@ -118,7 +120,6 @@ export const Lay0x1Evolution = () => {
             })}
           </div>
 
-          {/* Fixed threshold */}
           <div className="mt-3 bg-muted/20 rounded-lg p-3 border border-dashed border-muted-foreground/20">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Máx. odd visitante (fixo)</span>
@@ -130,6 +131,43 @@ export const Lay0x1Evolution = () => {
             Ciclo de calibração: #{weights.cycle_count}
             {weights.last_calibration_at && ` • Última: ${new Date(weights.last_calibration_at).toLocaleDateString('pt-BR')}`}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Blocked Leagues */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Ban className="w-4 h-4 text-red-400" />
+            <CardTitle className="text-sm">Ligas Bloqueadas</CardTitle>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Ligas removidas das análises do scanner
+          </p>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {blockedLeagues.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Nenhuma liga bloqueada. Use o Dashboard ou jogos pendentes para bloquear ligas indesejadas.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {blockedLeagues.map(bl => (
+                <div key={bl.league_name} className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-xs font-medium">{bl.league_name}</p>
+                    <Badge variant="outline" className="text-[10px] mt-0.5">
+                      {bl.reason === 'performance_ruim' ? 'Performance ruim' : 'Não disponível'}
+                    </Badge>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs"
+                    onClick={() => unblockLeague(bl.league_name)}>
+                    <X className="w-3 h-3" /> Desbloquear
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

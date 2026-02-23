@@ -3,31 +3,35 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
+import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw } from 'lucide-react';
+import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw, Trash2, Ban, ChevronDown, Brain, Loader2 } from 'lucide-react';
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export const Lay0x1Dashboard = () => {
-  const { analyses, metrics, resolveAnalysis, refetch } = useLay0x1Analyses();
+  const { analyses, metrics, resolveAnalysis, deleteAnalysis, refetch } = useLay0x1Analyses();
   const { weights } = useLay0x1Weights();
+  const { blockLeague, isBlocked } = useLay0x1BlockedLeagues();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [scoreInputs, setScoreInputs] = useState<Record<string, { home: string; away: string }>>({});
   const [calibrating, setCalibrating] = useState(false);
   const [autoResolving, setAutoResolving] = useState(false);
   const [resolveProgress, setResolveProgress] = useState({ current: 0, total: 0 });
+  const [expandedRedId, setExpandedRedId] = useState<string | null>(null);
+  const [analyzingRedId, setAnalyzingRedId] = useState<string | null>(null);
 
   const pendingAnalyses = analyses.filter(a => !a.result);
   const resolvedAnalyses = analyses.filter(a => a.result);
 
   // Equity chart data
   const equityData = useMemo(() => resolvedAnalyses
-    .slice()
-    .reverse()
+    .slice().reverse()
     .reduce((acc: { name: string; equity: number }[], a, i) => {
       const prev = acc.length > 0 ? acc[acc.length - 1].equity : 0;
       acc.push({ name: `#${i + 1}`, equity: prev + (a.result === 'Green' ? 1 : -1) });
@@ -46,10 +50,7 @@ export const Lay0x1Dashboard = () => {
     return Object.entries(byMonth)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, { greens, total }]) => ({
-        month,
-        winRate: Math.round((greens / total) * 100),
-        total,
-        greens,
+        month, winRate: Math.round((greens / total) * 100), total, greens,
       }));
   }, [resolvedAnalyses]);
 
@@ -64,10 +65,9 @@ export const Lay0x1Dashboard = () => {
     });
     return Object.entries(byLeague)
       .map(([league, { greens, total }]) => ({
-        league: league.length > 20 ? league.substring(0, 18) + '…' : league,
-        winRate: Math.round((greens / total) * 100),
-        total,
-        greens,
+        league, leagueFull: league,
+        leagueShort: league.length > 20 ? league.substring(0, 18) + '…' : league,
+        winRate: Math.round((greens / total) * 100), total, greens,
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
@@ -75,10 +75,7 @@ export const Lay0x1Dashboard = () => {
 
   const handleResolve = async (id: string) => {
     const input = scoreInputs[id];
-    if (!input?.home || !input?.away) {
-      toast.error('Informe o placar');
-      return;
-    }
+    if (!input?.home || !input?.away) { toast.error('Informe o placar'); return; }
     setResolvingId(id);
     const err = await resolveAnalysis(id, parseInt(input.home), parseInt(input.away));
     if (!err) toast.success('Resultado registrado!');
@@ -90,14 +87,9 @@ export const Lay0x1Dashboard = () => {
     setCalibrating(true);
     try {
       const res = await supabase.functions.invoke('calibrate-lay0x1');
-      if (res.data?.error) {
-        toast.error(res.data.error);
-      } else {
-        toast.success(`Calibração #${res.data?.cycle || '?'} concluída!`);
-      }
-    } catch {
-      toast.error('Erro na calibração');
-    }
+      if (res.data?.error) toast.error(res.data.error);
+      else toast.success(`Calibração #${res.data?.cycle || '?'} concluída!`);
+    } catch { toast.error('Erro na calibração'); }
     setCalibrating(false);
   };
 
@@ -105,9 +97,7 @@ export const Lay0x1Dashboard = () => {
     if (pendingAnalyses.length === 0) return;
     setAutoResolving(true);
     setResolveProgress({ current: 0, total: pendingAnalyses.length });
-
-    let resolvedCount = 0;
-    let skippedCount = 0;
+    let resolvedCount = 0, skippedCount = 0;
     const BATCH_SIZE = 5;
 
     for (let i = 0; i < pendingAnalyses.length; i += BATCH_SIZE) {
@@ -117,33 +107,41 @@ export const Lay0x1Dashboard = () => {
           const res = await supabase.functions.invoke('api-football', {
             body: { endpoint: 'fixtures', params: { id: analysis.fixture_id } },
           });
-
           const fixture = res.data?.response?.[0];
           const status = fixture?.fixture?.status?.short;
-
           if (['FT', 'AET', 'PEN'].includes(status)) {
-            const homeGoals = fixture.goals?.home ?? 0;
-            const awayGoals = fixture.goals?.away ?? 0;
-            await resolveAnalysis(analysis.id, homeGoals, awayGoals);
+            await resolveAnalysis(analysis.id, fixture.goals?.home ?? 0, fixture.goals?.away ?? 0);
             resolvedCount++;
-          } else {
-            skippedCount++;
-          }
-        } catch {
-          skippedCount++;
-        }
+          } else { skippedCount++; }
+        } catch { skippedCount++; }
         setResolveProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }));
     }
 
     setAutoResolving(false);
     if (resolvedCount > 0) {
-      toast.success(`${resolvedCount} jogo(s) resolvido(s) automaticamente${skippedCount > 0 ? ` • ${skippedCount} ainda não terminaram` : ''}`);
+      toast.success(`${resolvedCount} resolvido(s)${skippedCount > 0 ? ` • ${skippedCount} pendentes` : ''}`);
       refetch();
     } else if (skippedCount > 0) {
-      toast.info(`Nenhum jogo terminou ainda (${skippedCount} pendentes)`);
+      toast.info(`Nenhum jogo terminou (${skippedCount} pendentes)`);
     }
   }, [pendingAnalyses, resolveAnalysis, refetch]);
+
+  const handleReanalyzeRed = useCallback(async (analysisId: string) => {
+    setAnalyzingRedId(analysisId);
+    try {
+      const res = await supabase.functions.invoke('analyze-red-lay0x1', {
+        body: { analysis_id: analysisId },
+      });
+      if (res.data?.analysis) {
+        toast.success('Análise de IA atualizada');
+        refetch();
+      } else {
+        toast.error(res.data?.error || 'Erro na análise');
+      }
+    } catch { toast.error('Erro ao chamar IA'); }
+    setAnalyzingRedId(null);
+  }, [refetch]);
 
   return (
     <div className="space-y-4">
@@ -221,7 +219,7 @@ export const Lay0x1Dashboard = () => {
         </Card>
       )}
 
-      {/* League Performance */}
+      {/* League Performance with Block button */}
       {leagueData.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -232,8 +230,8 @@ export const Lay0x1Dashboard = () => {
           <CardContent className="p-4 pt-0">
             <div className="space-y-2">
               {leagueData.map(l => (
-                <div key={l.league} className="flex items-center justify-between text-xs">
-                  <span className="truncate flex-1 mr-2">{l.league}</span>
+                <div key={l.leagueFull} className="flex items-center justify-between text-xs">
+                  <span className="truncate flex-1 mr-2">{l.leagueShort}</span>
                   <div className="flex items-center gap-2">
                     <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
                       <div
@@ -246,6 +244,22 @@ export const Lay0x1Dashboard = () => {
                     </div>
                     <span className="w-10 text-right font-medium">{l.winRate}%</span>
                     <span className="w-8 text-right text-muted-foreground">({l.total})</span>
+                    {!isBlocked(l.leagueFull) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0"
+                              onClick={() => blockLeague(l.leagueFull, l.winRate < 50 ? 'performance_ruim' : 'nao_disponivel')}>
+                              <Ban className="w-3 h-3 text-muted-foreground hover:text-red-400" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Bloquear liga</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {isBlocked(l.leagueFull) && (
+                      <Badge variant="outline" className="text-red-400 text-[10px] px-1">bloqueada</Badge>
+                    )}
                   </div>
                 </div>
               ))}
@@ -277,13 +291,7 @@ export const Lay0x1Dashboard = () => {
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold">Pendentes ({pendingAnalyses.length})</h3>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2 text-xs"
-              disabled={autoResolving}
-              onClick={handleAutoResolve}
-            >
+            <Button size="sm" variant="outline" className="gap-2 text-xs" disabled={autoResolving} onClick={handleAutoResolve}>
               <RefreshCw className={`w-3.5 h-3.5 ${autoResolving ? 'animate-spin' : ''}`} />
               {autoResolving ? `Resolvendo ${resolveProgress.current}/${resolveProgress.total}...` : 'Resolver Pendentes'}
             </Button>
@@ -311,6 +319,30 @@ export const Lay0x1Dashboard = () => {
                       disabled={resolvingId === a.id} onClick={() => handleResolve(a.id)}>
                       {resolvingId === a.id ? '...' : 'OK'}
                     </Button>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
+                            onClick={() => deleteAnalysis(a.id)}>
+                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Excluir (adiado/cancelado)</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {!isBlocked(a.league) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
+                              onClick={() => blockLeague(a.league, 'nao_disponivel')}>
+                              <Ban className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Bloquear liga</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -325,40 +357,119 @@ export const Lay0x1Dashboard = () => {
           <h3 className="text-sm font-semibold mb-2">Histórico ({resolvedAnalyses.length})</h3>
           <div className="space-y-1.5">
             {resolvedAnalyses.slice(0, 20).map(a => {
+              const aiAnalysis = a.criteria_snapshot?.ai_red_analysis;
               const redInsights = a.criteria_snapshot?.red_insights as string[] | undefined;
+              const isExpanded = expandedRedId === a.id;
+
               return (
                 <Card key={a.id}>
-                  <CardContent className="p-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
-                      <p className="text-xs text-muted-foreground">{a.league} • {a.date}</p>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
+                        <p className="text-xs text-muted-foreground">{a.league} • {a.date}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {a.final_score_home}-{a.final_score_away}
+                        </span>
+                        <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
+                          {a.result}
+                        </Badge>
+                        {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
+                        {a.was_0x1 && (
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                            onClick={() => setExpandedRedId(isExpanded ? null : a.id)}>
+                            <ChevronDown className={`w-4 h-4 text-red-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </Button>
+                        )}
+                        {redInsights && redInsights.length > 0 && !a.was_0x1 && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="w-4 h-4 text-red-400 cursor-pointer" />
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-xs">
+                                <ul className="text-xs space-y-0.5">
+                                  {redInsights.map((insight, i) => <li key={i}>• {insight}</li>)}
+                                </ul>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {a.final_score_home}-{a.final_score_away}
-                      </span>
-                      <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
-                        {a.result}
-                      </Badge>
-                      {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
-                      {redInsights && redInsights.length > 0 && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="w-4 h-4 text-red-400 cursor-pointer" />
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-xs">
-                              <p className="font-semibold text-xs mb-1">Análise do Red:</p>
-                              <ul className="text-xs space-y-0.5">
-                                {redInsights.map((insight, i) => (
-                                  <li key={i}>• {insight}</li>
+
+                    {/* Expanded AI Red Analysis */}
+                    {a.was_0x1 && isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-border space-y-2">
+                        {aiAnalysis ? (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <Brain className="w-4 h-4 text-red-400" />
+                              <span className="text-xs font-semibold text-red-400">Análise IA Pós-Red</span>
+                              {aiAnalysis.risk_score && (
+                                <Badge variant="outline" className="text-xs">
+                                  Risco: {aiAnalysis.risk_score}/10
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{aiAnalysis.summary}</p>
+                            {aiAnalysis.key_factors?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">Fatores-chave:</p>
+                                <ul className="text-xs text-muted-foreground space-y-0.5">
+                                  {aiAnalysis.key_factors.map((f: string, i: number) => <li key={i}>• {f}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                            {aiAnalysis.league_recommendation && (
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-muted-foreground">Liga:</span>
+                                <Badge variant="outline" className={
+                                  aiAnalysis.league_recommendation === 'bloquear' ? 'text-red-400' :
+                                  aiAnalysis.league_recommendation === 'monitorar' ? 'text-yellow-400' : 'text-emerald-400'
+                                }>
+                                  {aiAnalysis.league_recommendation}
+                                </Badge>
+                                <span className="text-muted-foreground">{aiAnalysis.league_reason}</span>
+                              </div>
+                            )}
+                            {aiAnalysis.threshold_suggestions?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">Sugestões de ajuste:</p>
+                                {aiAnalysis.threshold_suggestions.map((s: any, i: number) => (
+                                  <p key={i} className="text-xs text-muted-foreground">
+                                    {s.param}: {s.current} → {s.suggested} ({s.reason})
+                                  </p>
                                 ))}
-                              </ul>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
+                              </div>
+                            )}
+                            {aiAnalysis.pattern_detected && (
+                              <p className="text-xs text-yellow-400">⚠️ Padrão: {aiAnalysis.pattern_detected}</p>
+                            )}
+                            <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground"
+                              disabled={analyzingRedId === a.id}
+                              onClick={() => handleReanalyzeRed(a.id)}>
+                              {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
+                              Re-analisar com IA
+                            </Button>
+                          </>
+                        ) : (
+                          <div className="text-center">
+                            <p className="text-xs text-muted-foreground mb-2">
+                              {redInsights?.length ? redInsights.map((ins, i) => <span key={i} className="block">• {ins}</span>) : 'Nenhuma análise detalhada disponível'}
+                            </p>
+                            <Button variant="outline" size="sm" className="gap-1 text-xs"
+                              disabled={analyzingRedId === a.id}
+                              onClick={() => handleReanalyzeRed(a.id)}>
+                              {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
+                              Analisar com IA
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );

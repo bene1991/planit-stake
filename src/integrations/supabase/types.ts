@@ -490,6 +490,30 @@ export type Database = {
         }
         Relationships: []
       }
+      lay0x1_blocked_leagues: {
+        Row: {
+          created_at: string
+          id: string
+          league_name: string
+          owner_id: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          league_name: string
+          owner_id: string
+          reason?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          league_name?: string
+          owner_id?: string
+          reason?: string
+        }
+        Relationships: []
+      }
       lay0x1_weights: {
         Row: {
           created_at: string

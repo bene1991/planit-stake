@@ -23,48 +23,6 @@ export interface Lay0x1Analysis {
   created_at: string;
 }
 
-// Generate insights for a Red (0x1) result
-function generateRedInsights(criteriaSnapshot: any): string[] {
-  const insights: string[] = [];
-  if (!criteriaSnapshot) return insights;
-
-  const { criteria_met, away_odd, over15_combined, home_goals_avg, away_conceded_avg, h2h_0x1_count } = criteriaSnapshot;
-
-  if (away_odd !== undefined) {
-    if (away_odd < 2.5) insights.push(`Odd do visitante muito baixa: ${away_odd} (visitante forte demais)`);
-    else if (away_odd > 4.0) insights.push(`Odd do visitante alta: ${away_odd} (fora da faixa ideal 2.5-4.0)`);
-  }
-
-  if (over15_combined !== undefined && over15_combined < 75) {
-    insights.push(`Over 1.5 combinado no limite: ${over15_combined}% (ideal >75%)`);
-  }
-
-  if (home_goals_avg !== undefined && home_goals_avg < 1.8) {
-    insights.push(`Mandante com média ofensiva fraca: ${home_goals_avg} gols/jogo`);
-  }
-
-  if (away_conceded_avg !== undefined && away_conceded_avg < 1.5) {
-    insights.push(`Visitante com defesa sólida fora: sofre apenas ${away_conceded_avg} gols/jogo`);
-  }
-
-  if (h2h_0x1_count !== undefined && h2h_0x1_count > 0) {
-    insights.push(`H2H com ${h2h_0x1_count} resultado(s) 0x1 no histórico`);
-  }
-
-  if (criteria_met) {
-    const failedCriteria = Object.entries(criteria_met).filter(([, v]) => v === false);
-    if (failedCriteria.length > 0) {
-      insights.push(`Critérios não atendidos: ${failedCriteria.map(([k]) => k).join(', ')}`);
-    }
-  }
-
-  if (insights.length === 0) {
-    insights.push('Todos os critérios estavam dentro dos limites — Red inesperado');
-  }
-
-  return insights;
-}
-
 export const useLay0x1Analyses = () => {
   const { user } = useAuth();
   const [analyses, setAnalyses] = useState<Lay0x1Analysis[]>([]);
@@ -87,16 +45,40 @@ export const useLay0x1Analyses = () => {
 
   const saveAnalysis = useCallback(async (analysis: Omit<Lay0x1Analysis, 'id' | 'owner_id' | 'created_at'>) => {
     if (!user) return null;
+    // Use upsert with ON CONFLICT DO NOTHING via onConflict
     const { data, error } = await (supabase as any)
       .from('lay0x1_analyses')
-      .insert({ ...analysis, owner_id: user.id })
+      .upsert(
+        { ...analysis, owner_id: user.id },
+        { onConflict: 'owner_id,fixture_id', ignoreDuplicates: true }
+      )
       .select()
       .single();
     
     if (!error && data) {
-      setAnalyses(prev => [data, ...prev]);
+      setAnalyses(prev => {
+        // Don't add if already exists
+        if (prev.some(a => a.fixture_id === data.fixture_id)) return prev;
+        return [data, ...prev];
+      });
     }
     return { data, error };
+  }, [user]);
+
+  const deleteAnalysis = useCallback(async (id: string) => {
+    if (!user) return;
+    const { error } = await (supabase as any)
+      .from('lay0x1_analyses')
+      .delete()
+      .eq('id', id)
+      .eq('owner_id', user.id);
+    
+    if (!error) {
+      setAnalyses(prev => prev.filter(a => a.id !== id));
+      toast.success('Análise removida');
+    } else {
+      toast.error('Erro ao remover');
+    }
   }, [user]);
 
   const resolveAnalysis = useCallback(async (id: string, scoreHome: number, scoreAway: number) => {
@@ -104,7 +86,6 @@ export const useLay0x1Analyses = () => {
     const was0x1 = scoreHome === 0 && scoreAway === 1;
     const result = was0x1 ? 'Red' : 'Green';
 
-    // Find the analysis to get criteria_snapshot
     const analysis = analyses.find(a => a.id === id);
 
     const { error } = await (supabase as any)
@@ -120,32 +101,43 @@ export const useLay0x1Analyses = () => {
       .eq('owner_id', user.id);
 
     if (!error) {
-      // Update local state
       setAnalyses(prev => prev.map(a => a.id === id ? {
         ...a, final_score_home: scoreHome, final_score_away: scoreAway,
         was_0x1: was0x1, result, resolved_at: new Date().toISOString(),
       } : a));
 
-      // Post-Red insights
-      if (was0x1 && analysis?.criteria_snapshot) {
-        const insights = generateRedInsights(analysis.criteria_snapshot);
-        const updatedSnapshot = { ...analysis.criteria_snapshot, red_insights: insights };
-        
-        await (supabase as any)
-          .from('lay0x1_analyses')
-          .update({ criteria_snapshot: updatedSnapshot })
-          .eq('id', id)
-          .eq('owner_id', user.id);
-
-        // Update local state with insights
-        setAnalyses(prev => prev.map(a => a.id === id ? {
-          ...a, criteria_snapshot: updatedSnapshot,
-        } : a));
-
-        toast.warning('🔴 Análise de Red gerada', {
-          description: insights[0],
-          duration: 5000,
-        });
+      // Trigger AI post-Red analysis
+      if (was0x1) {
+        try {
+          const res = await supabase.functions.invoke('analyze-red-lay0x1', {
+            body: { analysis_id: id },
+          });
+          if (res.data?.analysis) {
+            const aiAnalysis = res.data.analysis;
+            const updatedSnapshot = {
+              ...(analysis?.criteria_snapshot || {}),
+              ai_red_analysis: aiAnalysis,
+              red_insights: [aiAnalysis.summary, ...(aiAnalysis.key_factors || [])],
+            };
+            setAnalyses(prev => prev.map(a => a.id === id ? { ...a, criteria_snapshot: updatedSnapshot } : a));
+            toast.warning('🔴 Análise de IA gerada para o Red', {
+              description: aiAnalysis.summary,
+              duration: 6000,
+            });
+          }
+        } catch {
+          // Fallback to local insights if AI fails
+          if (analysis?.criteria_snapshot) {
+            const insights = generateLocalInsights(analysis.criteria_snapshot);
+            const updatedSnapshot = { ...analysis.criteria_snapshot, red_insights: insights };
+            await (supabase as any)
+              .from('lay0x1_analyses')
+              .update({ criteria_snapshot: updatedSnapshot })
+              .eq('id', id).eq('owner_id', user.id);
+            setAnalyses(prev => prev.map(a => a.id === id ? { ...a, criteria_snapshot: updatedSnapshot } : a));
+            toast.warning('🔴 Análise local de Red gerada', { description: insights[0], duration: 5000 });
+          }
+        }
       }
 
       // Auto-calibration every 30 resolved games
@@ -157,7 +149,7 @@ export const useLay0x1Analyses = () => {
           if (res.data?.error) {
             toast.error('Erro na recalibração: ' + res.data.error);
           } else {
-            toast.success(`✅ Recalibração #${res.data?.cycle || '?'} concluída automaticamente!`, {
+            toast.success(`✅ Recalibração #${res.data?.cycle || '?'} concluída!`, {
               description: `Taxa geral: ${res.data?.general_rate || 0}%${res.data?.forced_rebalance ? ' (com anti-overfitting)' : ''}`,
               duration: 6000,
             });
@@ -185,5 +177,26 @@ export const useLay0x1Analyses = () => {
     winRate: Math.round(winRate * 10) / 10,
   };
 
-  return { analyses, loading, metrics, saveAnalysis, resolveAnalysis, refetch: fetchAnalyses };
+  return { analyses, loading, metrics, saveAnalysis, deleteAnalysis, resolveAnalysis, refetch: fetchAnalyses };
 };
+
+// Fallback local insights when AI is unavailable
+function generateLocalInsights(criteriaSnapshot: any): string[] {
+  const insights: string[] = [];
+  if (!criteriaSnapshot) return insights;
+  const { criteria_met, away_odd, over15_combined, home_goals_avg, away_conceded_avg, h2h_0x1_count } = criteriaSnapshot;
+  if (away_odd !== undefined) {
+    if (away_odd < 2.5) insights.push(`Odd visitante muito baixa: ${away_odd}`);
+    else if (away_odd > 4.0) insights.push(`Odd visitante alta: ${away_odd}`);
+  }
+  if (over15_combined !== undefined && over15_combined < 75) insights.push(`Over 1.5 combinado no limite: ${over15_combined}%`);
+  if (home_goals_avg !== undefined && home_goals_avg < 1.8) insights.push(`Mandante ofensiva fraca: ${home_goals_avg}`);
+  if (away_conceded_avg !== undefined && away_conceded_avg < 1.5) insights.push(`Visitante defesa sólida: ${away_conceded_avg}`);
+  if (h2h_0x1_count !== undefined && h2h_0x1_count > 0) insights.push(`H2H com ${h2h_0x1_count} resultado(s) 0x1`);
+  if (criteria_met) {
+    const failed = Object.entries(criteria_met).filter(([, v]) => v === false);
+    if (failed.length > 0) insights.push(`Critérios não atendidos: ${failed.map(([k]) => k).join(', ')}`);
+  }
+  if (insights.length === 0) insights.push('Todos os critérios OK — Red inesperado');
+  return insights;
+}

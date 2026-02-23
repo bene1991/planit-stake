@@ -7,10 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar } from 'lucide-react';
+import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLay0x1Weights, type Lay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
+import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
 import { Lay0x1ScoreCard } from './Lay0x1ScoreCard';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
@@ -94,6 +95,7 @@ function getAggregatedResults(days: number): AggregatedData {
 export const Lay0x1Scanner = () => {
   const { weights, saveWeights } = useLay0x1Weights();
   const { analyses, saveAnalysis } = useLay0x1Analyses();
+  const { blockedNames } = useLay0x1BlockedLeagues();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(getNowInBrasilia(), 'yyyy-MM-dd'));
@@ -104,7 +106,7 @@ export const Lay0x1Scanner = () => {
   const [rangeData, setRangeData] = useState<AggregatedData | null>(null);
   const [analyzingMissing, setAnalyzingMissing] = useState(false);
   const [missingProgress, setMissingProgress] = useState({ current: 0, total: 0 });
-
+  const [savingBacktest, setSavingBacktest] = useState(false);
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
 
   const rangeShortcuts = useMemo(() => [
@@ -329,8 +331,34 @@ export const Lay0x1Scanner = () => {
     saveWeights({ [key]: value });
   };
 
-  const approvedResults = results.filter(r => r.approved);
-  const rejectedResults = results.filter(r => !r.approved);
+  // Filter out blocked leagues from display
+  const filteredResults = useMemo(() => 
+    results.filter(r => !blockedNames.includes(r.league)),
+    [results, blockedNames]
+  );
+
+  const approvedResults = filteredResults.filter(r => r.approved);
+  const rejectedResults = filteredResults.filter(r => !r.approved);
+
+  const saveBacktestForCalibration = useCallback(async () => {
+    const approved = filteredResults.filter(r => r.approved);
+    if (approved.length === 0) { toast.info('Nenhum aprovado para salvar'); return; }
+    setSavingBacktest(true);
+    const existingFixtureIds = new Set(analyses.map(a => a.fixture_id));
+    let saved = 0;
+    for (const r of approved) {
+      if (existingFixtureIds.has(r.fixture_id)) continue;
+      const res = await saveAnalysis({
+        fixture_id: r.fixture_id, home_team: r.home_team, away_team: r.away_team,
+        league: r.league, date: r.date, score_value: r.score_value,
+        classification: r.classification, criteria_snapshot: r.criteria, weights_snapshot: weights,
+      });
+      if (res && !res.error) saved++;
+    }
+    if (saved > 0) toast.success(`${saved} jogo(s) salvos para calibração`);
+    else toast.info('Todos já estavam salvos');
+    setSavingBacktest(false);
+  }, [filteredResults, analyses, saveAnalysis, weights]);
 
   const getBacktestResult = (r: AnalysisResult) => {
     if ((!isBacktest && !rangeMode) || r.final_score_home == null || r.final_score_away == null) return undefined;
@@ -501,6 +529,14 @@ export const Lay0x1Scanner = () => {
             {rangeData.analyzedDays === 0 && (
               <p className="text-xs text-muted-foreground">Nenhum dia analisado ainda. Clique no botão acima para analisar.</p>
             )}
+
+            {(rangeMode || isBacktest) && approvedResults.length > 0 && (
+              <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
+                onClick={saveBacktestForCalibration}>
+                {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Salvar para Calibração ({approvedResults.length})
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -537,6 +573,13 @@ export const Lay0x1Scanner = () => {
               <p className="text-xs text-muted-foreground mt-2">
                 {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
               </p>
+            )}
+            {approvedResults.length > 0 && (
+              <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
+                onClick={saveBacktestForCalibration}>
+                {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Salvar para Calibração ({approvedResults.length})
+              </Button>
             )}
           </CardContent>
         </Card>
