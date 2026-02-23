@@ -124,9 +124,17 @@ export const Lay0x1Scanner = () => {
         return;
       }
 
-      const res = await supabase.functions.invoke('analyze-lay0x1', {
-        body: { date: selectedDate },
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000);
+      
+      let res: any;
+      try {
+        res = await supabase.functions.invoke('analyze-lay0x1', {
+          body: { date: selectedDate },
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (res.error) {
         toast.error('Erro na análise');
@@ -274,7 +282,7 @@ export const Lay0x1Scanner = () => {
           {loading && (
             <div className="mt-3 space-y-1">
               <Progress value={undefined} className="h-2" />
-              <p className="text-xs text-muted-foreground">Buscando jogos, filtrando por odds e analisando...</p>
+              <p className="text-xs text-muted-foreground">Buscando jogos, filtrando por odds e analisando em lotes paralelos... (até 2 min)</p>
             </div>
           )}
 
