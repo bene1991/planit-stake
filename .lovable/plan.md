@@ -1,117 +1,89 @@
 
 
-## IA Evolutiva Real -- De Filtro Estatistico para Inteligencia Adaptativa
+## Alimentar a IA com Contexto Financeiro do Lay + Backtest 90 Dias
 
-### Problemas Identificados
+### Contexto do Problema
 
-1. **Backtest NAO alimenta a calibracao**: O botao "Salvar para Calibracao" salva jogos no banco, mas NAO registra o resultado final (Green/Red) mesmo tendo o placar disponivel. Esses jogos ficam como "pendentes" e nunca entram na calibracao.
+Na estrategia Lay 0x1, a odd media de entrada e ~15.0, o que significa:
+- **Lucro por Green**: ~7.14% do liability (stake = liability / (odd - 1), lucro = stake * 0.955)
+- **Perda por Red**: 100% do liability
+- **Break-even real**: ~93.3% de taxa de acerto (1 Red anula ~14 Greens)
 
-2. **Calibracao e puramente matematica**: A funcao `calibrate-lay0x1` apenas multiplica peso atual pela razao (taxa criterio / taxa media). Nao ha inteligencia artificial real analisando os padroes.
+O sistema atual nao tem essa informacao critica. A calibracao e a IA recomendam score minimo de 65-70 e consideram 50% de taxa como aceitavel, quando na verdade 50% geraria prejuizo catastrofico. A IA precisa saber que precisa buscar taxas acima de 93% para ser lucrativa.
 
-3. **Padroes detectados mas nao aplicados**: O sistema detecta ligas com mais Reds e faixas de odds fracas, mas NAO toma nenhuma acao automatica (nao bloqueia ligas, nao ajusta thresholds com base em padroes).
+### Alteracoes
 
-### Solucao em 3 Frentes
+#### 1. Ampliar Backtest para 90 Dias
 
----
+**Arquivo**: `src/components/Lay0x1/Lay0x1Scanner.tsx`
 
-#### 1. Backtest com Auto-Resolucao Imediata
+Adicionar opcao "90d" no array `rangeShortcuts`:
+```
+{ label: '7d', days: 7 },
+{ label: '15d', days: 15 },
+{ label: '30d', days: 30 },
+{ label: '90d', days: 90 },
+```
 
-**Problema**: `saveBacktestForCalibration` salva jogos sem resultado.
-
-**Correcao**: Ao salvar jogos do backtest, usar os dados de `final_score_home` e `final_score_away` que ja existem nos resultados do backtest para salvar o jogo JA RESOLVIDO no banco.
-
-**Fluxo corrigido**:
-- Para cada jogo aprovado do backtest que tem placar final:
-  - Salvar com `final_score_home`, `final_score_away`, `was_0x1`, `result`, `resolved_at`
-  - Jogo ja entra como "resolvido" no banco
-- Apos salvar todos, verificar se atingiu multiplo de 30 jogos resolvidos
-- Se sim, disparar calibracao automatica
-
-**Arquivo**: `src/components/Lay0x1/Lay0x1Scanner.tsx` (funcao `saveBacktestForCalibration`)
-
----
-
-#### 2. Calibracao com IA Real (Gemini)
-
-**Problema**: A calibracao atual e uma formula fixa. Nao pensa, nao contextualiza, nao faz recomendacoes inteligentes.
-
-**Solucao**: Adicionar uma fase de analise com IA (Gemini 2.5 Flash) na edge function `calibrate-lay0x1` que:
-
-- Recebe todos os dados da calibracao (taxas por criterio, padroes detectados, historico de Reds, ligas problematicas)
-- A IA analisa e retorna:
-  - **Recomendacoes de ajuste de pesos** com justificativa (ex: "Reduzir peso Over de 22 para 16 porque a correlacao com sucesso caiu de 78% para 61%")
-  - **Ligas para bloquear automaticamente** (se taxa Red > 50% com 3+ jogos)
-  - **Ajustes de thresholds recomendados** com motivo
-  - **Score minimo dinamico** recomendado com base no contexto geral
-  - **Tendencias identificadas** (ex: "jogos com odd visitante > 3.8 tem 40% de Red")
-  - **Resumo estrategico** em linguagem natural
-
-- Os ajustes recomendados pela IA sao APLICADOS automaticamente (pesos, thresholds)
-- Ligas recomendadas para bloqueio sao bloqueadas automaticamente
-- Tudo e registrado no historico de calibracao com campo `ai_recommendations`
+#### 2. Alimentar a IA com Contexto Financeiro do Lay
 
 **Arquivo**: `supabase/functions/calibrate-lay0x1/index.ts`
 
-**Novo campo no historico**: `ai_recommendations` (jsonb) na tabela `lay0x1_calibration_history`
+Atualizar o prompt da IA (`callAIForCalibration`) para incluir o contexto financeiro critico:
 
----
+- Adicionar ao prompt: "Na estrategia Lay 0x1, a odd media de entrada e ~15.0. Isso significa que cada Green gera ~7.14% de lucro sobre o liability, mas cada Red perde 100% do liability. Portanto, 1 Red anula aproximadamente 14 Greens. O break-even real e ~93.3% de taxa de acerto. Taxas abaixo de 90% geram prejuizo. Este contexto e FUNDAMENTAL para todas as suas recomendacoes."
+- Calcular e enviar a odd media real dos jogos analisados (de `criteria_snapshot.away_odd`)
+- Calcular e enviar o break-even real com base na odd media
+- Calcular e enviar o ROI estimado com base na taxa de acerto atual e odd media
 
-#### 3. Acoes Automaticas sobre Padroes
+#### 3. Ajustar Logica de Score Minimo Dinamico
 
-**Problema**: Detecta "liga X tem 60% de Red" mas nao faz nada.
+**Arquivo**: `supabase/functions/calibrate-lay0x1/index.ts`
 
-**Solucao**: Apos a IA analisar, o sistema executa acoes automaticas:
+O fallback atual eleva score minimo para 70 quando taxa < 65%. Com o contexto financeiro correto, a IA vai entender que precisa ser MUITO mais seletiva:
+- Recomendar scores minimos mais altos (75-85) porque a taxa de acerto precisa ser > 93%
+- A IA vai priorizar bloquear ligas com qualquer Red, nao apenas > 50%
+- A IA vai recomendar thresholds mais rigorosos para maximizar a taxa de acerto
 
-- **Auto-bloqueio de ligas**: Se taxa Red > 50% com 3+ jogos na liga, bloquear automaticamente e registrar motivo "auto_ia"
-- **Score minimo dinamico**: Se taxa geral < 65%, elevar score minimo de 65 para 70 automaticamente (salvar no campo `min_score` em `lay0x1_weights`)
-- **Alertas proativos**: Registrar no historico quais acoes foram tomadas automaticamente
+#### 4. Incluir Metricas Financeiras nos Dados Enviados a IA
 
-**Arquivos**: `supabase/functions/calibrate-lay0x1/index.ts`, `supabase/functions/analyze-lay0x1/index.ts` (usar min_score dinamico)
+**Arquivo**: `supabase/functions/calibrate-lay0x1/index.ts`
 
----
+Calcular e enviar:
+- `avg_lay_odd`: media das odds dos jogos analisados
+- `break_even_rate`: taxa minima para nao perder (1 - 1/avg_odd)
+- `current_roi`: ROI real estimado com base na taxa atual
+- `greens_per_red`: quantos Greens sao necessarios para cobrir 1 Red
 
 ### Detalhes Tecnicos
 
-**Migration SQL**:
-- Adicionar coluna `ai_recommendations` (jsonb, default '{}') na tabela `lay0x1_calibration_history`
-- Adicionar coluna `min_score` (numeric, default 65) na tabela `lay0x1_weights`
+**`src/components/Lay0x1/Lay0x1Scanner.tsx`**:
+- Linha 112-116: Adicionar `{ label: '90d', days: 90 }` ao array `rangeShortcuts`
 
-**Edge Function `calibrate-lay0x1` -- Nova fase IA**:
-- Apos calcular pesos e thresholds matematicamente, chamar Lovable AI (Gemini 2.5 Flash) com prompt estruturado contendo:
-  - Taxas por criterio e taxa geral
-  - Pesos atuais e novos calculados
-  - Padroes detectados (ligas com Red, odds fracas)
-  - Historico de ultimos 30 jogos com resultados
-- A IA retorna via tool calling um JSON estruturado com recomendacoes
-- Aplicar recomendacoes automaticamente (pesos, bloqueios de liga, score minimo)
-- Salvar tudo no historico
+**`supabase/functions/calibrate-lay0x1/index.ts`**:
+- Funcao `callAIForCalibration`: Adicionar campo `financialContext` aos parametros
+- Antes de chamar a IA (fase 4), calcular metricas financeiras dos jogos analisados
+- Atualizar o prompt com secao "Contexto Financeiro Critico" contendo odd media, break-even, ROI
+- Instruir a IA explicitamente que taxas abaixo de 90% sao insustentaveis no Lay 0x1
 
-**Edge Function `analyze-lay0x1` -- Score minimo dinamico**:
-- Buscar `min_score` dos pesos do usuario
-- Filtrar jogos com score abaixo do minimo dinamico (em vez do fixo 65)
-
-**`Lay0x1Scanner.tsx` -- Backtest auto-resolve**:
-- `saveBacktestForCalibration` agora salva jogos com resultado final incluso
-- Dispara calibracao automatica ao atingir multiplo de 30
-
-**`Lay0x1History.tsx` -- Exibir recomendacoes IA**:
-- Novo card "Recomendacoes da IA" em cada ciclo de calibracao
-- Mostrar acoes automaticas tomadas (ligas bloqueadas, score ajustado)
+**Calculo das metricas financeiras**:
+```text
+avg_odd = media de criteria_snapshot.away_odd de todos os jogos
+profit_per_green = 1 / (avg_odd - 1) * 0.955
+break_even = 1 - profit_per_green / (1 + profit_per_green)
+greens_per_red = Math.ceil(1 / profit_per_green)
+roi = (greens * profit_per_green - reds) / total_analyses * 100
+```
 
 ### Arquivos Modificados
 
-- `supabase/functions/calibrate-lay0x1/index.ts` -- Adicionar chamada IA, auto-bloqueio de ligas, score minimo dinamico
-- `supabase/functions/analyze-lay0x1/index.ts` -- Usar min_score dinamico do usuario
-- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- Backtest salvar com resultado final + auto-calibracao
-- `src/components/Lay0x1/Lay0x1History.tsx` -- Exibir recomendacoes IA no historico
-- Migration SQL -- Adicionar colunas `ai_recommendations` e `min_score`
+- `src/components/Lay0x1/Lay0x1Scanner.tsx` -- Adicionar opcao 90d no backtest
+- `supabase/functions/calibrate-lay0x1/index.ts` -- Contexto financeiro no prompt da IA, metricas de ROI/break-even
 
-### Resultado Final
+### Resultado
 
-- Backtest alimenta a calibracao IMEDIATAMENTE com jogos ja resolvidos
-- A cada 30 jogos, a IA (Gemini) analisa o contexto completo e faz recomendacoes inteligentes
-- Ligas problematicas sao bloqueadas automaticamente pela IA
-- Score minimo e ajustado dinamicamente conforme desempenho
-- Toda decisao da IA fica registrada e auditavel na aba Historico IA
-- O modelo evolui de verdade: nao e mais um filtro fixo, e uma IA que aprende com cada resultado
-
+- Backtest agora cobre ate 90 dias de historico
+- A IA sabe que 1 Red = ~14 Greens perdidos e que o break-even e ~93%
+- Recomendacoes da IA serao muito mais rigorosas e alinhadas com a realidade financeira do Lay
+- Score minimo recomendado pela IA sera naturalmente mais alto (75-85)
+- Ligas com qualquer indicativo de risco serao bloqueadas mais agressivamente
