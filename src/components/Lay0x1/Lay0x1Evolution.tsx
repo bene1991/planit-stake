@@ -1,8 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
-import { Progress } from '@/components/ui/progress';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Brain, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { toast } from 'sonner';
 
 const WEIGHT_LABELS: Record<string, string> = {
@@ -23,6 +22,13 @@ const WEIGHT_COLORS: Record<string, string> = {
   odds_weight: 'bg-orange-500',
 };
 
+const THRESHOLD_CONFIG: { key: string; label: string; suffix: string; defaultValue: number }[] = [
+  { key: 'min_home_goals_avg', label: 'Mín. gols mandante', suffix: '', defaultValue: 1.5 },
+  { key: 'min_away_conceded_avg', label: 'Mín. gols sofridos', suffix: '', defaultValue: 1.5 },
+  { key: 'min_over15_combined', label: 'Mín. Over 1.5', suffix: '%', defaultValue: 70 },
+  { key: 'max_h2h_0x1', label: 'Máx. H2H 0x1', suffix: '', defaultValue: 0 },
+];
+
 export const Lay0x1Evolution = () => {
   const { weights, resetWeights, loading } = useLay0x1Weights();
 
@@ -32,6 +38,13 @@ export const Lay0x1Evolution = () => {
   const handleReset = async () => {
     await resetWeights();
     toast.success('Pesos resetados para valores padrão');
+  };
+
+  const getThresholdDelta = (key: string, defaultValue: number) => {
+    const current = (weights as any)[key] ?? defaultValue;
+    const diff = current - defaultValue;
+    if (Math.abs(diff) < 0.05) return null;
+    return diff;
   };
 
   return (
@@ -69,27 +82,50 @@ export const Lay0x1Evolution = () => {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Thresholds Atuais</CardTitle>
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm">Thresholds Adaptativos (IA)</CardTitle>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Ajustados automaticamente pela IA a cada recalibração
+          </p>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-muted-foreground">Mín. gols mandante</p>
-              <p className="text-lg font-bold">{weights.min_home_goals_avg}</p>
-            </div>
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-muted-foreground">Mín. gols sofridos</p>
-              <p className="text-lg font-bold">{weights.min_away_conceded_avg}</p>
-            </div>
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-muted-foreground">Máx. odd visitante</p>
-              <p className="text-lg font-bold">{weights.max_away_odd}</p>
-            </div>
-            <div className="bg-muted/30 rounded-lg p-3">
-              <p className="text-muted-foreground">Mín. Over 1.5</p>
-              <p className="text-lg font-bold">{weights.min_over15_combined}%</p>
+            {THRESHOLD_CONFIG.map(({ key, label, suffix, defaultValue }) => {
+              const value = (weights as any)[key] ?? defaultValue;
+              const delta = getThresholdDelta(key, defaultValue);
+
+              return (
+                <div key={key} className="bg-muted/30 rounded-lg p-3 relative">
+                  <p className="text-muted-foreground">{label}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-lg font-bold">{value}{suffix}</p>
+                    {delta !== null && (
+                      <span className={`flex items-center text-[10px] font-medium ${delta > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {delta > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {delta > 0 ? '+' : ''}{delta.toFixed(1)}
+                      </span>
+                    )}
+                    {delta === null && (
+                      <span className="flex items-center text-[10px] text-muted-foreground">
+                        <Minus className="w-3 h-3" />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Fixed threshold */}
+          <div className="mt-3 bg-muted/20 rounded-lg p-3 border border-dashed border-muted-foreground/20">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Máx. odd visitante (fixo)</span>
+              <span className="font-bold">{weights.max_away_odd}</span>
             </div>
           </div>
+
           <div className="mt-3 text-xs text-muted-foreground text-center">
             Ciclo de calibração: #{weights.cycle_count}
             {weights.last_calibration_at && ` • Última: ${new Date(weights.last_calibration_at).toLocaleDateString('pt-BR')}`}
