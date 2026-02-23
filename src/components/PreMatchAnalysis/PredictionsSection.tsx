@@ -51,11 +51,11 @@ export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
 
   const { predictions, comparison } = prediction;
 
-  // Fix negative/invalid goal values - ensure they show as positive numbers
+  // Fix negative goal values from API - show absolute value
   const formatGoals = (val: string) => {
     const num = parseFloat(val);
-    if (isNaN(num) || num < 0) return '0';
-    return val;
+    if (isNaN(num)) return '0';
+    return Math.abs(num).toFixed(1);
   };
 
   return (
