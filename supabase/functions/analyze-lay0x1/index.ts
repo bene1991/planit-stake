@@ -243,16 +243,14 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'date or fixture_ids required' }), { status: 400, headers: corsHeaders });
     }
 
-    const results: AnalysisResult[] = [];
-
-    for (const fixtureId of fixtureIdsToAnalyze) {
+    // --- Analyze a single fixture (extracted for parallel batching) ---
+    async function analyzeFixture(fixtureId: number): Promise<AnalysisResult | null> {
       try {
-        // Get fixture details (from map if date flow, else fetch)
         let fixture = fixtureMap.get(fixtureId);
         if (!fixture) {
           const fixtureData = await callApiFootball('fixtures', { id: fixtureId });
           fixture = fixtureData?.response?.[0];
-          if (!fixture) continue;
+          if (!fixture) return null;
         }
 
         const homeTeamId = fixture.teams?.home?.id;
@@ -264,7 +262,6 @@ serve(async (req) => {
         const league = fixture.league?.name || 'League';
         const fixtureDate = fixture.fixture?.date?.split('T')[0] || '';
 
-        // Convert to Brasilia time (UTC-3)
         const fixtureDateTimeStr = fixture.fixture?.date || '';
         const brasiliaDate = new Date(fixtureDateTimeStr);
         const utcMs = brasiliaDate.getTime() + (brasiliaDate.getTimezoneOffset() * 60000);
@@ -272,15 +269,13 @@ serve(async (req) => {
         const bDate = new Date(brasiliaMs);
         const fixtureTime = `${bDate.getHours().toString().padStart(2, '0')}:${bDate.getMinutes().toString().padStart(2, '0')}`;
 
-        // Final score if game finished
         const fixtureStatus = fixture.fixture?.status?.short || 'NS';
         const isFinished = ['FT', 'AET', 'PEN'].includes(fixtureStatus);
         const finalScoreHome = isFinished ? fixture.goals?.home : undefined;
         const finalScoreAway = isFinished ? fixture.goals?.away : undefined;
 
-        if (!homeTeamId || !awayTeamId) continue;
+        if (!homeTeamId || !awayTeamId) return null;
 
-        // Get odds (from map if date flow, else fetch)
         let homeOdd = 0;
         let awayOdd = 0;
         const cachedOdds = oddsMap.get(fixtureId);
@@ -289,7 +284,6 @@ serve(async (req) => {
           awayOdd = cachedOdds.awayOdd;
         }
 
-        // Fetch remaining data in parallel (H2H + stats; skip odds fetch if already have them)
         const parallelCalls: Promise<any>[] = [
           callApiFootball('fixtures/headtohead', { h2h: `${homeTeamId}-${awayTeamId}`, last: 5 }),
           callApiFootball('teams/statistics', { team: homeTeamId, league: leagueId, season }),
@@ -301,7 +295,6 @@ serve(async (req) => {
 
         const [h2hData, homeStatsData, awayStatsData, oddsDataSingle] = await Promise.all(parallelCalls);
 
-        // Extract odds from single-fixture fetch if needed
         if ((homeOdd === 0 || awayOdd === 0) && oddsDataSingle) {
           const oddsResp = oddsDataSingle?.response || [];
           if (oddsResp.length > 0) {
@@ -311,34 +304,23 @@ serve(async (req) => {
           }
         }
 
-        // H2H: count 0x1 results
         const h2hMatches = h2hData?.response || [];
         let h2h0x1Count = 0;
         for (const match of h2hMatches) {
-          const hg = match.goals?.home;
-          const ag = match.goals?.away;
-          if (hg === 0 && ag === 1) h2h0x1Count++;
+          if (match.goals?.home === 0 && match.goals?.away === 1) h2h0x1Count++;
         }
 
-        // Home goals avg (at home)
         const homeGoalsFor = homeStatsData?.response?.goals?.for;
-        const homeGoalsAvg = homeGoalsFor?.average?.home
-          ? parseFloat(homeGoalsFor.average.home) : 0;
+        const homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
 
-        // Away conceded avg (away)
         const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
-        const awayConcededAvg = awayGoalsAgainst?.average?.away
-          ? parseFloat(awayGoalsAgainst.average.away) : 0;
+        const awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
 
-        // Over 1.5 combined
         const homeOver15Pct = Math.min(100, (homeGoalsAvg / 2.0) * 100);
         const awayOver15Pct = Math.min(100, (awayConcededAvg / 2.0) * 100);
         const over15Combined = homeOver15Pct + awayOver15Pct;
+        const leagueGoalsAvg = (homeGoalsAvg + awayConcededAvg) / 2;
 
-        // League goals avg
-        const leagueGoalsAvg = ((homeGoalsAvg + awayConcededAvg) / 2);
-
-        // Check criteria (including new home_odd_lower)
         const criteriaMet: Record<string, boolean> = {
           home_odd_lower: homeOdd > 0 && awayOdd > 0 && homeOdd < awayOdd,
           h2h_no_0x1: h2h0x1Count <= weights.max_h2h_0x1,
@@ -357,7 +339,6 @@ serve(async (req) => {
         if (!criteriaMet.away_odd) reasons.push(`Odd visitante: ${awayOdd.toFixed(2)} (máx: ${weights.max_away_odd})`);
         if (!criteriaMet.over15_combined) reasons.push(`Over 1.5 combinado: ${over15Combined.toFixed(0)}% (mín: ${weights.min_over15_combined}%)`);
 
-        // Calculate score
         const totalWeight = weights.offensive_weight + weights.defensive_weight + weights.over_weight +
           weights.league_avg_weight + weights.h2h_weight + weights.odds_weight;
 
@@ -371,7 +352,7 @@ serve(async (req) => {
         const rawScore = (offensiveScore + defensiveScore + overScore + leagueScore + h2hScore + oddsScore) * 100;
         const scoreValue = Math.round(Math.max(0, Math.min(100, rawScore)));
 
-        results.push({
+        return {
           fixture_id: String(fixtureId),
           home_team: homeTeam,
           away_team: awayTeam,
@@ -395,9 +376,26 @@ serve(async (req) => {
           final_score_home: finalScoreHome,
           final_score_away: finalScoreAway,
           fixture_status: fixtureStatus,
-        });
+        };
       } catch (err) {
         console.error(`Error analyzing fixture ${fixtureId}:`, err);
+        return null;
+      }
+    }
+
+    // --- Process in parallel batches of 5 ---
+    const BATCH_SIZE = 5;
+    const results: AnalysisResult[] = [];
+    const totalBatches = Math.ceil(fixtureIdsToAnalyze.length / BATCH_SIZE);
+
+    for (let i = 0; i < fixtureIdsToAnalyze.length; i += BATCH_SIZE) {
+      const batch = fixtureIdsToAnalyze.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      console.log(`[SCANNER] Batch ${batchNum}/${totalBatches} — analyzing ${batch.length} fixtures...`);
+
+      const batchResults = await Promise.all(batch.map(id => analyzeFixture(id)));
+      for (const r of batchResults) {
+        if (r) results.push(r);
       }
     }
 
