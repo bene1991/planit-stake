@@ -7,7 +7,7 @@ export const BottomNav = () => {
 
   const navItems = [
     { to: "/", label: "Início", icon: Home },
-    { to: "/performance", label: "Desempenho", icon: BarChart3 },
+    { to: "/performance", label: "Desemp.", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
     { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
     { to: "/method-analysis", label: "Análise", icon: FlaskConical },
