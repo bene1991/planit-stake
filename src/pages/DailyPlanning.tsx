@@ -12,6 +12,7 @@ import { useOperationalSettings } from "@/hooks/useOperationalSettings";
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { playGoalSound, playNotificationSound, playRedCardVoice } from "@/utils/soundManager";
+import { sendTelegramNotification } from "@/utils/telegramNotification";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiPause } from "@/hooks/useApiPause";
@@ -137,6 +138,15 @@ export default function DailyPlanning() {
     
     // Highlight this game with golden border
     setHighlightedGameId(gameId);
+
+    // Send Telegram notification immediately (non-blocking, cached settings)
+    if (notifPrefs.telegramEnabled) {
+      const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
+      const msg = `⚽ <b>GOL!</b> ${scoringTeamName}\n${game.homeTeam} ${homeScore} x ${awayScore} ${game.awayTeam}\n🏟 ${game.league}`;
+      sendTelegramNotification(msg).catch(err => 
+        console.error('[DailyPlanning] Telegram goal error:', err)
+      );
+    }
     
     // Send push notification ONLY if app is in background (user can't hear the sound)
     if (user && document.hidden) {
@@ -160,7 +170,7 @@ export default function DailyPlanning() {
         }
       }).catch(err => console.error('[DailyPlanning] Push notification error:', err));
     }
-  }, [user, isGamePending]);
+  }, [user, isGamePending, notifPrefs.telegramEnabled]);
 
   // Red card detection callback
   const handleRedCardDetected = useCallback((event: RedCardEvent) => {
