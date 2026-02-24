@@ -1,6 +1,7 @@
-import { Card, CardContent } from '@/components/ui/card';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Target, Clock, Ban, CalendarPlus, Check } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CheckCircle, XCircle, Target, Ban, CalendarPlus, Check, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface CriteriaDetail {
   home_goals_avg: number;
@@ -45,175 +46,236 @@ interface ScoreCardProps {
 }
 
 const classificationColor: Record<string, string> = {
-  'Muito Forte': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  'Forte': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'Moderado': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
+  'Muito Forte': 'text-emerald-400',
+  'Forte': 'text-blue-400',
+  'Moderado': 'text-yellow-400',
+  'Não recomendado': 'text-red-400',
+};
+
+const scoreRingColor: Record<string, string> = {
+  'Muito Forte': 'text-emerald-400',
+  'Forte': 'text-blue-400',
+  'Moderado': 'text-yellow-400',
+  'Não recomendado': 'text-red-400',
 };
 
 export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo }: ScoreCardProps) => {
+  const [expanded, setExpanded] = useState(false);
+
   const criteriaList = [
-    { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
-    { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
+    { label: 'Gols marcados (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
+    { label: 'Gols sofridos (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
     { label: 'Odd visitante', value: criteria.away_odd.toFixed(2), met: criteria.criteria_met.away_odd },
     { label: 'Over 1.5 combinado', value: `${criteria.over15_combined.toFixed(0)}%`, met: criteria.criteria_met.over15_combined },
-    { label: 'H2H 0x1 (últimos 5)', value: `${criteria.h2h_0x1_count}`, met: criteria.criteria_met.h2h_no_0x1 },
+    { label: 'H2H 0x1 (últ. 5)', value: `${criteria.h2h_0x1_count}`, met: criteria.criteria_met.h2h_no_0x1 },
   ];
 
-  return (
-    <Card className={`${approved ? 'border-primary/30' : 'border-border/40 opacity-75'}`}>
-      <CardContent className="p-4 space-y-3">
-        {/* Backtest result badge */}
-        {backtestResult && (
-          <div className={`flex items-center justify-between p-2 rounded-lg text-xs font-semibold ${backtestResult.was0x1 ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
-            <span>{backtestResult.scoreHome} x {backtestResult.scoreAway}</span>
-            <span>{backtestResult.was0x1 ? '❌ RED (0x1)' : '✅ GREEN'}</span>
-          </div>
-        )}
+  const TeamLogo = ({ src, name }: { src?: string; name: string }) => (
+    src ? (
+      <img src={src} alt="" className="w-5 h-5 rounded-sm object-contain shrink-0" />
+    ) : (
+      <div className="w-5 h-5 rounded-sm bg-muted/40 flex items-center justify-center shrink-0">
+        <span className="text-[8px] font-bold text-muted-foreground">{name.charAt(0)}</span>
+      </div>
+    )
+  );
 
-        <div className="flex items-center justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              {homeTeamLogo && (
-                <img src={homeTeamLogo} alt="" className="w-5 h-5 rounded-sm object-contain shrink-0" />
-              )}
-              <span className="text-sm font-semibold truncate">{homeTeam}</span>
-              <span className="text-xs text-muted-foreground">vs</span>
-              {awayTeamLogo && (
-                <img src={awayTeamLogo} alt="" className="w-5 h-5 rounded-sm object-contain shrink-0" />
-              )}
-              <span className="text-sm font-semibold truncate">{awayTeam}</span>
-            </div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              {time && (
-                <>
-                  <Clock className="w-3 h-3" />
-                  <span className="font-medium">{time}</span>
-                  <span className="mx-0.5">•</span>
-                </>
-              )}
-              <span>{league}</span>
-              {onBlockLeague && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onBlockLeague(league); }}
-                  className="ml-1 inline-flex items-center gap-0.5 text-red-400/60 hover:text-red-400 transition-colors"
-                  title="Bloquear liga"
-                >
-                  <Ban className="w-3 h-3" />
-                </button>
-              )}
-            </p>
+  return (
+    <div className={`group rounded-lg border transition-all ${
+      approved 
+        ? 'bg-card/80 border-border/60 hover:border-primary/40' 
+        : 'bg-card/40 border-border/30 opacity-80 hover:opacity-100'
+    }`}>
+      {/* Main row — Fulltrader style */}
+      <button 
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-3 p-3 text-left"
+      >
+        {/* Time */}
+        <div className="shrink-0 w-11 text-center">
+          <span className="text-xs font-medium text-muted-foreground">{time || '—'}</span>
+        </div>
+
+        {/* Teams stacked */}
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2">
+            <TeamLogo src={homeTeamLogo} name={homeTeam} />
+            <span className="text-sm font-medium truncate">{homeTeam}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative w-14 h-14 flex items-center justify-center">
-              <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
-                <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor" className="text-muted/20" strokeWidth="4" />
-                <circle cx="28" cy="28" r="24" fill="none" stroke="currentColor"
-                  className={scoreValue >= 85 ? 'text-emerald-400' : scoreValue >= 75 ? 'text-blue-400' : scoreValue >= 65 ? 'text-yellow-400' : 'text-red-400'}
-                  strokeWidth="4" strokeDasharray={`${(scoreValue / 100) * 150.8} 150.8`} strokeLinecap="round" />
-              </svg>
-              <span className="absolute text-sm font-bold">{scoreValue}</span>
-            </div>
+            <TeamLogo src={awayTeamLogo} name={awayTeam} />
+            <span className="text-sm font-medium truncate">{awayTeam}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Badge className={classificationColor[classification] || 'bg-muted'}>
-            {classification}
-          </Badge>
-          {approved ? (
-            <Badge variant="outline" className="text-emerald-400 border-emerald-500/30">
-              <CheckCircle className="w-3 h-3 mr-1" /> Aprovado
-            </Badge>
+        {/* Odds column */}
+        <div className="shrink-0 w-12 text-right space-y-1">
+          <p className="text-xs font-mono font-semibold">{homeOdd ? homeOdd.toFixed(2) : '—'}</p>
+          <p className="text-xs font-mono font-semibold">{awayOdd ? awayOdd.toFixed(2) : '—'}</p>
+        </div>
+
+        {/* Score ring */}
+        <div className="shrink-0 relative w-10 h-10 flex items-center justify-center">
+          <svg className="w-10 h-10 -rotate-90" viewBox="0 0 40 40">
+            <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" className="text-muted/15" strokeWidth="3" />
+            <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor"
+              className={scoreRingColor[classification] || 'text-muted-foreground'}
+              strokeWidth="3" strokeDasharray={`${(scoreValue / 100) * 106.8} 106.8`} strokeLinecap="round" />
+          </svg>
+          <span className="absolute text-[10px] font-bold">{scoreValue}</span>
+        </div>
+
+        {/* Backtest result or approval indicator */}
+        <div className="shrink-0 w-5 flex items-center">
+          {backtestResult ? (
+            <span className={`text-xs font-bold ${backtestResult.was0x1 ? 'text-red-400' : 'text-emerald-400'}`}>
+              {backtestResult.was0x1 ? 'R' : 'G'}
+            </span>
           ) : (
-            <Badge variant="outline" className="text-red-400 border-red-500/30">
-              <XCircle className="w-3 h-3 mr-1" /> Reprovado
-            </Badge>
+            <ChevronRight className={`w-4 h-4 text-muted-foreground/50 transition-transform ${expanded ? 'rotate-90' : ''}`} />
           )}
         </div>
+      </button>
 
-        {/* Odds 1X2 */}
-        {(homeOdd || drawOdd || awayOdd) && (
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">Odds:</span>
-            {homeOdd ? (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                1 <span className="ml-0.5 font-bold">{homeOdd.toFixed(2)}</span>
-              </Badge>
-            ) : null}
-            {drawOdd ? (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                X <span className="ml-0.5 font-bold">{drawOdd.toFixed(2)}</span>
-              </Badge>
-            ) : null}
-            {awayOdd ? (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                2 <span className="ml-0.5 font-bold">{awayOdd.toFixed(2)}</span>
-              </Badge>
-            ) : null}
-          </div>
-        )}
-
-        <div className="space-y-1.5">
-          {criteriaList.map((c, i) => (
-            <div key={i} className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5">
-                {c.met ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <XCircle className="w-3 h-3 text-red-400" />}
-                <span className="text-muted-foreground">{c.label}</span>
-              </div>
-              <span className={c.met ? 'text-foreground' : 'text-red-400'}>{c.value}</span>
+      {/* Expanded detail — stats + actions */}
+      {expanded && (
+        <div className="border-t border-border/30 px-3 pb-3 pt-2 space-y-3">
+          {/* Backtest score */}
+          {backtestResult && (
+            <div className={`flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-semibold ${
+              backtestResult.was0x1 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
+            }`}>
+              <span>Placar: {backtestResult.scoreHome} x {backtestResult.scoreAway}</span>
+              <span>{backtestResult.was0x1 ? '❌ RED (0x1)' : '✅ GREEN'}</span>
             </div>
-          ))}
-        </div>
+          )}
 
-        {reasons.length > 0 && (
-          <div className="text-xs text-red-400/80 space-y-0.5">
-            {reasons.map((r, i) => <p key={i}>• {r}</p>)}
-          </div>
-        )}
-
-        {approved && onSave && (
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="w-full mt-2 py-1.5 px-3 rounded-lg bg-primary/20 text-primary text-xs font-medium hover:bg-primary/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            <Target className="w-3 h-3" />
-            {saving ? 'Salvando...' : 'Salvar análise'}
-          </button>
-        )}
-
-        {!approved && onForceAdd && (
-          <button
-            onClick={onForceAdd}
-            disabled={forceAdding}
-            className="w-full mt-2 py-1.5 px-3 rounded-lg border border-primary/30 text-primary text-xs font-medium hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            <Target className="w-3 h-3" />
-            {forceAdding ? 'Adicionando...' : 'Adicionar manualmente'}
-          </button>
-        )}
-
-        {onSendToPlanning && (
-          <button
-            onClick={onSendToPlanning}
-            disabled={sendingToPlanning || alreadyInPlanning}
-            className={`w-full mt-2 py-1.5 px-3 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 ${
-              alreadyInPlanning 
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
-            }`}
-          >
-            {alreadyInPlanning ? (
-              <><Check className="w-3 h-3" /> Já no planejamento</>
-            ) : sendingToPlanning ? (
-              <><CalendarPlus className="w-3 h-3 animate-pulse" /> Enviando...</>
+          {/* Classification + Status badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className={`text-[10px] ${classificationColor[classification] || ''}`}>
+              {classification}
+            </Badge>
+            {approved ? (
+              <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30">
+                <CheckCircle className="w-3 h-3 mr-1" /> Aprovado
+              </Badge>
             ) : (
-              <><CalendarPlus className="w-3 h-3" /> Enviar p/ Planejamento</>
+              <Badge variant="outline" className="text-[10px] text-red-400 border-red-500/30">
+                <XCircle className="w-3 h-3 mr-1" /> Reprovado
+              </Badge>
             )}
-          </button>
-        )}
-      </CardContent>
-    </Card>
+            {onBlockLeague && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onBlockLeague(league); }}
+                className="inline-flex items-center gap-0.5 text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
+                title="Bloquear liga"
+              >
+                <Ban className="w-3 h-3" /> Bloquear
+              </button>
+            )}
+          </div>
+
+          {/* Odds 1X2 row */}
+          {(homeOdd || drawOdd || awayOdd) && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground mr-1">1X2</span>
+              <div className="flex gap-1.5">
+                {homeOdd ? (
+                  <div className="bg-muted/40 rounded px-2 py-0.5 text-center min-w-[48px]">
+                    <p className="text-[9px] text-muted-foreground">Casa</p>
+                    <p className="text-xs font-bold font-mono">{homeOdd.toFixed(2)}</p>
+                  </div>
+                ) : null}
+                {drawOdd ? (
+                  <div className="bg-muted/40 rounded px-2 py-0.5 text-center min-w-[48px]">
+                    <p className="text-[9px] text-muted-foreground">Empate</p>
+                    <p className="text-xs font-bold font-mono">{drawOdd.toFixed(2)}</p>
+                  </div>
+                ) : null}
+                {awayOdd ? (
+                  <div className="bg-muted/40 rounded px-2 py-0.5 text-center min-w-[48px]">
+                    <p className="text-[9px] text-muted-foreground">Fora</p>
+                    <p className="text-xs font-bold font-mono">{awayOdd.toFixed(2)}</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {/* Stats table — Fulltrader style */}
+          <div className="rounded-md border border-border/30 overflow-hidden">
+            <div className="bg-muted/20 px-3 py-1.5">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dados Lay 0×1</span>
+            </div>
+            <div className="divide-y divide-border/20">
+              {criteriaList.map((c, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    {c.met 
+                      ? <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" /> 
+                      : <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+                    }
+                    <span className="text-muted-foreground">{c.label}</span>
+                  </div>
+                  <span className={`font-mono font-semibold ${c.met ? 'text-foreground' : 'text-red-400'}`}>{c.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Reasons */}
+          {reasons.length > 0 && (
+            <div className="text-xs text-red-400/80 space-y-0.5 pl-1">
+              {reasons.map((r, i) => <p key={i}>• {r}</p>)}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            {approved && onSave && (
+              <button
+                onClick={onSave}
+                disabled={saving}
+                className="flex-1 py-1.5 px-3 rounded-md bg-primary/20 text-primary text-xs font-medium hover:bg-primary/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Target className="w-3 h-3" />
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            )}
+
+            {!approved && onForceAdd && (
+              <button
+                onClick={onForceAdd}
+                disabled={forceAdding}
+                className="flex-1 py-1.5 px-3 rounded-md border border-primary/30 text-primary text-xs font-medium hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Target className="w-3 h-3" />
+                {forceAdding ? 'Adicionando...' : 'Adicionar'}
+              </button>
+            )}
+
+            {onSendToPlanning && (
+              <button
+                onClick={onSendToPlanning}
+                disabled={sendingToPlanning || alreadyInPlanning}
+                className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                  alreadyInPlanning 
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                    : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
+                }`}
+              >
+                {alreadyInPlanning ? (
+                  <><Check className="w-3 h-3" /> No plano</>
+                ) : sendingToPlanning ? (
+                  <><CalendarPlus className="w-3 h-3 animate-pulse" /> Enviando...</>
+                ) : (
+                  <><CalendarPlus className="w-3 h-3" /> Planejamento</>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

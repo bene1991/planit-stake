@@ -466,6 +466,17 @@ export const Lay0x1Scanner = () => {
   const approvedResults = filteredResults.filter(r => r.approved);
   const rejectedResults = filteredResults.filter(r => !r.approved);
 
+  // Group results by league for Fulltrader-style rendering
+  const groupByLeague = useCallback((items: AnalysisResult[]): [string, AnalysisResult[]][] => {
+    const map = new Map<string, AnalysisResult[]>();
+    for (const item of items) {
+      const key = item.league;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+    return Array.from(map.entries());
+  }, []);
+
   const saveBacktestForCalibration = useCallback(async () => {
     const approved = filteredResults.filter(r => r.approved);
     if (approved.length === 0) { toast.info('Nenhum aprovado para salvar'); return; }
@@ -794,42 +805,50 @@ export const Lay0x1Scanner = () => {
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Results */}
+      {/* Results — grouped by league, Fulltrader style */}
       {!loading && results.length > 0 && (
         <>
           {approvedResults.length > 0 && (
-            <div>
+            <div className="space-y-1">
               <h3 className="text-sm font-semibold text-emerald-400 mb-2">
                 ✅ Aprovados ({approvedResults.length})
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {approvedResults.map(r => (
-                  <Lay0x1ScoreCard
-                    key={r.fixture_id}
-                    homeTeam={r.home_team}
-                    awayTeam={r.away_team}
-                    league={r.league}
-                    time={r.time}
-                    scoreValue={r.score_value}
-                    classification={r.classification}
-                    approved={r.approved}
-                    criteria={r.criteria}
-                    reasons={r.reasons}
-                    onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
-                    saving={savingId === r.fixture_id}
-                    backtestResult={getBacktestResult(r)}
-                    onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
-                    onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
-                    sendingToPlanning={sendingPlanningId === r.fixture_id}
-                    alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
-                    homeOdd={r.criteria?.home_odd}
-                    drawOdd={r.criteria?.draw_odd}
-                    awayOdd={r.criteria?.away_odd}
-                    homeTeamLogo={r.home_team_logo}
-                    awayTeamLogo={r.away_team_logo}
-                  />
-                ))}
-              </div>
+              {groupByLeague(approvedResults).map(([leagueName, leagueResults]) => (
+                <div key={leagueName}>
+                  <div className="flex items-center gap-2 px-1 py-1.5">
+                    <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
+                    <div className="flex-1 h-px bg-border/30" />
+                  </div>
+                  <div className="space-y-1">
+                    {leagueResults.map(r => (
+                      <Lay0x1ScoreCard
+                        key={r.fixture_id}
+                        homeTeam={r.home_team}
+                        awayTeam={r.away_team}
+                        league={r.league}
+                        time={r.time}
+                        scoreValue={r.score_value}
+                        classification={r.classification}
+                        approved={r.approved}
+                        criteria={r.criteria}
+                        reasons={r.reasons}
+                        onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
+                        saving={savingId === r.fixture_id}
+                        backtestResult={getBacktestResult(r)}
+                        onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                        onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                        sendingToPlanning={sendingPlanningId === r.fixture_id}
+                        alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                        homeOdd={r.criteria?.home_odd}
+                        drawOdd={r.criteria?.draw_odd}
+                        awayOdd={r.criteria?.away_odd}
+                        homeTeamLogo={r.home_team_logo}
+                        awayTeamLogo={r.away_team_logo}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -842,32 +861,42 @@ export const Lay0x1Scanner = () => {
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                  {rejectedResults.map(r => (
-                    <Lay0x1ScoreCard
-                      key={r.fixture_id}
-                      homeTeam={r.home_team}
-                      awayTeam={r.away_team}
-                      league={r.league}
-                      time={r.time}
-                      scoreValue={r.score_value}
-                      classification={r.classification}
-                      approved={r.approved}
-                      criteria={r.criteria}
-                      reasons={r.reasons}
-                      backtestResult={getBacktestResult(r)}
-                      onForceAdd={() => handleSave(r)}
-                      forceAdding={savingId === r.fixture_id}
-                      onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
-                      onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
-                      sendingToPlanning={sendingPlanningId === r.fixture_id}
-                      alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
-                      homeOdd={r.criteria?.home_odd}
-                      drawOdd={r.criteria?.draw_odd}
-                      awayOdd={r.criteria?.away_odd}
-                      homeTeamLogo={r.home_team_logo}
-                      awayTeamLogo={r.away_team_logo}
-                    />
+                <div className="space-y-1 mt-2">
+                  {groupByLeague(rejectedResults).map(([leagueName, leagueResults]) => (
+                    <div key={leagueName}>
+                      <div className="flex items-center gap-2 px-1 py-1.5">
+                        <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
+                        <div className="flex-1 h-px bg-border/30" />
+                      </div>
+                      <div className="space-y-1">
+                        {leagueResults.map(r => (
+                          <Lay0x1ScoreCard
+                            key={r.fixture_id}
+                            homeTeam={r.home_team}
+                            awayTeam={r.away_team}
+                            league={r.league}
+                            time={r.time}
+                            scoreValue={r.score_value}
+                            classification={r.classification}
+                            approved={r.approved}
+                            criteria={r.criteria}
+                            reasons={r.reasons}
+                            backtestResult={getBacktestResult(r)}
+                            onForceAdd={() => handleSave(r)}
+                            forceAdding={savingId === r.fixture_id}
+                            onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                            onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                            sendingToPlanning={sendingPlanningId === r.fixture_id}
+                            alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                            homeOdd={r.criteria?.home_odd}
+                            drawOdd={r.criteria?.draw_odd}
+                            awayOdd={r.criteria?.away_odd}
+                            homeTeamLogo={r.home_team_logo}
+                            awayTeamLogo={r.away_team_logo}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </CollapsibleContent>
