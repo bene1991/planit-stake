@@ -37,6 +37,11 @@ interface ScoreCardProps {
   onSendToPlanning?: () => void;
   sendingToPlanning?: boolean;
   alreadyInPlanning?: boolean;
+  homeOdd?: number;
+  drawOdd?: number;
+  awayOdd?: number;
+  homeTeamLogo?: string;
+  awayTeamLogo?: string;
 }
 
 const classificationColor: Record<string, string> = {
@@ -46,7 +51,7 @@ const classificationColor: Record<string, string> = {
   'Não recomendado': 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo }: ScoreCardProps) => {
   const criteriaList = [
     { label: 'Média gols mandante (casa)', value: criteria.home_goals_avg.toFixed(2), met: criteria.criteria_met.home_goals_avg },
     { label: 'Média gols sofridos visitante (fora)', value: criteria.away_conceded_avg.toFixed(2), met: criteria.criteria_met.away_conceded_avg },
@@ -67,8 +72,18 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
         )}
 
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold">{homeTeam} vs {awayTeam}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              {homeTeamLogo && (
+                <img src={homeTeamLogo} alt="" className="w-5 h-5 rounded-sm object-contain shrink-0" />
+              )}
+              <span className="text-sm font-semibold truncate">{homeTeam}</span>
+              <span className="text-xs text-muted-foreground">vs</span>
+              {awayTeamLogo && (
+                <img src={awayTeamLogo} alt="" className="w-5 h-5 rounded-sm object-contain shrink-0" />
+              )}
+              <span className="text-sm font-semibold truncate">{awayTeam}</span>
+            </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {time && (
                 <>
@@ -116,6 +131,28 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
             </Badge>
           )}
         </div>
+
+        {/* Odds 1X2 */}
+        {(homeOdd || drawOdd || awayOdd) && (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground">Odds:</span>
+            {homeOdd ? (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                1 <span className="ml-0.5 font-bold">{homeOdd.toFixed(2)}</span>
+              </Badge>
+            ) : null}
+            {drawOdd ? (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                X <span className="ml-0.5 font-bold">{drawOdd.toFixed(2)}</span>
+              </Badge>
+            ) : null}
+            {awayOdd ? (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                2 <span className="ml-0.5 font-bold">{awayOdd.toFixed(2)}</span>
+              </Badge>
+            ) : null}
+          </div>
+        )}
 
         <div className="space-y-1.5">
           {criteriaList.map((c, i) => (
