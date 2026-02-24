@@ -47,6 +47,8 @@ interface AnalysisResult {
   fixture_id: string;
   home_team: string;
   away_team: string;
+  home_team_logo?: string;
+  away_team_logo?: string;
   league: string;
   date: string;
   time: string;
@@ -57,6 +59,7 @@ interface AnalysisResult {
     home_goals_avg: number;
     away_conceded_avg: number;
     home_odd: number;
+    draw_odd: number;
     away_odd: number;
     over15_combined: number;
     h2h_0x1_count: number;
@@ -88,25 +91,28 @@ function calculateOddsScore(odd: number): number {
 }
 
 // Extract odds from bookmakers data for a fixture
-function extractOdds(bookmakers: any[]): { homeOdd: number; awayOdd: number } {
+function extractOdds(bookmakers: any[]): { homeOdd: number; drawOdd: number; awayOdd: number } {
   let homeOdd = 0;
+  let drawOdd = 0;
   let awayOdd = 0;
   for (const bk of bookmakers) {
     const matchWinner = bk.bets?.find((b: any) => b.id === 1);
     if (matchWinner) {
       const homeValue = matchWinner.values?.find((v: any) => v.value === 'Home');
+      const drawValue = matchWinner.values?.find((v: any) => v.value === 'Draw');
       const awayValue = matchWinner.values?.find((v: any) => v.value === 'Away');
       if (homeValue) homeOdd = parseFloat(homeValue.odd);
+      if (drawValue) drawOdd = parseFloat(drawValue.odd);
       if (awayValue) awayOdd = parseFloat(awayValue.odd);
       if (homeOdd > 0 && awayOdd > 0) break;
     }
   }
-  return { homeOdd, awayOdd };
+  return { homeOdd, drawOdd, awayOdd };
 }
 
 // Fetch ALL pages of odds for a given date
-async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: number; awayOdd: number }>> {
-  const oddsMap = new Map<number, { homeOdd: number; awayOdd: number }>();
+async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: number; drawOdd: number; awayOdd: number }>> {
+  const oddsMap = new Map<number, { homeOdd: number; drawOdd: number; awayOdd: number }>();
 
   // Page 1
   const firstPage = await callApiFootball('odds', { date, page: 1 });
@@ -204,7 +210,7 @@ serve(async (req) => {
 
     let fixtureIdsToAnalyze: number[] = [];
     let fixtureMap: Map<number, any> = new Map();
-    let oddsMap: Map<number, { homeOdd: number; awayOdd: number }> = new Map();
+    let oddsMap: Map<number, { homeOdd: number; drawOdd: number; awayOdd: number }> = new Map();
     let totalFixtures = 0;
     let preFilteredCount = 0;
     let totalOddsPages = 0;
@@ -277,6 +283,8 @@ serve(async (req) => {
         const season = fixture.league?.season;
         const homeTeam = fixture.teams?.home?.name || 'Home';
         const awayTeam = fixture.teams?.away?.name || 'Away';
+        const homeTeamLogo = fixture.teams?.home?.logo || undefined;
+        const awayTeamLogo = fixture.teams?.away?.logo || undefined;
         const league = fixture.league?.name || 'League';
         const fixtureDate = fixture.fixture?.date?.split('T')[0] || '';
 
@@ -295,10 +303,12 @@ serve(async (req) => {
         if (!homeTeamId || !awayTeamId) return null;
 
         let homeOdd = 0;
+        let drawOdd = 0;
         let awayOdd = 0;
         const cachedOdds = oddsMap.get(fixtureId);
         if (cachedOdds) {
           homeOdd = cachedOdds.homeOdd;
+          drawOdd = cachedOdds.drawOdd;
           awayOdd = cachedOdds.awayOdd;
         }
 
@@ -316,8 +326,9 @@ serve(async (req) => {
         if ((homeOdd === 0 || awayOdd === 0) && oddsDataSingle) {
           const oddsResp = oddsDataSingle?.response || [];
           if (oddsResp.length > 0) {
-            const extracted = extractOdds(oddsResp[0]?.bookmakers || []);
+          const extracted = extractOdds(oddsResp[0]?.bookmakers || []);
             homeOdd = extracted.homeOdd;
+            drawOdd = extracted.drawOdd;
             awayOdd = extracted.awayOdd;
           }
         }
@@ -376,6 +387,8 @@ serve(async (req) => {
           fixture_id: String(fixtureId),
           home_team: homeTeam,
           away_team: awayTeam,
+          home_team_logo: homeTeamLogo,
+          away_team_logo: awayTeamLogo,
           league,
           date: fixtureDate,
           time: fixtureTime,
@@ -386,6 +399,7 @@ serve(async (req) => {
             home_goals_avg: homeGoalsAvg,
             away_conceded_avg: awayConcededAvg,
             home_odd: homeOdd,
+            draw_odd: drawOdd,
             away_odd: awayOdd,
             over15_combined: over15Combined,
             h2h_0x1_count: h2h0x1Count,

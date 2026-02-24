@@ -22,6 +22,8 @@ interface AnalysisResult {
   fixture_id: string;
   home_team: string;
   away_team: string;
+  home_team_logo?: string;
+  away_team_logo?: string;
   league: string;
   date: string;
   time: string;
@@ -820,6 +822,11 @@ export const Lay0x1Scanner = () => {
                     onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
                     sendingToPlanning={sendingPlanningId === r.fixture_id}
                     alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                    homeOdd={r.criteria?.home_odd}
+                    drawOdd={r.criteria?.draw_odd}
+                    awayOdd={r.criteria?.away_odd}
+                    homeTeamLogo={r.home_team_logo}
+                    awayTeamLogo={r.away_team_logo}
                   />
                 ))}
               </div>
@@ -855,6 +862,11 @@ export const Lay0x1Scanner = () => {
                       onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
                       sendingToPlanning={sendingPlanningId === r.fixture_id}
                       alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                      homeOdd={r.criteria?.home_odd}
+                      drawOdd={r.criteria?.draw_odd}
+                      awayOdd={r.criteria?.away_odd}
+                      homeTeamLogo={r.home_team_logo}
+                      awayTeamLogo={r.away_team_logo}
                     />
                   ))}
                 </div>
