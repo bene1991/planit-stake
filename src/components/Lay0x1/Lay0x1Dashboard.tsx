@@ -13,6 +13,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { subDays, format, startOfDay } from 'date-fns';
+import { getNowInBrasilia } from '@/utils/timezone';
 
 export const Lay0x1Dashboard = () => {
   const { analyses, metrics, resolveAnalysis, deleteAnalysis, refetch } = useLay0x1Analyses();
@@ -26,18 +28,37 @@ export const Lay0x1Dashboard = () => {
   const [expandedRedId, setExpandedRedId] = useState<string | null>(null);
   const [analyzingRedId, setAnalyzingRedId] = useState<string | null>(null);
 
-  const pendingAnalyses = analyses.filter(a => !a.result);
-  const resolvedAnalyses = analyses.filter(a => a.result && a.classification !== 'Não recomendado');
+  // Filter: only from yesterday onwards (no old backtest data)
+  const yesterdayStr = useMemo(() => {
+    const now = getNowInBrasilia();
+    return format(subDays(now, 1), 'yyyy-MM-dd');
+  }, []);
 
-  // Override metrics to only count approved games
+  const recentAnalyses = useMemo(() =>
+    analyses.filter(a => a.date >= yesterdayStr),
+    [analyses, yesterdayStr]
+  );
+
+  // Pending = recent + no result
+  const pendingAnalyses = recentAnalyses.filter(a => !a.result);
+
+  // Resolved = recent + has result (regardless of classification)
+  const resolvedAnalyses = useMemo(() =>
+    recentAnalyses
+      .filter(a => a.result)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
+    [recentAnalyses]
+  );
+
+  // Metrics from recent data only
   const filteredMetrics = useMemo(() => {
-    const approved = analyses.filter(a => a.classification !== 'Não recomendado');
-    const resolved = approved.filter(a => a.result);
+    const all = recentAnalyses;
+    const resolved = all.filter(a => a.result);
     const greens = resolved.filter(a => a.result === 'Green').length;
     const reds = resolved.filter(a => a.result === 'Red').length;
     const winRate = resolved.length > 0 ? Math.round((greens / resolved.length) * 1000) / 10 : 0;
-    return { total: approved.length, resolved: resolved.length, pending: approved.filter(a => !a.result).length, greens, reds, winRate };
-  }, [analyses]);
+    return { total: all.length, resolved: resolved.length, pending: all.filter(a => !a.result).length, greens, reds, winRate };
+  }, [recentAnalyses]);
 
   // Equity chart data
   const equityData = useMemo(() => resolvedAnalyses
@@ -76,11 +97,11 @@ export const Lay0x1Dashboard = () => {
     });
     return Object.entries(byDay)
       .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-30) // last 30 days
+      .slice(-30)
       .map(([date, { greens, reds, total }]) => ({
-        date: date.substring(5), // MM-DD
+        date: date.substring(5),
         greens,
-        reds: -reds, // negative for visual stacking
+        reds: -reds,
         total,
         winRate: Math.round((greens / total) * 100),
       }));
@@ -103,6 +124,17 @@ export const Lay0x1Dashboard = () => {
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
+  }, [resolvedAnalyses]);
+
+  // Group resolved by date
+  const resolvedByDate = useMemo(() => {
+    const map = new Map<string, typeof resolvedAnalyses>();
+    for (const a of resolvedAnalyses) {
+      const day = a.date || 'N/A';
+      if (!map.has(day)) map.set(day, []);
+      map.get(day)!.push(a);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => b.localeCompare(a));
   }, [resolvedAnalyses]);
 
   const handleResolve = async (id: string) => {
@@ -177,6 +209,12 @@ export const Lay0x1Dashboard = () => {
 
   return (
     <div className="space-y-4">
+      {/* Info banner */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+        <CalendarDays className="w-3.5 h-3.5" />
+        <span>Dados a partir de {yesterdayStr} (excluindo backtest antigo)</span>
+      </div>
+
       {/* Metrics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
@@ -284,7 +322,6 @@ export const Lay0x1Dashboard = () => {
         </Card>
       )}
 
-
       {leagueData.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -370,7 +407,7 @@ export const Lay0x1Dashboard = () => {
                 <CardContent className="p-3 flex items-center justify-between gap-2 flex-wrap">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{a.home_team} vs {a.away_team}</p>
-                    <p className="text-xs text-muted-foreground">{a.league} • Score: {a.score_value}</p>
+                    <p className="text-xs text-muted-foreground">{a.league} • {a.date} • Score: {a.score_value}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Input placeholder="H" className="w-12 h-8 text-center text-xs"
@@ -416,129 +453,141 @@ export const Lay0x1Dashboard = () => {
         </div>
       )}
 
-      {/* Resolved */}
-      {resolvedAnalyses.length > 0 && (
+      {/* Resolved — grouped by date */}
+      {resolvedByDate.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold mb-2">Histórico ({resolvedAnalyses.length})</h3>
-          <div className="space-y-1.5">
-            {resolvedAnalyses.slice(0, 20).map(a => {
-              const aiAnalysis = a.criteria_snapshot?.ai_red_analysis;
-              const redInsights = a.criteria_snapshot?.red_insights as string[] | undefined;
-              const isExpanded = expandedRedId === a.id;
+          <div className="space-y-3">
+            {resolvedByDate.map(([date, dayAnalyses]) => (
+              <div key={date}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground">{date}</span>
+                  <span className="text-xs text-muted-foreground">({dayAnalyses.length} jogo{dayAnalyses.length > 1 ? 's' : ''})</span>
+                  <div className="flex-1 h-px bg-border/30" />
+                </div>
+                <div className="space-y-1.5">
+                  {dayAnalyses.map(a => {
+                    const aiAnalysis = a.criteria_snapshot?.ai_red_analysis;
+                    const redInsights = a.criteria_snapshot?.red_insights as string[] | undefined;
+                    const isExpanded = expandedRedId === a.id;
 
-              return (
-                <Card key={a.id}>
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
-                        <p className="text-xs text-muted-foreground">{a.league} • {a.date}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {a.final_score_home}-{a.final_score_away}
-                        </span>
-                        <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
-                          {a.result}
-                        </Badge>
-                        {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
-                        {a.was_0x1 && (
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                            onClick={() => setExpandedRedId(isExpanded ? null : a.id)}>
-                            <ChevronDown className={`w-4 h-4 text-red-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                          </Button>
-                        )}
-                        {redInsights && redInsights.length > 0 && !a.was_0x1 && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Info className="w-4 h-4 text-red-400 cursor-pointer" />
-                              </TooltipTrigger>
-                              <TooltipContent side="left" className="max-w-xs">
-                                <ul className="text-xs space-y-0.5">
-                                  {redInsights.map((insight, i) => <li key={i}>• {insight}</li>)}
-                                </ul>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Expanded AI Red Analysis */}
-                    {a.was_0x1 && isExpanded && (
-                      <div className="mt-3 pt-3 border-t border-border space-y-2">
-                        {aiAnalysis ? (
-                          <>
+                    return (
+                      <Card key={a.id}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
+                              <p className="text-xs text-muted-foreground">{a.league}</p>
+                            </div>
                             <div className="flex items-center gap-2">
-                              <Brain className="w-4 h-4 text-red-400" />
-                              <span className="text-xs font-semibold text-red-400">Análise IA Pós-Red</span>
-                              {aiAnalysis.risk_score && (
-                                <Badge variant="outline" className="text-xs">
-                                  Risco: {aiAnalysis.risk_score}/10
-                                </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {a.final_score_home}-{a.final_score_away}
+                              </span>
+                              <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
+                                {a.result}
+                              </Badge>
+                              {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
+                              {a.was_0x1 && (
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
+                                  onClick={() => setExpandedRedId(isExpanded ? null : a.id)}>
+                                  <ChevronDown className={`w-4 h-4 text-red-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </Button>
+                              )}
+                              {redInsights && redInsights.length > 0 && !a.was_0x1 && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Info className="w-4 h-4 text-red-400 cursor-pointer" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="max-w-xs">
+                                      <ul className="text-xs space-y-0.5">
+                                        {redInsights.map((insight, i) => <li key={i}>• {insight}</li>)}
+                                      </ul>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground">{aiAnalysis.summary}</p>
-                            {aiAnalysis.key_factors?.length > 0 && (
-                              <div>
-                                <p className="text-xs font-medium mb-1">Fatores-chave:</p>
-                                <ul className="text-xs text-muted-foreground space-y-0.5">
-                                  {aiAnalysis.key_factors.map((f: string, i: number) => <li key={i}>• {f}</li>)}
-                                </ul>
-                              </div>
-                            )}
-                            {aiAnalysis.league_recommendation && (
-                              <div className="flex items-center gap-2 text-xs">
-                                <span className="text-muted-foreground">Liga:</span>
-                                <Badge variant="outline" className={
-                                  aiAnalysis.league_recommendation === 'bloquear' ? 'text-red-400' :
-                                  aiAnalysis.league_recommendation === 'monitorar' ? 'text-yellow-400' : 'text-emerald-400'
-                                }>
-                                  {aiAnalysis.league_recommendation}
-                                </Badge>
-                                <span className="text-muted-foreground">{aiAnalysis.league_reason}</span>
-                              </div>
-                            )}
-                            {aiAnalysis.threshold_suggestions?.length > 0 && (
-                              <div>
-                                <p className="text-xs font-medium mb-1">Sugestões de ajuste:</p>
-                                {aiAnalysis.threshold_suggestions.map((s: any, i: number) => (
-                                  <p key={i} className="text-xs text-muted-foreground">
-                                    {s.param}: {s.current} → {s.suggested} ({s.reason})
-                                  </p>
-                                ))}
-                              </div>
-                            )}
-                            {aiAnalysis.pattern_detected && (
-                              <p className="text-xs text-yellow-400">⚠️ Padrão: {aiAnalysis.pattern_detected}</p>
-                            )}
-                            <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground"
-                              disabled={analyzingRedId === a.id}
-                              onClick={() => handleReanalyzeRed(a.id)}>
-                              {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
-                              Re-analisar com IA
-                            </Button>
-                          </>
-                        ) : (
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground mb-2">
-                              {redInsights?.length ? redInsights.map((ins, i) => <span key={i} className="block">• {ins}</span>) : 'Nenhuma análise detalhada disponível'}
-                            </p>
-                            <Button variant="outline" size="sm" className="gap-1 text-xs"
-                              disabled={analyzingRedId === a.id}
-                              onClick={() => handleReanalyzeRed(a.id)}>
-                              {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
-                              Analisar com IA
-                            </Button>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+
+                          {/* Expanded AI Red Analysis */}
+                          {a.was_0x1 && isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-border space-y-2">
+                              {aiAnalysis ? (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <Brain className="w-4 h-4 text-red-400" />
+                                    <span className="text-xs font-semibold text-red-400">Análise IA Pós-Red</span>
+                                    {aiAnalysis.risk_score && (
+                                      <Badge variant="outline" className="text-xs">
+                                        Risco: {aiAnalysis.risk_score}/10
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">{aiAnalysis.summary}</p>
+                                  {aiAnalysis.key_factors?.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-medium mb-1">Fatores-chave:</p>
+                                      <ul className="text-xs text-muted-foreground space-y-0.5">
+                                        {aiAnalysis.key_factors.map((f: string, i: number) => <li key={i}>• {f}</li>)}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {aiAnalysis.league_recommendation && (
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className="text-muted-foreground">Liga:</span>
+                                      <Badge variant="outline" className={
+                                        aiAnalysis.league_recommendation === 'bloquear' ? 'text-red-400' :
+                                        aiAnalysis.league_recommendation === 'monitorar' ? 'text-yellow-400' : 'text-emerald-400'
+                                      }>
+                                        {aiAnalysis.league_recommendation}
+                                      </Badge>
+                                      <span className="text-muted-foreground">{aiAnalysis.league_reason}</span>
+                                    </div>
+                                  )}
+                                  {aiAnalysis.threshold_suggestions?.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-medium mb-1">Sugestões de ajuste:</p>
+                                      {aiAnalysis.threshold_suggestions.map((s: any, i: number) => (
+                                        <p key={i} className="text-xs text-muted-foreground">
+                                          {s.param}: {s.current} → {s.suggested} ({s.reason})
+                                        </p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {aiAnalysis.pattern_detected && (
+                                    <p className="text-xs text-yellow-400">⚠️ Padrão: {aiAnalysis.pattern_detected}</p>
+                                  )}
+                                  <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground"
+                                    disabled={analyzingRedId === a.id}
+                                    onClick={() => handleReanalyzeRed(a.id)}>
+                                    {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
+                                    Re-analisar com IA
+                                  </Button>
+                                </>
+                              ) : (
+                                <div className="text-center">
+                                  <p className="text-xs text-muted-foreground mb-2">
+                                    {redInsights?.length ? redInsights.map((ins, i) => <span key={i} className="block">• {ins}</span>) : 'Nenhuma análise detalhada disponível'}
+                                  </p>
+                                  <Button variant="outline" size="sm" className="gap-1 text-xs"
+                                    disabled={analyzingRedId === a.id}
+                                    onClick={() => handleReanalyzeRed(a.id)}>
+                                    {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
+                                    Analisar com IA
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

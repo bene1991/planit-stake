@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { Copy, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSettings } from '@/hooks/useSettings';
@@ -23,23 +24,22 @@ interface TelegramPlanningMessageProps {
   methods: Method[];
 }
 
-function buildTelegramGames(games: Game[], methods: Method[]): TelegramGame[] {
-  const targetNames = ['Lay 0x1', 'Lay 1x0'];
+function buildTelegramGames(games: Game[], methods: Method[], selectedMethodIds: string[]): TelegramGame[] {
   const result: TelegramGame[] = [];
 
   for (const game of games) {
     for (const op of game.methodOperations) {
       const method = methods.find(m => m.id === op.methodId);
-      if (method && targetNames.includes(method.name)) {
-        result.push({
-          homeTeam: game.homeTeam,
-          awayTeam: game.awayTeam,
-          league: game.league,
-          time: game.time,
-          market: method.name,
-          entryOdds: op.entryOdds,
-        });
-      }
+      if (!method) continue;
+      if (selectedMethodIds.length > 0 && !selectedMethodIds.includes(method.id)) continue;
+      result.push({
+        homeTeam: game.homeTeam,
+        awayTeam: game.awayTeam,
+        league: game.league,
+        time: game.time,
+        market: method.name,
+        entryOdds: op.entryOdds,
+      });
     }
   }
 
@@ -88,8 +88,26 @@ function buildMessage(telegramGames: TelegramGame[]): string {
 export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: TelegramPlanningMessageProps) {
   const { settings, updateSettings } = useSettings();
   const [sending, setSending] = useState(false);
+  const [selectedMethodIds, setSelectedMethodIds] = useState<string[]>([]);
 
-  const telegramGames = buildTelegramGames(games, methods);
+  // Get unique methods used in today's games
+  const usedMethods = useMemo(() => {
+    const ids = new Set<string>();
+    for (const game of games) {
+      for (const op of game.methodOperations) {
+        ids.add(op.methodId);
+      }
+    }
+    return methods.filter(m => ids.has(m.id));
+  }, [games, methods]);
+
+  const toggleMethod = (id: string) => {
+    setSelectedMethodIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const telegramGames = buildTelegramGames(games, methods, selectedMethodIds);
   const message = buildMessage(telegramGames);
 
   const hasTelegramConfig = settings?.telegram_bot_token && settings?.telegram_chat_id;
@@ -131,7 +149,6 @@ export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: 
       } else {
         const newChatId = data.parameters?.migrate_to_chat_id;
         if (newChatId) {
-          // Grupo migrou para supergrupo — atualizar ID automaticamente e reenviar
           await updateSettings({ telegram_chat_id: String(newChatId) });
           const retry = await fetch(
             `https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`,
@@ -169,9 +186,32 @@ export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: 
           </DialogTitle>
         </DialogHeader>
 
+        {/* Method filter */}
+        {usedMethods.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 pb-2">
+            <Badge
+              variant={selectedMethodIds.length === 0 ? 'default' : 'outline'}
+              className="cursor-pointer text-xs"
+              onClick={() => setSelectedMethodIds([])}
+            >
+              Todos
+            </Badge>
+            {usedMethods.map(m => (
+              <Badge
+                key={m.id}
+                variant={selectedMethodIds.includes(m.id) ? 'default' : 'outline'}
+                className="cursor-pointer text-xs"
+                onClick={() => toggleMethod(m.id)}
+              >
+                {m.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {telegramGames.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">
-            Nenhum jogo encontrado com método Lay 0x1 ou Lay 1x0 hoje.
+            Nenhum jogo encontrado{selectedMethodIds.length > 0 ? ' para o(s) método(s) selecionado(s)' : ''}.
           </p>
         ) : (
           <>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar, Save } from 'lucide-react';
+import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar, Save, Send } from 'lucide-react';
+import { useSettings } from '@/hooks/useSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { useLay0x1Weights, type Lay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
@@ -150,9 +151,14 @@ export const Lay0x1Scanner = () => {
   const { analyses, saveAnalysis } = useLay0x1Analyses();
   const { blockedNames, blockLeague } = useLay0x1BlockedLeagues();
   const { games, addGame } = useSupabaseGames();
+  const { settings } = useSettings();
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sendingTelegram, setSendingTelegram] = useState(false);
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
+
+  // Guard ref to prevent cache useEffect from overwriting results after analysis
+  const isAnalyzingRef = useRef(false);
 
   // Restore last context on mount
   const lastContext = useMemo(() => getLastContext(), []);
@@ -192,6 +198,7 @@ export const Lay0x1Scanner = () => {
   // Accept cached !== null (even if empty array) as valid cache
   useEffect(() => {
     if (rangeMode) return;
+    if (isAnalyzingRef.current) return; // Don't overwrite during/after analysis
     const cached = getCachedResults(selectedDate);
     if (cached !== null) {
       setResults(cached);
@@ -317,6 +324,7 @@ export const Lay0x1Scanner = () => {
   }, [rangeData, rangeMode]);
 
   const analyzeGames = useCallback(async () => {
+    isAnalyzingRef.current = true;
     setLoading(true);
     setResults([]);
     setMeta(null);
@@ -386,6 +394,8 @@ export const Lay0x1Scanner = () => {
       toast.error('Erro na análise');
     } finally {
       setLoading(false);
+      // Keep guard active briefly to prevent useEffect from overwriting
+      setTimeout(() => { isAnalyzingRef.current = false; }, 500);
     }
   }, [selectedDate, weights, analyses, saveAnalysis, isBacktest]);
 
@@ -465,6 +475,52 @@ export const Lay0x1Scanner = () => {
 
   const approvedResults = filteredResults.filter(r => r.approved);
   const rejectedResults = filteredResults.filter(r => !r.approved);
+
+  // Telegram send handler for Lay 0x1 approved games
+  const handleSendTelegram = useCallback(async () => {
+    if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) {
+      toast.error('Configure o Telegram em Conta → Configurações do Telegram');
+      return;
+    }
+    if (approvedResults.length === 0) return;
+
+    setSendingTelegram(true);
+    try {
+      let msg = '📊 LAY 0x1 — JOGOS APROVADOS\n';
+      msg += `📅 ${selectedDate}\n`;
+
+      approvedResults.forEach((g, i) => {
+        const oddText = g.criteria?.away_odd ? Number(g.criteria.away_odd).toFixed(2) : '—';
+        msg += `\n${i + 1}. 🏟 ${g.home_team} x ${g.away_team}`;
+        msg += `\n📍 ${g.league}`;
+        if (g.time) msg += ` • ⏰ ${g.time}`;
+        msg += `\n🎯 Score: ${g.score_value} (${g.classification})`;
+        msg += `\n💰 Odd visitante: ${oddText}`;
+        msg += '\n';
+      });
+
+      msg += '\n⚙️ Entrada somente com jogo em 0x0';
+
+      const response = await fetch(
+        `https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: settings.telegram_chat_id, text: msg }),
+        }
+      );
+      const data = await response.json();
+      if (data.ok) {
+        toast.success('✅ Enviado ao Telegram!');
+      } else {
+        toast.error('Erro do Telegram: ' + data.description);
+      }
+    } catch (err: any) {
+      toast.error('Erro ao enviar: ' + (err.message || 'Desconhecido'));
+    } finally {
+      setSendingTelegram(false);
+    }
+  }, [approvedResults, selectedDate, settings]);
 
   // Group results by league for Fulltrader-style rendering
   const groupByLeague = useCallback((items: AnalysisResult[]): [string, AnalysisResult[]][] => {
@@ -594,6 +650,12 @@ export const Lay0x1Scanner = () => {
               {results.length > 0 && (
                 <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
                   <Trash2 className="w-3 h-3" /> Limpar cache
+                </Button>
+              )}
+              {!isBacktest && !rangeMode && approvedResults.length > 0 && (
+                <Button variant="outline" size="sm" onClick={handleSendTelegram} disabled={sendingTelegram} className="gap-1 text-xs">
+                  <Send className="w-3 h-3" />
+                  {sendingTelegram ? 'Enviando...' : `Telegram (${approvedResults.length})`}
                 </Button>
               )}
             </div>
