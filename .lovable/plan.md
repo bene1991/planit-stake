@@ -1,107 +1,147 @@
 
+## Painel Duplo Fixo: Planejamento e Lay 0x1
 
-## Plano: Correções e Melhorias Lay 0x1 + Telegram + Dashboard
+### Visao Geral
 
-### Problemas identificados e soluções
+Transformar as abas Planejamento e Lay 0x1 em layout de painel duplo (split view): lista de jogos a esquerda (35%) e painel de analise completa a direita (65%). Clicar em um jogo na lista carrega toda a analise no painel direito, sem modal.
 
----
-
-### 1. Scanner: jogos somem depois de carregar (BUG CRITICO)
-
-**Causa raiz:** No `Lay0x1Scanner.tsx`, o `useEffect` na linha 193 roda sempre que `selectedDate` ou `rangeMode` mudam. Porem, o `analyzeGames` faz `setResults(analysisResults)` e salva no cache. Logo apos, o `useEffect` dispara novamente (por depender de `selectedDate`) e recarrega do cache. Porem, se o `analyses` (do hook `useLay0x1Analyses`) atualiza apos o `saveAnalysis`, isso causa re-render e pode limpar o estado.
-
-O problema real esta no fluxo: `analyzeGames` chama `saveAnalysis` que atualiza o estado `analyses`, causando re-render do componente. Como `analyzeGames` depende de `analyses` no `useCallback` (linha 390), isso recria a funcao. Mas o `useEffect` de cache (linha 193) executa novamente e pode sobrescrever.
-
-**Solucao:** Adicionar uma ref `isAnalyzingRef` para impedir que o `useEffect` de cache sobrescreva resultados durante/apos a analise. Quando `analyzeGames` esta rodando ou acabou de rodar, o effect nao deve limpar os resultados.
-
-**Arquivo:** `src/components/Lay0x1/Lay0x1Scanner.tsx`
+Em telas mobile (< 1024px), manter layout single-column atual com navegacao por clique.
 
 ---
 
-### 2. Enviar jogos do Lay 0x1 para o Telegram
+### Arquitetura dos Componentes
 
-**O que falta:** Botao no Scanner para enviar os jogos aprovados do dia para o Telegram.
-
-**Solucao:**
-- Adicionar botao "Enviar Telegram" no Scanner, visivel quando ha resultados aprovados e nao esta em modo backtest/range
-- Reutilizar a logica de envio direto pela API do Telegram (igual ao `TelegramPlanningMessage`)
-- Buscar config do Telegram do hook `useSettings`
-- Formatar mensagem especifica para Lay 0x1 com os jogos aprovados
-
-**Arquivo:** `src/components/Lay0x1/Lay0x1Scanner.tsx`
-
----
-
-### 3. Escolher metodo no Telegram do Planejamento
-
-**Situacao atual:** O `TelegramPlanningMessage` filtra APENAS jogos com metodo "Lay 0x1" ou "Lay 1x0" (hardcoded na funcao `buildTelegramGames`, linha 27).
-
-**Solucao:**
-- Adicionar um seletor de metodo dentro do modal `TelegramPlanningMessage`
-- Em vez de filtrar por nomes fixos, permitir que o usuario escolha qual(is) metodo(s) incluir na mensagem
-- Opcao "Todos os metodos" como padrao
-
-**Arquivo:** `src/components/TelegramPlanningMessage.tsx`
+```text
+DailyPlanning / Lay0x1Scanner
+  +----------------------------------+---------------------------------------------+
+  |  Lista de jogos (35%)            |  Painel de Analise (65%)                    |
+  |  - Filtros existentes            |  - Header: logos + nomes + odds 1X2         |
+  |  - GameListByLeague / ScoreCards |  - Tabs: Predicao, Classif, Gols, etc.     |
+  |  - Click => seleciona jogo       |  - Secao Matematica (lambda, overs, BTTS)  |
+  |                                  |  - [Lay0x1] Risco Lay + Simulacao           |
+  +----------------------------------+---------------------------------------------+
+```
 
 ---
 
-### 4. Dashboard: usar dados reais a partir de ontem (nao backtest)
+### Arquivos a criar
 
-**Situacao atual:** O Dashboard (`Lay0x1Dashboard`) ja usa dados da tabela `lay0x1_analyses` (jogos salvos automaticamente pelo scanner). Os jogos do backtest tambem sao salvos la quando o usuario clica "Salvar para Calibracao".
+#### 1. `src/components/PreMatchAnalysis/PreMatchPanel.tsx` (NOVO)
 
-**O que o usuario quer:** Que o dashboard considere APENAS jogos a partir de ontem (reais, nao backtest antigo).
+Componente reutilizavel que renderiza TODA a analise pre-match inline (sem Dialog/Modal). Extrai a logica do `PreMatchModal` mas sem o wrapper `Dialog`.
 
-**Solucao:**
-- No `Lay0x1Dashboard`, filtrar `analyses` para incluir apenas jogos com `date >= ontem` nos calculos de metricas e graficos
-- Remover dados de backtest antigos dos KPIs (filtrar por data)
-- Adicionar um filtro de periodo no dashboard (similar ao historico do planejamento)
+- Recebe `fixtureId`, `homeTeam`, `awayTeam`
+- Usa o hook `usePreMatchAnalysis` existente
+- Renderiza as mesmas 6 abas: Predicao, Classificacao, Gols, Minutagem, Ultimos, H2H
+- Nenhum dado removido, mesma estrutura visual
 
-**Arquivo:** `src/components/Lay0x1/Lay0x1Dashboard.tsx`
+#### 2. `src/components/PreMatchAnalysis/MathAnalysisSection.tsx` (NOVO)
 
----
+Secao de analise matematica baseada nos ultimos 20 jogos (com fallback para 15 e 10).
 
-### 5. Dashboard: "Resultados do dia" mostra 1 quando deveria ser 4
+Calcula a partir dos dados de `homeLastMatches` e `awayLastMatches` (ja disponiveis no `usePreMatchAnalysis`):
+- Lambda Casa (media gols marcados casa nos ultimos N jogos como mandante)
+- Lambda Visitante (media gols marcados fora nos ultimos N jogos como visitante)
+- Lambda Total
+- Probabilidade Over 1.5 / 2.5 / 3.5 via distribuicao Poisson (1 - P(0) - P(1) para Over 1.5, etc.)
+- Odd Justa = 1 / Probabilidade
+- BTTS: P(ambos marcam) = (1 - P(casa=0)) * (1 - P(fora=0))
+- Probabilidade de 0x1: P(casa=0) * P(fora=1) via Poisson
+- Indicador de confiabilidade: Alta (20 jogos), Media (15), Baixa (10)
 
-**Causa:** O `dailyData` na linha 68 filtra por `resolvedAnalyses` que ja exclui "Nao recomendado". Porem, o grafico de "Resultados por Dia" conta corretamente. O problema pode ser que os 4 jogos nao foram resolvidos (sem `result`), ou que a classificacao ficou como "Nao recomendado".
+Todos os calculos sao feitos no frontend, sem chamada extra de API.
 
-**Solucao:** Verificar e corrigir o filtro `resolvedAnalyses` (linha 30) para incluir todos os jogos resolvidos, independente da classificacao. Jogos adicionados manualmente que foram aprovados depois devem aparecer. Alem disso, ordenar os jogos resolvidos por data.
+#### 3. `src/components/Lay0x1/Lay0x1RiskPanel.tsx` (NOVO)
 
-**Arquivo:** `src/components/Lay0x1/Lay0x1Dashboard.tsx`
+Secao especifica do Lay 0x1 que aparece abaixo da analise matematica:
+- Probabilidade real de 0x1 (do MathAnalysisSection)
+- Diferenca entre odd de mercado (away_odd) e odd justa (1/P(0x1))
+- Indicador de risco: Baixo (odd mercado > 2x odd justa), Medio, Alto (odd mercado < odd justa)
+- Simulacao financeira: responsabilidade padrao do sistema (stakeReference), lucro potencial Green, perda potencial Red
 
----
+#### 4. `src/components/PreMatchAnalysis/FixtureDetailPanel.tsx` (NOVO)
 
-### 6. Dashboard: ordenar historico por dia e melhorar organizacao
-
-**Solucao:**
-- No historico de jogos resolvidos, agrupar por data (similar ao historico do Planejamento)
-- Mostrar header com a data e os jogos daquele dia abaixo
-- Ordenar do mais recente para o mais antigo
-
-**Arquivo:** `src/components/Lay0x1/Lay0x1Dashboard.tsx`
-
----
-
-### 7. Dashboard: contagem de Greens/Reds incorreta
-
-**Causa:** O `filteredMetrics` (linha 33) filtra `analyses.filter(a => a.classification !== 'Nao recomendado')`. Se jogos foram adicionados com classificacao errada ou se o backtest inflou os numeros, os totais ficam errados.
-
-**Solucao:**
-- Aplicar filtro de data (a partir de ontem) nos KPIs
-- Verificar se `resolvedAnalyses` esta contando corretamente apenas jogos com `result` preenchido
-- Garantir que jogos duplicados nao inflem a contagem
-
-**Arquivo:** `src/components/Lay0x1/Lay0x1Dashboard.tsx`
+Container principal do painel direito. Compoe:
+- Header com logos, nomes dos times, odds 1X2, liga
+- `PreMatchPanel` (analise completa existente)
+- `MathAnalysisSection` (nova secao matematica)
+- Prop opcional `lay0x1Data` para renderizar `Lay0x1RiskPanel` quando usado na aba Lay 0x1
 
 ---
 
-### Resumo dos arquivos a editar
+### Arquivos a modificar
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/components/Lay0x1/Lay0x1Scanner.tsx` | Fix bug de jogos sumindo (ref guard) + botao Telegram |
-| `src/components/TelegramPlanningMessage.tsx` | Seletor de metodo para o Telegram |
-| `src/components/Lay0x1/Lay0x1Dashboard.tsx` | Filtro de data (a partir de ontem), fix contagens, agrupar historico por dia, ordenacao |
+#### 5. `src/pages/DailyPlanning.tsx`
 
-### Nenhuma mudanca de backend necessaria
-Todas as correcoes sao no frontend. Nao ha necessidade de migracoes SQL ou edge functions.
+- Adicionar estado `selectedFixtureId` (string | null)
+- Em telas >= lg (1024px), envolver o conteudo em `grid grid-cols-[35%_1fr]`
+- Coluna esquerda: conteudo atual (filtros + GameListByLeague + historico), com scroll independente
+- Coluna direita: `FixtureDetailPanel` quando `selectedFixtureId` estiver preenchido, senao placeholder
+- Ao clicar em um jogo no `GameListByLeague`, setar `selectedFixtureId` em vez de abrir modal
+- Em mobile (< lg): manter layout atual, clicar abre o painel em tela cheia (ou usa o modal existente)
+- Passar callback `onSelectGame` para `GameListByLeague`
 
+#### 6. `src/components/GameListByLeague.tsx`
+
+- Adicionar prop `onSelectGame?: (game: Game) => void`
+- Adicionar prop `selectedGameId?: string` (para highlight visual)
+- Passar para `GameListItem`
+
+#### 7. `src/components/GameListItem.tsx`
+
+- Adicionar prop `onSelect?: () => void`
+- Adicionar prop `isSelected?: boolean`
+- No click principal do card (nao no expand), chamar `onSelect` se disponivel
+- Estilo visual diferente quando `isSelected` (borda primary)
+
+#### 8. `src/components/Lay0x1/Lay0x1Scanner.tsx`
+
+- Adicionar estado `selectedResult` (AnalysisResult | null)
+- Em telas >= lg, envolver em `grid grid-cols-[35%_1fr]`
+- Coluna esquerda: filtros + lista de ScoreCards (scroll independente)
+- Coluna direita: `FixtureDetailPanel` com `lay0x1Data` preenchido
+- Ao clicar em um ScoreCard, setar `selectedResult`
+- Em mobile: manter layout atual
+
+#### 9. `src/components/Lay0x1/Lay0x1ScoreCard.tsx`
+
+- Adicionar prop `onSelect?: () => void`
+- Adicionar prop `isSelected?: boolean`
+- Click no card principal chama `onSelect`
+- Visual de selecionado (borda primary)
+
+---
+
+### Detalhes Tecnicos
+
+**Performance:** O `usePreMatchAnalysis` so dispara quando o `fixtureId` muda. Ao selecionar outro jogo, os dados do anterior sao descartados e os novos carregam sob demanda. Nao ha pre-carregamento de todos os jogos.
+
+**Responsividade:**
+- `>= 1024px (lg)`: layout split com `grid grid-cols-[35%_1fr]`, ambas colunas com `overflow-y-auto` e `max-h-[calc(100vh-120px)]`
+- `< 1024px`: layout single-column normal. No Planejamento, o click abre o PreMatchModal existente. No Lay 0x1, o click expande o card como hoje.
+
+**Calculos Poisson** (MathAnalysisSection):
+```text
+P(k goals) = (lambda^k * e^(-lambda)) / k!
+P(Over 1.5) = 1 - P(0) - P(1) usando lambda_total
+P(BTTS) = (1 - e^(-lambda_home)) * (1 - e^(-lambda_away))
+P(0x1) = e^(-lambda_home) * (lambda_away * e^(-lambda_away))
+Odd Justa = 1 / P
+```
+
+**Dados usados:** Todos os dados vem do `usePreMatchAnalysis` existente (homeLastMatches, awayLastMatches, prediction, standings, etc.). Os calculos matematicos filtram os ultimos 20 jogos como mandante/visitante respectivamente.
+
+---
+
+### Sequencia de Implementacao
+
+1. Criar `PreMatchPanel.tsx` (extrair conteudo do modal)
+2. Criar `MathAnalysisSection.tsx` (calculos Poisson)
+3. Criar `Lay0x1RiskPanel.tsx` (indicadores de risco)
+4. Criar `FixtureDetailPanel.tsx` (composicao)
+5. Modificar `GameListByLeague` e `GameListItem` (props de selecao)
+6. Modificar `DailyPlanning.tsx` (layout split)
+7. Modificar `Lay0x1ScoreCard` e `Lay0x1Scanner` (layout split)
+
+### Nenhuma alteracao de backend
+Todos os calculos matematicos sao feitos no frontend. Nenhuma migracao SQL, edge function ou chamada extra de API necessaria.
