@@ -37,6 +37,8 @@ interface GameListByLeagueProps {
   highlightedGameId?: string | null;
   globalPaused?: boolean;
   onRedCardDetected?: OnRedCardDetected;
+  onSelectGame?: (game: Game) => void;
+  selectedGameId?: string | null;
 }
 
 export function GameListByLeague({
@@ -51,6 +53,8 @@ export function GameListByLeague({
   highlightedGameId,
   globalPaused = false,
   onRedCardDetected,
+  onSelectGame,
+  selectedGameId,
 }: GameListByLeagueProps) {
   // Sort games based on sortOrder
   const sortedGames = useMemo(() => {
@@ -155,6 +159,8 @@ export function GameListByLeague({
                 isHighlighted={game.id === highlightedGameId}
                 globalPaused={globalPaused}
                 onRedCardDetected={onRedCardDetected}
+                onSelect={onSelectGame ? () => onSelectGame(game) : undefined}
+                isSelected={game.id === selectedGameId}
               />
             ))}
           </div>

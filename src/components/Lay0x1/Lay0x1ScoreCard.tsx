@@ -43,6 +43,8 @@ interface ScoreCardProps {
   awayOdd?: number;
   homeTeamLogo?: string;
   awayTeamLogo?: string;
+  onSelect?: () => void;
+  isSelected?: boolean;
 }
 
 const classificationColor: Record<string, string> = {
@@ -59,7 +61,7 @@ const scoreRingColor: Record<string, string> = {
   'Não recomendado': 'text-red-400',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo, onSelect, isSelected }: ScoreCardProps) => {
   const [expanded, setExpanded] = useState(false);
 
   const criteriaList = [
@@ -82,13 +84,15 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
 
   return (
     <div className={`group rounded-lg border transition-all ${
-      approved 
-        ? 'bg-card/80 border-border/60 hover:border-primary/40' 
-        : 'bg-card/40 border-border/30 opacity-80 hover:opacity-100'
+      isSelected
+        ? 'bg-primary/10 border-primary/60'
+        : approved 
+          ? 'bg-card/80 border-border/60 hover:border-primary/40' 
+          : 'bg-card/40 border-border/30 opacity-80 hover:opacity-100'
     }`}>
       {/* Main row — Fulltrader style */}
       <button 
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => { onSelect?.(); setExpanded(!expanded); }}
         className="w-full flex items-center gap-3 p-3 text-left"
       >
         {/* Time */}

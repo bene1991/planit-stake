@@ -20,7 +20,7 @@ import { useApiPause } from "@/hooks/useApiPause";
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Pause, Play, Send, FileText } from "lucide-react";
+import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Pause, Play, Send, FileText, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { GameListByLeague } from "@/components/GameListByLeague";
 import { GameStatusTabs, GameStatusFilter, GameSortOrder } from "@/components/GameStatusTabs";
@@ -44,6 +44,8 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { getNowInBrasilia } from "@/utils/timezone";
+import { FixtureDetailPanel } from "@/components/PreMatchAnalysis/FixtureDetailPanel";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function DailyPlanning() {
   const { user } = useAuth();
@@ -58,6 +60,10 @@ export default function DailyPlanning() {
   
   // State for highlighting the last game with a goal
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
+  
+  // Split panel state
+  const isMobile = useIsMobile();
+  const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   
   // === DEDUP LAYER 2: sessionStorage-based (survives StrictMode remounts + HMR) ===
   const [showApiBrowser, setShowApiBrowser] = useState(false);
@@ -564,6 +570,10 @@ export default function DailyPlanning() {
     return bankroll.methods.find((m) => m.id === methodId)?.name || 'Método';
   };
 
+  const handleSelectGame = useCallback((game: Game) => {
+    setSelectedGame(game);
+  }, []);
+
   if (gamesLoading || bankrollLoading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -573,7 +583,15 @@ export default function DailyPlanning() {
   }
 
   return (
-    <div className="space-y-4 pb-24 lg:pb-8">
+    <div className={cn(
+      "pb-24 lg:pb-8",
+      !isMobile && "grid grid-cols-[35%_1fr] gap-4 h-[calc(100vh-120px)]"
+    )}>
+      {/* LEFT COLUMN - Game list */}
+      <div className={cn(
+        "space-y-4",
+        !isMobile && "overflow-y-auto pr-2"
+      )}>
       <DataMigration />
 
       {/* Resumo do Dia */}
@@ -878,6 +896,8 @@ export default function DailyPlanning() {
               highlightedGameId={highlightedGameId}
               globalPaused={isPaused}
               onRedCardDetected={handleRedCardDetected}
+              onSelectGame={handleSelectGame}
+              selectedGameId={selectedGame?.id}
             />
           </div>
         )}
@@ -1031,6 +1051,29 @@ export default function DailyPlanning() {
           )}
         </CollapsibleContent>
       </Collapsible>
+      </div>
+
+      {/* RIGHT COLUMN - Detail panel (desktop only) */}
+      {!isMobile && (
+        <div className="border border-border/50 rounded-lg overflow-hidden bg-card h-full">
+          {selectedGame?.api_fixture_id ? (
+            <FixtureDetailPanel
+              fixtureId={selectedGame.api_fixture_id}
+              homeTeam={selectedGame.homeTeam}
+              awayTeam={selectedGame.awayTeam}
+              homeTeamLogo={selectedGame.homeTeamLogo}
+              awayTeamLogo={selectedGame.awayTeamLogo}
+              league={selectedGame.league}
+              time={selectedGame.time}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+              <BarChart3 className="h-12 w-12 opacity-30" />
+              <p className="text-sm">Selecione um jogo para ver a análise</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

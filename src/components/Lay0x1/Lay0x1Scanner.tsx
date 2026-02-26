@@ -7,7 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar, Save, Send } from 'lucide-react';
+import { Search, Loader2, Settings2, ChevronDown, FlaskConical, TrendingUp, Trash2, Calendar, Save, Send, BarChart3 } from 'lucide-react';
+import { FixtureDetailPanel } from '@/components/PreMatchAnalysis/FixtureDetailPanel';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 import { useSettings } from '@/hooks/useSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { useLay0x1Weights, type Lay0x1Weights } from '@/hooks/useLay0x1Weights';
@@ -155,6 +158,8 @@ export const Lay0x1Scanner = () => {
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [selectedResult, setSelectedResult] = useState<AnalysisResult | null>(null);
+  const isMobile = useIsMobile();
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
 
   // Guard ref to prevent cache useEffect from overwriting results after analysis
@@ -600,7 +605,10 @@ export const Lay0x1Scanner = () => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className={cn(
+      !isMobile && "grid grid-cols-[35%_1fr] gap-4 h-[calc(100vh-120px)]"
+    )}>
+    <div className={cn("space-y-4", !isMobile && "overflow-y-auto pr-2")}>
       {/* Search Bar */}
       <Card>
         <CardContent className="p-4">
@@ -906,6 +914,8 @@ export const Lay0x1Scanner = () => {
                         awayOdd={r.criteria?.away_odd}
                         homeTeamLogo={r.home_team_logo}
                         awayTeamLogo={r.away_team_logo}
+                        onSelect={() => setSelectedResult(r)}
+                        isSelected={selectedResult?.fixture_id === r.fixture_id}
                       />
                     ))}
                   </div>
@@ -955,6 +965,8 @@ export const Lay0x1Scanner = () => {
                             awayOdd={r.criteria?.away_odd}
                             homeTeamLogo={r.home_team_logo}
                             awayTeamLogo={r.away_team_logo}
+                            onSelect={() => setSelectedResult(r)}
+                            isSelected={selectedResult?.fixture_id === r.fixture_id}
                           />
                         ))}
                       </div>
@@ -981,6 +993,35 @@ export const Lay0x1Scanner = () => {
             </Button>
           </CardContent>
         </Card>
+      )}
+    </div>
+
+      {/* RIGHT COLUMN - Detail panel (desktop only) */}
+      {!isMobile && (
+        <div className="border border-border/50 rounded-lg overflow-hidden bg-card h-full">
+          {selectedResult?.fixture_id ? (
+            <FixtureDetailPanel
+              fixtureId={selectedResult.fixture_id}
+              homeTeam={selectedResult.home_team}
+              awayTeam={selectedResult.away_team}
+              homeTeamLogo={selectedResult.home_team_logo}
+              awayTeamLogo={selectedResult.away_team_logo}
+              league={selectedResult.league}
+              time={selectedResult.time}
+              lay0x1Data={{
+                awayOdd: selectedResult.criteria?.away_odd || 0,
+                stakeReference: 25,
+                scoreValue: selectedResult.score_value,
+                classification: selectedResult.classification,
+              }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+              <BarChart3 className="h-12 w-12 opacity-30" />
+              <p className="text-sm">Selecione um jogo para ver a análise</p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
