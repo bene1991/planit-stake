@@ -52,6 +52,8 @@ interface GameListItemProps {
   isHighlighted?: boolean;
   globalPaused?: boolean;
   onRedCardDetected?: OnRedCardDetected;
+  onSelect?: () => void;
+  isSelected?: boolean;
 }
 
 export function GameListItem({ 
@@ -65,6 +67,8 @@ export function GameListItem({
   isHighlighted,
   globalPaused = false,
   onRedCardDetected,
+  onSelect,
+  isSelected,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPreMatch, setShowPreMatch] = useState(false);
@@ -306,8 +310,11 @@ export function GameListItem({
       <div className={cn(
         "border-b border-border/30 hover:bg-muted/30 transition-colors",
         isLive && "bg-primary/5",
-        isHighlighted && "goal-highlight"
-      )}>
+        isHighlighted && "goal-highlight",
+        isSelected && "border-l-2 border-l-primary bg-primary/10"
+      )}
+      onClick={() => onSelect?.()}
+      >
         <div className="flex items-stretch">
           {/* Status Column */}
           <div className={cn(
