@@ -1,70 +1,80 @@
 import { supabase } from '@/integrations/supabase/client';
 
-// Cache telegram settings for 5 minutes to avoid repeated DB queries
-let cachedSettings: { botToken: string; chatId: string; userId: string; ts: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+/**
+ * Telegram Notification Service
+ * 
+ * All calls go through the Supabase Edge Function `send-telegram-notification`,
+ * which securely handles the Telegram API key and logs all messages to telegram_logs.
+ * 
+ * The bot token must be configured in one of:
+ *   1. The user's settings table (telegram_bot_token + telegram_chat_id columns)
+ *   2. Supabase Edge Function Secrets (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)
+ */
 
-async function getTelegramSettings(): Promise<{ botToken: string; chatId: string } | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  // Return cached if still valid and same user
-  if (cachedSettings && cachedSettings.userId === user.id && (Date.now() - cachedSettings.ts) < CACHE_TTL) {
-    return { botToken: cachedSettings.botToken, chatId: cachedSettings.chatId };
-  }
-
-  const { data: settings, error } = await supabase
-    .from('settings')
-    .select('telegram_bot_token, telegram_chat_id')
-    .eq('owner_id', user.id)
-    .single();
-
-  if (error || !settings?.telegram_bot_token || !settings?.telegram_chat_id) {
-    return null;
-  }
-
-  cachedSettings = {
-    botToken: settings.telegram_bot_token,
-    chatId: settings.telegram_chat_id,
-    userId: user.id,
-    ts: Date.now(),
-  };
-
-  return { botToken: cachedSettings.botToken, chatId: cachedSettings.chatId };
+interface TelegramPayload {
+  game?: string;
+  market?: string;
+  odds?: number;
+  stake?: number;
+  profit?: number;
+  result?: 'Green' | 'Red' | 'Void';
+  note?: string;
+  [key: string]: unknown;
 }
 
-export const sendTelegramNotification = async (message: string) => {
+async function getCurrentUserId(): Promise<string | undefined> {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id;
+}
+
+async function invokeEdgeFunction(body: Record<string, unknown>): Promise<void> {
   try {
-    const settings = await getTelegramSettings();
-    if (!settings) {
-      console.log('Telegram not configured, skipping notification');
-      return;
-    }
+    const userId = await getCurrentUserId();
 
-    const response = await fetch(
-      `https://api.telegram.org/bot${settings.botToken}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: settings.chatId,
-          text: message,
-          parse_mode: 'HTML',
-        }),
-      }
-    );
+    const { error } = await supabase.functions.invoke('send-telegram-notification', {
+      body: { ...body, userId },
+    });
 
-    const data = await response.json();
-
-    if (!data.ok) {
-      console.error('Telegram API error:', data.description);
+    if (error) {
+      console.error('[Telegram] Edge function error:', error.message);
     }
   } catch (error) {
-    console.error('Error sending Telegram notification:', error);
+    console.error('[Telegram] Failed to invoke edge function:', error);
   }
+}
+
+/**
+ * Send a football signal (entry tip).
+ */
+export const sendSignal = async (payload: TelegramPayload): Promise<void> => {
+  await invokeEdgeFunction({ action: 'sendSignal', payload });
 };
 
-/** Invalidate cached settings (e.g. when user updates telegram config) */
+/**
+ * Send a result notification (green/red/void).
+ */
+export const sendResult = async (payload: TelegramPayload): Promise<void> => {
+  await invokeEdgeFunction({ action: 'sendResult', payload });
+};
+
+/**
+ * Send an alert message.
+ */
+export const sendAlert = async (title: string, message: string, payload?: TelegramPayload): Promise<void> => {
+  await invokeEdgeFunction({ action: 'sendAlert', title, message, payload });
+};
+
+/**
+ * Send a generic Telegram notification (backward compatibility).
+ */
+export const sendTelegramNotification = async (message: string, type: 'signal' | 'result' | 'alert' | 'info' | 'notification' = 'notification'): Promise<void> => {
+  await invokeEdgeFunction({ action: 'send', message, type });
+};
+
+/**
+ * @deprecated Use sendSignal, sendResult or sendAlert instead.
+ */
 export const invalidateTelegramCache = () => {
-  cachedSettings = null;
+  // No-op: caching was handled in the old direct-call implementation.
+  // The Edge function handles its own security via Supabase secrets and user settings.
 };

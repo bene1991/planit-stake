@@ -38,24 +38,20 @@ export const TelegramSettings = () => {
 
     setTesting(true);
     try {
-      const response = await fetch(
-        `https://api.telegram.org/bot${botToken.trim()}/sendMessage`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId.trim(),
-            text: '🎉 Teste de notificação do J360',
-          }),
-        }
-      );
+      const { error } = await supabase.functions.invoke('send-telegram-notification', {
+        body: {
+          action: 'send',
+          message: '🎉 Teste de notificação do PlanIt Stake',
+          type: 'info',
+          botToken: botToken.trim(),
+          chatId: chatId.trim(),
+        },
+      });
 
-      const data = await response.json();
-
-      if (data.ok) {
-        toast.success('✅ Mensagem enviada com sucesso!');
+      if (error) {
+        toast.error('Erro ao enviar: ' + error.message);
       } else {
-        toast.error('Erro da API do Telegram: ' + data.description);
+        toast.success('✅ Mensagem enviada com sucesso!');
       }
     } catch (error: any) {
       toast.error('Erro ao testar: ' + (error.message || 'Erro desconhecido'));
