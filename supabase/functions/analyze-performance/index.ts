@@ -106,7 +106,131 @@ serve(async (req) => {
     }
 
     const hasFilters = performanceData.isFiltered;
-    // ... [keeping prompt construction the same] ...
+
+    const filterContextDescription = hasFilters
+      ? `
+CONTEXTO IMPORTANTE - FILTROS ATIVOS:
+${performanceData.activeFilters?.methods?.length ? `- Método(s) selecionado(s): ${performanceData.activeFilters.methods.join(', ')}` : ''}
+${performanceData.activeFilters?.leagues?.length ? `- Liga(s) selecionada(s): ${performanceData.activeFilters.leagues.join(', ')}` : ''}
+${performanceData.activeFilters?.result && performanceData.activeFilters.result !== 'all' ? `- Resultado filtrado: Apenas ${performanceData.activeFilters.result === 'Green' ? 'Greens' : 'Reds'}` : ''}
+${performanceData.generalWinRate ? `- Win Rate geral (sem filtros): ${performanceData.generalWinRate}%` : ''}
+
+INSTRUÇÃO CRÍTICA: Você está analisando APENAS os dados filtrados acima.`
+      : '';
+
+    const advancedMetricsContext = performanceData.advancedMetrics
+      ? `
+📈 MÉTRICAS AVANÇADAS:
+- Run-up Máximo: R$ ${performanceData.advancedMetrics.maxRunUp.toFixed(2)}
+- Drawdown Máximo: R$ ${performanceData.advancedMetrics.maxDrawdown.toFixed(2)}
+- Taxa de Recuperação: ${performanceData.advancedMetrics.recoveryRate.toFixed(2)}
+- Coeficiente de Ruína: ${(performanceData.advancedMetrics.ruinCoefficient * 100).toFixed(1)}%
+- Dias Positivos: ${performanceData.advancedMetrics.profitDays}
+- Dias Negativos: ${performanceData.advancedMetrics.lossDays}
+- Total de Dias: ${performanceData.advancedMetrics.totalDays}`
+      : '';
+
+    const systemPrompt = structuredOutput
+      ? `Você é um analista especializado em trading esportivo. Analise os dados e retorne uma análise estruturada usando a função analyze_bankroll_health.
+
+CRITÉRIOS DE ANÁLISE - USE ESTES PESOS:
+1. LUCRO FINANCEIRO (40%): O resultado em R$ é a métrica MAIS IMPORTANTE
+   - Analise o profitReais de cada método
+   - Valorize métodos lucrativos mesmo com WR médio
+   - Cite valores específicos em R$ nos pontos
+
+2. WIN RATE vs BREAKEVEN (35%): Taxa de acerto relativa ao mínimo
+   - Compare winRate com o breakeven necessário
+   - Métodos acima do breakeven são saudáveis
+
+3. VOLUME E CONSISTÊNCIA (25%): Significância estatística
+   - Métodos com +30 operações são mais confiáveis
+   - Métodos presentes em muitos dias (activeDays) são mais estáveis
+   - Use o combinedScore como referência principal
+
+REGRAS OBRIGATÓRIAS:
+- NÃO foque apenas em Win Rate - o LUCRO em R$ é mais importante
+- Cite valores específicos em R$ nos pontos positivos/negativos
+- Compare combinedScore dos métodos ao ranquear performance
+- Valorize consistência: métodos presentes em muitos dias são mais confiáveis
+- CRÍTICO: Ao mencionar um método específico, use EXATAMENTE o WR% daquele método (não o geral)
+- CRÍTICO: Ao falar do WR geral, deixe CLARO que é "geral" ou "de todas as operações"
+- Nunca confunda métricas de um método específico com métricas gerais
+- Score: 0-100 baseado em Lucro (40%), WR vs Breakeven (35%), Volume/Consistência (25%)
+- Classificação: Excelente (80+), Bom (60-79), Regular (40-59), Atenção (20-39), Crítico (0-19)
+- Pontos Positivos: 3-5 aspectos fortes (mencione lucro R$, score, consistência)
+- Pontos Negativos: 3-5 problemas (mencione prejuízos R$, volume baixo, inconsistência)
+- Sugestões: 3-5 ações práticas e específicas
+- Resumo: 2-3 frases sobre a saúde geral da banca focando no resultado financeiro
+
+Use dados específicos nas análises (cite números em R$). Seja direto e acionável.`
+      : `Você é um analista especializado em trading esportivo, especificamente em mercados de futebol como BTTS (Both Teams To Score), Over/Under gols, e operações de Back e Lay em exchanges.
+
+Sua função é analisar os dados de desempenho do trader e fornecer insights acionáveis, identificando padrões, pontos fortes, fraquezas e oportunidades de melhoria.
+
+CRITÉRIOS DE ANÁLISE - USE ESTES PESOS:
+1. LUCRO FINANCEIRO (40%): O resultado em R$ é a métrica MAIS IMPORTANTE
+2. WIN RATE vs BREAKEVEN (35%): Taxa de acerto relativa ao mínimo necessário
+3. VOLUME E CONSISTÊNCIA (25%): Número de operações e dias ativos
+
+REGRAS IMPORTANTES:
+1. Seja direto e objetivo - máximo 4-5 pontos principais
+2. Use dados específicos nas suas análises (cite valores em R$)
+3. NÃO foque apenas em Win Rate - analise o LUCRO em R$ de cada método
+4. Use o combinedScore para ranquear métodos, não apenas WR
+5. Valorize métodos com alto volume (mais confiáveis estatisticamente)
+6. Valorize consistência: métodos presentes em muitos dias são mais estáveis
+7. Identifique padrões claros (métodos/ligas/times lucrativos vs problemáticos)
+8. Dê sugestões práticas e acionáveis
+9. Use emojis para destacar pontos importantes
+10. Considere a relação Win Rate vs Breakeven Rate
+11. Seja encorajador quando houver bons resultados
+12. Seja honesto sobre problemas, mas construtivo
+13. CRUCIAL: Se há filtros ativos, foque EXCLUSIVAMENTE nos dados filtrados
+
+FORMATO DA RESPOSTA:
+- Use markdown com headers (##)
+- Máximo 300 palavras
+- Se houver filtro de método: "## Análise do Método [NOME]"
+- Se houver filtro de liga: "## Análise da Liga [NOME]"
+- Senão: "## Resumo Geral"
+- Seções: Resumo/Contexto, Pontos Fortes (cite R$), Pontos de Atenção, Dicas Práticas`;
+
+    const userPrompt = `Analise meu desempenho de trading no período: ${performanceData.period}
+${filterContextDescription}
+
+📊 ESTATÍSTICAS ${hasFilters ? '(DADOS FILTRADOS)' : 'GERAIS'}:
+- Total de operações: ${performanceData.overallStats.total}
+- Greens: ${performanceData.overallStats.greens} | Reds: ${performanceData.overallStats.reds}
+- Win Rate: ${performanceData.overallStats.winRate}%
+- Lucro total: ${performanceData.profit >= 0 ? '+' : ''}${performanceData.profit} stakes
+- Odd média: ${performanceData.averageOdd}
+- Breakeven necessário: ${performanceData.breakevenRate}%
+- Variação WR vs período anterior: ${performanceData.comparison.winRateChange >= 0 ? '+' : ''}${performanceData.comparison.winRateChange}%
+- Variação volume: ${performanceData.comparison.volumeChange >= 0 ? '+' : ''}${performanceData.comparison.volumeChange}%
+${advancedMetricsContext}
+
+📈 PERFORMANCE POR MÉTODO (ordenado por Score Combinado):
+${performanceData.methodStats.map(m => `- ${m.methodName}: Score ${m.combinedScore}/100, ${m.winRate}% WR, ${m.profitReais >= 0 ? '+' : ''}R$${m.profitReais.toFixed(2)} (${m.total} ops em ${m.activeDays} dias)`).join('\n')}
+
+💰 LUCRO TOTAL: R$ ${performanceData.totalProfitReais?.toFixed(2) || '0.00'}
+
+🏆 TOP 3 LIGAS (por WR):
+${performanceData.topLeagues.map(l => `- ${l.league}: ${l.winRate}% WR, ${l.profit >= 0 ? '+' : ''}${l.profit} stakes (${l.total} ops)`).join('\n')}
+
+⚠️ BOTTOM 3 LIGAS:
+${performanceData.bottomLeagues.map(l => `- ${l.league}: ${l.winRate}% WR, ${l.profit >= 0 ? '+' : ''}${l.profit} stakes (${l.total} ops)`).join('\n')}
+
+⚽ TIMES COM MELHOR PERFORMANCE:
+${performanceData.topTeams.map(t => `- ${t.team}: ${t.winRate}% WR, ${t.profit >= 0 ? '+' : ''}${t.profit} stakes (${t.operations} ops)`).join('\n')}
+
+❌ TIMES PROBLEMÁTICOS:
+${performanceData.bottomTeams.map(t => `- ${t.team}: ${t.winRate}% WR, ${t.profit >= 0 ? '+' : ''}${t.profit} stakes (${t.operations} ops)`).join('\n')}
+
+📉 PERFORMANCE POR FAIXA DE ODD:
+${performanceData.oddRangeStats.map(o => `- ${o.range}: ${o.winRate}% WR, ${o.profit >= 0 ? '+' : ''}${o.profit} stakes (${o.total} ops)`).join('\n')}
+
+Por favor, analise esses dados e me dê insights práticos para melhorar meu desempenho.`;
 
     // Build request body for Gemini API
     const requestBody: any = {
