@@ -121,40 +121,34 @@ Analise este Red e responda em formato JSON (sem markdown):
   "pattern_detected": "Padrão identificado ou null"
 }`;
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }), { status: 500, headers: corsHeaders });
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: corsHeaders });
     }
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: 'Você é um analista de apostas esportivas especializado em Lay 0x1. Responda APENAS com JSON válido, sem markdown.' },
-          { role: 'user', content: prompt },
+        system_instruction: {
+          parts: [{ text: 'Você é um analista de apostas esportivas especializado em Lay 0x1. Responda APENAS com JSON válido, sem markdown.' }]
+        },
+        contents: [
+          { role: 'user', parts: [{ text: prompt }] },
         ],
       }),
     });
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), { status: 429, headers: corsHeaders });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: 'Payment required for AI analysis.' }), { status: 402, headers: corsHeaders });
-      }
       console.error('AI error:', status, await aiResponse.text());
-      return new Response(JSON.stringify({ error: 'AI gateway error' }), { status: 500, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: 'Gemini API error' }), { status: 500, headers: corsHeaders });
     }
 
     const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || '';
+    const content = aiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     let parsed;
     try {

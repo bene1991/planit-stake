@@ -13,9 +13,9 @@ serve(async (req) => {
   try {
     const { homeTeam, awayTeam, minute, homeScore, awayScore, homeLdi, awayLdi, homeTrend, awayTrend, possession, shotsOnHome, shotsOnAway, corners } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     console.log(`[analyze-live-moment] ${homeTeam} vs ${awayTeam} - ${minute}'`);
@@ -38,12 +38,12 @@ Finalizações no gol: Casa ${shotsOnHome ?? '?'} vs Visitante ${shotsOnAway ?? 
 Escanteios: ${corners || 'N/A'}`;
 
     const aiBody = JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: statsContext },
-      ],
-      max_tokens: 80,
+      system_instruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: [
+        { role: "user", parts: [{ text: statsContext }] }
+      ]
     });
 
     let response: Response | null = null;
@@ -51,16 +51,15 @@ Escanteios: ${corners || 'N/A'}`;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: aiBody,
         });
         responseText = await response.text();
-        if (response.ok || response.status === 429 || response.status === 402) break;
+        if (response.ok) break;
         console.warn(`[analyze-live-moment] Attempt ${attempt + 1} failed: ${response.status}`);
         if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
       } catch (fetchErr) {
@@ -72,16 +71,6 @@ Escanteios: ${corners || 'N/A'}`;
     if (!response || !response.ok) {
       const status = response?.status || 500;
       console.error("[analyze-live-moment] AI error:", status, responseText.substring(0, 200));
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited", text: null }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required", text: null }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       // Return 200 with null text so client doesn't break
       return new Response(JSON.stringify({ error: "AI temporarily unavailable", text: null }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -98,7 +87,7 @@ Escanteios: ${corners || 'N/A'}`;
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    let text = data.choices?.[0]?.message?.content?.trim() || null;
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
 
     // Enforce 120 char limit
     if (text && text.length > 120) {
