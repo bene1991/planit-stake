@@ -56,15 +56,15 @@ export default function DailyPlanning() {
   const stakeReference = opSettings.stakeValueReais || 25;
   const { isPaused, toggle: toggleApiPause } = useApiPause();
   const { preferences: notifPrefs } = useNotifications();
-  
-  
+
+
   // State for highlighting the last game with a goal
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
-  
+
   // Split panel state
   const isMobile = useIsMobile();
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
-  
+
   // === DEDUP LAYER 2: sessionStorage-based (survives StrictMode remounts + HMR) ===
   const [showApiBrowser, setShowApiBrowser] = useState(false);
   const [showTelegramModal, setShowTelegramModal] = useState(false);
@@ -93,16 +93,16 @@ export default function DailyPlanning() {
     setShowHistory,
     clearFilters,
   } = usePlanningFilters();
-  
+
   const [customDateFrom, setCustomDateFrom] = useState<Date>();
   const [customDateTo, setCustomDateTo] = useState<Date>();
-  
+
   // Callback when score is persisted - update local state immediately
   const handleScorePersisted = useCallback((gameId: string, homeScore: number, awayScore: number) => {
     // Refresh games to get the persisted data
     refreshGames();
   }, [refreshGames]);
-  
+
   // Helper: check if a game is still pending (has methods without results)
   const isGamePending = useCallback((game: Game) => {
     // No methods = pending
@@ -110,7 +110,7 @@ export default function DailyPlanning() {
     // At least one method without result = pending
     return game.methodOperations.some(op => !op.result);
   }, []);
-  
+
   // Goal detection callback - called by useLiveScores when a goal is detected
   const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game) => {
     // IGNORE games that are already fully signaled (all methods have Green/Red)
@@ -118,7 +118,7 @@ export default function DailyPlanning() {
       console.log(`[DailyPlanning] Ignoring goal for completed game: ${game.homeTeam} vs ${game.awayTeam}`);
       return;
     }
-    
+
     // === DEDUP LAYER 2: sessionStorage-based dedup (survives remounts/HMR) ===
     const goalKey = `${gameId}-${homeScore}-${awayScore}`;
     try {
@@ -136,24 +136,24 @@ export default function DailyPlanning() {
       // sessionStorage fail - proceed but log
       console.warn('[DailyPlanning] sessionStorage dedup failed, proceeding');
     }
-    
+
     console.log(`[DailyPlanning] ⚽ GOAL! ${team === 'home' ? game.homeTeam : game.awayTeam} scores! ${game.homeTeam} ${homeScore}-${awayScore} ${game.awayTeam}`);
-    
+
     // Play celebration sound (Layer 3 dedup inside playGoalSound)
     playGoalSound();
-    
-    // Highlight this game with golden border
+
+    // Highlight this game with golden border immediately
     setHighlightedGameId(gameId);
 
     // Send Telegram notification immediately (non-blocking, cached settings)
     if (notifPrefs.telegramEnabled) {
       const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
       const msg = `⚽ <b>GOL!</b> ${scoringTeamName}\n${game.homeTeam} ${homeScore} x ${awayScore} ${game.awayTeam}\n🏟 ${game.league}`;
-      sendTelegramNotification(msg).catch(err => 
+      sendTelegramNotification(msg).catch(err =>
         console.error('[DailyPlanning] Telegram goal error:', err)
       );
     }
-    
+
     // Send push notification ONLY if app is in background (user can't hear the sound)
     if (user && document.hidden) {
       const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
@@ -165,7 +165,7 @@ export default function DailyPlanning() {
             body: `${scoringTeamName} marca! ${game.homeTeam} ${homeScore} x ${awayScore} ${game.awayTeam}`,
             icon: '/pwa-192x192.png',
             badge: '/pwa-192x192.png',
-            data: { 
+            data: {
               type: 'goal',
               homeTeam: game.homeTeam,
               awayTeam: game.awayTeam,
@@ -217,48 +217,48 @@ export default function DailyPlanning() {
       }).catch(err => console.error('[DailyPlanning] Push red card error:', err));
     }
   }, [user, notifPrefs]);
-  
+
   // Optimized live scores - uses configurable interval + auto-economy
-  const { 
-    getScoreForGame, 
-    refresh: refreshLiveScores, 
+  const {
+    getScoreForGame,
+    refresh: refreshLiveScores,
     loading: scoresLoading,
     lastRefresh,
-    scores: liveScores 
+    scores: liveScores
   } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs, isPaused);
-  
-  
+
+
   // Track if we already did the initial highlight check
   const initialHighlightDoneRef = useRef(false);
-  
+
   // On page load, detect if any live game has goals and highlight it
   // This ensures the golden highlight shows even if the goal was before we opened the page
   useEffect(() => {
     // Only run once when we first get live scores
     if (initialHighlightDoneRef.current) return;
     if (liveScores.size === 0) return;
-    
+
     // Mark as done so we don't re-run
     initialHighlightDoneRef.current = true;
-    
+
     // Find the most recent PENDING live game with goals scored (prefer latest minute)
     // Ignore games that are already fully signaled (all methods have Green/Red)
     let bestGame: { game: typeof games[0]; score: typeof liveScores extends Map<string, infer V> ? V : never } | null = null;
-    
+
     for (const game of games) {
       if (!game.api_fixture_id) continue;
-      
+
       // Skip games that are already fully signaled
       const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
       if (!isPending) continue;
-      
+
       const score = liveScores.get(game.api_fixture_id);
       if (!score) continue;
-      
+
       // Check if live and has goals
       const isLive = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE', 'INT'].includes(score.status);
       const hasGoals = score.homeScore > 0 || score.awayScore > 0;
-      
+
       if (isLive && hasGoals) {
         // Pick the one with highest elapsed time (most recent action)
         if (!bestGame || (score.elapsed || 0) > (bestGame.score.elapsed || 0)) {
@@ -266,41 +266,89 @@ export default function DailyPlanning() {
         }
       }
     }
-    
+
     if (bestGame) {
       console.log('[DailyPlanning] Highlighting pending game with goals on load:', bestGame.game.homeTeam, 'vs', bestGame.game.awayTeam, `(${bestGame.score.homeScore}-${bestGame.score.awayScore})`);
       setHighlightedGameId(bestGame.game.id);
     }
   }, [games, liveScores]);
-  
+
   // Backfill: trigger refresh on load if there are finished games without scores
   const backfillTriggeredRef = useRef(false);
   useEffect(() => {
     if (backfillTriggeredRef.current || gamesLoading) return;
-    
-    const gamesWithMissingScores = games.filter(g => 
-      g.status === 'Finished' && 
-      g.api_fixture_id && 
+
+    const gamesWithMissingScores = games.filter(g =>
+      g.status === 'Finished' &&
+      g.api_fixture_id &&
       (g.finalScoreHome === null || g.finalScoreHome === undefined)
     );
-    
+
     if (gamesWithMissingScores.length > 0) {
       console.log(`[DailyPlanning] Found ${gamesWithMissingScores.length} finished games without scores, triggering backfill...`);
       backfillTriggeredRef.current = true;
       refreshLiveScores();
     }
   }, [games, gamesLoading, refreshLiveScores]);
-  
+
+  // Backfill: fetch logos for games that have api_fixture_id but no logos
+  const logoBackfillRef = useRef(false);
+  useEffect(() => {
+    if (logoBackfillRef.current || gamesLoading) return;
+
+    const gamesNeedingLogos = games.filter(g =>
+      g.api_fixture_id &&
+      (!g.homeTeamLogo || !g.awayTeamLogo)
+    );
+
+    if (gamesNeedingLogos.length === 0) return;
+    logoBackfillRef.current = true;
+    console.log(`[DailyPlanning] Backfilling logos for ${gamesNeedingLogos.length} games...`);
+
+    (async () => {
+      const BATCH = 3;
+      let updated = 0;
+      for (let i = 0; i < gamesNeedingLogos.length; i += BATCH) {
+        const batch = gamesNeedingLogos.slice(i, i + BATCH);
+        await Promise.all(batch.map(async (game) => {
+          try {
+            const res = await supabase.functions.invoke('api-football', {
+              body: { endpoint: 'fixtures', params: { id: game.api_fixture_id } },
+            });
+            const fixture = res.data?.response?.[0];
+            if (fixture) {
+              const homeLogo = fixture.teams?.home?.logo;
+              const awayLogo = fixture.teams?.away?.logo;
+              if (homeLogo || awayLogo) {
+                await updateGame(game.id, {
+                  homeTeamLogo: homeLogo || game.homeTeamLogo,
+                  awayTeamLogo: awayLogo || game.awayTeamLogo,
+                });
+                updated++;
+              }
+            }
+          } catch (e) {
+            console.error(`[Logo Backfill] Error for game ${game.id}:`, e);
+          }
+        }));
+      }
+      if (updated > 0) {
+        console.log(`[DailyPlanning] Updated logos for ${updated} games`);
+        refreshGames();
+      }
+    })();
+  }, [games, gamesLoading, updateGame, refreshGames]);
+
   // Timestamp do último refresh global (para sincronizar tempo nos cards)
   const [lastGlobalRefresh, setLastGlobalRefresh] = useState<number>(0);
-  
+
   const handleGlobalRefresh = async () => {
     await updateStatuses();
     // NOTE: refreshLiveScores() removido daqui para evitar loop duplo.
     // O useLiveScores já tem seu próprio polling interno.
     setLastGlobalRefresh(Date.now());
   };
-  
+
   // Delete with undo functionality
   const restoreGame = useCallback(async (game: Game) => {
     await addGame({
@@ -316,7 +364,7 @@ export default function DailyPlanning() {
     });
     await refreshGames();
   }, [addGame, refreshGames]);
-  
+
   const { deleteWithUndo } = useDeleteWithUndo({
     onDelete: deleteGame,
     onRestore: restoreGame,
@@ -324,14 +372,14 @@ export default function DailyPlanning() {
 
   const updateStatuses = async () => {
     const updatedGames = updateGameStatuses(games);
-    
+
     for (const game of updatedGames) {
       const originalGame = games.find(g => g.id === game.id);
       if (originalGame && originalGame.status !== game.status) {
         await updateGame(game.id, { status: game.status });
       }
     }
-    
+
     await refreshGames();
   };
 
@@ -438,7 +486,7 @@ export default function DailyPlanning() {
 
     if (planningSearchQuery) {
       const query = planningSearchQuery.toLowerCase();
-      filtered = filtered.filter(game => 
+      filtered = filtered.filter(game =>
         game.homeTeam.toLowerCase().includes(query) ||
         game.awayTeam.toLowerCase().includes(query) ||
         game.league.toLowerCase().includes(query)
@@ -483,7 +531,7 @@ export default function DailyPlanning() {
     const brasiliaOffset = -3 * 60;
     const localOffset = now.getTimezoneOffset();
     const offsetDiff = localOffset - brasiliaOffset;
-    
+
     const today = new Date(now.getTime() + offsetDiff * 60000);
     today.setHours(0, 0, 0, 0);
 
@@ -554,12 +602,12 @@ export default function DailyPlanning() {
   const decidedOperations = greenOperations + redOperations;
   const winRate = decidedOperations > 0 ? ((greenOperations / decidedOperations) * 100).toFixed(1) : "0.0";
   const liveGames = games.filter(g => g.status === 'Live').length;
-  
+
   // Check if there are any live or pending games that need auto-refresh
   const hasActiveGames = useMemo(() => {
     return games.some(g => g.status === 'Live' || g.status === 'Pending');
   }, [games]);
-  
+
   // Auto-refresh based on user-configured interval when there are live/pending games (respects pause)
   const { secondsUntilRefresh, isRefreshing } = useAutoRefresh(
     handleGlobalRefresh,
@@ -584,306 +632,53 @@ export default function DailyPlanning() {
 
   return (
     <div className={cn(
-      "pb-24 lg:pb-8",
-      !isMobile && "grid grid-cols-[35%_1fr] gap-4 h-[calc(100vh-120px)]"
+      "fixed inset-0 top-16 bg-background flex overflow-hidden w-full max-w-none z-0",
+      isMobile ? "relative top-0 flex-col h-auto overflow-y-auto pb-20" : "grid grid-cols-[420px_1fr_280px] gap-0"
     )}>
-      {/* LEFT COLUMN - Game list */}
-      <div className={cn(
-        "space-y-4",
-        !isMobile && "overflow-y-auto pr-2"
+      {/* COLUMN 1: LEFT - Game List (420px) */}
+      <aside className={cn(
+        "w-[420px] border-r border-border bg-background flex flex-col h-full min-h-0 shrink-0",
+        isMobile && "w-full h-[calc(100vh-140px)] border-r-0 border-b shrink-0"
       )}>
-      <DataMigration />
-
-      {/* Resumo do Dia */}
-      {(() => {
-        const todayGames = games.filter(g => g.date === todayDate);
-        const todayOps = todayGames.flatMap(g => g.methodOperations).filter(op => op.result);
-        const todayGreens = todayOps.filter(op => op.result === 'Green').length;
-        const todayReds = todayOps.filter(op => op.result === 'Red').length;
-        // Win Rate excludes Voids from denominator
-        const todayTotal = todayGreens + todayReds;
-        const todayWinRate = todayTotal > 0 ? ((todayGreens / todayTotal) * 100).toFixed(1) : '0.0';
-        const todayProfitMoney = todayOps.reduce((sum, op) => {
-          if (op.profit != null) return sum + op.profit;
-          if (op.stakeValue && op.odd && op.operationType && op.result) {
-            return sum + calculateProfit({
-              stakeValue: op.stakeValue,
-              odd: op.odd,
-              operationType: op.operationType,
-              result: op.result,
-              commissionRate: 0.045
-            });
-          }
-          return sum;
-        }, 0);
-        const todayProfitStakes = todayProfitMoney / stakeReference;
-        const todayLive = todayGames.filter(g => g.status === 'Live').length;
-
-        return (
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Lucro Hoje</p>
-                <p className={cn("text-lg font-bold", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
-                  {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </p>
-                <p className={cn("text-[10px]", todayProfitStakes >= 0 ? "text-emerald-500/70" : "text-red-500/70")}>
-                  {todayProfitStakes >= 0 ? '+' : ''}{todayProfitStakes.toFixed(2)} st
-                </p>
-              </Card>
-              <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Operações Hoje</p>
-                <p className="text-lg font-bold">{todayTotal}</p>
-                <p className="text-[10px] text-muted-foreground">{todayGreens}G / {todayReds}R</p>
-              </Card>
-              <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate Hoje</p>
-                <p className="text-lg font-bold">{todayWinRate}%</p>
-              </Card>
-              <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Jogos Hoje</p>
-                <p className="text-lg font-bold">{todayGames.length}</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {todayLive > 0 ? `${todayLive} ao vivo` : 'Nenhum ao vivo'}
-                </p>
-              </Card>
-              {/* Streak Atual */}
-              <Card className="p-3 text-center">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Streak Atual</p>
-                {(() => {
-                  // Calculate streak from all completed operations ordered by date/time
-                  const allCompleted = games
-                    .filter(g => g.methodOperations.some(op => op.result))
-                    .sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
-                  
-                  let streakType: string | null = null;
-                  let streakCount = 0;
-                  
-                  for (const game of allCompleted) {
-                    const ops = game.methodOperations.filter(op => op.result).sort((a, b) => (b.result || '').localeCompare(a.result || ''));
-                    for (const op of ops) {
-                      if (!streakType) {
-                        streakType = op.result!;
-                        streakCount = 1;
-                      } else if (op.result === streakType) {
-                        streakCount++;
-                      } else {
-                        break;
-                      }
-                    }
-                    if (streakType && ops.some(op => op.result !== streakType)) break;
-                  }
-                  
-                  return (
-                    <>
-                      <p className={cn("text-lg font-bold", streakType === 'Green' ? "text-emerald-500" : streakType === 'Red' ? "text-red-500" : "text-muted-foreground")}>
-                        {streakCount > 0 ? `${streakCount} ${streakType}` : '-'}
-                      </p>
-                      {streakType === 'Red' && streakCount >= 3 && (
-                        <p className="text-[10px] text-red-400">⚠️ Atenção</p>
-                      )}
-                    </>
-                  );
-                })()}
-              </Card>
-            </div>
-
-            {/* Resumo por Método */}
-            {(() => {
-              const methodGroups = todayOps.reduce<Record<string, { greens: number; reds: number; profit: number }>>((acc, op) => {
-                const key = op.methodId;
-                if (!acc[key]) acc[key] = { greens: 0, reds: 0, profit: 0 };
-                if (op.result === 'Green') acc[key].greens++;
-                if (op.result === 'Red') acc[key].reds++;
-                const p = op.profit != null ? op.profit
-                  : (op.stakeValue && op.odd && op.operationType && op.result)
-                    ? calculateProfit({ stakeValue: op.stakeValue, odd: op.odd, operationType: op.operationType, result: op.result, commissionRate: 0.045 })
-                    : 0;
-                acc[key].profit += p;
-                return acc;
-              }, {});
-
-              const entries = Object.entries(methodGroups).sort((a, b) => b[1].profit - a[1].profit);
-              if (entries.length === 0) return null;
-
-              return (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {entries.map(([methodId, data]) => {
-                    const method = bankroll?.methods.find(m => m.id === methodId);
-                    if (!method) return null;
-                    const isPositive = data.profit >= 0;
-                    return (
-                      <span
-                        key={methodId}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                          isPositive
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-red-500/15 text-red-400"
-                        )}
-                      >
-                        {method.name}: {data.greens}G/{data.reds}R {isPositive ? '+' : ''}{data.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                      </span>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+        <div className="p-4 border-b border-border space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              Jogos
+              {liveGames > 0 && (
+                <Badge variant="destructive" className="animate-pulse text-[10px] h-5">
+                  {liveGames} LIVE
+                </Badge>
+              )}
+            </h2>
+            <Button type="button" variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-7 text-xs px-2">
+              <Globe className="h-3 w-3 mr-1" />
+              Buscar
+            </Button>
           </div>
-        );
-      })()}
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            Planejamento
-            {liveGames > 0 && (
-              <Badge variant="destructive" className="animate-pulse">
-                {liveGames} LIVE
-              </Badge>
-            )}
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            {totalOperations > 0 && (
-              <span>{greenOperations}G • {redOperations}R • {winRate}%</span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8">
-            <Send className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Telegram</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowSummaryModal(true)} className="h-8">
-            <FileText className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Resumo</span>
-          </Button>
-          <ApiRequestIndicator />
-          <Button variant="outline" size="sm" onClick={handleExport} className="h-8">
-            <Download className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Exportar</span>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleGlobalRefresh} 
-            className="h-8"
-            disabled={scoresLoading || isPaused}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5 sm:mr-2", scoresLoading && "animate-spin")} />
-            <span className="hidden sm:inline">Atualizar</span>
-          </Button>
-          <Button 
-            variant={isPaused ? "destructive" : "outline"} 
-            size="sm" 
-            onClick={toggleApiPause} 
-            className={cn("h-8", isPaused && "animate-pulse")}
-          >
-            {isPaused ? <Play className="h-3.5 w-3.5 sm:mr-2" /> : <Pause className="h-3.5 w-3.5 sm:mr-2" />}
-            <span className="hidden sm:inline">{isPaused ? 'Retomar API' : 'Pausar API'}</span>
-          </Button>
-          <Button variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8">
-            <Globe className="h-3.5 w-3.5 sm:mr-2" />
-            <span className="hidden sm:inline">Buscar Jogos</span>
-          </Button>
-        </div>
-      </div>
 
-      {/* Pause Banner */}
-      {isPaused && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs font-medium">
-          <Pause className="h-3.5 w-3.5" />
-          Requisições pausadas — placares e estatísticas não estão atualizando
-        </div>
-      )}
-
-      {/* Last Refresh Info */}
-      {lastRefresh && !isPaused && (
-        <p className="text-[10px] text-muted-foreground">
-          Última atualização: {format(lastRefresh, 'HH:mm:ss')}
-          {hasActiveGames && (
-            <span className="ml-1">
-              • próxima em {secondsUntilRefresh}s
-            </span>
-          )}
-        </p>
-      )}
-
-      {/* API Game Browser */}
-      <ApiGameBrowser
-        open={showApiBrowser}
-        onOpenChange={setShowApiBrowser}
-        methods={bankroll.methods}
-        onAddGames={handleAddFromApi}
-        existingFixtureIds={games.filter(g => g.api_fixture_id).map(g => g.api_fixture_id!)}
-      />
-
-      {/* Method Selector */}
-      <MethodSelector
-        open={showMethodSelector}
-        onOpenChange={setShowMethodSelector}
-        methods={bankroll.methods}
-        onConfirm={() => {}}
-        loading={addingToPlanning}
-      />
-
-      {/* Game Method Editor */}
-      <GameMethodEditor
-        open={showGameMethodEditor}
-        onOpenChange={setShowGameMethodEditor}
-        game={selectedGameForEdit}
-        methods={bankroll.methods}
-        onConfirm={handleConfirmGameMethodsEdit}
-        loading={updatingGameMethods}
-      />
-
-      {/* Telegram Planning Message */}
-      <TelegramPlanningMessage
-        open={showTelegramModal}
-        onOpenChange={setShowTelegramModal}
-        games={games.filter(g => g.date === todayDate)}
-        methods={bankroll.methods}
-      />
-
-      {/* Telegram Summary Message */}
-      <TelegramSummaryMessage
-        open={showSummaryModal}
-        onOpenChange={setShowSummaryModal}
-        games={games}
-        methods={bankroll.methods}
-      />
-
-      {/* PLANEJAMENTO - Seção Principal */}
-      <div className="space-y-4">
-        {/* Status Filter Tabs */}
-        <GameStatusTabs
-          games={sortedPlanned}
-          currentFilter={gameStatusFilter}
-          onFilterChange={setGameStatusFilter}
-          currentSort={gameSortOrder}
-          onSortChange={setGameSortOrder}
-        />
-
-        {sortedPlanned.length === 0 ? (
-          <EmptyState
-            icon={<Calendar className="h-8 w-8 text-muted-foreground" />}
-            title="Nenhum jogo planejado"
-            description="Clique em 'Buscar Jogos' para adicionar jogos ao planejamento"
+          <GameStatusTabs
+            games={sortedPlanned}
+            currentFilter={gameStatusFilter}
+            onFilterChange={setGameStatusFilter}
+            currentSort={gameSortOrder}
+            onSortChange={setGameSortOrder}
           />
-        ) : (
-          <div className="border border-border/50 rounded-lg overflow-hidden bg-card">
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2 space-y-2" style={{ maxHeight: isMobile ? 'calc(100vh - 200px)' : undefined }}>
+          {sortedPlanned.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-20" />
+              <p className="text-xs">Nenhum jogo planejado</p>
+            </div>
+          ) : (
             <GameListByLeague
               games={sortedPlanned.filter((game) => {
                 if (gameStatusFilter === 'all') return true;
-                
                 const fixtureStatus = game.status;
-                const isLive = fixtureStatus === 'Live';
-                const isFinished = fixtureStatus === 'Finished';
-                
-                if (gameStatusFilter === 'live') return isLive;
-                if (gameStatusFilter === 'finished') return isFinished;
-                if (gameStatusFilter === 'pending') return !isLive && !isFinished;
+                if (gameStatusFilter === 'live') return fixtureStatus === 'Live';
+                if (gameStatusFilter === 'finished') return fixtureStatus === 'Finished';
+                if (gameStatusFilter === 'pending') return fixtureStatus !== 'Live' && fixtureStatus !== 'Finished';
                 return true;
               })}
               methods={bankroll.methods}
@@ -898,182 +693,214 @@ export default function DailyPlanning() {
               onRedCardDetected={handleRedCardDetected}
               onSelectGame={handleSelectGame}
               selectedGameId={selectedGame?.id}
+              compact={false}
             />
-          </div>
-        )}
-      </div>
-
-      {/* HISTÓRICO - Seção Colapsável */}
-      <Collapsible open={showHistory} onOpenChange={setShowHistory}>
-        <CollapsibleTrigger asChild>
-          <Card className="p-4 cursor-pointer hover:bg-muted/30 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="h-5 w-5 text-primary" />
-                <div>
-                  <h3 className="font-semibold">Histórico</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {finalizedGames.length} jogos finalizados
-                  </p>
-                </div>
-              </div>
-              <ChevronDown className={cn(
-                "h-5 w-5 text-muted-foreground transition-transform",
-                showHistory && "rotate-180"
-              )} />
-            </div>
-          </Card>
-        </CollapsibleTrigger>
-
-        <CollapsibleContent className="mt-4 space-y-4">
-          {/* Filtros do histórico */}
-          <Card className="p-3">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Select value={historyPeriod} onValueChange={setHistoryPeriod}>
-                <SelectTrigger className="w-full sm:w-[180px] h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Hoje</SelectItem>
-                  <SelectItem value="yesterday">Ontem</SelectItem>
-                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
-                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
-                  <SelectItem value="custom">Personalizado</SelectItem>
-                </SelectContent>
-              </Select>
-              {historyPeriod === 'custom' && (
-                <div className="flex gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {customDateFrom ? format(customDateFrom, 'dd/MM', { locale: ptBR }) : 'De'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <CalendarComponent mode="single" selected={customDateFrom} onSelect={setCustomDateFrom} locale={ptBR} />
-                    </PopoverContent>
-                  </Popover>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {customDateTo ? format(customDateTo, 'dd/MM', { locale: ptBR }) : 'Até'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <CalendarComponent mode="single" selected={customDateTo} onSelect={setCustomDateTo} locale={ptBR} />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Lista de jogos */}
-          {groupedHistory.length === 0 ? (
-            <EmptyState
-              icon={<CheckCircle className="h-8 w-8 text-muted-foreground" />}
-              title="Nenhum jogo finalizado"
-              description="Jogos com resultados aparecerão aqui"
-            />
-          ) : (
-            <div className="space-y-4">
-              {groupedHistory.map(({ date, games }) => (
-                <div key={date} className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground">
-                    {format(new Date(date + 'T12:00:00'), "dd 'de' MMMM", { locale: ptBR })}
-                  </h4>
-                  <div className="space-y-2">
-                    {games.map((game) => (
-                      <Collapsible key={game.id}>
-                        <Card className="overflow-hidden">
-                          <CollapsibleTrigger className="w-full">
-                            <div className="p-3 flex items-center justify-between hover:bg-muted/50 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs text-muted-foreground w-12">{game.time}</span>
-                                <span className="text-sm font-medium">
-                                  {game.homeTeam} vs {game.awayTeam}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditGameMethods(game);
-                                  }}
-                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
-                                  title="Editar métodos"
-                                >
-                                  <Settings className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete(game.id);
-                                  }}
-                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                                  title="Remover jogo"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {game.methodOperations.filter((op) => op.result === 'Green').length}G •{' '}
-                                  {game.methodOperations.filter((op) => op.result === 'Red').length}R
-                                </Badge>
-                                <ChevronDown className="h-4 w-4" />
-                              </div>
-                            </div>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <div className="border-t p-3 space-y-1 bg-muted/20">
-                              {game.methodOperations.map((op, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-xs p-2 bg-background rounded">
-                                  <span className="font-medium">{getMethodName(op.methodId)}</span>
-                                  <Badge variant={op.result === 'Green' ? 'default' : 'destructive'} className="text-[10px]">
-                                    {op.result}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          </CollapsibleContent>
-                        </Card>
-                      </Collapsible>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
-        </CollapsibleContent>
-      </Collapsible>
-      </div>
+        </div>
+      </aside>
 
-      {/* RIGHT COLUMN - Detail panel (desktop only) */}
-      {!isMobile && (
-        <div className="border border-border/50 rounded-lg overflow-hidden bg-card h-full">
-          {selectedGame?.api_fixture_id ? (
-            <FixtureDetailPanel
-              fixtureId={selectedGame.api_fixture_id}
-              homeTeam={selectedGame.homeTeam}
-              awayTeam={selectedGame.awayTeam}
-              homeTeamLogo={selectedGame.homeTeamLogo}
-              awayTeamLogo={selectedGame.awayTeamLogo}
-              league={selectedGame.league}
-              time={selectedGame.time}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-              <BarChart3 className="h-12 w-12 opacity-30" />
-              <p className="text-sm">Selecione um jogo para ver a análise</p>
+      {/* COLUMN 2: CENTER - Analysis & History (1fr) */}
+      <main className="flex flex-col h-full bg-[#0B0F14]/50 overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          {/* Header & Metrics */}
+          {(() => {
+            const todayGames = games.filter(g => g.date === todayDate);
+            const todayOps = todayGames.flatMap(g => g.methodOperations).filter(op => op.result);
+            const todayGreens = todayOps.filter(op => op.result === 'Green').length;
+            const todayReds = todayOps.filter(op => op.result === 'Red').length;
+            const todayTotal = todayGreens + todayReds;
+            const todayProfitMoney = todayOps.reduce((sum, op) => op.profit != null ? sum + op.profit : sum, 0);
+            const todayProfitStakes = todayProfitMoney / stakeReference;
+
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Lucro Hoje</p>
+                  <p className={cn("text-xl font-bold mt-1", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
+                    {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
+                  <p className="text-[10px] opacity-70">
+                    {todayProfitStakes >= 0 ? '+' : ''}{todayProfitStakes.toFixed(2)} st
+                  </p>
+                </Card>
+                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Performance</p>
+                  <p className="text-xl font-bold mt-1">{todayTotal}</p>
+                  <p className="text-[10px] text-muted-foreground">{todayGreens}G / {todayReds}R</p>
+                </Card>
+                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Live Agora</p>
+                  <p className="text-xl font-bold mt-1">{liveGames}</p>
+                  <p className="text-[10px] text-muted-foreground">Jogos em andamento</p>
+                </Card>
+                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Win Rate</p>
+                  <p className="text-xl font-bold mt-1">{winRate}%</p>
+                  <p className="text-[10px] text-muted-foreground">Média geral</p>
+                </Card>
+              </div>
+            );
+          })()}
+
+          {/* Analysis View */}
+          <section className="min-h-[400px]">
+            {selectedGame?.api_fixture_id ? (
+              <FixtureDetailPanel
+                fixtureId={selectedGame.api_fixture_id}
+                homeTeam={selectedGame.homeTeam}
+                awayTeam={selectedGame.awayTeam}
+                homeTeamLogo={selectedGame.homeTeamLogo}
+                awayTeamLogo={selectedGame.awayTeamLogo}
+                league={selectedGame.league}
+                time={selectedGame.time}
+              />
+            ) : (
+              <Card className="h-[400px] flex flex-col items-center justify-center bg-[#121A24] border-white/5 border-dashed border-2 text-muted-foreground">
+                <BarChart3 className="h-12 w-12 opacity-10 mb-2" />
+                <p className="text-sm">Selecione um jogo na lista para iniciar a análise</p>
+              </Card>
+            )}
+          </section>
+
+          {/* History Section (Visible but styled) */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+              <CheckCircle className="h-4 w-4 text-emerald-500" />
+              <h3 className="text-md font-bold">Histórico Recente</h3>
+            </div>
+            {groupedHistory.slice(0, 1).map(({ date, games }) => (
+              <div key={date} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {games.map((game) => (
+                  <Card key={game.id} className="p-3 bg-[#121A24] border-white/5 hover:bg-[#1A232E] transition-colors cursor-pointer" onClick={() => handleSelectGame(game)}>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="opacity-50">{game.time}</span>
+                      <Badge variant={game.methodOperations.every(op => op.result === 'Green') ? 'default' : 'secondary'} className="text-[10px] h-4">
+                        {game.finalScoreHome}-{game.finalScoreAway}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 font-medium text-sm truncate">
+                      {game.homeTeam} vs {game.awayTeam}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ))}
+          </section>
+        </div>
+      </main>
+
+      {/* COLUMN 3: RIGHT - Status & Logs (280px) */}
+      <aside className={cn(
+        "w-[280px] border-l border-border bg-background flex flex-col h-full shrink-0",
+        isMobile && "hidden"
+      )}>
+        <div className="p-4 border-b border-border space-y-4">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Config & Status</h3>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-2 rounded bg-muted/30 border border-white/5">
+              <span className="text-xs font-medium">API Football</span>
+              <ApiRequestIndicator />
+            </div>
+
+            <div className="flex items-center justify-between p-2 rounded bg-muted/30 border border-white/5">
+              <span className="text-xs font-medium">Telegram Bots</span>
+              <Badge variant={notifPrefs.telegramEnabled ? "default" : "secondary"} className="text-[10px] h-5">
+                {notifPrefs.telegramEnabled ? "Ativo" : "Off"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8 text-xs">
+              <Send className="h-3 w-3 mr-2" />
+              Sinais
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowSummaryModal(true)} className="h-8 text-xs">
+              <FileText className="h-3 w-3 mr-2" />
+              Resumo
+            </Button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase text-muted-foreground">Controles Globais</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleGlobalRefresh}
+              disabled={scoresLoading || isPaused}
+              className="h-6 w-6 p-0"
+            >
+              <RefreshCw className={cn("h-3 w-3", scoresLoading && "animate-spin")} />
+            </Button>
+          </div>
+
+          <Button
+            variant={isPaused ? "destructive" : "secondary"}
+            size="sm"
+            onClick={toggleApiPause}
+            className={cn("w-full h-9", isPaused && "animate-pulse")}
+          >
+            {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
+            {isPaused ? 'Retomar Sistema' : 'Pausar Sistema'}
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={handleExport} className="w-full h-9">
+            <Download className="h-4 w-4 mr-2" />
+            Exportar CSV
+          </Button>
+        </div>
+
+        <div className="mt-auto p-4 border-t border-border bg-muted/5 font-mono text-[10px] space-y-2 opacity-60">
+          <div className="flex justify-between">
+            <span>Server Time:</span>
+            <span>{format(getNowInBrasilia(), 'HH:mm:ss')}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Last Data Pool:</span>
+            <span>{lastRefresh ? format(lastRefresh, 'HH:mm:ss') : '--:--'}</span>
+          </div>
+          {hasActiveGames && !isPaused && (
+            <div className="flex justify-between text-emerald-500">
+              <span>Next Update:</span>
+              <span>{secondsUntilRefresh}s</span>
             </div>
           )}
         </div>
-      )}
+      </aside>
+
+      {/* Modals & Components */}
+      <ApiGameBrowser
+        open={showApiBrowser}
+        onOpenChange={setShowApiBrowser}
+        methods={bankroll.methods}
+        onAddGames={handleAddFromApi}
+        existingFixtureIds={games.filter(g => g.api_fixture_id).map(g => g.api_fixture_id!)}
+      />
+      <GameMethodEditor
+        open={showGameMethodEditor}
+        onOpenChange={setShowGameMethodEditor}
+        game={selectedGameForEdit}
+        methods={bankroll.methods}
+        onConfirm={handleConfirmGameMethodsEdit}
+        loading={updatingGameMethods}
+      />
+      <TelegramPlanningMessage
+        open={showTelegramModal}
+        onOpenChange={setShowTelegramModal}
+        games={games.filter(g => g.date === todayDate)}
+        methods={bankroll.methods}
+      />
+      <TelegramSummaryMessage
+        open={showSummaryModal}
+        onOpenChange={setShowSummaryModal}
+        games={games}
+        methods={bankroll.methods}
+      />
+
+      <DataMigration />
     </div>
   );
 }

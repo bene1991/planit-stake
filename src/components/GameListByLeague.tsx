@@ -39,6 +39,7 @@ interface GameListByLeagueProps {
   onRedCardDetected?: OnRedCardDetected;
   onSelectGame?: (game: Game) => void;
   selectedGameId?: string | null;
+  compact?: boolean;
 }
 
 export function GameListByLeague({
@@ -55,54 +56,55 @@ export function GameListByLeague({
   onRedCardDetected,
   onSelectGame,
   selectedGameId,
+  compact = false,
 }: GameListByLeagueProps) {
   // Sort games based on sortOrder
   const sortedGames = useMemo(() => {
     const sorted = [...games];
-    
+
     sorted.sort((a, b) => {
       if (sortOrder === 'elapsed') {
         // Sort by elapsed time (live games first, then by minute descending)
         const scoreA = getScoreForGame(a);
         const scoreB = getScoreForGame(b);
-        
+
         const elapsedA = scoreA?.elapsed ?? 0;
         const elapsedB = scoreB?.elapsed ?? 0;
-        
+
         const isLiveA = a.status === 'Live' || ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(scoreA?.status || '');
         const isLiveB = b.status === 'Live' || ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes(scoreB?.status || '');
-        
+
         // Live games first
         if (isLiveA && !isLiveB) return -1;
         if (!isLiveA && isLiveB) return 1;
-        
+
         // If both live, sort by elapsed time (higher first)
         if (isLiveA && isLiveB) {
           return elapsedB - elapsedA;
         }
-        
+
         // Non-live games by start time
         const dateTimeA = new Date(`${a.date}T${a.time}`).getTime();
         const dateTimeB = new Date(`${b.date}T${b.time}`).getTime();
         return dateTimeA - dateTimeB;
       }
-      
+
       if (sortOrder === 'league') {
         // Sort by league name, then by time
         const leagueCompare = a.league.localeCompare(b.league);
         if (leagueCompare !== 0) return leagueCompare;
-        
+
         const dateTimeA = new Date(`${a.date}T${a.time}`).getTime();
         const dateTimeB = new Date(`${b.date}T${b.time}`).getTime();
         return dateTimeA - dateTimeB;
       }
-      
+
       // Default: sort by time
       const dateTimeA = new Date(`${a.date}T${a.time}`).getTime();
       const dateTimeB = new Date(`${b.date}T${b.time}`).getTime();
       return dateTimeA - dateTimeB;
     });
-    
+
     return sorted;
   }, [games, sortOrder, getScoreForGame]);
 
@@ -112,10 +114,10 @@ export function GameListByLeague({
       // For elapsed/time sort, don't group - show flat list
       return [['', sortedGames] as [string, Game[]]];
     }
-    
+
     // For league sort, group by league
     const groups = new Map<string, Game[]>();
-    
+
     sortedGames.forEach((game) => {
       const league = game.league || 'Outros';
       if (!groups.has(league)) {
@@ -161,6 +163,7 @@ export function GameListByLeague({
                 onRedCardDetected={onRedCardDetected}
                 onSelect={onSelectGame ? () => onSelectGame(game) : undefined}
                 isSelected={game.id === selectedGameId}
+                compact={compact}
               />
             ))}
           </div>

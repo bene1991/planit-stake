@@ -18,6 +18,7 @@ import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
 import { useSupabaseGames } from '@/hooks/useSupabaseGames';
 import { Lay0x1ScoreCard } from './Lay0x1ScoreCard';
+import { useLay0x1RealOperations } from '@/hooks/useLay0x1RealOperations';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { getNowInBrasilia } from '@/utils/timezone';
@@ -39,6 +40,7 @@ interface AnalysisResult {
   final_score_home?: number;
   final_score_away?: number;
   fixture_status?: string;
+  is_backtest: boolean;
 }
 
 const CACHE_KEY_PREFIX = 'lay0x1_results_';
@@ -158,6 +160,7 @@ export const Lay0x1Scanner = () => {
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [registeringRealId, setRegisteringRealId] = useState<string | null>(null);
   const [selectedResult, setSelectedResult] = useState<AnalysisResult | null>(null);
   const isMobile = useIsMobile();
   const todayStr = useMemo(() => format(getNowInBrasilia(), 'yyyy-MM-dd'), []);
@@ -180,7 +183,7 @@ export const Lay0x1Scanner = () => {
   const [savingBacktest, setSavingBacktest] = useState(false);
 
   // Set of fixture IDs already in planning
-  const planningFixtureIds = useMemo(() => 
+  const planningFixtureIds = useMemo(() =>
     new Set(games.map(g => g.api_fixture_id).filter(Boolean)),
     [games]
   );
@@ -341,7 +344,7 @@ export const Lay0x1Scanner = () => {
       }
 
       const res = await supabase.functions.invoke('analyze-lay0x1', {
-        body: { date: selectedDate },
+        body: { date: selectedDate, is_backtest: isBacktest },
       });
 
       if (res.error) {
@@ -372,14 +375,16 @@ export const Lay0x1Scanner = () => {
             fixture_id: r.fixture_id,
             home_team: r.home_team,
             away_team: r.away_team,
+            home_team_logo: r.home_team_logo,
+            away_team_logo: r.away_team_logo,
             league: r.league,
             date: r.date,
             score_value: r.score_value,
             classification: r.classification,
             criteria_snapshot: r.criteria,
             weights_snapshot: weights,
-          });
-          if (result && !result.error) savedCount++;
+          }, true);
+          if (result) savedCount++;
         }
 
         const skipped = approvedResults.length - toSave.length;
@@ -416,6 +421,7 @@ export const Lay0x1Scanner = () => {
       classification: result.classification,
       criteria_snapshot: result.criteria,
       weights_snapshot: weights,
+      is_backtest: result.is_backtest,
     });
     setResults(prev => {
       const updated = prev.map(r =>
@@ -446,7 +452,7 @@ export const Lay0x1Scanner = () => {
         .select('id, name')
         .ilike('name', '%lay%0x1%')
         .limit(1);
-      
+
       const methodOps = userMethods && userMethods.length > 0
         ? [{ methodId: userMethods[0].id, operationType: 'Lay' as const }]
         : [];
@@ -457,6 +463,8 @@ export const Lay0x1Scanner = () => {
         league: result.league,
         homeTeam: result.home_team,
         awayTeam: result.away_team,
+        homeTeamLogo: result.home_team_logo,
+        awayTeamLogo: result.away_team_logo,
         api_fixture_id: result.fixture_id,
         methodOperations: methodOps,
       });
@@ -473,7 +481,7 @@ export const Lay0x1Scanner = () => {
   };
 
   // Filter out blocked leagues from display
-  const filteredResults = useMemo(() => 
+  const filteredResults = useMemo(() =>
     results.filter(r => !blockedNames.includes(r.league)),
     [results, blockedNames]
   );
@@ -546,7 +554,7 @@ export const Lay0x1Scanner = () => {
     let saved = 0;
     for (const r of approved) {
       if (existingFixtureIds.has(r.fixture_id)) continue;
-      
+
       // Check if game has final score (backtest data)
       const hasResult = r.final_score_home != null && r.final_score_away != null;
       const was0x1 = hasResult ? (r.final_score_home === 0 && r.final_score_away === 1) : undefined;
@@ -562,14 +570,17 @@ export const Lay0x1Scanner = () => {
           was_0x1: was0x1,
           result,
           resolved_at: new Date().toISOString(),
-        } : {}),
+          is_backtest: true,
+        } : {
+          is_backtest: true,
+        }),
       });
       if (res && !res.error) saved++;
     }
-    
+
     if (saved > 0) {
       toast.success(`${saved} jogo(s) salvos para calibração${saved > 0 ? ' (com resultado)' : ''}`);
-      
+
       // Check if we should trigger auto-calibration
       const resolvedCount = analyses.filter(a => a.result).length + saved;
       if (resolvedCount > 0 && resolvedCount % 30 === 0) {
@@ -608,140 +619,191 @@ export const Lay0x1Scanner = () => {
     <div className={cn(
       !isMobile && "grid grid-cols-[35%_1fr] gap-4 h-[calc(100vh-120px)]"
     )}>
-    <div className={cn("space-y-4", !isMobile && "overflow-y-auto pr-2")}>
-      {/* Search Bar */}
-      <Card>
-        <CardContent className="p-4">
-          {/* Date shortcuts */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            <Button
-              variant={!rangeMode && selectedDate === format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'}
-              size="sm"
-              className="text-xs h-7"
-              onClick={() => handleSingleDateClick(format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd'))}
-            >
-              Ontem
-            </Button>
-            {rangeShortcuts.map(s => (
+      <div className={cn("space-y-4", !isMobile && "overflow-y-auto pr-2")}>
+        {/* Search Bar */}
+        <Card>
+          <CardContent className="p-4">
+            {/* Date shortcuts */}
+            <div className="flex flex-wrap gap-2 mb-3">
               <Button
-                key={s.label}
-                variant={rangeMode?.days === s.days ? 'default' : 'outline'}
+                variant={!rangeMode && selectedDate === format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'}
                 size="sm"
                 className="text-xs h-7"
-                onClick={() => handleRangeClick(s)}
+                onClick={() => handleSingleDateClick(format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd'))}
               >
-                {s.label}
+                Ontem
               </Button>
-            ))}
-            <Button
-              variant={!rangeMode && selectedDate === todayStr ? 'default' : 'outline'}
-              size="sm"
-              className="text-xs h-7"
-              onClick={() => handleSingleDateClick(todayStr)}
-            >
-              Hoje
-            </Button>
-          </div>
-
-          {!rangeMode && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => { setRangeMode(null); setSelectedDate(e.target.value); }}
-                className="w-full sm:w-auto"
-              />
-              <Button onClick={analyzeGames} disabled={loading} className="gap-2">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isBacktest ? <FlaskConical className="w-4 h-4" /> : <Search className="w-4 h-4" />}
-                {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar Jogos do Dia'}
-              </Button>
-              {results.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
-                  <Trash2 className="w-3 h-3" /> Limpar cache
-                </Button>
-              )}
-              {!isBacktest && !rangeMode && approvedResults.length > 0 && (
-                <Button variant="outline" size="sm" onClick={handleSendTelegram} disabled={sendingTelegram} className="gap-1 text-xs">
-                  <Send className="w-3 h-3" />
-                  {sendingTelegram ? 'Enviando...' : `Telegram (${approvedResults.length})`}
-                </Button>
-              )}
-            </div>
-          )}
-
-          {isBacktest && !rangeMode && (
-            <div className="mt-2 flex items-center gap-2">
-              <Badge variant="outline" className="text-yellow-400 border-yellow-500/30">
-                <FlaskConical className="w-3 h-3 mr-1" /> Modo Backtest
-              </Badge>
-              <span className="text-xs text-muted-foreground">Jogos não serão salvos automaticamente</span>
-            </div>
-          )}
-
-          {loading && (
-            <div className="mt-3 space-y-1">
-              <Progress value={undefined} className="h-2" />
-              <p className="text-xs text-muted-foreground">Buscando jogos, filtrando por odds e analisando em lotes paralelos... (até 2 min)</p>
-            </div>
-          )}
-
-          {!loading && !rangeMode && meta && (
-            <p className="text-xs text-muted-foreground mt-2">
-              {meta.total_fixtures} jogos no dia → {meta.pre_filtered} com odd casa &lt; visitante → {approvedResults.length} aprovados
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Range Mode Summary */}
-      {rangeMode && rangeData && (
-        <Card className="border-primary/20">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold">
-                  Últimos {rangeMode.days} dias
-                  <span className="text-muted-foreground font-normal ml-1">
-                    ({rangeData.analyzedDays}/{rangeData.totalDays} analisados)
-                  </span>
-                </h3>
-              </div>
-              {(rangeData.analyzedDays > 0) && (
-                <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
-                  <Trash2 className="w-3 h-3" /> Limpar cache
-                </Button>
-              )}
-            </div>
-
-            {rangeData.missingDates.length > 0 && (
-              <div className="mb-3">
+              {rangeShortcuts.map(s => (
                 <Button
-                  onClick={analyzeMissingDays}
-                  disabled={analyzingMissing}
+                  key={s.label}
+                  variant={rangeMode?.days === s.days ? 'default' : 'outline'}
                   size="sm"
-                  variant="outline"
-                  className="gap-2 text-xs"
+                  className="text-xs h-7"
+                  onClick={() => handleRangeClick(s)}
                 >
-                  {analyzingMissing ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Analisando {missingProgress.current}/{missingProgress.total}...
-                    </>
-                  ) : (
-                    <>
-                      <FlaskConical className="w-3 h-3" />
-                      Analisar {rangeData.missingDates.length} dia(s) faltante(s)
-                    </>
-                  )}
+                  {s.label}
                 </Button>
-                {analyzingMissing && (
-                  <Progress value={(missingProgress.current / missingProgress.total) * 100} className="h-1.5 mt-2" />
+              ))}
+              <Button
+                variant={!rangeMode && selectedDate === todayStr ? 'default' : 'outline'}
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => handleSingleDateClick(todayStr)}
+              >
+                Hoje
+              </Button>
+            </div>
+
+            {!rangeMode && (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => { setRangeMode(null); setSelectedDate(e.target.value); }}
+                  className="w-full sm:w-auto"
+                />
+                <Button onClick={analyzeGames} disabled={loading} className="gap-2">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isBacktest ? <FlaskConical className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+                  {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar Jogos do Dia'}
+                </Button>
+                {results.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
+                    <Trash2 className="w-3 h-3" /> Limpar cache
+                  </Button>
+                )}
+                {!isBacktest && !rangeMode && approvedResults.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={handleSendTelegram} disabled={sendingTelegram} className="gap-1 text-xs">
+                    <Send className="w-3 h-3" />
+                    {sendingTelegram ? 'Enviando...' : `Telegram (${approvedResults.length})`}
+                  </Button>
                 )}
               </div>
             )}
 
-            {backtestStats && backtestStats.finished > 0 && (
+            {isBacktest && !rangeMode && (
+              <div className="mt-2 flex items-center gap-2">
+                <Badge variant="outline" className="text-yellow-400 border-yellow-500/30">
+                  <FlaskConical className="w-3 h-3 mr-1" /> Modo Backtest
+                </Badge>
+                <span className="text-xs text-muted-foreground">Jogos não serão salvos automaticamente</span>
+              </div>
+            )}
+
+            {loading && (
+              <div className="mt-3 space-y-1">
+                <Progress value={undefined} className="h-2" />
+                <p className="text-xs text-muted-foreground">Buscando jogos, filtrando por odds e analisando em lotes paralelos... (até 2 min)</p>
+              </div>
+            )}
+
+            {!loading && !rangeMode && meta && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {meta.total_fixtures} jogos no dia → {meta.pre_filtered} com odd casa &lt; visitante → {approvedResults.length} aprovados
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Range Mode Summary */}
+        {rangeMode && rangeData && (
+          <Card className="border-primary/20">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">
+                    Últimos {rangeMode.days} dias
+                    <span className="text-muted-foreground font-normal ml-1">
+                      ({rangeData.analyzedDays}/{rangeData.totalDays} analisados)
+                    </span>
+                  </h3>
+                </div>
+                {(rangeData.analyzedDays > 0) && (
+                  <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
+                    <Trash2 className="w-3 h-3" /> Limpar cache
+                  </Button>
+                )}
+              </div>
+
+              {rangeData.missingDates.length > 0 && (
+                <div className="mb-3">
+                  <Button
+                    onClick={analyzeMissingDays}
+                    disabled={analyzingMissing}
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 text-xs"
+                  >
+                    {analyzingMissing ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Analisando {missingProgress.current}/{missingProgress.total}...
+                      </>
+                    ) : (
+                      <>
+                        <FlaskConical className="w-3 h-3" />
+                        Analisar {rangeData.missingDates.length} dia(s) faltante(s)
+                      </>
+                    )}
+                  </Button>
+                  {analyzingMissing && (
+                    <Progress value={(missingProgress.current / missingProgress.total) * 100} className="h-1.5 mt-2" />
+                  )}
+                </div>
+              )}
+
+              {backtestStats && backtestStats.finished > 0 && (
+                <div className="grid grid-cols-4 gap-3 text-center">
+                  <div>
+                    <p className="text-lg font-bold">{backtestStats.total}</p>
+                    <p className="text-xs text-muted-foreground">Aprovados</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-emerald-400">{backtestStats.greens}</p>
+                    <p className="text-xs text-muted-foreground">Green</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-red-400">{backtestStats.reds}</p>
+                    <p className="text-xs text-muted-foreground">Red</p>
+                  </div>
+                  <div>
+                    <p className={`text-lg font-bold ${backtestStats.winRate >= 70 ? 'text-emerald-400' : backtestStats.winRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                      {backtestStats.winRate.toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">Win Rate</p>
+                  </div>
+                </div>
+              )}
+
+              {backtestStats && backtestStats.finished < backtestStats.total && backtestStats.total > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
+                </p>
+              )}
+
+              {rangeData.analyzedDays === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhum dia analisado ainda. Clique no botão acima para analisar.</p>
+              )}
+
+              {(rangeMode || isBacktest) && approvedResults.length > 0 && (
+                <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
+                  onClick={saveBacktestForCalibration}>
+                  {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  Salvar para Calibração ({approvedResults.length})
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Single day Backtest Summary */}
+        {!rangeMode && isBacktest && backtestStats && backtestStats.finished > 0 && (
+          <Card className="border-yellow-500/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="w-4 h-4 text-yellow-400" />
+                <h3 className="text-sm font-semibold">Resultado do Backtest</h3>
+              </div>
               <div className="grid grid-cols-4 gap-3 text-center">
                 <div>
                   <p className="text-lg font-bold">{backtestStats.total}</p>
@@ -762,239 +824,188 @@ export const Lay0x1Scanner = () => {
                   <p className="text-xs text-muted-foreground">Win Rate</p>
                 </div>
               </div>
-            )}
-
-            {backtestStats && backtestStats.finished < backtestStats.total && backtestStats.total > 0 && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
-              </p>
-            )}
-
-            {rangeData.analyzedDays === 0 && (
-              <p className="text-xs text-muted-foreground">Nenhum dia analisado ainda. Clique no botão acima para analisar.</p>
-            )}
-
-            {(rangeMode || isBacktest) && approvedResults.length > 0 && (
-              <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
-                onClick={saveBacktestForCalibration}>
-                {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                Salvar para Calibração ({approvedResults.length})
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Single day Backtest Summary */}
-      {!rangeMode && isBacktest && backtestStats && backtestStats.finished > 0 && (
-        <Card className="border-yellow-500/20">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp className="w-4 h-4 text-yellow-400" />
-              <h3 className="text-sm font-semibold">Resultado do Backtest</h3>
-            </div>
-            <div className="grid grid-cols-4 gap-3 text-center">
-              <div>
-                <p className="text-lg font-bold">{backtestStats.total}</p>
-                <p className="text-xs text-muted-foreground">Aprovados</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-emerald-400">{backtestStats.greens}</p>
-                <p className="text-xs text-muted-foreground">Green</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-red-400">{backtestStats.reds}</p>
-                <p className="text-xs text-muted-foreground">Red</p>
-              </div>
-              <div>
-                <p className={`text-lg font-bold ${backtestStats.winRate >= 70 ? 'text-emerald-400' : backtestStats.winRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {backtestStats.winRate.toFixed(0)}%
+              {backtestStats.finished < backtestStats.total && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
                 </p>
-                <p className="text-xs text-muted-foreground">Win Rate</p>
-              </div>
-            </div>
-            {backtestStats.finished < backtestStats.total && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
-              </p>
-            )}
-            {approvedResults.length > 0 && (
-              <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
-                onClick={saveBacktestForCalibration}>
-                {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                Salvar para Calibração ({approvedResults.length})
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Settings */}
-      <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-between text-sm text-muted-foreground">
-            <span className="flex items-center gap-2"><Settings2 className="w-4 h-4" /> Ajustar Critérios</span>
-            <ChevronDown className={`w-4 h-4 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <Card>
-            <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs">Mín. gols mandante (casa): {weights.min_home_goals_avg}</Label>
-                <Slider value={[weights.min_home_goals_avg]} min={0.5} max={3} step={0.1}
-                  onValueChange={([v]) => handleWeightChange('min_home_goals_avg', v)} />
-              </div>
-              <div>
-                <Label className="text-xs">Mín. gols sofridos visitante (fora): {weights.min_away_conceded_avg}</Label>
-                <Slider value={[weights.min_away_conceded_avg]} min={0.5} max={3} step={0.1}
-                  onValueChange={([v]) => handleWeightChange('min_away_conceded_avg', v)} />
-              </div>
-              <div>
-                <Label className="text-xs">Máx. odd visitante: {weights.max_away_odd}</Label>
-                <Slider value={[weights.max_away_odd]} min={2} max={8} step={0.1}
-                  onValueChange={([v]) => handleWeightChange('max_away_odd', v)} />
-              </div>
-              <div>
-                <Label className="text-xs">Mín. Over 1.5 combinado: {weights.min_over15_combined}%</Label>
-                <Slider value={[weights.min_over15_combined]} min={30} max={150} step={5}
-                  onValueChange={([v]) => handleWeightChange('min_over15_combined', v)} />
-              </div>
-              <div>
-                <Label className="text-xs">Máx. 0x1 no H2H: {weights.max_h2h_0x1}</Label>
-                <Slider value={[weights.max_h2h_0x1]} min={0} max={3} step={1}
-                  onValueChange={([v]) => handleWeightChange('max_h2h_0x1', v)} />
-              </div>
-              <div className="sm:col-span-2 p-2 rounded bg-muted/50">
-                <p className="text-xs text-muted-foreground">
-                  ⚡ <strong>Critério fixo:</strong> Odd da casa sempre deve ser menor que a do visitante (pré-filtro automático)
-                </p>
-              </div>
+              )}
+              {approvedResults.length > 0 && (
+                <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
+                  onClick={saveBacktestForCalibration}>
+                  {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  Salvar para Calibração ({approvedResults.length})
+                </Button>
+              )}
             </CardContent>
           </Card>
-        </CollapsibleContent>
-      </Collapsible>
+        )}
 
-      {/* Results — grouped by league, Fulltrader style */}
-      {!loading && results.length > 0 && (
-        <>
-          {approvedResults.length > 0 && (
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-emerald-400 mb-2">
-                ✅ Aprovados ({approvedResults.length})
-              </h3>
-              {groupByLeague(approvedResults).map(([leagueName, leagueResults]) => (
-                <div key={leagueName}>
-                  <div className="flex items-center gap-2 px-1 py-1.5">
-                    <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
-                    <div className="flex-1 h-px bg-border/30" />
+        {/* Settings */}
+        <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between text-sm text-muted-foreground">
+              <span className="flex items-center gap-2"><Settings2 className="w-4 h-4" /> Ajustar Critérios</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <Card>
+              <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs">Mín. gols mandante (casa): {weights.min_home_goals_avg}</Label>
+                  <Slider value={[weights.min_home_goals_avg]} min={0.5} max={3} step={0.1}
+                    onValueChange={([v]) => handleWeightChange('min_home_goals_avg', v)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Mín. gols sofridos visitante (fora): {weights.min_away_conceded_avg}</Label>
+                  <Slider value={[weights.min_away_conceded_avg]} min={0.5} max={3} step={0.1}
+                    onValueChange={([v]) => handleWeightChange('min_away_conceded_avg', v)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Máx. odd visitante: {weights.max_away_odd}</Label>
+                  <Slider value={[weights.max_away_odd]} min={2} max={8} step={0.1}
+                    onValueChange={([v]) => handleWeightChange('max_away_odd', v)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Mín. Over 1.5 combinado: {weights.min_over15_combined}%</Label>
+                  <Slider value={[weights.min_over15_combined]} min={30} max={150} step={5}
+                    onValueChange={([v]) => handleWeightChange('min_over15_combined', v)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Máx. 0x1 no H2H: {weights.max_h2h_0x1}</Label>
+                  <Slider value={[weights.max_h2h_0x1]} min={0} max={3} step={1}
+                    onValueChange={([v]) => handleWeightChange('max_h2h_0x1', v)} />
+                </div>
+                <div className="sm:col-span-2 p-2 rounded bg-muted/50">
+                  <p className="text-xs text-muted-foreground">
+                    ⚡ <strong>Critério fixo:</strong> Odd da casa sempre deve ser menor que a do visitante (pré-filtro automático)
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Results — grouped by league, Fulltrader style */}
+        {!loading && results.length > 0 && (
+          <>
+            {approvedResults.length > 0 && (
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-emerald-400 mb-2">
+                  ✅ Aprovados ({approvedResults.length})
+                </h3>
+                {groupByLeague(approvedResults).map(([leagueName, leagueResults]) => (
+                  <div key={leagueName}>
+                    <div className="flex items-center gap-2 px-1 py-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
+                      <div className="flex-1 h-px bg-border/30" />
+                    </div>
+                    <div className="space-y-1">
+                      {leagueResults.map(r => (
+                        <Lay0x1ScoreCard
+                          key={r.fixture_id}
+                          homeTeam={r.home_team}
+                          awayTeam={r.away_team}
+                          league={r.league}
+                          time={r.time}
+                          scoreValue={r.score_value}
+                          classification={r.classification}
+                          approved={r.approved}
+                          criteria={r.criteria}
+                          reasons={r.reasons}
+                          onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
+                          saving={savingId === r.fixture_id}
+                          backtestResult={getBacktestResult(r)}
+                          onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                          onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                          sendingToPlanning={sendingPlanningId === r.fixture_id}
+                          alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                          homeOdd={r.criteria?.home_odd}
+                          drawOdd={r.criteria?.draw_odd}
+                          awayOdd={r.criteria?.away_odd}
+                          homeTeamLogo={r.home_team_logo}
+                          awayTeamLogo={r.away_team_logo}
+                          onSelect={() => setSelectedResult(r)}
+                          isSelected={selectedResult?.fixture_id === r.fixture_id}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {leagueResults.map(r => (
-                      <Lay0x1ScoreCard
-                        key={r.fixture_id}
-                        homeTeam={r.home_team}
-                        awayTeam={r.away_team}
-                        league={r.league}
-                        time={r.time}
-                        scoreValue={r.score_value}
-                        classification={r.classification}
-                        approved={r.approved}
-                        criteria={r.criteria}
-                        reasons={r.reasons}
-                        onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
-                        saving={savingId === r.fixture_id}
-                        backtestResult={getBacktestResult(r)}
-                        onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
-                        onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
-                        sendingToPlanning={sendingPlanningId === r.fixture_id}
-                        alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
-                        homeOdd={r.criteria?.home_odd}
-                        drawOdd={r.criteria?.draw_odd}
-                        awayOdd={r.criteria?.away_odd}
-                        homeTeamLogo={r.home_team_logo}
-                        awayTeamLogo={r.away_team_logo}
-                        onSelect={() => setSelectedResult(r)}
-                        isSelected={selectedResult?.fixture_id === r.fixture_id}
-                      />
+                ))}
+              </div>
+            )}
+
+            {rejectedResults.length > 0 && (
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between text-sm text-muted-foreground">
+                    <span>❌ Reprovados ({rejectedResults.length})</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="space-y-1 mt-2">
+                    {groupByLeague(rejectedResults).map(([leagueName, leagueResults]) => (
+                      <div key={leagueName}>
+                        <div className="flex items-center gap-2 px-1 py-1.5">
+                          <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
+                          <div className="flex-1 h-px bg-border/30" />
+                        </div>
+                        <div className="space-y-1">
+                          {leagueResults.map(r => (
+                            <Lay0x1ScoreCard
+                              key={r.fixture_id}
+                              homeTeam={r.home_team}
+                              awayTeam={r.away_team}
+                              league={r.league}
+                              time={r.time}
+                              scoreValue={r.score_value}
+                              classification={r.classification}
+                              approved={r.approved}
+                              criteria={r.criteria}
+                              reasons={r.reasons}
+                              backtestResult={getBacktestResult(r)}
+                              onForceAdd={() => handleSave(r)}
+                              forceAdding={savingId === r.fixture_id}
+                              onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                              onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                              sendingToPlanning={sendingPlanningId === r.fixture_id}
+                              alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                              homeOdd={r.criteria?.home_odd}
+                              drawOdd={r.criteria?.draw_odd}
+                              awayOdd={r.criteria?.away_odd}
+                              homeTeamLogo={r.home_team_logo}
+                              awayTeamLogo={r.away_team_logo}
+                              onSelect={() => setSelectedResult(r)}
+                              isSelected={selectedResult?.fixture_id === r.fixture_id}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </>
+        )}
 
-          {rejectedResults.length > 0 && (
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between text-sm text-muted-foreground">
-                  <span>❌ Reprovados ({rejectedResults.length})</span>
-                  <ChevronDown className="w-4 h-4" />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="space-y-1 mt-2">
-                  {groupByLeague(rejectedResults).map(([leagueName, leagueResults]) => (
-                    <div key={leagueName}>
-                      <div className="flex items-center gap-2 px-1 py-1.5">
-                        <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
-                        <div className="flex-1 h-px bg-border/30" />
-                      </div>
-                      <div className="space-y-1">
-                        {leagueResults.map(r => (
-                          <Lay0x1ScoreCard
-                            key={r.fixture_id}
-                            homeTeam={r.home_team}
-                            awayTeam={r.away_team}
-                            league={r.league}
-                            time={r.time}
-                            scoreValue={r.score_value}
-                            classification={r.classification}
-                            approved={r.approved}
-                            criteria={r.criteria}
-                            reasons={r.reasons}
-                            backtestResult={getBacktestResult(r)}
-                            onForceAdd={() => handleSave(r)}
-                            forceAdding={savingId === r.fixture_id}
-                            onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
-                            onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
-                            sendingToPlanning={sendingPlanningId === r.fixture_id}
-                            alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
-                            homeOdd={r.criteria?.home_odd}
-                            drawOdd={r.criteria?.draw_odd}
-                            awayOdd={r.criteria?.away_odd}
-                            homeTeamLogo={r.home_team_logo}
-                            awayTeamLogo={r.away_team_logo}
-                            onSelect={() => setSelectedResult(r)}
-                            isSelected={selectedResult?.fixture_id === r.fixture_id}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-        </>
-      )}
-
-      {/* Empty state — no cache and not loading */}
-      {!loading && results.length === 0 && !rangeMode && (
-        <Card className="border-dashed border-muted-foreground/30">
-          <CardContent className="p-6 text-center space-y-3">
-            <Search className="w-8 h-8 mx-auto text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">
-              Nenhuma busca salva para <strong>{selectedDate}</strong>
-            </p>
-            <Button onClick={analyzeGames} disabled={loading} size="sm" className="gap-2">
-              <Search className="w-4 h-4" />
-              {isBacktest ? 'Rodar Backtest' : 'Analisar Jogos do Dia'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        {/* Empty state — no cache and not loading */}
+        {!loading && results.length === 0 && !rangeMode && (
+          <Card className="border-dashed border-muted-foreground/30">
+            <CardContent className="p-6 text-center space-y-3">
+              <Search className="w-8 h-8 mx-auto text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                Nenhuma busca salva para <strong>{selectedDate}</strong>
+              </p>
+              <Button onClick={analyzeGames} disabled={loading} size="sm" className="gap-2">
+                <Search className="w-4 h-4" />
+                {isBacktest ? 'Rodar Backtest' : 'Analisar Jogos do Dia'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* RIGHT COLUMN - Detail panel (desktop only) */}
       {!isMobile && (

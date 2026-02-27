@@ -1,7 +1,7 @@
 import { Game, Method, GoalEvent } from "@/types";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Shield, Check, X, Minus, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle, Sparkles, BarChart3 } from "lucide-react";
+import { Shield, Check, X, Minus, ChevronRight, Settings, Trash2, MoreVertical, DollarSign, AlertCircle, Sparkles, BarChart3, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamLogo } from "@/hooks/useTeamLogo";
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -54,13 +54,14 @@ interface GameListItemProps {
   onRedCardDetected?: OnRedCardDetected;
   onSelect?: () => void;
   isSelected?: boolean;
+  compact?: boolean;
 }
 
-export function GameListItem({ 
-  game, 
-  methods, 
-  onUpdate, 
-  onDelete, 
+export function GameListItem({
+  game,
+  methods,
+  onUpdate,
+  onDelete,
   onEdit,
   liveScore,
   lastGlobalRefresh,
@@ -69,19 +70,17 @@ export function GameListItem({
   onRedCardDetected,
   onSelect,
   isSelected,
+  compact = false,
 }: GameListItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPreMatch, setShowPreMatch] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
   const lastSyncRef = useRef<number>(0);
-  
+
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
-  
-  // Fetch fixture cache: auto-fetch only for live games that still have unresolved methods
-  const allMethodsResolved = game.methodOperations.length > 0 
-    && game.methodOperations.every(op => op.result === 'Green' || op.result === 'Red' || op.result === 'Void');
-  const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending') && !allMethodsResolved;
+
+  const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending');
   const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused, liveScore?.goalDetectedAt, onRedCardDetected);
   const dominance = useDominanceAnalysis(fixtureCache);
   const ldiHistory = useLdiHistory(
@@ -89,8 +88,7 @@ export function GameListItem({
     fixtureCache?.minute_now,
     dominance.dominanceIndex
   );
-  
-  // AI moment text - only for live games with data
+
   const { text: aiMomentText, loading: aiLoading } = useLiveMomentAI(
     isLiveForFetch && game.status === 'Live',
     game.homeTeam,
@@ -105,18 +103,18 @@ export function GameListItem({
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
   const fixtureStatus = liveScore?.status;
-  const isGameLive = fixtureStatus 
-    ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus) 
+  const isGameLive = fixtureStatus
+    ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus)
     : (game.status === 'Live' || game.status === 'Pending');
-  
+
   const isLive = isGameLive;
   const isHalfTime = fixtureStatus === 'HT';
   const isExtraTime = fixtureStatus === 'ET';
   const isPenalty = fixtureStatus === 'P';
   const isFinished = fixtureStatus ? ['FT', 'AET', 'PEN'].includes(fixtureStatus) : game.status === 'Finished';
-  
+
   const apiElapsed = liveScore?.elapsed;
-  
+
   useEffect(() => {
     if (apiElapsed && isLive && lastGlobalRefresh) {
       if (lastGlobalRefresh > lastSyncRef.current) {
@@ -125,16 +123,16 @@ export function GameListItem({
       }
     }
   }, [apiElapsed, isLive, lastGlobalRefresh]);
-  
+
   useEffect(() => {
     if (apiElapsed && isLive && !localElapsed) {
       setLocalElapsed({ minutes: apiElapsed, seconds: 0 });
     }
   }, [apiElapsed, isLive, localElapsed]);
-  
+
   useEffect(() => {
     if (!isLive || !localElapsed || isHalfTime) return;
-    
+
     const interval = setInterval(() => {
       setLocalElapsed(prev => {
         if (!prev) return null;
@@ -147,7 +145,7 @@ export function GameListItem({
         return { minutes: newMinutes, seconds: newSeconds };
       });
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, [isLive, localElapsed, isHalfTime]);
 
@@ -155,14 +153,12 @@ export function GameListItem({
     return methods.find(m => m.id === methodId)?.name || 'Método';
   };
 
-  // Helper to check financial data status
   const getFinancialStatus = (op: { odd?: number; stakeValue?: number }) => {
     const hasOdd = op.odd && op.odd > 0;
     const hasStake = op.stakeValue && op.stakeValue > 0;
     return { hasOdd, hasStake, complete: hasOdd && hasStake, partial: (hasOdd || hasStake) && !(hasOdd && hasStake) };
   };
 
-  // Use live score data if available, fallback to game data
   const homeScore = liveScore?.homeScore ?? game.finalScoreHome ?? null;
   const awayScore = liveScore?.awayScore ?? game.finalScoreAway ?? null;
   const hasScore = homeScore !== null;
@@ -174,124 +170,60 @@ export function GameListItem({
     onUpdate(game.id, { methodOperations: updatedOperations });
   };
 
-  // Format status/time display
-  const getStatusDisplay = () => {
-    if (isHalfTime) {
-      return { text: 'INT', subText: '45\'', color: 'text-amber-500' };
-    }
-    if (isExtraTime) {
-      return { text: 'PRR', subText: localElapsed ? `${localElapsed.minutes}'` : '', color: 'text-orange-500' };
-    }
-    if (isPenalty) {
-      return { text: 'PEN', subText: '', color: 'text-purple-500' };
-    }
+  const status = useMemo(() => {
+    if (isHalfTime) return { text: 'INT', subText: '45\'', color: 'text-amber-500' };
+    if (isExtraTime) return { text: 'PRR', subText: localElapsed ? `${localElapsed.minutes}'` : '', color: 'text-orange-500' };
+    if (isPenalty) return { text: 'PEN', subText: '', color: 'text-purple-500' };
     if (isLive && localElapsed) {
       const period = localElapsed.minutes <= 45 ? '1T' : '2T';
       return { text: period, subText: `${localElapsed.minutes}'`, color: 'text-primary' };
     }
-    if (isFinished) {
-      return { text: 'FIM', subText: '', color: 'text-muted-foreground' };
-    }
+    if (isFinished) return { text: 'FIM', subText: '', color: 'text-muted-foreground' };
     return { text: game.time, subText: '', color: 'text-muted-foreground' };
-  };
+  }, [isHalfTime, isExtraTime, isPenalty, isLive, localElapsed, isFinished, game.time]);
 
-  const status = getStatusDisplay();
-
-  // Get goal events for display - from fixture cache (live), liveScore events, or persisted goalEvents
   const { homeGoals, awayGoals } = useMemo(() => {
-    // 1. Priority: Use fixture cache key_events for live games (has player names and minutes)
+    const goals = { homeGoals: [] as any[], awayGoals: [] as any[] };
+
     if (fixtureCache?.key_events?.length) {
-      const goals = fixtureCache.key_events.filter(e => e.type === 'goal');
-      return {
-        homeGoals: goals
-          .filter(e => e.team === 'home')
-          .map(e => ({
-            teamId: 0,
-            playerName: e.player || '',
-            minute: e.minute,
-            detail: e.detail,
-          })),
-        awayGoals: goals
-          .filter(e => e.team === 'away')
-          .map(e => ({
-            teamId: 0,
-            playerName: e.player || '',
-            minute: e.minute,
-            detail: e.detail,
-          })),
-      };
+      const keyGoals = fixtureCache.key_events.filter(e => e.type === 'goal');
+      goals.homeGoals = keyGoals.filter(e => e.team === 'home').map(e => ({ playerName: e.player || 'Gol', minute: e.minute, detail: e.detail }));
+      goals.awayGoals = keyGoals.filter(e => e.team === 'away').map(e => ({ playerName: e.player || 'Gol', minute: e.minute, detail: e.detail }));
     }
-    
-    // 2. Fallback: Use liveScore events if available (new format from useLiveScores)
+
     if (liveScore?.events?.length) {
-      return {
-        homeGoals: liveScore.events
-          .filter(e => e.type === 'goal' && e.team === 'home')
-          .map(e => ({
-            teamId: 0,
-            playerName: e.player || '',
-            minute: e.minute,
-            detail: e.detail,
-          })),
-        awayGoals: liveScore.events
-          .filter(e => e.type === 'goal' && e.team === 'away')
-          .map(e => ({
-            teamId: 0,
-            playerName: e.player || '',
-            minute: e.minute,
-            detail: e.detail,
-          })),
-      };
+      const liveGoals = liveScore.events.filter(e => e.type === 'goal');
+      const lHome = liveGoals.filter(e => e.team === 'home').map(e => ({ playerName: e.player || 'Gol', minute: e.minute, detail: e.detail }));
+      const lAway = liveGoals.filter(e => e.team === 'away').map(e => ({ playerName: e.player || 'Gol', minute: e.minute, detail: e.detail }));
+      if (goals.homeGoals.length === 0) goals.homeGoals = lHome;
+      if (goals.awayGoals.length === 0) goals.awayGoals = lAway;
     }
-    
-    // 3. Fallback: Use persisted goalEvents from database
-    const homeTeamId = liveScore?.homeTeamId;
-    const awayTeamId = liveScore?.awayTeamId;
-    
-    if (game.goalEvents?.length) {
-      // If we have team IDs, use them
+
+    if (goals.homeGoals.length === 0 && goals.awayGoals.length === 0 && game.goalEvents?.length) {
+      const homeTeamId = liveScore?.homeTeamId;
+      const awayTeamId = liveScore?.awayTeamId;
       if (homeTeamId && awayTeamId) {
-        return {
-          homeGoals: game.goalEvents.filter(e => e.teamId === homeTeamId),
-          awayGoals: game.goalEvents.filter(e => e.teamId === awayTeamId),
-        };
-      }
-      
-      // Otherwise try to match by score count
-      const homeScoreNum = game.finalScoreHome ?? 0;
-      const awayScoreNum = game.finalScoreAway ?? 0;
-      
-      // Group by teamId
-      const byTeam = game.goalEvents.reduce((acc, e) => {
-        if (!acc[e.teamId]) acc[e.teamId] = [];
-        acc[e.teamId].push(e);
-        return acc;
-      }, {} as Record<number, GoalEvent[]>);
-      
-      const teamIds = Object.keys(byTeam).map(Number);
-      if (teamIds.length === 2) {
-        const [team1, team2] = teamIds;
-        const team1Goals = byTeam[team1].length;
-        const team2Goals = byTeam[team2].length;
-        
-        if (team1Goals === homeScoreNum && team2Goals === awayScoreNum) {
-          return { homeGoals: byTeam[team1], awayGoals: byTeam[team2] };
-        } else if (team2Goals === homeScoreNum && team1Goals === awayScoreNum) {
-          return { homeGoals: byTeam[team2], awayGoals: byTeam[team1] };
+        goals.homeGoals = game.goalEvents.filter(e => e.teamId === homeTeamId);
+        goals.awayGoals = game.goalEvents.filter(e => e.teamId === awayTeamId);
+      } else {
+        const byTeam = game.goalEvents.reduce((acc, e) => { if (!acc[e.teamId]) acc[e.teamId] = []; acc[e.teamId].push(e); return acc; }, {} as Record<number, any[]>);
+        const teamIds = Object.keys(byTeam).map(Number);
+        if (teamIds.length >= 1) {
+          goals.homeGoals = byTeam[teamIds[0]] || [];
+          goals.awayGoals = teamIds.length > 1 ? byTeam[teamIds[1]] : [];
         }
       }
-      
-      // Fallback: first teamId = home
-      if (teamIds.length >= 1) {
-        return {
-          homeGoals: byTeam[teamIds[0]] || [],
-          awayGoals: teamIds.length > 1 ? byTeam[teamIds[1]] : [],
-        };
-      }
     }
-    
-    return { homeGoals: [], awayGoals: [] };
-  }, [fixtureCache?.key_events, liveScore?.events, liveScore?.homeTeamId, liveScore?.awayTeamId, game.goalEvents, game.finalScoreHome, game.finalScoreAway]);
+
+    if (homeScore > 0 && goals.homeGoals.length === 0) {
+      goals.homeGoals = Array(homeScore).fill(0).map(() => ({ playerName: 'Gol...', minute: '??', detail: '' }));
+    }
+    if (awayScore > 0 && goals.awayGoals.length === 0) {
+      goals.awayGoals = Array(awayScore).fill(0).map(() => ({ playerName: 'Gol...', minute: '??', detail: '' }));
+    }
+
+    return goals;
+  }, [fixtureCache?.key_events, liveScore?.events, liveScore?.homeTeamId, liveScore?.awayTeamId, game.goalEvents, homeScore, awayScore]);
 
   const { homeRedCards, awayRedCards } = useMemo(() => {
     if (fixtureCache?.key_events?.length) {
@@ -301,310 +233,188 @@ export function GameListItem({
         awayRedCards: reds.filter((e: any) => e.team === 'away'),
       };
     }
-    return { homeRedCards: [] as any[], awayRedCards: [] as any[] };
+    return { homeRedCards: [], awayRedCards: [] };
   }, [fixtureCache?.key_events]);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      {/* Main Row */}
       <div className={cn(
-        "border-b border-border/30 hover:bg-muted/30 transition-colors",
-        isLive && "bg-primary/5",
-        isHighlighted && "goal-highlight",
-        isSelected && "border-l-2 border-l-primary bg-primary/10"
+        "bg-[#121A24] border-b border-white/5 transition-all duration-200 cursor-pointer group relative",
+        "hover:bg-[#182230]",
+        isSelected && "ring-1 ring-emerald-500/40 z-10",
+        isHighlighted && "ring-1 ring-yellow-500/30 bg-[#1A1A10] z-20",
+        compact ? "py-2 px-3" : "py-4 px-4"
       )}
-      onClick={() => onSelect?.()}
+        onClick={() => onSelect?.()}
       >
-        <div className="flex items-stretch">
-          {/* Status Column */}
-          <div className={cn(
-            "w-12 sm:w-14 flex-shrink-0 flex flex-col items-center justify-center py-2 border-r border-border/30",
-            status.color
-          )}>
-            <span className="text-[10px] sm:text-xs font-bold">{status.text}</span>
-            {status.subText && (
-              <span className="text-[9px] sm:text-[10px]">{status.subText}</span>
-            )}
+        {isHighlighted && (
+          <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-yellow-500/10 border-b border-l border-yellow-500/20 rounded-bl-sm">
+            <span className="text-[8px] font-bold text-yellow-500 uppercase tracking-tighter">Último Gol</span>
           </div>
-
-          {/* Teams + Score Column */}
+        )}
+        <div className="flex items-start gap-3">
           <CollapsibleTrigger asChild>
-            <div className="flex-1 py-2 px-2 sm:px-3 cursor-pointer min-w-0 max-w-md">
-              {/* Home Team Row */}
-              <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
-                <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
-                  <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-                  <AvatarFallback className="text-[6px] sm:text-[8px] bg-secondary">
-                    <Shield className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs sm:text-sm flex-1 truncate">{game.homeTeam}</span>
-                <span className={cn(
-                  "text-xs sm:text-sm font-bold w-5 sm:w-6 text-right tabular-nums flex-shrink-0",
-                  isLive && "text-foreground",
-                  !hasScore && "text-muted-foreground"
-                )}>
-                  {hasScore ? homeScore : '-'}
-                </span>
+            <div className="flex-1 min-w-0 flex flex-col gap-3">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex-1 space-y-2">
+                  {/* Home Team & Scorers */}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-5 w-5 flex-shrink-0">
+                        <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+                        <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
+                      {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                    </div>
+                    {homeGoals.length > 0 && (
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
+                        {homeGoals.map((g, i) => (
+                          <div key={`h-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
+                            <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Away Team & Scorers */}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-5 w-5 flex-shrink-0">
+                        <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+                        <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
+                      {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                    </div>
+                    {awayGoals.length > 0 && (
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
+                        {awayGoals.map((g, i) => (
+                          <div key={`a-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
+                            <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-1.5 px-4 border-l border-white/5">
+                  <div className="flex items-center gap-2 font-black text-xl tabular-nums bg-white/5 px-3 py-1 rounded-md border border-white/5">
+                    <span className="text-emerald-500">{hasScore ? homeScore : '-'}</span>
+                    <span className="text-gray-700 text-xs">:</span>
+                    <span className="text-emerald-500">{hasScore ? awayScore : '-'}</span>
+                  </div>
+                  <div className={cn(
+                    "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded",
+                    status.color === 'text-primary' ? 'text-emerald-400 bg-emerald-500/10' : `${status.color} bg-white/5`
+                  )}>
+                    {status.text} {status.subText && <span className="opacity-60">{status.subText}</span>}
+                  </div>
+                </div>
               </div>
-              
-              {/* Home Goals */}
-              {homeGoals.length > 0 && (
-                <div className="ml-5 sm:ml-7 mb-1">
-                  {homeGoals.map((goal, i) => (
-                    <span key={i} className="text-[9px] sm:text-[10px] text-muted-foreground mr-2">
-                      ⚽ {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (P)' : ''}
-                    </span>
-                  ))}
+
+              {/* Dominance */}
+              {dominance.dominanceIndex !== null && (
+                <div className="space-y-1.5 px-0.5">
+                  <div className="flex justify-between items-center text-[8px] font-bold text-gray-500 uppercase tracking-tighter">
+                    <span>Pressão Mandante</span><span className="text-[9px] text-gray-400">Momento do Jogo</span><span>Pressão Visitante</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden flex relative shadow-inner">
+                    <div className={cn("h-full transition-all duration-700 relative", dominance.dominantTeam === 'home' && "bg-[#00F59B] shadow-[0_0_8px_rgba(0,245,155,0.4)]", dominance.dominantTeam === 'away' && "bg-[#FF3366] shadow-[0_0_8px_rgba(255,51,102,0.4)]", dominance.dominantTeam === 'balanced' && "bg-gray-500/30")} style={{ width: `${dominance.dominanceIndex}%` }} />
+                  </div>
                 </div>
               )}
-              {homeRedCards.length > 0 && (
-                <div className="ml-5 sm:ml-7 mb-1">
-                  {homeRedCards.map((rc: any, i: number) => (
-                    <span key={i} className="text-[9px] sm:text-[10px] text-red-400 mr-2">
-                      🟥 {rc.player} {rc.minute}'
-                    </span>
-                  ))}
-                </div>
-              )}
-              
-              {/* Away Team Row */}
-              <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
-                <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
-                  <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-                  <AvatarFallback className="text-[6px] sm:text-[8px] bg-secondary">
-                    <Shield className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs sm:text-sm flex-1 truncate">{game.awayTeam}</span>
-                <span className={cn(
-                  "text-xs sm:text-sm font-bold w-5 sm:w-6 text-right tabular-nums flex-shrink-0",
-                  isLive && "text-foreground",
-                  !hasScore && "text-muted-foreground"
-                )}>
-                  {hasScore ? awayScore : '-'}
-                </span>
-              </div>
-              
-              {/* Away Goals */}
-              {awayGoals.length > 0 && (
-                <div className="ml-5 sm:ml-7 mb-1">
-                  {awayGoals.map((goal, i) => (
-                    <span key={i} className="text-[9px] sm:text-[10px] text-muted-foreground mr-2">
-                      ⚽ {goal.playerName} {goal.minute}'{goal.detail === 'Penalty' ? ' (P)' : ''}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {awayRedCards.length > 0 && (
-                <div className="ml-5 sm:ml-7">
-                  {awayRedCards.map((rc: any, i: number) => (
-                    <span key={i} className="text-[9px] sm:text-[10px] text-red-400 mr-2">
-                      🟥 {rc.player} {rc.minute}'
-                    </span>
+
+              {/* Metrics Grid */}
+              {fixtureCache?.normalized_stats && (
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { label: 'Posse', h: `${fixtureCache.normalized_stats.home.possession}%`, a: `${fixtureCache.normalized_stats.away.possession}%` },
+                    { label: 'Chutes', h: fixtureCache.normalized_stats.home.shots_total, a: fixtureCache.normalized_stats.away.shots_total },
+                    { label: 'No Gol', h: fixtureCache.normalized_stats.home.shots_on, a: fixtureCache.normalized_stats.away.shots_on },
+                    { label: 'Escanteios', h: fixtureCache.normalized_stats.home.corners, a: fixtureCache.normalized_stats.away.corners }
+                  ].map((m, idx) => (
+                    <div key={idx} className="bg-white/5 rounded-md p-1.5 border border-white/5 text-center flex flex-col justify-center">
+                      <span className="text-[7px] text-gray-500 font-bold uppercase mb-0.5">{m.label}</span>
+                      <div className="flex items-center justify-center gap-1 text-[10px] font-black tracking-tight">
+                        <span className="text-[#00F59B]">{m.h}</span><span className="text-gray-700">|</span><span className="text-[#FF3366]">{m.a}</span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
             </div>
           </CollapsibleTrigger>
 
-          {/* Actions Column */}
-          <div className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 flex-shrink-0 border-l border-border/30">
+          {/* Actions */}
+          <div className="flex items-center gap-1 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-6 sm:h-7 sm:w-7 p-0">
-                  <MoreVertical className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-6 w-6 p-0"><MoreVertical className="h-3.5 w-3.5 text-muted-foreground" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {game.api_fixture_id && (
-                  <DropdownMenuItem onClick={() => setShowPreMatch(true)}>
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    Análise pré-jogo
-                  </DropdownMenuItem>
-                )}
-                {onEdit && (
-                  <DropdownMenuItem onClick={() => onEdit(game)}>
-                    <Settings className="h-4 w-4 mr-2" />
-                    Editar métodos
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem 
-                  onClick={() => onDelete(game.id)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Remover
-                </DropdownMenuItem>
+                {game.api_fixture_id && <DropdownMenuItem onClick={() => setShowPreMatch(true)}><BarChart3 className="h-4 w-4 mr-2" />Análise pré-jogo</DropdownMenuItem>}
+                {onEdit && <DropdownMenuItem onClick={() => onEdit(game)}><Settings className="h-4 w-4 mr-2" />Editar métodos</DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => onDelete(game.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Remover</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 sm:h-7 sm:w-7 p-0">
-                <ChevronRight className={cn(
-                  "h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground transition-transform",
-                  isExpanded && "rotate-90"
-                )} />
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-zinc-800">
+                <ChevronRight className={cn("h-4 w-4 text-gray-500 transition-transform", isExpanded && "rotate-90")} />
               </Button>
             </CollapsibleTrigger>
           </div>
-
         </div>
-        
-        {/* Methods pills row - always visible below teams */}
+
+        {/* Methods Row */}
         {game.methodOperations.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 px-2 sm:px-3 pb-1 ml-12 sm:ml-14">
+          <div className={cn("flex flex-wrap items-center gap-1.5 mt-2", compact ? "ml-14" : "ml-16")}>
             {[...game.methodOperations].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)).map((operation) => {
               const financialStatus = getFinancialStatus(operation);
               return (
-                <span
-                  key={operation.methodId}
-                  className={cn(
-                    "text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5",
-                    operation.result === 'Green' && "bg-emerald-500/20 text-emerald-400",
-                    operation.result === 'Red' && "bg-red-500/20 text-red-400",
-                    operation.result === 'Void' && "bg-amber-500/20 text-amber-400",
-                    !operation.result && financialStatus.complete && "bg-emerald-500/10 text-muted-foreground border border-emerald-500/30",
-                    !operation.result && financialStatus.partial && "bg-amber-500/10 text-muted-foreground border border-amber-500/30",
-                    !operation.result && !financialStatus.complete && !financialStatus.partial && "bg-muted text-muted-foreground"
-                  )}
-                >
-                  {getMethodName(operation.methodId)}
-                  {financialStatus.hasOdd && (
-                    <span className="text-[8px] sm:text-[9px] opacity-80">
-                      @{operation.odd?.toFixed(2)}
-                    </span>
-                  )}
-                  {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}
-                  {operation.result === 'Red' && <X className="h-2.5 w-2.5" />}
-                  {operation.result === 'Void' && <Minus className="h-2.5 w-2.5" />}
-                  {!operation.result && financialStatus.complete && (
-                    <DollarSign className="h-2.5 w-2.5 text-emerald-400" />
-                  )}
-                  {!operation.result && financialStatus.partial && (
-                    <AlertCircle className="h-2.5 w-2.5 text-amber-400" />
-                  )}
+                <span key={operation.methodId} className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5", operation.result === 'Green' ? "bg-emerald-500/20 text-emerald-400" : operation.result === 'Red' ? "bg-red-500/20 text-red-400" : operation.result === 'Void' ? "bg-amber-500/20 text-amber-400" : financialStatus.complete ? "bg-emerald-500/10 border border-emerald-500/30 text-muted-foreground" : "bg-muted text-muted-foreground")}>
+                  {getMethodName(operation.methodId)}{financialStatus.hasOdd && <span className="opacity-80">@{operation.odd?.toFixed(2)}</span>}
+                  {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}{operation.result === 'Red' && <X className="h-2.5 w-2.5" />}{operation.result === 'Void' && <Minus className="h-2.5 w-2.5" />}
                 </span>
               );
             })}
           </div>
         )}
 
-        {/* Notes - always visible below methods */}
-        <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-          <GameNotesEditor
-            notes={game.notes}
-            onSave={(notes) => onUpdate(game.id, { notes })}
-            compact
-          />
+        {/* Notes */}
+        <div className={cn("mt-2", compact ? "ml-14" : "ml-16")}>
+          <Collapsible><CollapsibleTrigger className="text-[10px] text-gray-500 hover:text-gray-400 flex items-center gap-1"><FileText className="h-3 w-3" />{game.notes ? 'Ver observações' : 'Adicionar observação'}</CollapsibleTrigger><CollapsibleContent><div className="mt-1"><GameNotesEditor notes={game.notes} onSave={(notes) => onUpdate(game.id, { notes })} compact /></div></CollapsibleContent></Collapsible>
         </div>
 
-        {/* Live Dominance + AI Moment - for live games */}
-        {isLive && game.api_fixture_id && (
-          <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14 space-y-1">
-            <LiveDominanceDisplay 
-              result={dominance} 
-              homeTeam={game.homeTeam} 
-              awayTeam={game.awayTeam} 
-              ldiHistory={ldiHistory}
-              normalizedStats={fixtureCache?.normalized_stats}
-            />
-            {aiMomentText && (
-              <div className="flex items-start gap-1 px-2 py-1 rounded bg-muted/50">
-                <Sparkles className="h-3 w-3 text-primary flex-shrink-0 mt-0.5" />
-                <span className="text-[10px] sm:text-[11px] text-muted-foreground italic leading-tight">{aiMomentText}</span>
-              </div>
-            )}
-          </div>
-        )}
-        {/* Dominance for non-live games with cached data */}
-        {!isLive && game.api_fixture_id && dominance.dominanceIndex !== null && (
-          <div className="px-2 sm:px-3 pb-2 ml-12 sm:ml-14">
-            <LiveDominanceDisplay 
-              result={dominance} 
-              homeTeam={game.homeTeam} 
-              awayTeam={game.awayTeam} 
-              ldiHistory={ldiHistory}
-              normalizedStats={fixtureCache?.normalized_stats}
-            />
+        {/* AI Moment */}
+        {!compact && isLive && aiMomentText && (
+          <div className={cn("mt-2 mb-1 flex items-center gap-1.5 text-[10px] text-gray-400 italic", compact ? "ml-14" : "ml-16")}>
+            <Sparkles className="h-3 w-3 text-emerald-500/60" />{aiMomentText}
           </div>
         )}
       </div>
-      {/* Expanded Content */}
+
       <CollapsibleContent>
         <div className="bg-muted/20 border-b border-border/30 p-3 space-y-3">
-          {/* Methods with Green/Red buttons */}
           {game.methodOperations.length > 0 && (
             <div className="space-y-2">
               <span className="text-xs text-muted-foreground font-medium">Métodos</span>
               <div className="flex flex-wrap gap-2">
-                {[...game.methodOperations].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)).map((operation) => {
-                  const financialStatus = getFinancialStatus(operation);
-                  return (
+                {game.methodOperations.map((operation) => (
                   <div key={operation.methodId} className="flex items-center gap-1.5">
-                    <div className="flex flex-col gap-0.5">
-                      <span className={cn(
-                        "text-[10px] px-2.5 py-1 rounded-full font-semibold inline-flex items-center gap-1",
-                      operation.result === 'Green' && "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50",
-                        operation.result === 'Red' && "bg-red-500 text-white shadow-sm shadow-red-500/50",
-                        operation.result === 'Void' && "bg-amber-500 text-white shadow-sm shadow-amber-500/50",
-                        !operation.result && "bg-zinc-700 text-zinc-300"
-                      )}>
-                        {getMethodName(operation.methodId)}
-                        {operation.result === 'Green' && <Check className="h-3 w-3" />}
-                        {operation.result === 'Red' && <X className="h-3 w-3" />}
-                        {operation.result === 'Void' && <Minus className="h-3 w-3" />}
-                      </span>
-                      {financialStatus.complete && (
-                        <span className="text-[9px] text-muted-foreground">
-                          R$ {operation.stakeValue?.toFixed(2)} @ {operation.odd?.toFixed(2)}
-                        </span>
-                      )}
+                    <div className="flex flex-col">
+                      <span className={cn("text-[10px] px-2.5 py-1 rounded-full font-semibold", operation.result === 'Green' ? "bg-emerald-500 text-white" : operation.result === 'Red' ? "bg-red-500 text-white" : "bg-zinc-700 text-zinc-300")}>{getMethodName(operation.methodId)}</span>
                     </div>
-                    
                     <div className="flex gap-1">
-                      <button
-                        onClick={() => handleResultClick(operation.methodId, 'Green')}
-                        className={cn(
-                          "h-6 w-6 rounded-full flex items-center justify-center transition-all",
-                          operation.result === 'Green' 
-                            ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/50" 
-                            : "bg-zinc-800 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/50"
-                        )}
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleResultClick(operation.methodId, 'Red')}
-                        className={cn(
-                          "h-6 w-6 rounded-full flex items-center justify-center transition-all",
-                          operation.result === 'Red' 
-                            ? "bg-red-500 text-white shadow-sm shadow-red-500/50" 
-                            : "bg-zinc-800 text-red-500 hover:bg-red-500/20 border border-red-500/50"
-                        )}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleResultClick(operation.methodId, 'Void')}
-                        className={cn(
-                          "h-5 w-5 rounded-full flex items-center justify-center transition-all",
-                          operation.result === 'Void' 
-                            ? "bg-amber-500 text-white shadow-sm shadow-amber-500/50" 
-                            : "bg-zinc-800 text-amber-500 hover:bg-amber-500/20 border border-amber-500/50"
-                        )}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </button>
+                      <button onClick={() => handleResultClick(operation.methodId, 'Green')} className={cn("h-6 w-6 rounded-full flex items-center justify-center border", operation.result === 'Green' ? "bg-emerald-500 border-emerald-500" : "bg-zinc-800 border-emerald-500/50 text-emerald-500")}><Check className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => handleResultClick(operation.methodId, 'Red')} className={cn("h-6 w-6 rounded-full flex items-center justify-center border", operation.result === 'Red' ? "bg-red-500 border-red-500" : "bg-zinc-800 border-red-500/50 text-red-500")}><X className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           )}
-
-
         </div>
       </CollapsibleContent>
 

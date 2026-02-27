@@ -34,7 +34,7 @@ export default function Account() {
   const [fixingLeagues, setFixingLeagues] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [showLeagueManager, setShowLeagueManager] = useState(false);
-  
+
   const { settings: opSettings, updateSettings: updateOpSettings } = useOperationalSettings();
   const [editedOpSettings, setEditedOpSettings] = useState({
     metaMensalStakes: 30,
@@ -114,7 +114,7 @@ export default function Account() {
     setFixingLeagues(true);
     try {
       const result = await fixLeagueNames();
-      
+
       if (result.errors > 0) {
         toast.error(`Correção concluída com ${result.errors} erros`);
       } else if (result.updated > 0) {
@@ -122,7 +122,7 @@ export default function Account() {
       } else {
         toast.info('Nenhum jogo precisava de correção');
       }
-      
+
       // Log details to console for debugging
       console.log('Fix League Names Result:', result);
     } catch (error) {
@@ -165,6 +165,7 @@ export default function Account() {
             Conecte sua API Key para importar jogos e estatísticas ao vivo
           </p>
           <Button
+            type="button"
             onClick={() => setShowApiKeyModal(true)}
             variant={settings?.api_key ? 'outline' : 'default'}
           >
@@ -182,6 +183,7 @@ export default function Account() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
+              type="button"
               onClick={handleFixLeagueNames}
               disabled={fixingLeagues}
               variant="outline"
@@ -196,6 +198,7 @@ export default function Account() {
               )}
             </Button>
             <Button
+              type="button"
               onClick={() => setShowLeagueManager(!showLeagueManager)}
               variant={showLeagueManager ? 'secondary' : 'outline'}
             >
@@ -207,14 +210,14 @@ export default function Account() {
 
         {showLeagueManager && (
           <div className="border-t pt-6 mb-6">
-            <LeagueManager 
-              games={games.map(g => ({ 
-                id: g.id, 
-                league: g.league, 
-                homeTeam: g.homeTeam, 
-                awayTeam: g.awayTeam 
-              }))} 
-              onRefresh={refreshGames} 
+            <LeagueManager
+              games={games.map(g => ({
+                id: g.id,
+                league: g.league,
+                homeTeam: g.homeTeam,
+                awayTeam: g.awayTeam
+              }))}
+              onRefresh={refreshGames}
             />
           </div>
         )}
@@ -340,7 +343,7 @@ export default function Account() {
             />
           </div>
         </div>
-        <Button onClick={handleSaveOpSettings} className="w-full mt-4">
+        <Button type="button" onClick={handleSaveOpSettings} className="w-full mt-4">
           Salvar Configurações
         </Button>
       </Card>
@@ -350,7 +353,7 @@ export default function Account() {
       <TelegramSettings />
       <PushNotificationSettings />
       <NotificationSettings />
-      
+
       <ApiKeyModal open={showApiKeyModal} onOpenChange={setShowApiKeyModal} />
     </div>
   );

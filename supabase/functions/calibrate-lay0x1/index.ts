@@ -269,7 +269,7 @@ Com base no contexto financeiro (break-even de ${fc.break_even_rate_pct.toFixed(
                   items: { type: 'string' },
                   description: 'Ligas que devem ser bloqueadas. SOMENTE ligas com pelo menos 1 Red no historico. NUNCA bloqueie ligas com 0 Reds.',
                 },
-              recommended_min_score: {
+                recommended_min_score: {
                   type: 'number',
                   description: 'Score mínimo recomendado (65-90). Com break-even de ~93%, seja rigoroso.',
                 },
@@ -349,9 +349,16 @@ serve(async (req) => {
       .order('created_at', { ascending: true });
 
     if (aErr) throw aErr;
-    if (!analyses || analyses.length < 10) {
+    // Filter to only use non-backtest games for calibration
+    const realAnalyses = (analyses || []).filter(a => !(a as any).is_backtest);
+
+    if (realAnalyses.length < 100) {
       return new Response(
-        JSON.stringify({ message: 'Insufficient data for calibration', count: analyses?.length || 0 }),
+        JSON.stringify({
+          message: 'Insufficient real data for calibration',
+          count: realAnalyses.length,
+          required: 100
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -376,15 +383,15 @@ serve(async (req) => {
     const criteriaKeys = ['home_goals_avg', 'away_conceded_avg', 'over15_combined', 'league_goals_avg', 'h2h_0x1_count', 'away_odd'];
     const weightKeys = Object.keys(DEFAULT_WEIGHTS);
 
-    const totalGreen = analyses.filter(a => a.result === 'Green').length;
-    const generalRate = totalGreen / analyses.length;
+    const totalGreen = realAnalyses.filter(a => a.result === 'Green').length;
+    const generalRate = totalGreen / realAnalyses.length;
 
     const criterionRates: number[] = [];
     const criterionRatesObj: Record<string, number> = {};
 
     for (let i = 0; i < criteriaKeys.length; i++) {
       const key = criteriaKeys[i];
-      const strongGames = analyses.filter(a => {
+      const strongGames = realAnalyses.filter(a => {
         const snapshot = a.criteria_snapshot as any;
         if (!snapshot?.criteria_met) return false;
         const metKey = key === 'h2h_0x1_count' ? 'h2h_no_0x1' : key;
@@ -410,14 +417,20 @@ serve(async (req) => {
     let totalNewWeight = 0;
 
     for (let i = 0; i < weightKeys.length; i++) {
-      let currentW = (weights as any)[weightKeys[i]] as number;
+      const key = weightKeys[i];
+      let currentW = (weights as any)[key] as number;
       if (forcedRebalance) {
-        currentW = (currentW + DEFAULT_WEIGHTS[weightKeys[i]]) / 2;
+        currentW = (currentW + DEFAULT_WEIGHTS[key]) / 2;
       }
       const rate = criterionRates[i];
       let newW = currentW * (rate / (avgRate || 0.5));
+
+      // Enforce 10% limit (Controlled Adaptive)
+      const maxDelta = currentW * 0.1;
+      newW = clamp(newW, currentW - maxDelta, currentW + maxDelta);
+
       newW = Math.max(5, Math.min(30, newW));
-      mathWeights[weightKeys[i]] = newW;
+      mathWeights[key] = newW;
       totalNewWeight += newW;
     }
 
@@ -471,6 +484,10 @@ serve(async (req) => {
       const smoothed = 0.7 * optimalCutoff + 0.3 * currentValue;
       let finalValue = clamp(smoothed, limitMin, limitMax);
 
+      // Enforce 10% limit for thresholds
+      const maxDelta = Math.abs(currentValue * 0.1);
+      finalValue = clamp(finalValue, currentValue - maxDelta, currentValue + maxDelta);
+
       if (thresholdKey === 'max_h2h_0x1' || thresholdKey === 'min_over15_combined') {
         finalValue = Math.round(finalValue);
       } else {
@@ -490,10 +507,10 @@ serve(async (req) => {
     }
 
     // ========== PHASE 3: Pattern detection ==========
-    const patterns = detectPatterns(analyses);
+    const patterns = detectPatterns(realAnalyses);
 
     // ========== PHASE 4: AI Analysis (Gemini) ==========
-    const recentGames = analyses.slice(-30).map(a => ({
+    const recentGames = realAnalyses.slice(-30).map(a => ({
       home_team: a.home_team,
       away_team: a.away_team,
       league: a.league,
@@ -503,16 +520,16 @@ serve(async (req) => {
     }));
 
     // ========== PHASE 4.1: Calculate financial context ==========
-    const allOdds = analyses
+    const allOdds = realAnalyses
       .map(a => (a.criteria_snapshot as any)?.away_odd)
       .filter((v: any) => typeof v === 'number' && v > 1);
     const avgLayOdd = allOdds.length > 0 ? allOdds.reduce((s: number, v: number) => s + v, 0) / allOdds.length : 15.0;
     const profitPerGreen = (1 / (avgLayOdd - 1)) * 0.955;
     const breakEvenRate = 1 / (1 + profitPerGreen);
     const greensPerRed = Math.ceil(1 / profitPerGreen);
-    const totalReds = analyses.filter(a => a.result === 'Red').length;
-    const currentRoi = analyses.length > 0 
-      ? ((totalGreen * profitPerGreen - totalReds) / analyses.length) * 100 
+    const totalReds = realAnalyses.filter(a => a.result === 'Red').length;
+    const currentRoi = realAnalyses.length > 0
+      ? ((totalGreen * profitPerGreen - totalReds) / realAnalyses.length) * 100
       : 0;
 
     const financialContext = {
@@ -534,6 +551,37 @@ serve(async (req) => {
     const autoActions: string[] = [];
 
     try {
+      // Strategic Volume Control
+      const last7Days = realAnalyses.filter(a => {
+        const created = new Date(a.created_at);
+        return (Date.now() - created.getTime()) < 7 * 24 * 3600 * 1000;
+      });
+      const avgVolumePerDay = last7Days.length / 7;
+
+      console.log(`[Volume Check] Avg volume/day (last 7d): ${avgVolumePerDay.toFixed(2)}`);
+
+      let volumeAction = '';
+      if (avgVolumePerDay < 5) {
+        // Low volume: Relax criteria slightly (up to 5% relax)
+        for (const k of ['min_home_goals_avg', 'min_away_conceded_avg', 'min_over15_combined']) {
+          const relaxFactor = 0.95;
+          finalThresholds[k] = Math.max(THRESHOLD_LIMITS[k][0], finalThresholds[k] * relaxFactor);
+          if (k === 'min_over15_combined') finalThresholds[k] = Math.round(finalThresholds[k]);
+          else finalThresholds[k] = Math.round(finalThresholds[k] * 10) / 10;
+        }
+        volumeAction = 'Volume baixo (< 5/dia): Critérios relaxados em 5%';
+      } else if (avgVolumePerDay > 15 && currentRoi < 0) {
+        // High volume but losing: Tighten criteria significantly
+        for (const k of ['min_home_goals_avg', 'min_away_conceded_avg', 'min_over15_combined']) {
+          const tightenFactor = 1.10;
+          finalThresholds[k] = Math.min(THRESHOLD_LIMITS[k][1], finalThresholds[k] * tightenFactor);
+          if (k === 'min_over15_combined') finalThresholds[k] = Math.round(finalThresholds[k]);
+          else finalThresholds[k] = Math.round(finalThresholds[k] * 10) / 10;
+        }
+        volumeAction = 'Volume alto com ROI negativo: Critérios endurecidos em 10%';
+      }
+      if (volumeAction) autoActions.push(volumeAction);
+
       aiRecommendations = await callAIForCalibration({
         generalRate,
         criterionRates: criterionRatesObj,

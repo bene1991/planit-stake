@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Activity, TrendingUp, TrendingDown, AlertTriangle, Shield, Pause, RefreshCw, AlertCircle, DollarSign, Download, Trophy, Minus, Percent, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,27 +37,27 @@ import { LeagueRankingByMethod } from '@/components/Charts/LeagueRankingByMethod
 import { useLeagueRankingByMethod } from '@/hooks/useLeagueRankingByMethod';
 
 const statusConfig: Record<OperationalStatusType, { color: string; bg: string; icon: React.ElementType; border: string }> = {
-  'NORMAL': { 
-    color: 'text-emerald-500', 
-    bg: 'bg-emerald-500/10', 
+  'NORMAL': {
+    color: 'text-emerald-500',
+    bg: 'bg-emerald-500/10',
     icon: TrendingUp,
     border: 'border-emerald-500/30'
   },
-  'ALERTA': { 
-    color: 'text-yellow-500', 
-    bg: 'bg-yellow-500/10', 
+  'ALERTA': {
+    color: 'text-yellow-500',
+    bg: 'bg-yellow-500/10',
     icon: AlertTriangle,
     border: 'border-yellow-500/30'
   },
-  'PROTEÇÃO': { 
-    color: 'text-blue-500', 
-    bg: 'bg-blue-500/10', 
+  'PROTEÇÃO': {
+    color: 'text-blue-500',
+    bg: 'bg-blue-500/10',
     icon: Shield,
     border: 'border-blue-500/30'
   },
-  'PAUSADO': { 
-    color: 'text-red-500', 
-    bg: 'bg-red-500/10', 
+  'PAUSADO': {
+    color: 'text-red-500',
+    bg: 'bg-red-500/10',
     icon: Pause,
     border: 'border-red-500/30'
   }
@@ -128,7 +129,7 @@ export default function Performance() {
 
       // Method filter
       if (filters.selectedMethods.length > 0) {
-        const hasMatchingMethod = game.methodOperations.some(op => 
+        const hasMatchingMethod = game.methodOperations.some(op =>
           filters.selectedMethods.includes(op.methodId)
         );
         if (!hasMatchingMethod) return false;
@@ -146,12 +147,12 @@ export default function Performance() {
 
   // Operational status
   const operationalFilters = useMemo(() => ({
-    period: filters.period === 'all' ? 'all' as const : 
-            filters.period === 'today' ? 'today' as const :
-            filters.period === '7days' ? '7days' as const :
-            filters.period === '30days' ? '30days' as const :
+    period: filters.period === 'all' ? 'all' as const :
+      filters.period === 'today' ? 'today' as const :
+        filters.period === '7days' ? '7days' as const :
+          filters.period === '30days' ? '30days' as const :
             filters.period === 'thisMonth' ? 'thisMonth' as const :
-            filters.period === 'lastMonth' ? 'lastMonth' as const : 'custom' as const,
+              filters.period === 'lastMonth' ? 'lastMonth' as const : 'custom' as const,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
     selectedMethods: filters.selectedMethods,
@@ -160,7 +161,7 @@ export default function Performance() {
 
   const { settings, updateSettings } = useOperationalSettings();
   const [stakeInput, setStakeInput] = useState(settings.stakeValueReais.toString());
-  
+
   // Parse stake input for real-time updates
   const parsedStake = useMemo(() => {
     const value = parseFloat(stakeInput.replace(',', '.'));
@@ -186,7 +187,7 @@ export default function Performance() {
     uniqueMethods: methodDetailStats.length,
     selectedMethods: filters.selectedMethods,
   });
-  
+
   const { metrics, loading: statusLoading } = useOperationalStatus(operationalFilters, parsedStake);
 
   // Sync stake input when settings load
@@ -552,9 +553,9 @@ export default function Performance() {
       <div className="space-y-2">
         <MethodsRankingTable methodStats={methodDetailStats} />
         <div className="flex justify-end">
-          <a href="/method-analysis" className="text-sm text-primary hover:underline font-medium">
+          <Link to="/method-analysis" className="text-sm text-primary hover:underline font-medium">
             Ver análise detalhada dos métodos →
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -586,7 +587,7 @@ export default function Performance() {
           <Brain className="h-5 w-5 text-primary" />
           <h2 className="text-xl font-bold">Análise IA da Saúde da Banca</h2>
         </div>
-        
+
         <AIPerformanceAnalyzer
           statistics={{
             overallStats,

@@ -26,9 +26,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Fixed Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border/30 bg-background/80 backdrop-blur-xl">
+      <header className="h-16 border-b border-border/30 bg-background/80 backdrop-blur-xl shrink-0 sticky top-0 z-50">
         <div className="container mx-auto h-full px-4 lg:px-6 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
@@ -64,7 +64,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
           {/* Right Actions */}
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            
+
             {user ? (
               <div className="hidden lg:flex items-center gap-3">
                 <Link to="/account">
@@ -108,6 +108,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                         Conta
                       </Link>
                       <button
+                        type="button"
                         onClick={() => {
                           signOut();
                           setOpen(false);
@@ -135,7 +136,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       {/* Main Content */}
-      <main className="pt-16 pb-20 lg:pb-8">
+      <main className="flex-1 relative">
         <div className="container mx-auto px-4 lg:px-6 py-6 lg:py-8 animate-fade-in">
           {children}
         </div>
@@ -144,5 +145,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
       {/* Bottom Navigation for Mobile */}
       <BottomNav />
     </div>
+
   );
 };

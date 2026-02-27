@@ -35,7 +35,7 @@ export function DataMigration() {
       const bankrollData = localStorage.getItem(STORAGE_KEYS.bankroll);
       if (bankrollData) {
         const bankroll = JSON.parse(bankrollData);
-        
+
         // Insert bankroll
         await supabase.from('bankroll').insert({
           owner_id: user.id,
@@ -49,7 +49,7 @@ export function DataMigration() {
             name: m.name,
             percentage: m.percentage,
           }));
-          
+
           const { data: insertedMethods } = await supabase
             .from('methods')
             .insert(methods)
@@ -67,7 +67,7 @@ export function DataMigration() {
           const gamesData = localStorage.getItem(STORAGE_KEYS.games);
           if (gamesData) {
             const games = JSON.parse(gamesData);
-            
+
             for (const game of games) {
               const { data: insertedGame } = await supabase
                 .from('games')
@@ -104,10 +104,12 @@ export function DataMigration() {
       // Mark as migrated
       localStorage.setItem(STORAGE_KEYS.migrated, 'true');
       setShowAlert(false);
-      toast.success('Dados migrados com sucesso!');
-      
-      // Reload the page to reflect changes
-      setTimeout(() => window.location.reload(), 1000);
+      toast.success('Dados migrados com sucesso! Recarregando dados...');
+
+      // Instead of hard reload, we can trigger a refresh via Supabase hooks if needed,
+      // but usually the app will react to the localStorage change or session.
+      // For safety, let's just let the user know.
+
     } catch (error) {
       console.error('Error migrating data:', error);
       toast.error('Erro ao migrar dados. Tente novamente.');

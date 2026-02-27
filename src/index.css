@@ -13,72 +13,67 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* ScoreTabs Design System - Ultra Dark Premium */
-    --background: 150 5% 5%;        /* #0D0D0D */
-    --foreground: 0 0% 98%;         /* White text */
+    /* ScoreTabs Design System - Professional SaaS Ultra Dark */
+    --background: 220 28% 6%;          /* #0B0F14 */
+    --foreground: 0 0% 98%;           /* White text */
 
-    --card: 0 0% 7%;                /* #121212 elevated cards */
+    --card: 215 32% 11%;               /* #121A24 elevated cards */
     --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 8%;
+    --popover: 215 32% 11%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 160 100% 60%;        /* #00FFAA - Neon Green */
-    --primary-foreground: 0 0% 0%;
+    --primary: 160 100% 60%;          /* #00FFAA - Neon Green */
+    --primary-foreground: 220 28% 6%;
 
-    --secondary: 0 0% 12%;          /* #1F1F1F */
+    --secondary: 215 25% 15%;          /* #1A232E */
     --secondary-foreground: 0 0% 90%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%;   /* Gray text */
+    --muted: 215 20% 18%;
+    --muted-foreground: 215 15% 65%;   /* Soft gray text */
 
-    --accent: 160 100% 60%;         /* Neon accent */
-    --accent-foreground: 0 0% 0%;
+    --accent: 160 100% 60%;           /* Neon accent */
+    --accent-foreground: 220 28% 6%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
     --success: 160 100% 60%;
-    --success-foreground: 0 0% 0%;
+    --success-foreground: 220 28% 6%;
 
-    --border: 0 0% 18%;             /* Subtle borders */
-    --input: 0 0% 10%;
+    --border: 0 0% 100% / 0.05;       /* White 5% opacity borders */
+    --input: 215 32% 8%;
     --ring: 160 100% 60%;
 
     --radius: 0.75rem;
     
-    /* Premium ScoreTabs glow effects */
-    --glow-neon: 0 0 30px hsl(160 100% 60% / 0.4);
-    --glow-neon-strong: 0 0 40px hsl(160 100% 60% / 0.6);
-    --glow-card: 0 8px 32px rgba(0, 0, 0, 0.6);
-    --glow-card-hover: 0 8px 32px rgba(15, 235, 170, 0.2);
-    
-    /* Premium gradients */
-    --gradient-neon: linear-gradient(90deg, hsl(160 100% 60%), hsl(170 100% 55%));
-    --gradient-neon-subtle: linear-gradient(135deg, hsl(160 100% 60% / 0.1), hsl(170 100% 55% / 0.05));
+    /* Premium glow and shadow effects */
+    --glow-neon: 0 0 30px hsl(160 100% 60% / 0.3);
+    --glow-card: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --glow-card-hover: 0 8px 32px rgba(15, 235, 170, 0.1);
   }
 
   .dark {
-    --background: 150 5% 5%;
+    --background: 220 28% 6%;
     --foreground: 0 0% 98%;
-    --card: 0 0% 7%;
+    --card: 215 32% 11%;
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 8%;
+    --popover: 215 32% 11%;
     --popover-foreground: 0 0% 98%;
     --primary: 160 100% 60%;
-    --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 12%;
+    --primary-foreground: 220 28% 6%;
+    --secondary: 215 25% 15%;
     --secondary-foreground: 0 0% 90%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%;
+    --muted: 215 20% 18%;
+    --muted-foreground: 215 15% 65%;
     --accent: 160 100% 60%;
-    --accent-foreground: 0 0% 0%;
+    --accent-foreground: 220 28% 6%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --success: 160 100% 60%;
-    --success-foreground: 0 0% 0%;
-    --border: 0 0% 18%;
-    --input: 0 0% 10%;
+    --success-foreground: 220 28% 6%;
+    --border: 0 0% 100% / 0.05;
+    --input: 215 32% 8%;
     --ring: 160 100% 60%;
   }
 }

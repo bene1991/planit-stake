@@ -31,11 +31,11 @@ export function GameStatusTabs({
 
     games.forEach((game) => {
       const fixtureStatus = game.api_fixture_id ? fixtureStatuses.get(game.api_fixture_id) : null;
-      
-      const isLive = fixtureStatus 
+
+      const isLive = fixtureStatus
         ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus)
         : game.status === 'Live';
-      
+
       const isFinished = fixtureStatus
         ? ['FT', 'AET', 'PEN'].includes(fixtureStatus)
         : game.status === 'Finished';
@@ -53,36 +53,38 @@ export function GameStatusTabs({
   }, [games, fixtureStatuses]);
 
   return (
-    <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-      <Tabs value={currentFilter} onValueChange={(v) => onFilterChange(v as GameStatusFilter)} className="flex-1">
-        <TabsList className="w-full grid grid-cols-4 h-10">
-          <TabsTrigger value="all" className="text-xs">
+    <div className="flex flex-col gap-3">
+      <Tabs value={currentFilter} onValueChange={(v) => onFilterChange(v as GameStatusFilter)} className="w-full">
+        <TabsList className="w-full grid grid-cols-4 h-9">
+          <TabsTrigger value="all" className="text-[10px] sm:text-xs px-1">
             Todos
-            <span className="ml-1 text-muted-foreground">({counts.all})</span>
+            <span className="ml-1 opacity-60">({counts.all})</span>
           </TabsTrigger>
-          <TabsTrigger value="pending" className="text-xs">
-            Pendentes
-            <span className="ml-1 text-muted-foreground">({counts.pending})</span>
+          <TabsTrigger value="pending" className="text-[10px] sm:text-xs px-1">
+            Pend
+            <span className="ml-1 opacity-60">({counts.pending})</span>
           </TabsTrigger>
-          <TabsTrigger value="live" className="text-xs">
-            Ao vivo
+          <TabsTrigger value="live" className="text-[10px] sm:text-xs px-1">
+            Live
             {counts.live > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold animate-pulse">
+              <span className="ml-1 px-1 py-0.5 rounded bg-primary text-primary-foreground text-[8px] font-bold animate-pulse">
                 {counts.live}
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="finished" className="text-xs">
-            Finalizados
-            <span className="ml-1 text-muted-foreground">({counts.finished})</span>
+          <TabsTrigger value="finished" className="text-[10px] sm:text-xs px-1">
+            Fim
+            <span className="ml-1 opacity-60">({counts.finished})</span>
           </TabsTrigger>
         </TabsList>
       </Tabs>
 
       <Select value={currentSort} onValueChange={(v) => onSortChange(v as GameSortOrder)}>
-        <SelectTrigger className="w-full sm:w-[140px] h-10">
-          <ArrowUpDown className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
-          <SelectValue />
+        <SelectTrigger className="w-full h-8 text-xs bg-muted/20 border-white/5">
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+            <SelectValue />
+          </div>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="time">Horário</SelectItem>

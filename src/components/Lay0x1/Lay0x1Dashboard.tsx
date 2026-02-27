@@ -3,40 +3,44 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
 import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
 import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw, Trash2, Ban, ChevronDown, Brain, Loader2, CalendarDays } from 'lucide-react';
+import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw, Trash2, Ban, ChevronDown, Brain, Loader2, CalendarDays, DollarSign, Check, Edit2 } from 'lucide-react';
 import { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { subDays, format, startOfDay } from 'date-fns';
 import { getNowInBrasilia } from '@/utils/timezone';
+import { ptBR } from 'date-fns/locale';
 
 export const Lay0x1Dashboard = () => {
-  const { analyses, metrics, resolveAnalysis, deleteAnalysis, refetch } = useLay0x1Analyses();
+  const { analyses, metrics, resolveAnalysis, updateOdd, deleteAnalysis, refetch } = useLay0x1Analyses();
   const { weights } = useLay0x1Weights();
   const { blockLeague, isBlocked } = useLay0x1BlockedLeagues();
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [scoreInputs, setScoreInputs] = useState<Record<string, { home: string; away: string }>>({});
+  const [oddInputs, setOddInputs] = useState<Record<string, string>>({});
   const [calibrating, setCalibrating] = useState(false);
   const [autoResolving, setAutoResolving] = useState(false);
   const [resolveProgress, setResolveProgress] = useState({ current: 0, total: 0 });
   const [expandedRedId, setExpandedRedId] = useState<string | null>(null);
   const [analyzingRedId, setAnalyzingRedId] = useState<string | null>(null);
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
 
-  // Filter: only from yesterday onwards (no old backtest data)
-  const yesterdayStr = useMemo(() => {
+  // Filter: only from 2 days ago onwards (to see recent history + pending)
+  const filterDateStr = useMemo(() => {
     const now = getNowInBrasilia();
-    return format(subDays(now, 1), 'yyyy-MM-dd');
+    return format(subDays(now, 2), 'yyyy-MM-dd');
   }, []);
 
   const recentAnalyses = useMemo(() =>
-    analyses.filter(a => a.date >= yesterdayStr),
-    [analyses, yesterdayStr]
+    analyses.filter(a => a.date >= filterDateStr),
+    [analyses, filterDateStr]
   );
 
   // Pending = recent + no result
@@ -59,6 +63,28 @@ export const Lay0x1Dashboard = () => {
     const winRate = resolved.length > 0 ? Math.round((greens / resolved.length) * 1000) / 10 : 0;
     return { total: all.length, resolved: resolved.length, pending: all.filter(a => !a.result).length, greens, reds, winRate };
   }, [recentAnalyses]);
+
+  // Real operation metrics - derived from analyses with odd_used
+  const realMetrics = useMemo(() => {
+    const realOps = analyses.filter(a => a.odd_used !== null && a.odd_used !== undefined);
+    const solved = realOps.filter(a => a.result);
+    const profitTotal = solved.reduce((acc, curr) => acc + (curr.profit || 0), 0);
+    const liabilityTotal = solved.reduce((acc, curr) => acc + (curr.liability || 0), 0);
+    const gCount = solved.filter(a => a.result === 'Green').length;
+    const rCount = solved.filter(a => a.result === 'Red').length;
+    const wRate = solved.length > 0 ? (gCount / solved.length) * 100 : 0;
+    const roi = liabilityTotal > 0 ? (profitTotal / liabilityTotal) * 100 : 0;
+
+    return {
+      total: realOps.length,
+      finished: solved.length,
+      greens: gCount,
+      reds: rCount,
+      profit: profitTotal,
+      winRate: wRate,
+      roi: roi
+    };
+  }, [analyses]);
 
   // Equity chart data
   const equityData = useMemo(() => resolvedAnalyses
@@ -137,6 +163,17 @@ export const Lay0x1Dashboard = () => {
     return Array.from(map.entries()).sort(([a], [b]) => b.localeCompare(a));
   }, [resolvedAnalyses]);
 
+  const handleUpdateOdd = async (id: string) => {
+    const val = oddInputs[id];
+    if (!val) return;
+    const odd = parseFloat(val.replace(',', '.'));
+    if (isNaN(odd) || odd <= 1) {
+      toast.error('ODD inválida');
+      return;
+    }
+    await updateOdd(id, odd);
+  };
+
   const handleResolve = async (id: string) => {
     const input = scoreInputs[id];
     if (!input?.home || !input?.away) { toast.error('Informe o placar'); return; }
@@ -209,10 +246,41 @@ export const Lay0x1Dashboard = () => {
 
   return (
     <div className="space-y-4">
+      {/* Real Financial Summary Banner */}
+      {realMetrics.finished > 0 && (
+        <Card className="border-emerald-500/30 bg-emerald-500/5">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-500/20 p-2 rounded-full">
+                <DollarSign className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-400">Desempenho Real (Banca)</p>
+                <p className="text-xs text-muted-foreground">{realMetrics.finished} operações encerradas</p>
+              </div>
+            </div>
+            <div className="flex gap-6">
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground font-medium uppercase">Lucro/Prejuízo</p>
+                <p className={`text-lg font-bold ${realMetrics.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  R$ {realMetrics.profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground font-medium uppercase">ROI Real</p>
+                <p className={`text-lg font-bold ${realMetrics.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {realMetrics.roi.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Info banner */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
         <CalendarDays className="w-3.5 h-3.5" />
-        <span>Dados a partir de {yesterdayStr} (excluindo backtest antigo)</span>
+        <span>Dados a partir de {filterDateStr} (excluindo backtest antigo)</span>
       </div>
 
       {/* Metrics Cards */}
@@ -251,7 +319,7 @@ export const Lay0x1Dashboard = () => {
       {equityData.length > 1 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Curva de Equity</CardTitle>
+            <CardTitle className="text-sm">Curva de Equity Estimada</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <ResponsiveContainer width="100%" height={200}>
@@ -410,11 +478,19 @@ export const Lay0x1Dashboard = () => {
                     <p className="text-xs text-muted-foreground">{a.league} • {a.date} • Score: {a.score_value}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Input placeholder="H" className="w-12 h-8 text-center text-xs"
+                    <div className="flex items-center gap-1 border-r pr-2 mr-1">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold">Odd</span>
+                      <Input placeholder="0.00" className="w-14 h-8 text-center text-xs bg-emerald-500/5 border-emerald-500/20"
+                        value={oddInputs[a.id] || a.odd_used || ''}
+                        onChange={(e) => setOddInputs(prev => ({ ...prev, [a.id]: e.target.value }))}
+                        onBlur={() => handleUpdateOdd(a.id)}
+                      />
+                    </div>
+                    <Input placeholder="H" className="w-10 h-8 text-center text-xs"
                       value={scoreInputs[a.id]?.home || ''}
                       onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], home: e.target.value } }))} />
                     <span className="text-xs">x</span>
-                    <Input placeholder="A" className="w-12 h-8 text-center text-xs"
+                    <Input placeholder="A" className="w-10 h-8 text-center text-xs"
                       value={scoreInputs[a.id]?.away || ''}
                       onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], away: e.target.value } }))} />
                     <Button size="sm" variant="outline" className="h-8 text-xs"
@@ -481,13 +557,53 @@ export const Lay0x1Dashboard = () => {
                               <p className="text-xs text-muted-foreground">{a.league}</p>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                {a.final_score_home}-{a.final_score_away}
-                              </span>
+                              {editingHistoryId === a.id ? (
+                                <div className="flex items-center gap-1 border-r pr-2 mr-1">
+                                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Odd</span>
+                                  <Input placeholder="0.00" className="w-14 h-7 text-center text-[10px] bg-emerald-500/5 border-emerald-500/20"
+                                    defaultValue={a.odd_used || ''}
+                                    onBlur={(e) => {
+                                      const val = e.target.value;
+                                      if (!val) return;
+                                      const odd = parseFloat(val.replace(',', '.'));
+                                      if (!isNaN(odd) && odd > 1) updateOdd(a.id, odd);
+                                    }}
+                                  />
+                                  <Input placeholder="H" className="w-8 h-7 text-center text-[10px]"
+                                    defaultValue={a.final_score_home ?? ''}
+                                    onBlur={(e) => {
+                                      const val = parseInt(e.target.value);
+                                      if (!isNaN(val)) resolveAnalysis(a.id, val, a.final_score_away ?? 0);
+                                    }} />
+                                  <span className="text-[10px]">x</span>
+                                  <Input placeholder="A" className="w-8 h-7 text-center text-[10px]"
+                                    defaultValue={a.final_score_away ?? ''}
+                                    onBlur={(e) => {
+                                      const val = parseInt(e.target.value);
+                                      if (!isNaN(val)) resolveAnalysis(a.id, a.final_score_home ?? 0, val);
+                                    }} />
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingHistoryId(null)}>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                                  onClick={() => setEditingHistoryId(a.id)}>
+                                  {a.odd_used && <span className="mr-1 text-[10px] font-bold text-emerald-500/80">@{a.odd_used}</span>}
+                                  {a.final_score_home}-{a.final_score_away}
+                                  <Edit2 className="w-2.5 h-2.5 opacity-50 ml-1" />
+                                </span>
+                              )}
                               <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
                                 {a.result}
                               </Badge>
                               {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
+
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
+                                onClick={() => deleteAnalysis(a.id)}>
+                                <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
+                              </Button>
+
                               {a.was_0x1 && (
                                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
                                   onClick={() => setExpandedRedId(isExpanded ? null : a.id)}>
@@ -539,7 +655,7 @@ export const Lay0x1Dashboard = () => {
                                       <span className="text-muted-foreground">Liga:</span>
                                       <Badge variant="outline" className={
                                         aiAnalysis.league_recommendation === 'bloquear' ? 'text-red-400' :
-                                        aiAnalysis.league_recommendation === 'monitorar' ? 'text-yellow-400' : 'text-emerald-400'
+                                          aiAnalysis.league_recommendation === 'monitorar' ? 'text-yellow-400' : 'text-emerald-400'
                                       }>
                                         {aiAnalysis.league_recommendation}
                                       </Badge>

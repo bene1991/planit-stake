@@ -3,7 +3,8 @@ import { Lay0x1Scanner } from '@/components/Lay0x1/Lay0x1Scanner';
 import { Lay0x1Dashboard } from '@/components/Lay0x1/Lay0x1Dashboard';
 import { Lay0x1Evolution } from '@/components/Lay0x1/Lay0x1Evolution';
 import { Lay0x1History } from '@/components/Lay0x1/Lay0x1History';
-import { Target, BarChart3, Settings2, History } from 'lucide-react';
+import { Lay0x1RealResults } from '@/components/Lay0x1/Lay0x1RealResults';
+import { Target, BarChart3, Settings2, History, DollarSign } from 'lucide-react';
 
 const Lay0x1 = () => {
   return (
@@ -26,6 +27,9 @@ const Lay0x1 = () => {
           <TabsTrigger value="dashboard" className="gap-1.5 text-xs sm:text-sm">
             <BarChart3 className="w-4 h-4" /> Dashboard
           </TabsTrigger>
+          <TabsTrigger value="results" className="gap-1.5 text-xs sm:text-sm">
+            <DollarSign className="w-4 h-4" /> Resultados
+          </TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5 text-xs sm:text-sm">
             <Settings2 className="w-4 h-4" /> Config
           </TabsTrigger>
@@ -40,6 +44,10 @@ const Lay0x1 = () => {
 
         <TabsContent value="dashboard">
           <Lay0x1Dashboard />
+        </TabsContent>
+
+        <TabsContent value="results">
+          <Lay0x1RealResults />
         </TabsContent>
 
         <TabsContent value="config">

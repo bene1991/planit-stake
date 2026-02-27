@@ -45,6 +45,9 @@ interface ScoreCardProps {
   awayTeamLogo?: string;
   onSelect?: () => void;
   isSelected?: boolean;
+  onRegisterReal?: () => void;
+  registeringReal?: boolean;
+  isOperated?: boolean;
 }
 
 const classificationColor: Record<string, string> = {
@@ -61,7 +64,7 @@ const scoreRingColor: Record<string, string> = {
   'Não recomendado': 'text-red-400',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo, onSelect, isSelected }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo, onSelect, isSelected, onRegisterReal, registeringReal, isOperated }: ScoreCardProps) => {
   const [expanded, setExpanded] = useState(false);
 
   const criteriaList = [
@@ -83,15 +86,14 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
   );
 
   return (
-    <div className={`group rounded-lg border transition-all ${
-      isSelected
-        ? 'bg-primary/10 border-primary/60'
-        : approved 
-          ? 'bg-card/80 border-border/60 hover:border-primary/40' 
-          : 'bg-card/40 border-border/30 opacity-80 hover:opacity-100'
-    }`}>
+    <div className={`group rounded-lg border transition-all ${isSelected
+      ? 'bg-primary/10 border-primary/60'
+      : approved
+        ? 'bg-card/80 border-border/60 hover:border-primary/40'
+        : 'bg-card/40 border-border/30 opacity-80 hover:opacity-100'
+      }`}>
       {/* Main row — Fulltrader style */}
-      <button 
+      <button
         onClick={() => { onSelect?.(); setExpanded(!expanded); }}
         className="w-full flex items-center gap-3 p-3 text-left"
       >
@@ -146,9 +148,8 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
         <div className="border-t border-border/30 px-3 pb-3 pt-2 space-y-3">
           {/* Backtest score */}
           {backtestResult && (
-            <div className={`flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-semibold ${
-              backtestResult.was0x1 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
-            }`}>
+            <div className={`flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-semibold ${backtestResult.was0x1 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
+              }`}>
               <span>Placar: {backtestResult.scoreHome} x {backtestResult.scoreAway}</span>
               <span>{backtestResult.was0x1 ? '❌ RED (0x1)' : '✅ GREEN'}</span>
             </div>
@@ -215,8 +216,8 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
               {criteriaList.map((c, i) => (
                 <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
-                    {c.met 
-                      ? <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" /> 
+                    {c.met
+                      ? <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" />
                       : <XCircle className="w-3 h-3 text-red-400 shrink-0" />
                     }
                     <span className="text-muted-foreground">{c.label}</span>
@@ -262,11 +263,10 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
               <button
                 onClick={onSendToPlanning}
                 disabled={sendingToPlanning || alreadyInPlanning}
-                className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 ${
-                  alreadyInPlanning 
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                    : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
-                }`}
+                className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 ${alreadyInPlanning
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
+                  }`}
               >
                 {alreadyInPlanning ? (
                   <><Check className="w-3 h-3" /> No plano</>
@@ -275,6 +275,17 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
                 ) : (
                   <><CalendarPlus className="w-3 h-3" /> Planejamento</>
                 )}
+              </button>
+            )}
+
+            {onRegisterReal && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRegisterReal(); }}
+                disabled={registeringReal}
+                className="flex-1 py-1.5 px-3 rounded-md bg-emerald-500/20 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 border border-emerald-500/30"
+              >
+                <Target className="w-3 h-3" />
+                {registeringReal ? 'Registrando...' : 'Operar Real'}
               </button>
             )}
           </div>

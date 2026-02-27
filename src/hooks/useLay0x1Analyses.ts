@@ -9,6 +9,8 @@ export interface Lay0x1Analysis {
   fixture_id: string;
   home_team: string;
   away_team: string;
+  home_team_logo?: string;
+  away_team_logo?: string;
   league: string;
   date: string;
   score_value: number;
@@ -21,6 +23,11 @@ export interface Lay0x1Analysis {
   result?: string;
   resolved_at?: string;
   created_at: string;
+  odd_used?: number;
+  liability?: number;
+  stake?: number;
+  profit?: number;
+  is_backtest?: boolean;
 }
 
 export const useLay0x1Analyses = () => {
@@ -36,33 +43,43 @@ export const useLay0x1Analyses = () => {
       .select('*')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: false });
-    
+
     setAnalyses(data || []);
     setLoading(false);
   }, [user]);
 
   useEffect(() => { fetchAnalyses(); }, [fetchAnalyses]);
 
-  const saveAnalysis = useCallback(async (analysis: Omit<Lay0x1Analysis, 'id' | 'owner_id' | 'created_at'>) => {
+  const saveAnalysis = useCallback(async (analysis: Omit<Lay0x1Analysis, 'id' | 'owner_id' | 'created_at'>, silent = false) => {
     if (!user) return null;
-    // Use upsert with ON CONFLICT DO NOTHING via onConflict
+
     const { data, error } = await (supabase as any)
       .from('lay0x1_analyses')
       .upsert(
-        { ...analysis, owner_id: user.id },
-        { onConflict: 'owner_id,fixture_id', ignoreDuplicates: true }
+        { ...analysis, owner_id: user.id, is_backtest: analysis.is_backtest ?? false },
+        { onConflict: 'owner_id,fixture_id' }
       )
       .select()
       .single();
-    
-    if (!error && data) {
+
+    if (error) {
+      console.error('Error saving analysis:', error);
+      if (!silent) toast.error('Erro ao salvar no Dashboard: ' + error.message);
+      return null;
+    }
+
+    if (data) {
       setAnalyses(prev => {
-        // Don't add if already exists
-        if (prev.some(a => a.fixture_id === data.fixture_id)) return prev;
+        const index = prev.findIndex(a => a.id === data.id);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = data;
+          return updated;
+        }
         return [data, ...prev];
       });
     }
-    return { data, error };
+    return data;
   }, [user]);
 
   const deleteAnalysis = useCallback(async (id: string) => {
@@ -72,7 +89,7 @@ export const useLay0x1Analyses = () => {
       .delete()
       .eq('id', id)
       .eq('owner_id', user.id);
-    
+
     if (!error) {
       setAnalyses(prev => prev.filter(a => a.id !== id));
       toast.success('Análise removida');
@@ -81,12 +98,43 @@ export const useLay0x1Analyses = () => {
     }
   }, [user]);
 
+  const updateOdd = useCallback(async (id: string, odd: number) => {
+    if (!user) return;
+    const analysis = analyses.find(a => a.id === id);
+    const liability = 1000;
+    const stake = liability / (odd - 1);
+
+    // If already resolved, recalculate profit
+    let profit = undefined;
+    if (analysis?.result) {
+      profit = analysis.result === 'Green' ? stake : -liability;
+    }
+
+    const { error } = await (supabase as any)
+      .from('lay0x1_analyses')
+      .update({ odd_used: odd, liability, stake, profit })
+      .eq('id', id)
+      .eq('owner_id', user.id);
+
+    if (!error) {
+      setAnalyses(prev => prev.map(a => a.id === id ? { ...a, odd_used: odd, liability, stake, profit } : a));
+      toast.success('ODD atualizada');
+    } else {
+      console.error('Error updating ODD:', error);
+      toast.error('Erro ao atualizar ODD: ' + error.message);
+    }
+  }, [user, analyses]);
+
   const resolveAnalysis = useCallback(async (id: string, scoreHome: number, scoreAway: number) => {
     if (!user) return;
     const was0x1 = scoreHome === 0 && scoreAway === 1;
     const result = was0x1 ? 'Red' : 'Green';
 
     const analysis = analyses.find(a => a.id === id);
+    let profit = undefined;
+    if (analysis?.odd_used && analysis.stake) {
+      profit = was0x1 ? -1000 : analysis.stake;
+    }
 
     const { error } = await (supabase as any)
       .from('lay0x1_analyses')
@@ -95,6 +143,7 @@ export const useLay0x1Analyses = () => {
         final_score_away: scoreAway,
         was_0x1: was0x1,
         result,
+        profit,
         resolved_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -103,7 +152,7 @@ export const useLay0x1Analyses = () => {
     if (!error) {
       setAnalyses(prev => prev.map(a => a.id === id ? {
         ...a, final_score_home: scoreHome, final_score_away: scoreAway,
-        was_0x1: was0x1, result, resolved_at: new Date().toISOString(),
+        was_0x1: was0x1, result, profit, resolved_at: new Date().toISOString(),
       } : a));
 
       // Trigger AI post-Red analysis
@@ -177,7 +226,7 @@ export const useLay0x1Analyses = () => {
     winRate: Math.round(winRate * 10) / 10,
   };
 
-  return { analyses, loading, metrics, saveAnalysis, deleteAnalysis, resolveAnalysis, refetch: fetchAnalyses };
+  return { analyses, loading, metrics, saveAnalysis, deleteAnalysis, updateOdd, resolveAnalysis, refetch: fetchAnalyses };
 };
 
 // Fallback local insights when AI is unavailable

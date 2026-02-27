@@ -17,7 +17,7 @@ export default function Auth() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Preencha todos os campos');
       return;
@@ -29,7 +29,7 @@ export default function Auth() {
     }
 
     setLoading(true);
-    
+
     if (isSignUp) {
       const { error } = await signUp(email, password);
       setLoading(false);
@@ -66,7 +66,7 @@ export default function Auth() {
             {isSignUp ? 'Criar Conta' : 'Bem-vindo'}
           </h1>
           <p className="mt-3 text-muted-foreground font-light">
-            {isSignUp 
+            {isSignUp
               ? 'Crie sua conta para começar o planejamento'
               : 'Faça login para acessar seu planejamento'
             }
@@ -113,8 +113,8 @@ export default function Auth() {
           </div>
 
           <Button type="submit" className="w-full mt-6 h-12 shadow-apple-md" disabled={loading}>
-            {loading 
-              ? (isSignUp ? 'Criando conta...' : 'Entrando...') 
+            {loading
+              ? (isSignUp ? 'Criando conta...' : 'Entrando...')
               : (isSignUp ? 'Criar conta' : 'Entrar')
             }
           </Button>
@@ -131,8 +131,8 @@ export default function Auth() {
               className="text-sm text-muted-foreground hover:text-foreground transition-all duration-200 font-medium"
               disabled={loading}
             >
-              {isSignUp 
-                ? 'Já tem conta? Entrar' 
+              {isSignUp
+                ? 'Já tem conta? Entrar'
                 : 'Ainda não tem conta? Criar agora'
               }
             </button>

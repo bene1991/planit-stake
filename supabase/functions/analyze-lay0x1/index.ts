@@ -17,7 +17,7 @@ function getSupabaseClient(authHeader: string) {
 async function callApiFootball(endpoint: string, params: Record<string, unknown>) {
   const url = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  
+
   const res = await fetch(`${url}/functions/v1/api-football`, {
     method: 'POST',
     headers: {
@@ -70,6 +70,7 @@ interface AnalysisResult {
   final_score_home?: number;
   final_score_away?: number;
   fixture_status?: string;
+  is_backtest: boolean;
 }
 
 function normalize(value: number, min: number, max: number): number {
@@ -118,7 +119,6 @@ async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: n
   const firstPage = await callApiFootball('odds', { date, page: 1 });
   const firstResponse = firstPage?.response || [];
   const totalPages = firstPage?.paging?.total || 1;
-  const currentPage = firstPage?.paging?.current || 1;
 
   console.log(`[ODDS] Page 1/${totalPages} returned ${firstResponse.length} entries`);
 
@@ -155,6 +155,131 @@ async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: n
   return oddsMap;
 }
 
+// ─── CACHE LAYER ──────────────────────────────────────────────
+// Check Supabase for cached odds; if found, use them.
+// Otherwise, fetch from API and persist to cache for the day.
+async function getOddsWithCache(date: string): Promise<Map<number, { homeOdd: number; drawOdd: number; awayOdd: number }>> {
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+
+  // Use service role client for cache operations (no RLS restrictions)
+  const { createClient } = await import("npm:@supabase/supabase-js@2");
+  const serviceClient = createClient(supabaseUrl, serviceKey);
+
+  // 1. Try to load from cache
+  const { data: cached, error: cacheError } = await serviceClient
+    .from('lay0x1_odds_cache')
+    .select('fixture_id, home_odd, draw_odd, away_odd')
+    .eq('date', date);
+
+  if (!cacheError && cached && cached.length > 0) {
+    console.log(`[ODDS-CACHE] HIT — ${cached.length} fixtures loaded from cache for ${date}`);
+    const oddsMap = new Map<number, { homeOdd: number; drawOdd: number; awayOdd: number }>();
+    for (const row of cached) {
+      oddsMap.set(row.fixture_id, {
+        homeOdd: parseFloat(row.home_odd),
+        drawOdd: parseFloat(row.draw_odd),
+        awayOdd: parseFloat(row.away_odd),
+      });
+    }
+    return oddsMap;
+  }
+
+  // 2. Cache miss — fetch from API
+  console.log(`[ODDS-CACHE] MISS — fetching from API for ${date}`);
+  const oddsMap = await fetchAllOddsPages(date);
+
+  // 3. Persist to cache (batch insert)
+  if (oddsMap.size > 0) {
+    const rows = Array.from(oddsMap.entries()).map(([fixtureId, odds]) => ({
+      date,
+      fixture_id: fixtureId,
+      home_odd: odds.homeOdd,
+      draw_odd: odds.drawOdd,
+      away_odd: odds.awayOdd,
+    }));
+
+    // Insert in batches of 100
+    const BATCH = 100;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const { error: insertError } = await serviceClient
+        .from('lay0x1_odds_cache')
+        .upsert(batch, { onConflict: 'date,fixture_id' });
+      if (insertError) {
+        console.error(`[ODDS-CACHE] Error persisting batch ${i}:`, insertError.message);
+      }
+    }
+    console.log(`[ODDS-CACHE] Persisted ${rows.length} fixtures to cache for ${date}`);
+  }
+
+  return oddsMap;
+}
+
+// Cache for team statistics (per fixture per date)
+async function getStatsFromCache(date: string, fixtureId: number): Promise<{
+  home_goals_avg: number; away_conceded_avg: number;
+  over15_combined: number; league_goals_avg: number; h2h_0x1_count: number;
+} | null> {
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const { createClient } = await import("npm:@supabase/supabase-js@2");
+  const serviceClient = createClient(supabaseUrl, serviceKey);
+
+  const { data, error } = await serviceClient
+    .from('lay0x1_stats_cache')
+    .select('*')
+    .eq('date', date)
+    .eq('fixture_id', fixtureId)
+    .maybeSingle();
+
+  if (!error && data) {
+    const homeAvg = parseFloat(data.home_goals_avg);
+    const awayAvg = parseFloat(data.away_conceded_avg);
+
+    // Reject cached entries where either key stat is 0 — force re-fetch with fallback
+    if (homeAvg === 0 || awayAvg === 0) {
+      console.log(`[STATS-CACHE] Rejecting bad cache for fixture ${fixtureId}: homeGoalsAvg=${homeAvg}, awayConcededAvg=${awayAvg}`);
+      // Delete the bad entry so it doesn't keep being checked
+      await serviceClient
+        .from('lay0x1_stats_cache')
+        .delete()
+        .eq('date', date)
+        .eq('fixture_id', fixtureId);
+      return null;
+    }
+
+    return {
+      home_goals_avg: homeAvg,
+      away_conceded_avg: awayAvg,
+      over15_combined: parseFloat(data.over15_combined),
+      league_goals_avg: parseFloat(data.league_goals_avg),
+      h2h_0x1_count: data.h2h_0x1_count,
+    };
+  }
+  return null;
+}
+
+
+async function saveStatsToCache(date: string, fixtureId: number, stats: {
+  home_goals_avg: number; away_conceded_avg: number;
+  over15_combined: number; league_goals_avg: number; h2h_0x1_count: number;
+}): Promise<void> {
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const { createClient } = await import("npm:@supabase/supabase-js@2");
+  const serviceClient = createClient(supabaseUrl, serviceKey);
+
+  await serviceClient
+    .from('lay0x1_stats_cache')
+    .upsert({
+      date,
+      fixture_id: fixtureId,
+      ...stats,
+    }, { onConflict: 'date,fixture_id' });
+}
+
+
 const MAX_DETAILED_ANALYSES = 50;
 
 serve(async (req) => {
@@ -176,7 +301,7 @@ serve(async (req) => {
     const userId = user.id;
 
     const body = await req.json();
-    const { date, fixture_ids, weights_override } = body;
+    const { date, fixture_ids, weights_override, is_backtest = false } = body;
 
     // Get user weights
     let weights: Weights;
@@ -189,7 +314,7 @@ serve(async (req) => {
         .select('*')
         .eq('owner_id', userId)
         .maybeSingle();
-      
+
       weights = wData || {
         offensive_weight: 20, defensive_weight: 20, over_weight: 20,
         league_avg_weight: 15, h2h_weight: 15, odds_weight: 10,
@@ -227,9 +352,8 @@ serve(async (req) => {
         if (fId) fixtureMap.set(fId, f);
       }
 
-      // 2. Fetch ALL pages of odds
-      oddsMap = await fetchAllOddsPages(date);
-      console.log(`[SCANNER] Fixtures with odds data: ${oddsMap.size}/${totalFixtures}`);
+      // 2. Fetch odds (with cache for determinism)
+      oddsMap = await getOddsWithCache(date);
 
       // Historical dates (>30 days) won't have odds — skip without fallback
       if (oddsMap.size === 0 && totalFixtures > 0) {
@@ -312,43 +436,134 @@ serve(async (req) => {
           awayOdd = cachedOdds.awayOdd;
         }
 
-        const parallelCalls: Promise<any>[] = [
-          callApiFootball('fixtures/headtohead', { h2h: `${homeTeamId}-${awayTeamId}`, last: 5 }),
-          callApiFootball('teams/statistics', { team: homeTeamId, league: leagueId, season }),
-          callApiFootball('teams/statistics', { team: awayTeamId, league: leagueId, season }),
-        ];
-        if (homeOdd === 0 || awayOdd === 0) {
-          parallelCalls.push(callApiFootball('odds', { fixture: fixtureId }));
-        }
+        // ─── STATS: Cache-first approach ───
+        const fixtureDateForCache = fixture.fixture?.date?.split('T')[0] || date || '';
+        const cachedStats = await getStatsFromCache(fixtureDateForCache, fixtureId);
 
-        const [h2hData, homeStatsData, awayStatsData, oddsDataSingle] = await Promise.all(parallelCalls);
+        let homeGoalsAvg: number;
+        let awayConcededAvg: number;
+        let over15Combined: number;
+        let leagueGoalsAvg: number;
+        let h2h0x1Count: number;
 
-        if ((homeOdd === 0 || awayOdd === 0) && oddsDataSingle) {
-          const oddsResp = oddsDataSingle?.response || [];
-          if (oddsResp.length > 0) {
-          const extracted = extractOdds(oddsResp[0]?.bookmakers || []);
-            homeOdd = extracted.homeOdd;
-            drawOdd = extracted.drawOdd;
-            awayOdd = extracted.awayOdd;
+        if (cachedStats) {
+          // Use cached values for determinism
+          homeGoalsAvg = cachedStats.home_goals_avg;
+          awayConcededAvg = cachedStats.away_conceded_avg;
+          over15Combined = cachedStats.over15_combined;
+          leagueGoalsAvg = cachedStats.league_goals_avg;
+          h2h0x1Count = cachedStats.h2h_0x1_count;
+          console.log(`[STATS-CACHE] HIT for fixture ${fixtureId}`);
+        } else {
+          // Fetch from API
+          const parallelCalls: Promise<any>[] = [
+            callApiFootball('fixtures/headtohead', { h2h: `${homeTeamId}-${awayTeamId}`, last: 5 }),
+            callApiFootball('teams/statistics', { team: homeTeamId, league: leagueId, season }),
+            callApiFootball('teams/statistics', { team: awayTeamId, league: leagueId, season }),
+          ];
+          if (homeOdd === 0 || awayOdd === 0) {
+            parallelCalls.push(callApiFootball('odds', { fixture: fixtureId }));
+          }
+
+          const [h2hData, homeStatsData, awayStatsData, oddsDataSingle] = await Promise.all(parallelCalls);
+
+          if ((homeOdd === 0 || awayOdd === 0) && oddsDataSingle) {
+            const oddsResp = oddsDataSingle?.response || [];
+            if (oddsResp.length > 0) {
+              const extracted = extractOdds(oddsResp[0]?.bookmakers || []);
+              homeOdd = extracted.homeOdd;
+              drawOdd = extracted.drawOdd;
+              awayOdd = extracted.awayOdd;
+            }
+          }
+
+          const h2hMatches = h2hData?.response || [];
+          h2h0x1Count = 0;
+          for (const match of h2hMatches) {
+            if (match.goals?.home === 0 && match.goals?.away === 1) h2h0x1Count++;
+          }
+
+          const homeGoalsFor = homeStatsData?.response?.goals?.for;
+          homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
+
+          const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
+          awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
+
+          // ─── FALLBACK: If stats returned 0, compute from recent fixtures ───
+          if (homeGoalsAvg === 0 || awayConcededAvg === 0) {
+            console.log(`[STATS] Incomplete for fixture ${fixtureId}: homeGoalsAvg=${homeGoalsAvg}, awayConcededAvg=${awayConcededAvg}. Running fallback...`);
+
+            const fallbackCalls: Promise<any>[] = [];
+            if (homeGoalsAvg === 0) {
+              fallbackCalls.push(callApiFootball('fixtures', { team: homeTeamId, last: 15, season }));
+            } else {
+              fallbackCalls.push(Promise.resolve(null));
+            }
+            if (awayConcededAvg === 0) {
+              fallbackCalls.push(callApiFootball('fixtures', { team: awayTeamId, last: 15, season }));
+            } else {
+              fallbackCalls.push(Promise.resolve(null));
+            }
+
+            const [homeFallback, awayFallback] = await Promise.all(fallbackCalls);
+
+            // Home team: avg goals scored at HOME
+            if (homeGoalsAvg === 0 && homeFallback) {
+              const allMatches = homeFallback?.response || [];
+              const homeGames = allMatches.filter((m: any) => m.teams?.home?.id === homeTeamId);
+              if (homeGames.length > 0) {
+                const totalGoals = homeGames.reduce((sum: number, m: any) => sum + (m.goals?.home ?? 0), 0);
+                homeGoalsAvg = totalGoals / homeGames.length;
+                console.log(`[STATS-FALLBACK] Home goals avg from ${homeGames.length} home fixtures: ${homeGoalsAvg.toFixed(2)}`);
+              } else if (allMatches.length > 0) {
+                const totalGoals = allMatches.reduce((sum: number, m: any) => {
+                  const isHome = m.teams?.home?.id === homeTeamId;
+                  return sum + (isHome ? (m.goals?.home ?? 0) : (m.goals?.away ?? 0));
+                }, 0);
+                homeGoalsAvg = totalGoals / allMatches.length;
+                console.log(`[STATS-FALLBACK] Home goals avg (all venues) from ${allMatches.length} fixtures: ${homeGoalsAvg.toFixed(2)}`);
+              }
+            }
+
+            // Away team: avg goals conceded when AWAY
+            if (awayConcededAvg === 0 && awayFallback) {
+              const allMatches = awayFallback?.response || [];
+              const awayGames = allMatches.filter((m: any) => m.teams?.away?.id === awayTeamId);
+              if (awayGames.length > 0) {
+                const totalConceded = awayGames.reduce((sum: number, m: any) => sum + (m.goals?.home ?? 0), 0);
+                awayConcededAvg = totalConceded / awayGames.length;
+                console.log(`[STATS-FALLBACK] Away conceded avg from ${awayGames.length} away fixtures: ${awayConcededAvg.toFixed(2)}`);
+              } else if (allMatches.length > 0) {
+                const totalConceded = allMatches.reduce((sum: number, m: any) => {
+                  const isAway = m.teams?.away?.id === awayTeamId;
+                  return sum + (isAway ? (m.goals?.home ?? 0) : (m.goals?.away ?? 0));
+                }, 0);
+                awayConcededAvg = totalConceded / allMatches.length;
+                console.log(`[STATS-FALLBACK] Away conceded avg (all venues) from ${allMatches.length} fixtures: ${awayConcededAvg.toFixed(2)}`);
+              }
+            }
+          }
+
+
+          const homeOver15Pct = Math.min(100, (homeGoalsAvg / 2.0) * 100);
+          const awayOver15Pct = Math.min(100, (awayConcededAvg / 2.0) * 100);
+          over15Combined = homeOver15Pct + awayOver15Pct;
+          leagueGoalsAvg = (homeGoalsAvg + awayConcededAvg) / 2;
+
+          // Only cache if BOTH key metrics are valid (non-zero)
+          if (homeGoalsAvg > 0 && awayConcededAvg > 0) {
+            await saveStatsToCache(fixtureDateForCache, fixtureId, {
+              home_goals_avg: homeGoalsAvg,
+              away_conceded_avg: awayConcededAvg,
+              over15_combined: over15Combined,
+              league_goals_avg: leagueGoalsAvg,
+              h2h_0x1_count: h2h0x1Count,
+            });
+            console.log(`[STATS-CACHE] SAVED for fixture ${fixtureId}`);
+          } else {
+            console.log(`[STATS-CACHE] SKIPPED caching for fixture ${fixtureId} — data looks incomplete`);
           }
         }
-
-        const h2hMatches = h2hData?.response || [];
-        let h2h0x1Count = 0;
-        for (const match of h2hMatches) {
-          if (match.goals?.home === 0 && match.goals?.away === 1) h2h0x1Count++;
-        }
-
-        const homeGoalsFor = homeStatsData?.response?.goals?.for;
-        const homeGoalsAvg = homeGoalsFor?.average?.home ? parseFloat(homeGoalsFor.average.home) : 0;
-
-        const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
-        const awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
-
-        const homeOver15Pct = Math.min(100, (homeGoalsAvg / 2.0) * 100);
-        const awayOver15Pct = Math.min(100, (awayConcededAvg / 2.0) * 100);
-        const over15Combined = homeOver15Pct + awayOver15Pct;
-        const leagueGoalsAvg = (homeGoalsAvg + awayConcededAvg) / 2;
 
         const criteriaMet: Record<string, boolean> = {
           home_odd_lower: homeOdd > 0 && awayOdd > 0 && homeOdd < awayOdd,
@@ -410,6 +625,7 @@ serve(async (req) => {
           final_score_home: finalScoreHome,
           final_score_away: finalScoreAway,
           fixture_status: fixtureStatus,
+          is_backtest: is_backtest,
         };
       } catch (err) {
         console.error(`Error analyzing fixture ${fixtureId}:`, err);
@@ -442,8 +658,8 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ 
-        results, 
+      JSON.stringify({
+        results,
         weights_used: weights,
         total_fixtures: totalFixtures || fixtureIdsToAnalyze.length,
         fixtures_with_odds: oddsMap.size,
