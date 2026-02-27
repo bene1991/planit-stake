@@ -57,7 +57,83 @@ serve(async (req) => {
       ? (1 / methodData.stats.avgOdd) * 100
       : 50;
 
-    // ... [keeping prompt logic intact] ...
+    const systemPrompt = `Você é um analista especializado em trading esportivo. Sua tarefa é analisar os dados de um método de trading e fornecer UMA recomendação clara.
+
+AÇÕES POSSÍVEIS (escolha APENAS UMA):
+- "Continuar": Método saudável, continue operando normalmente
+- "Pausar": Momento de cautela, pausar temporariamente para reavaliação
+- "Ajustar": Necessário ajustar critérios (odds, ligas, mercados)
+- "Encerrar": Método não viável, considerar encerramento
+
+CRITÉRIOS DE ANÁLISE:
+1. Fase do método (Em Validação, Sinal Fraco, Validado, Reprovado)
+2. Edge Score (positivo = vantagem, negativo = desvantagem)
+3. Win Rate vs Breakeven necessário
+4. Tendência de evolução (últimos blocos)
+5. Consistência entre ligas/faixas de odds
+6. Nível de risco (drawdown, volatilidade)
+
+REGRAS IMPORTANTES:
+- Métodos com menos de 20 operações: sempre recomendar "Continuar" para coletar dados
+- Edge negativo consistente após 50+ operações: considerar "Pausar" ou "Encerrar"
+- Sequência de 5+ reds: considerar "Pausar"
+- Drawdown acima de 5 stakes: alertar sobre risco
+
+Retorne usando a função provide_recommendation.`;
+
+    // Build validations section for prompt
+    const validations = (methodData as any).validations;
+    let validationsPrompt = '';
+    if (validations) {
+      validationsPrompt = `
+🔬 VALIDAÇÕES AVANÇADAS:
+- Robustez: ${validations.robustness.label} (desvio padrão ${validations.robustness.stdDev.toFixed(1)}% entre ${validations.robustness.contextCount} contextos)
+- Estabilidade: ${validations.stability.label} (WR recente ${validations.stability.recentWinRate.toFixed(1)}% vs histórico, delta ${validations.stability.deltaWinRate >= 0 ? '+' : ''}${validations.stability.deltaWinRate.toFixed(1)}pp)
+- Variância: ${validations.variance.label} (top 10% das ops = ${validations.variance.topPercentContribution.toFixed(0)}% do lucro)
+`;
+    }
+
+    const userPrompt = `Analise o método "${methodData.methodName}":
+
+📊 CLASSIFICAÇÃO ATUAL: ${methodData.phase}
+
+📈 SCORES:
+- Confiança: ${methodData.scores.confidence}/100
+- Risco: ${methodData.scores.risk}/100
+- Edge: ${methodData.scores.edge} (${methodData.scores.edge > 0 ? 'positivo' : 'negativo'})
+
+📉 ESTATÍSTICAS:
+- Operações: ${methodData.stats.totalOperations}
+- Win Rate: ${methodData.stats.winRate.toFixed(1)}%
+- Breakeven necessário: ${breakevenRate.toFixed(1)}%
+- ROI: ${methodData.stats.roi.toFixed(1)}%
+- Lucro: ${methodData.stats.profitStakes >= 0 ? '+' : ''}${methodData.stats.profitStakes.toFixed(1)} stakes
+- Odd média: ${methodData.stats.avgOdd.toFixed(2)}
+- Drawdown máximo: ${methodData.stats.maxDrawdown.toFixed(1)} stakes
+- Dias ativos: ${methodData.stats.activeDays}
+- Sequência atual: ${methodData.stats.currentStreak.count} ${methodData.stats.currentStreak.type}s
+
+${methodData.evolutionByBlocks.length > 0 ? `
+📊 EVOLUÇÃO (últimos blocos de 10 operações):
+${methodData.evolutionByBlocks.slice(-3).map(b => `- Bloco ${b.block}: WR ${b.winRate.toFixed(1)}%, Lucro ${b.profit >= 0 ? '+' : ''}${b.profit.toFixed(1)}st`).join('\n')}
+` : ''}
+
+${methodData.contextAnalysis.byLeague.length > 0 ? `
+🏆 TOP LIGAS:
+${methodData.contextAnalysis.byLeague.slice(0, 3).map(l => `- ${l.league}: ${l.winRate.toFixed(1)}% WR (${l.operations} ops)`).join('\n')}
+` : ''}
+
+${methodData.contextAnalysis.byOddRange.length > 0 ? `
+🎯 PERFORMANCE POR FAIXA DE ODD:
+${methodData.contextAnalysis.byOddRange.map(o => `- ${o.range}: ${o.winRate.toFixed(1)}% WR (${o.operations} ops)`).join('\n')}
+` : ''}
+
+${methodData.alerts.length > 0 ? `
+⚠️ ALERTAS ATIVOS:
+${methodData.alerts.map(a => `- [${a.type.toUpperCase()}] ${a.title}: ${a.message}`).join('\n')}
+` : ''}
+${validationsPrompt}
+Com base nesses dados, qual a sua recomendação?`;
 
     const requestBody = {
       system_instruction: {
