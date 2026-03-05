@@ -132,7 +132,7 @@ async function runRobot() {
 
             const stats = {
                 h: {
-                    xg: extractFloat(hStats, 'Expected Goals'),
+                    xg: extractFloat(hStats, 'expected_goals'),
                     corners: extractNum(hStats, 'Corner Kicks'),
                     shotsInBox: extractNum(hStats, 'Shots insidebox'),
                     shots: extractNum(hStats, 'Total Shots'),
@@ -141,7 +141,7 @@ async function runRobot() {
                     possession: extractNum(hStats, 'Ball Possession')
                 },
                 a: {
-                    xg: extractFloat(aStats, 'Expected Goals'),
+                    xg: extractFloat(aStats, 'expected_goals'),
                     corners: extractNum(aStats, 'Corner Kicks'),
                     shotsInBox: extractNum(aStats, 'Shots insidebox'),
                     shots: extractNum(aStats, 'Total Shots'),
