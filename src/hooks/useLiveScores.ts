@@ -36,8 +36,31 @@ interface UseLiveScoresResult {
 
 // Callback for goal detection
 export interface GoalDetectedCallback {
-  (gameId: string, team: 'home' | 'away', homeScore: number, awayScore: number, game: Game): void;
+  (
+    gameId: string | number,
+    team: 'home' | 'away',
+    homeScore: number,
+    awayScore: number,
+    game?: Game,
+    playerName?: string,
+    minute?: string | number,
+    homeTeam?: string,
+    awayTeam?: string,
+    leagueName?: string
+  ): void;
 }
+
+export interface RedCardEvent {
+  fixtureId: number;
+  minute: number;
+  team: 'home' | 'away';
+  player?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  leagueName?: string;
+}
+
+export type OnRedCardDetected = (event: RedCardEvent) => void;
 
 // Default intervals (used as fallback)
 const DEFAULT_ACTIVE_INTERVAL = 30 * 1000;
@@ -48,12 +71,16 @@ const MIN_CALL_INTERVAL = 10 * 1000;
 
 // === MODULE-LEVEL goal dedup (survives StrictMode remounts) ===
 const notifiedGoalsModule = new Map<string, number>(); // key -> timestamp
+const notifiedRedCardsModule = new Map<string, number>(); // key -> timestamp
 
 // Cleanup entries older than 2 hours to prevent memory leaks
-const cleanupNotifiedGoals = () => {
+const cleanupNotifiedEntries = () => {
   const cutoff = Date.now() - 2 * 60 * 60 * 1000;
   for (const [key, ts] of notifiedGoalsModule) {
     if (ts < cutoff) notifiedGoalsModule.delete(key);
+  }
+  for (const [key, ts] of notifiedRedCardsModule) {
+    if (ts < cutoff) notifiedRedCardsModule.delete(key);
   }
 };
 
@@ -67,8 +94,10 @@ export function useLiveScores(
   games: Game[],
   onScorePersisted?: (gameId: string, homeScore: number, awayScore: number) => void,
   onGoalDetected?: GoalDetectedCallback,
+  onRedCardDetected?: OnRedCardDetected,
   activeIntervalMs?: number,
-  paused?: boolean
+  paused?: boolean,
+  monitorAllLive?: boolean
 ): UseLiveScoresResult {
   const [scores, setScores] = useState<Map<string, LiveScore>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -100,6 +129,8 @@ export function useLiveScores(
   // Stable refs for callbacks - prevents fetchLiveScores from being recreated when callbacks change
   const onGoalDetectedRef = useRef(onGoalDetected);
   useEffect(() => { onGoalDetectedRef.current = onGoalDetected; }, [onGoalDetected]);
+  const onRedCardDetectedRef = useRef(onRedCardDetected);
+  useEffect(() => { onRedCardDetectedRef.current = onRedCardDetected; }, [onRedCardDetected]);
   const onScorePersistedRef = useRef(onScorePersisted);
   useEffect(() => { onScorePersistedRef.current = onScorePersisted; }, [onScorePersisted]);
 
@@ -157,7 +188,7 @@ export function useLiveScores(
       return;
     }
 
-    if (isFetchingRef.current || !hasGamesToMonitor) return;
+    if (isFetchingRef.current || (!hasGamesToMonitor && !monitorAllLive)) return;
 
     lastCallTimeRef.current = now;
     isFetchingRef.current = true;
@@ -208,6 +239,19 @@ export function useLiveScores(
       // Collect fixture IDs that need events fetched
       const fixturesWithGoals: { id: string; homeTeamId: number; awayTeamId: number }[] = [];
 
+      // Identify games with new goals
+      const newlyDetectedGoals: {
+        game?: Game,
+        fixtureId: string,
+        team: 'home' | 'away',
+        homeScore: number,
+        awayScore: number,
+        goalKey: string,
+        homeTeam: string,
+        awayTeam: string,
+        leagueName: string
+      }[] = [];
+
       for (const fixture of fixtures) {
         const fixtureId = fixture.fixture?.id?.toString();
         const status = fixture.fixture?.status?.short ?? 'NS';
@@ -216,8 +260,12 @@ export function useLiveScores(
         const homeTeamId = fixture.teams?.home?.id;
         const awayTeamId = fixture.teams?.away?.id;
 
-        if (fixtureId && fixtureIds.includes(fixtureId)) {
-          // Find the game for this fixture
+        if (!fixtureId) continue;
+
+        const isMonitoredLocally = fixtureIds.includes(fixtureId);
+
+        if (isMonitoredLocally || monitorAllLive) {
+          // Find the game for this fixture (may be null if not in planning)
           const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
 
           // GOAL DETECTION: Compare with previous snapshot BEFORE updating
@@ -227,30 +275,80 @@ export function useLiveScores(
           const oldHomeScore = oldSnapshot?.homeScore ?? 0;
           const oldAwayScore = oldSnapshot?.awayScore ?? 0;
 
-          if (game && onGoalDetectedRef.current) {
+          if (onGoalDetectedRef.current || onRedCardDetectedRef.current) {
+            const homeTeam = fixture.teams?.home?.name || 'Home';
+            const awayTeam = fixture.teams?.away?.name || 'Away';
+            const leagueName = fixture.league?.name || 'League';
+
             if (oldSnapshot) {
-              // Periodic cleanup of old entries
-              cleanupNotifiedGoals();
+              // Periodic cleanup
+              cleanupNotifiedEntries();
 
               // Detect home goal - with MODULE-LEVEL dedup
-              if (homeGoals > oldSnapshot.homeScore) {
+              // SKIP if game is finished to avoid late notifications for already concluded matches
+              const isFinished = FINISHED_STATUSES.includes(status);
+
+              if (!isFinished && homeGoals > oldSnapshot.homeScore) {
                 const goalKey = `${fixtureId}-home-${homeGoals}`;
                 if (!notifiedGoalsModule.has(goalKey)) {
                   notifiedGoalsModule.set(goalKey, Date.now());
-                  console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${game.homeTeam} scores! ${homeGoals}-${awayGoals}`);
-                  onGoalDetectedRef.current(game.id, 'home', homeGoals, awayGoals, game);
+                  console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${homeTeam} scores! ${homeGoals}-${awayGoals}`);
+                  newlyDetectedGoals.push({
+                    game,
+                    fixtureId,
+                    team: 'home',
+                    homeScore: homeGoals,
+                    awayScore: awayGoals,
+                    goalKey,
+                    homeTeam,
+                    awayTeam,
+                    leagueName
+                  });
                 }
               }
               // Detect away goal
-              if (awayGoals > oldSnapshot.awayScore) {
+              if (!isFinished && awayGoals > oldSnapshot.awayScore) {
                 const goalKey = `${fixtureId}-away-${awayGoals}`;
                 if (!notifiedGoalsModule.has(goalKey)) {
                   notifiedGoalsModule.set(goalKey, Date.now());
-                  console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${game.awayTeam} scores! ${homeGoals}-${awayGoals}`);
-                  onGoalDetectedRef.current(game.id, 'away', homeGoals, awayGoals, game);
+                  console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${awayTeam} scores! ${homeGoals}-${awayGoals}`);
+                  newlyDetectedGoals.push({
+                    game,
+                    fixtureId,
+                    team: 'away',
+                    homeScore: homeGoals,
+                    awayScore: awayGoals,
+                    goalKey,
+                    homeTeam,
+                    awayTeam,
+                    leagueName
+                  });
                 }
               }
             }
+
+            // RED CARD DETECTION: Check events in response
+            if (fixture.events?.length && onRedCardDetectedRef.current) {
+              const redCards = fixture.events.filter((e: any) => e.type?.toLowerCase() === 'red card');
+              for (const rc of redCards) {
+                const rcKey = `${fixtureId}-${rc.time?.elapsed}-${rc.player?.name || 'unknown'}`;
+                if (!notifiedRedCardsModule.has(rcKey)) {
+                  notifiedRedCardsModule.set(rcKey, Date.now());
+                  console.log(`[useLiveScores] 🟥 RED CARD DETECTED! ${rc.player?.name} (${rc.team?.name})`);
+                  onRedCardDetectedRef.current({
+                    fixtureId: parseInt(fixtureId),
+                    minute: rc.time?.elapsed,
+                    team: rc.team?.id === homeTeamId ? 'home' : 'away',
+                    player: rc.player?.name,
+                    // Additional info for global notifications
+                    homeTeam,
+                    awayTeam,
+                    leagueName
+                  } as any);
+                }
+              }
+            }
+
             // Update previous snapshot for next comparison (AFTER reading old values)
             previousScoresRef.current.set(fixtureId, { homeScore: homeGoals, awayScore: awayGoals });
           }
@@ -270,6 +368,13 @@ export function useLiveScores(
             homeTeamId,
             awayTeamId,
             goalDetectedAt: goalJustHappened ? Date.now() : undefined,
+            events: fixture.events?.length > 0 ? fixture.events.map((e: any) => ({
+              minute: e.time?.elapsed,
+              team: e.team?.id === homeTeamId ? 'home' : 'away',
+              type: e.type?.toLowerCase(),
+              player: e.player?.name,
+              detail: e.detail
+            })) : undefined,
           });
 
           // Track fixtures with goals for event fetching
@@ -360,8 +465,40 @@ export function useLiveScores(
         }
       }
 
-      // DISABLED: Individual fetch for games that left live=all - saves credits
-      // These games likely just finished but live=all should catch them on next cycle
+      // Dispatch goal detected events with player names
+      for (const goal of newlyDetectedGoals) {
+        const scoreDetails = newScores.get(goal.fixtureId);
+        let playerName: string | undefined = undefined;
+        let minute: string | number | undefined = undefined;
+
+        if (scoreDetails?.events) {
+          // Find the last goal event for the scoring team
+          const teamGoals = scoreDetails.events.filter(e => e.type === 'goal' && e.team === goal.team);
+          if (teamGoals.length > 0) {
+            const lastGoal = teamGoals[teamGoals.length - 1];
+            playerName = lastGoal.player;
+            minute = lastGoal.minute;
+          }
+        }
+
+        minute = minute ?? scoreDetails?.elapsed ?? '??';
+
+        onGoalDetectedRef.current?.(
+          goal.game?.id || goal.fixtureId,
+          goal.team,
+          goal.homeScore,
+          goal.awayScore,
+          goal.game,
+          playerName,
+          minute,
+          goal.homeTeam,
+          goal.awayTeam,
+          goal.leagueName
+        );
+      }
+
+      // Fix for games that left live=all (likely finished)
+      // API-Football removes finished games from live=all feed promptly.
       const liveGamesNotInResponse = gamesRef.current.filter(g =>
         g.api_fixture_id &&
         g.status === 'Live' &&
@@ -370,14 +507,70 @@ export function useLiveScores(
       );
 
       if (liveGamesNotInResponse.length > 0) {
-        console.log(`[useLiveScores] ${liveGamesNotInResponse.length} live games not in response - will retry next cycle (API optimization)`);
-      }
+        console.log(`[useLiveScores] ${liveGamesNotInResponse.length} live games not in response - fetching individually to check if finished`);
 
-      /* DISABLED TO SAVE API CREDITS - games will be caught on next live=all cycle or backfill
-      for (const game of liveGamesNotInResponse.slice(0, 1)) {
-        // ... individual fetch code removed
+        // Carry over old scores so the UI doesn't blank out while we fetch
+        for (const game of liveGamesNotInResponse) {
+          const oldScore = scores.get(game.api_fixture_id!);
+          if (oldScore) {
+            newScores.set(game.api_fixture_id!, oldScore);
+          }
+        }
+
+        // Fetch their exact status individually
+        for (const game of liveGamesNotInResponse.slice(0, 3)) { // Max 3 per cycle to avoid rate limits
+          try {
+            console.log(`[useLiveScores] Missing live game: Fetching status for ${game.homeTeam} vs ${game.awayTeam}...`);
+            const { data: fixtureData } = await supabase.functions.invoke('api-football', {
+              body: { endpoint: 'fixtures', params: { id: game.api_fixture_id } }
+            });
+
+            const fixture = fixtureData?.response?.[0];
+            if (fixture) {
+              const status = fixture.fixture?.status?.short ?? 'NS';
+              const homeGoals = fixture.goals?.home ?? 0;
+              const awayGoals = fixture.goals?.away ?? 0;
+
+              // Update newScores with real data
+              const mappedScore: LiveScore = {
+                fixtureId: parseInt(game.api_fixture_id!),
+                homeScore: homeGoals,
+                awayScore: awayGoals,
+                elapsed: fixture.fixture?.status?.elapsed ?? null,
+                status: status,
+                statusLong: fixture.fixture?.status?.long ?? 'Not Started',
+                homeTeamId: fixture.teams?.home?.id,
+                awayTeamId: fixture.teams?.away?.id,
+              };
+              newScores.set(game.api_fixture_id!, mappedScore);
+
+              if (FINISHED_STATUSES.includes(status) && !persistedScoresRef.current.has(game.id)) {
+                persistedScoresRef.current.add(game.id);
+                console.log(`[useLiveScores] Recovered final score for ${game.homeTeam} vs ${game.awayTeam}: ${homeGoals}-${awayGoals}`);
+
+                const { error } = await supabase
+                  .from('games')
+                  .update({
+                    final_score_home: homeGoals,
+                    final_score_away: awayGoals,
+                    status: 'Finished'
+                  })
+                  .eq('id', game.id);
+
+                if (error) {
+                  console.error('[useLiveScores] Recovered persist error:', error);
+                  persistedScoresRef.current.delete(game.id);
+                } else {
+                  console.log(`[useLiveScores] Recovered score persisted for ${game.id}`);
+                  onScorePersistedRef.current?.(game.id, homeGoals, awayGoals);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[useLiveScores] Missing live game fetch failed for ${game.api_fixture_id}:`, err);
+          }
+        }
       }
-      */
 
       // DISABLED: Fetching games starting soon - saves credits
       // These will appear in live=all once they actually start

@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CheckCircle, XCircle, Target, Ban, CalendarPlus, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CheckCircle, XCircle, Target, Ban, CalendarPlus, Check, ChevronDown, ChevronRight, Bot } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface CriteriaDetail {
   home_goals_avg: number;
@@ -48,6 +51,26 @@ interface ScoreCardProps {
   onRegisterReal?: () => void;
   registeringReal?: boolean;
   isOperated?: boolean;
+  iaSelected?: boolean;
+  iaJustification?: string;
+  iaCriteria?: {
+    btts_pct: number;
+    over25_pct: number;
+    home_clean_sheet_pct: number;
+    away_clean_sheet_pct: number;
+    home_goals_avg_10: number;
+    away_conceded_avg_10: number;
+  };
+  liveScore?: {
+    events?: Array<{
+      minute: number;
+      team: 'home' | 'away';
+      type: string;
+      player?: string;
+      detail?: string;
+    }>;
+  } | null;
+  isMobile?: boolean;
 }
 
 const classificationColor: Record<string, string> = {
@@ -64,7 +87,9 @@ const scoreRingColor: Record<string, string> = {
   'Não recomendado': 'text-red-400',
 };
 
-export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo, onSelect, isSelected, onRegisterReal, registeringReal, isOperated }: ScoreCardProps) => {
+export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, classification, approved, criteria, reasons, onSave, saving, backtestResult, onForceAdd, forceAdding, onBlockLeague, onSendToPlanning, sendingToPlanning, alreadyInPlanning, homeOdd, drawOdd, awayOdd, homeTeamLogo, awayTeamLogo, onSelect, isSelected, onRegisterReal, registeringReal, isOperated, iaSelected, iaJustification, iaCriteria, liveScore, isMobile: isMobileProp }: ScoreCardProps) => {
+  const isMobileSystem = useIsMobile();
+  const isMobile = isMobileProp ?? isMobileSystem;
   const [expanded, setExpanded] = useState(false);
 
   const criteriaList = [
@@ -107,18 +132,44 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
           <div className="flex items-center gap-2">
             <TeamLogo src={homeTeamLogo} name={homeTeam} />
             <span className="text-sm font-medium truncate">{homeTeam}</span>
+            {/* Show latest home goal if any */}
+            {(() => {
+              const lastHomeGoal = liveScore?.events?.reverse()?.find(e => e.team === 'home' && e.type === 'goal');
+              if (lastHomeGoal) {
+                return (
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0 ml-1">
+                    ⚽ {lastHomeGoal.player || 'Gol'} {lastHomeGoal.minute}'
+                  </span>
+                );
+              }
+              return null;
+            })()}
           </div>
           <div className="flex items-center gap-2">
             <TeamLogo src={awayTeamLogo} name={awayTeam} />
             <span className="text-sm font-medium truncate">{awayTeam}</span>
+            {/* Show latest away goal if any */}
+            {(() => {
+              const lastAwayGoal = liveScore?.events?.reverse()?.find(e => e.team === 'away' && e.type === 'goal');
+              if (lastAwayGoal) {
+                return (
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0 ml-1">
+                    ⚽ {lastAwayGoal.player || 'Gol'} {lastAwayGoal.minute}'
+                  </span>
+                );
+              }
+              return null;
+            })()}
           </div>
         </div>
 
         {/* Odds column */}
-        <div className="shrink-0 w-12 text-right space-y-1">
-          <p className="text-xs font-mono font-semibold">{homeOdd ? homeOdd.toFixed(2) : '—'}</p>
-          <p className="text-xs font-mono font-semibold">{awayOdd ? awayOdd.toFixed(2) : '—'}</p>
-        </div>
+        {!isMobile && (
+          <div className="shrink-0 w-12 text-right space-y-1">
+            <p className="text-xs font-mono font-semibold">{homeOdd ? homeOdd.toFixed(2) : '—'}</p>
+            <p className="text-xs font-mono font-semibold">{awayOdd ? awayOdd.toFixed(2) : '—'}</p>
+          </div>
+        )}
 
         {/* Score ring */}
         <div className="shrink-0 relative w-10 h-10 flex items-center justify-center">
@@ -178,6 +229,20 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
                 <Ban className="w-3 h-3" /> Bloquear
               </button>
             )}
+            {iaSelected && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-[10px] bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border-cyan-500/40 cursor-help">
+                      <Bot className="w-3 h-3 mr-1" /> IA Selection
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-xs">
+                    <p className="font-medium">{iaJustification}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
 
           {/* Odds 1X2 row */}
@@ -235,11 +300,53 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
             </div>
           )}
 
+          {/* IA Criteria Details */}
+          {iaCriteria && approved && (
+            <div className="rounded-md border border-cyan-500/20 overflow-hidden">
+              <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 px-3 py-1.5 flex items-center gap-1.5">
+                <Bot className="w-3 h-3 text-cyan-400" />
+                <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wide">Dados IA Selection</span>
+                {iaSelected ? (
+                  <CheckCircle className="w-3 h-3 text-emerald-400 ml-auto" />
+                ) : (
+                  <XCircle className="w-3 h-3 text-red-400 ml-auto" />
+                )}
+              </div>
+              <div className="divide-y divide-border/20">
+                {[
+                  { label: 'BTTS (Ambas Marcam)', value: `${iaCriteria.btts_pct.toFixed(0)}%`, met: iaCriteria.btts_pct > 50 },
+                  { label: 'Over 2.5', value: `${iaCriteria.over25_pct.toFixed(0)}%`, met: iaCriteria.over25_pct > 60 },
+                  { label: 'Clean Sheet Casa', value: `${iaCriteria.home_clean_sheet_pct.toFixed(0)}%`, met: iaCriteria.home_clean_sheet_pct <= 50 },
+                  { label: 'Clean Sheet Fora', value: `${iaCriteria.away_clean_sheet_pct.toFixed(0)}%`, met: iaCriteria.away_clean_sheet_pct <= 40 },
+                ].map((c, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      {c.met
+                        ? <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" />
+                        : <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+                      }
+                      <span className="text-muted-foreground">{c.label}</span>
+                    </div>
+                    <span className={`font-mono font-semibold ${c.met ? 'text-foreground' : 'text-red-400'}`}>{c.value}</span>
+                  </div>
+                ))}
+              </div>
+              {iaJustification && (
+                <div className={`px-3 py-1.5 text-[10px] border-t border-border/20 ${iaSelected ? 'text-cyan-400/80' : 'text-red-400/80'}`}>
+                  {iaJustification}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action buttons */}
-          <div className="flex gap-2">
+          <div className={cn(
+            "flex gap-2",
+            isMobile ? "flex-col" : "flex-row"
+          )}>
             {approved && onSave && (
               <button
-                onClick={onSave}
+                onClick={(e) => { e.stopPropagation(); onSave(); }}
                 disabled={saving}
                 className="flex-1 py-1.5 px-3 rounded-md bg-primary/20 text-primary text-xs font-medium hover:bg-primary/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
@@ -250,7 +357,7 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
 
             {!approved && onForceAdd && (
               <button
-                onClick={onForceAdd}
+                onClick={(e) => { e.stopPropagation(); onForceAdd(); }}
                 disabled={forceAdding}
                 className="flex-1 py-1.5 px-3 rounded-md border border-primary/30 text-primary text-xs font-medium hover:bg-primary/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
@@ -261,12 +368,14 @@ export const Lay0x1ScoreCard = ({ homeTeam, awayTeam, league, time, scoreValue, 
 
             {onSendToPlanning && (
               <button
-                onClick={onSendToPlanning}
+                onClick={(e) => { e.stopPropagation(); onSendToPlanning(); }}
                 disabled={sendingToPlanning || alreadyInPlanning}
-                className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 ${alreadyInPlanning
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
-                  }`}
+                className={cn(
+                  "flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50",
+                  alreadyInPlanning
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-accent/50 text-accent-foreground hover:bg-accent/80 border border-border/40'
+                )}
               >
                 {alreadyInPlanning ? (
                   <><Check className="w-3 h-3" /> No plano</>

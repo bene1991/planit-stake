@@ -6,6 +6,7 @@ import { GoalMinutesSection } from "./GoalMinutesSection";
 import { LastMatchesSection } from "./LastMatchesSection";
 import { HeadToHeadSection } from "./HeadToHeadSection";
 import { PredictionsSection } from "./PredictionsSection";
+import { CorrectScoreSection } from "./CorrectScoreSection";
 import { Loader2 } from "lucide-react";
 
 interface Props {
@@ -33,8 +34,9 @@ export function PreMatchPanel({ fixtureId, homeTeam, awayTeam }: Props) {
   return (
     <Tabs defaultValue="predictions" className="w-full">
       <div className="space-y-1 mb-3">
-        <TabsList className="w-full grid grid-cols-3 h-8">
+        <TabsList className="w-full grid grid-cols-4 h-8">
           <TabsTrigger value="predictions" className="text-[10px] px-1">Predição</TabsTrigger>
+          <TabsTrigger value="score" className="text-[10px] px-1 text-emerald-400 data-[state=active]:text-emerald-400">Placar</TabsTrigger>
           <TabsTrigger value="standings" className="text-[10px] px-1">Classif.</TabsTrigger>
           <TabsTrigger value="stats" className="text-[10px] px-1">Gols</TabsTrigger>
         </TabsList>
@@ -47,6 +49,9 @@ export function PreMatchPanel({ fixtureId, homeTeam, awayTeam }: Props) {
 
       <TabsContent value="predictions">
         <PredictionsSection prediction={data.prediction} homeTeam={homeTeam} awayTeam={awayTeam} />
+      </TabsContent>
+      <TabsContent value="score">
+        <CorrectScoreSection homeLastMatches={data.homeLastMatches} awayLastMatches={data.awayLastMatches} homeTeamId={data.fixtureInfo?.homeTeamId || 0} awayTeamId={data.fixtureInfo?.awayTeamId || 0} />
       </TabsContent>
       <TabsContent value="standings">
         <StandingsSection standings={data.standings} homeTeamId={data.fixtureInfo?.homeTeamId || 0} awayTeamId={data.fixtureInfo?.awayTeamId || 0} />

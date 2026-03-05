@@ -28,6 +28,7 @@ import { useBankrollHealth } from '@/hooks/useBankrollHealth';
 import { formatCurrency } from '@/utils/profitCalculator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { exportGamesToCSV } from '@/utils/exportToCSV';
@@ -64,6 +65,7 @@ const statusConfig: Record<OperationalStatusType, { color: string; bg: string; i
 };
 
 export default function Performance() {
+  const isMobile = useIsMobile();
   const { games, loading: gamesLoading, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
 
@@ -352,7 +354,12 @@ export default function Performance() {
       {/* Main Status Card + KPI Cards - Desktop: Side by side */}
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Status Card */}
-        <Card className={cn("border-2 lg:w-80 lg:flex-shrink-0", statusInfo.border, statusInfo.bg)}>
+        <Card className={cn(
+          "border-2",
+          isMobile ? "w-full" : "w-80 flex-shrink-0",
+          statusInfo.border,
+          statusInfo.bg
+        )}>
           <CardContent className="py-4 lg:py-6">
             <div className="flex flex-col items-center text-center gap-3">
               <StatusIcon className={cn("h-12 w-12 lg:h-14 lg:w-14", statusInfo.color)} />
@@ -385,7 +392,10 @@ export default function Performance() {
         </Card>
 
         {/* KPI Cards */}
-        <div className="flex-1 grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className={cn(
+          "flex-1 grid gap-4",
+          isMobile ? "grid-cols-2" : "lg:grid-cols-3 xl:grid-cols-5"
+        )}>
           {/* Lucro do Período */}
           <Card>
             <CardHeader className="pb-2">

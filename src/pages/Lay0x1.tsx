@@ -1,63 +1,52 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Lay0x1Scanner } from '@/components/Lay0x1/Lay0x1Scanner';
 import { Lay0x1Dashboard } from '@/components/Lay0x1/Lay0x1Dashboard';
-import { Lay0x1Evolution } from '@/components/Lay0x1/Lay0x1Evolution';
-import { Lay0x1History } from '@/components/Lay0x1/Lay0x1History';
-import { Lay0x1RealResults } from '@/components/Lay0x1/Lay0x1RealResults';
-import { Target, BarChart3, Settings2, History, DollarSign } from 'lucide-react';
+import { Target, BarChart3 } from 'lucide-react';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 
 const Lay0x1 = () => {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Target className="w-6 h-6 text-primary" />
           IA Lay 0x1
         </h1>
         <p className="text-sm text-muted-foreground">
-          Scanner inteligente com modelo evolutivo adaptativo
+          Scanner de jogos com casa ofensiva e visitante vulnerável
         </p>
       </div>
 
-      <Tabs defaultValue="scanner" className="w-full">
-        <TabsList className="w-full grid grid-cols-4">
-          <TabsTrigger value="scanner" className="gap-1.5 text-xs sm:text-sm">
-            <Target className="w-4 h-4" /> Scanner
-          </TabsTrigger>
-          <TabsTrigger value="dashboard" className="gap-1.5 text-xs sm:text-sm">
-            <BarChart3 className="w-4 h-4" /> Dashboard
-          </TabsTrigger>
-          <TabsTrigger value="results" className="gap-1.5 text-xs sm:text-sm">
-            <DollarSign className="w-4 h-4" /> Resultados
-          </TabsTrigger>
-          <TabsTrigger value="config" className="gap-1.5 text-xs sm:text-sm">
-            <Settings2 className="w-4 h-4" /> Config
-          </TabsTrigger>
-          <TabsTrigger value="history" className="gap-1.5 text-xs sm:text-sm">
-            <History className="w-4 h-4" /> Histórico IA
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex flex-col lg:grid lg:grid-cols-[1fr_400px] gap-6 items-start">
+        {/* Left Column - Scanner */}
+        <div className="w-full space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Target className="w-5 h-5 text-primary" />
+                Scanner de Oportunidades
+              </CardTitle>
+            </CardHeader>
+            <Lay0x1Scanner />
+          </Card>
+        </div>
 
-        <TabsContent value="scanner">
-          <Lay0x1Scanner />
-        </TabsContent>
-
-        <TabsContent value="dashboard">
-          <Lay0x1Dashboard />
-        </TabsContent>
-
-        <TabsContent value="results">
-          <Lay0x1RealResults />
-        </TabsContent>
-
-        <TabsContent value="config">
-          <Lay0x1Evolution />
-        </TabsContent>
-
-        <TabsContent value="history">
-          <Lay0x1History />
-        </TabsContent>
-      </Tabs>
+        {/* Right Column - Dashboard & Config */}
+        <div className="w-full sticky top-4">
+          <Card className="border-border">
+            <CardHeader className="pb-2 bg-muted/20 border-b p-4">
+              <div className="flex items-center justify-between mb-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-primary" />
+                  Visão Geral (Dashboard)
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <div className="p-4 overflow-y-auto max-h-[80vh] custom-scrollbar">
+              <Lay0x1Dashboard />
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };

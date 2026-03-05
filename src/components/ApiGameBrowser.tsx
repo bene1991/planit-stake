@@ -31,6 +31,8 @@ export interface SelectedGame {
   date: string;
   time: string;
   league: string;
+  country: string;
+  leagueFlag: string;
   homeTeam: string;
   awayTeam: string;
   homeTeamLogo: string;
@@ -55,7 +57,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   // Helper functions for quick date navigation
   const getDateString = (daysFromToday: number) => format(addDays(getNowInBrasilia(), daysFromToday), 'yyyy-MM-dd');
   const isDateSelected = (daysFromToday: number) => selectedDate === getDateString(daysFromToday);
-  
+
   // Format selected date for display
   const formattedSelectedDate = useMemo(() => {
     try {
@@ -79,7 +81,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesSearch = 
+        const matchesSearch =
           f.teams.home.name.toLowerCase().includes(query) ||
           f.teams.away.name.toLowerCase().includes(query) ||
           f.league.name.toLowerCase().includes(query);
@@ -96,12 +98,12 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   }, [fixtures, searchQuery, showFavoritesOnly, favoriteLeagues, isLeagueFavorite]);
 
   // Split into upcoming and finished
-  const upcomingFixtures = useMemo(() => 
+  const upcomingFixtures = useMemo(() =>
     baseFilteredFixtures.filter(f => !FINISHED_STATUSES.includes(f.fixture.status.short)),
     [baseFilteredFixtures]
   );
 
-  const finishedFixtures = useMemo(() => 
+  const finishedFixtures = useMemo(() =>
     baseFilteredFixtures.filter(f => FINISHED_STATUSES.includes(f.fixture.status.short)),
     [baseFilteredFixtures]
   );
@@ -112,7 +114,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   // Group by league
   const groupedFixtures = useMemo(() => {
     const groups = new Map<string, ApiFootballFixture[]>();
-    
+
     filteredFixtures.forEach(f => {
       const key = `${f.league.country} - ${f.league.name}`;
       if (!groups.has(key)) {
@@ -132,7 +134,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   const toggleFixture = (fixtureId: number) => {
     // Don't allow selecting already existing fixtures
     if (existingIdsSet.has(fixtureId.toString())) return;
-    
+
     setSelectedFixtures(prev => {
       const newSet = new Set(prev);
       if (newSet.has(fixtureId)) {
@@ -168,12 +170,14 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
         if (!fixture) return;
 
         const fixtureDate = new Date(fixture.fixture.date);
-        
+
         gamesToAdd.push({
           fixtureId: fixture.fixture.id,
           date: format(fixtureDate, 'yyyy-MM-dd'),
           time: format(fixtureDate, 'HH:mm'),
-          league: `${fixture.league.country} - ${fixture.league.name}`,
+          league: fixture.league.name,
+          country: fixture.league.country,
+          leagueFlag: fixture.league.flag || '',
           homeTeam: fixture.teams.home.name,
           awayTeam: fixture.teams.away.name,
           homeTeamLogo: fixture.teams.home.logo,
@@ -259,8 +263,8 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                     className="pl-9"
                   />
                 </div>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="icon"
                   onClick={() => setShowLeagueSelector(true)}
                   title="Configurar ligas favoritas"
@@ -293,8 +297,8 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
             {/* Filters */}
             <div className="flex items-center gap-4 mt-3">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <Checkbox 
-                  checked={showFavoritesOnly} 
+                <Checkbox
+                  checked={showFavoritesOnly}
                   onCheckedChange={(checked) => setShowFavoritesOnly(!!checked)}
                 />
                 <Star className="h-4 w-4 text-primary" />
@@ -318,8 +322,8 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                 <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p>Nenhum jogo encontrado</p>
                 {showFavoritesOnly && favoriteLeagues.length === 0 && (
-                  <Button 
-                    variant="link" 
+                  <Button
+                    variant="link"
                     className="mt-2"
                     onClick={() => setShowLeagueSelector(true)}
                   >
@@ -347,10 +351,10 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                             onClick={() => toggleFixture(fixture.fixture.id)}
                             className={cn(
                               "flex items-center gap-3 p-2 rounded-lg transition-colors",
-                              isAlreadyAdded 
-                                ? "bg-muted/30 opacity-60 cursor-not-allowed" 
-                                : isSelected 
-                                  ? "bg-primary/10 border border-primary/30 cursor-pointer" 
+                              isAlreadyAdded
+                                ? "bg-muted/30 opacity-60 cursor-not-allowed"
+                                : isSelected
+                                  ? "bg-primary/10 border border-primary/30 cursor-pointer"
                                   : "hover:bg-muted/50 cursor-pointer"
                             )}
                           >
@@ -361,7 +365,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                             ) : (
                               <Checkbox checked={isSelected} className="pointer-events-none" />
                             )}
-                            
+
                             <span className="text-xs text-muted-foreground w-12">
                               {status.isLive ? (
                                 <Badge variant="destructive" className="text-[10px] px-1">
@@ -383,7 +387,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
 
                             {/* Score or VS */}
                             <span className="text-xs font-bold px-2">
-                              {fixture.goals.home !== null 
+                              {fixture.goals.home !== null
                                 ? `${fixture.goals.home} - ${fixture.goals.away}`
                                 : 'vs'
                               }
@@ -443,7 +447,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
                   Cancelar
                 </Button>
-                <Button 
+                <Button
                   onClick={handleAddGames}
                   disabled={selectedFixtures.size === 0 || selectedMethods.size === 0 || adding}
                 >

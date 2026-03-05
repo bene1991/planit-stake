@@ -20,6 +20,8 @@ export interface StatValues {
   yellow: number;
   red: number;
   offsides: number;
+  attacks_total: number;
+  attacks_dangerous: number;
 }
 
 export interface MomentumPoint {
@@ -85,7 +87,7 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
     try {
       // Global deduplication: reuse in-flight request for the same fixture
       let resultPromise = pendingFixtureRequests.get(fixtureIdNum);
-      
+
       if (!resultPromise || skipCache) {
         resultPromise = supabase.functions.invoke('get-fixture-details', {
           body: { fixture_id: fixtureIdNum, skip_cache: skipCache },
@@ -96,10 +98,10 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
         }).finally(() => {
           pendingFixtureRequests.delete(fixtureIdNum);
         });
-        
+
         pendingFixtureRequests.set(fixtureIdNum, resultPromise);
       }
-      
+
       const result = await resultPromise;
       const cacheData = result as FixtureCacheData;
       setData(cacheData);

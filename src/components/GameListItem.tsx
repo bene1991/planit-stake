@@ -12,6 +12,7 @@ import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
 import { LiveDominanceDisplay } from "@/components/LiveDominanceDisplay";
 import { useLdiHistory } from "@/hooks/useLdiHistory";
 import { useLiveMomentAI } from "@/hooks/useLiveMomentAI";
+import { LiveMatchGraphics } from "@/components/LiveMatchGraphics";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PreMatchModal } from "@/components/PreMatchAnalysis/PreMatchModal";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface LiveScoreEvent {
   minute: number;
@@ -72,6 +74,7 @@ export function GameListItem({
   isSelected,
   compact = false,
 }: GameListItemProps) {
+  const isMobile = useIsMobile();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showPreMatch, setShowPreMatch] = useState(false);
   const [localElapsed, setLocalElapsed] = useState<{ minutes: number; seconds: number } | null>(null);
@@ -150,7 +153,10 @@ export function GameListItem({
   }, [isLive, localElapsed, isHalfTime]);
 
   const getMethodName = (methodId: string) => {
-    return methods.find(m => m.id === methodId)?.name || 'Método';
+    const method = methods.find(m => m.id === methodId);
+    if (method) return method.name;
+    const shortId = methodId?.substring(0, 4) || '????';
+    return `Método (${shortId}...)`;
   };
 
   const getFinancialStatus = (op: { odd?: number; stakeValue?: number }) => {
@@ -242,157 +248,199 @@ export function GameListItem({
         "bg-[#121A24] border-b border-white/5 transition-all duration-200 cursor-pointer group relative",
         "hover:bg-[#182230]",
         isSelected && "ring-1 ring-emerald-500/40 z-10",
-        isHighlighted && "ring-1 ring-yellow-500/30 bg-[#1A1A10] z-20",
-        compact ? "py-2 px-3" : "py-4 px-4"
+        isHighlighted && "ring-2 ring-yellow-500 bg-yellow-500/10 z-20",
+        compact || isMobile ? "py-2 px-3" : "py-4 px-4"
       )}
         onClick={() => onSelect?.()}
       >
         {isHighlighted && (
-          <div className="absolute top-0 right-0 px-1.5 py-0.5 bg-yellow-500/10 border-b border-l border-yellow-500/20 rounded-bl-sm">
-            <span className="text-[8px] font-bold text-yellow-500 uppercase tracking-tighter">Último Gol</span>
+          <div className="absolute top-0 right-0 px-2 py-1 bg-yellow-500 border-b border-l border-yellow-600 rounded-bl-sm z-30 shadow-lg">
+            <span className="text-[10px] font-black text-black uppercase tracking-widest flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3" /> ÚLTIMO GOL
+            </span>
           </div>
         )}
-        <div className="flex items-start gap-3">
-          <CollapsibleTrigger asChild>
-            <div className="flex-1 min-w-0 flex flex-col gap-3">
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex-1 space-y-2">
-                  {/* Home Team & Scorers */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-5 w-5 flex-shrink-0">
-                        <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-                        <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
-                      {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
-                    </div>
-                    {homeGoals.length > 0 && (
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
-                        {homeGoals.map((g, i) => (
-                          <div key={`h-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
-                            <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Away Team & Scorers */}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-5 w-5 flex-shrink-0">
-                        <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-                        <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
-                      {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
-                    </div>
-                    {awayGoals.length > 0 && (
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
-                        {awayGoals.map((g, i) => (
-                          <div key={`a-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
-                            <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+        <div className="flex flex-col gap-1.5 w-full">
+          {/* Top row: Country & League Flag */}
+          {(game.country || game.league) && (
+            <div className="flex items-center gap-2 px-1 py-0.5 mb-1 opacity-80 group-hover:opacity-100 transition-opacity">
+              {game.leagueFlag && (
+                <img src={game.leagueFlag} alt={game.country || game.league} className="h-3 w-auto rounded-[1px] shadow-sm border border-white/10" />
+              )}
+              <span className="text-[10px] font-bold text-muted-foreground/90 uppercase tracking-[0.15em] leading-none">
+                {(() => {
+                  const country = game.country;
+                  const league = game.league;
+                  if (!country) return league;
+                  if (!league) return country;
+                  if (league.toLowerCase().includes(country.toLowerCase())) return league;
+                  return `${country} - ${league}`;
+                })()}
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-start gap-3 w-full">
+            <CollapsibleTrigger asChild>
+              <div className="flex-1 min-w-0 flex items-stretch gap-3">
+                {/* Left Column: Time / Status */}
+                <div className="w-12 flex-shrink-0 flex flex-col items-center justify-center border-r border-white/5 pr-3 py-1">
+                  {isLive || isFinished || isHalfTime || isPenalty || isExtraTime ? (
+                    <>
+                      <span className={cn("text-[11px] font-black uppercase tracking-wider text-center", status.color)}>
+                        {status.text}
+                      </span>
+                      {status.subText && (
+                        <span className={cn("text-[10px] font-medium text-center mt-0.5", status.color === 'text-primary' ? 'text-primary' : `${status.color}/80`)}>
+                          {status.subText}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-[11px] font-bold text-muted-foreground">{game.time}</span>
+                  )}
                 </div>
 
-                <div className="flex flex-col items-end gap-1.5 px-4 border-l border-white/5">
-                  <div className="flex items-center gap-2 font-black text-xl tabular-nums bg-white/5 px-3 py-1 rounded-md border border-white/5">
-                    <span className="text-emerald-500">{hasScore ? homeScore : '-'}</span>
-                    <span className="text-gray-700 text-xs">:</span>
-                    <span className="text-emerald-500">{hasScore ? awayScore : '-'}</span>
+                {/* Center & Right Column: Teams and Score */}
+                <div className="flex-1 flex flex-col justify-center py-1 overflow-hidden">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex-1 space-y-2 min-w-0">
+                      {/* Home Team & Scorers */}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5 flex-shrink-0">
+                            <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+                            <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
+                          {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                        </div>
+                        {homeGoals.length > 0 && (
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
+                            {homeGoals.map((g, i) => (
+                              <div key={`h-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
+                                <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Away Team & Scorers */}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5 flex-shrink-0">
+                            <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+                            <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
+                          {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                        </div>
+                        {awayGoals.length > 0 && (
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
+                            {awayGoals.map((g, i) => (
+                              <div key={`a-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
+                                <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className={cn(
+                      "flex flex-col items-end justify-center",
+                      isMobile ? "px-1" : "px-4 pl-0"
+                    )}>
+                      <div className={cn(
+                        "flex items-center gap-2 font-black tabular-nums bg-[#1A232E]/60 rounded-md border border-white/5 shadow-inner",
+                        isMobile ? "text-lg px-2 py-1" : "text-xl px-3 py-1.5"
+                      )}>
+                        <span className={cn("transition-colors", hasScore ? "text-emerald-500" : "text-emerald-500/30")}>{hasScore ? homeScore : '0'}</span>
+                        <span className="text-gray-700 text-xs">:</span>
+                        <span className={cn("transition-colors", hasScore ? "text-emerald-500" : "text-emerald-500/30")}>{hasScore ? awayScore : '0'}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className={cn(
-                    "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded",
-                    status.color === 'text-primary' ? 'text-emerald-400 bg-emerald-500/10' : `${status.color} bg-white/5`
-                  )}>
-                    {status.text} {status.subText && <span className="opacity-60">{status.subText}</span>}
-                  </div>
+
+                  {/* Live Graphics & Momentum - Moved inside a full-width container below names */}
+                  {isLive && (
+                    <div className="w-full mt-4 pb-2">
+                      <LiveMatchGraphics
+                        dominance={dominance}
+                        ldiHistory={ldiHistory}
+                        momentumSeries={fixtureCache?.momentum_series}
+                        stats={fixtureCache?.normalized_stats}
+                        homeTeam={game.homeTeam}
+                        awayTeam={game.awayTeam}
+                        homeRedCards={homeRedCards.length}
+                        awayRedCards={awayRedCards.length}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Dominance */}
-              {dominance.dominanceIndex !== null && (
-                <div className="space-y-1.5 px-0.5">
-                  <div className="flex justify-between items-center text-[8px] font-bold text-gray-500 uppercase tracking-tighter">
-                    <span>Pressão Mandante</span><span className="text-[9px] text-gray-400">Momento do Jogo</span><span>Pressão Visitante</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden flex relative shadow-inner">
-                    <div className={cn("h-full transition-all duration-700 relative", dominance.dominantTeam === 'home' && "bg-[#00F59B] shadow-[0_0_8px_rgba(0,245,155,0.4)]", dominance.dominantTeam === 'away' && "bg-[#FF3366] shadow-[0_0_8px_rgba(255,51,102,0.4)]", dominance.dominantTeam === 'balanced' && "bg-gray-500/30")} style={{ width: `${dominance.dominanceIndex}%` }} />
-                  </div>
-                </div>
-              )}
-
-              {/* Metrics Grid */}
-              {fixtureCache?.normalized_stats && (
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { label: 'Posse', h: `${fixtureCache.normalized_stats.home.possession}%`, a: `${fixtureCache.normalized_stats.away.possession}%` },
-                    { label: 'Chutes', h: fixtureCache.normalized_stats.home.shots_total, a: fixtureCache.normalized_stats.away.shots_total },
-                    { label: 'No Gol', h: fixtureCache.normalized_stats.home.shots_on, a: fixtureCache.normalized_stats.away.shots_on },
-                    { label: 'Escanteios', h: fixtureCache.normalized_stats.home.corners, a: fixtureCache.normalized_stats.away.corners }
-                  ].map((m, idx) => (
-                    <div key={idx} className="bg-white/5 rounded-md p-1.5 border border-white/5 text-center flex flex-col justify-center">
-                      <span className="text-[7px] text-gray-500 font-bold uppercase mb-0.5">{m.label}</span>
-                      <div className="flex items-center justify-center gap-1 text-[10px] font-black tracking-tight">
-                        <span className="text-[#00F59B]">{m.h}</span><span className="text-gray-700">|</span><span className="text-[#FF3366]">{m.a}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CollapsibleTrigger>
-
-          {/* Actions */}
-          <div className="flex items-center gap-1 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-6 w-6 p-0"><MoreVertical className="h-3.5 w-3.5 text-muted-foreground" /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {game.api_fixture_id && <DropdownMenuItem onClick={() => setShowPreMatch(true)}><BarChart3 className="h-4 w-4 mr-2" />Análise pré-jogo</DropdownMenuItem>}
-                {onEdit && <DropdownMenuItem onClick={() => onEdit(game)}><Settings className="h-4 w-4 mr-2" />Editar métodos</DropdownMenuItem>}
-                <DropdownMenuItem onClick={() => onDelete(game.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Remover</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-zinc-800">
-                <ChevronRight className={cn("h-4 w-4 text-gray-500 transition-transform", isExpanded && "rotate-90")} />
-              </Button>
             </CollapsibleTrigger>
+
+            {/* Actions */}
+            <div className="flex items-center gap-1 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {game.api_fixture_id && <DropdownMenuItem onClick={() => setShowPreMatch(true)}><BarChart3 className="h-4 w-4 mr-2" />Análise pré-jogo</DropdownMenuItem>}
+                  {onEdit && <DropdownMenuItem onClick={() => onEdit(game)}><Settings className="h-4 w-4 mr-2" />Editar métodos</DropdownMenuItem>}
+                  <DropdownMenuItem onClick={() => onDelete(game.id)} className="text-destructive"><Trash2 className="h-4 w-4 mr-2" />Remover</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-zinc-800">
+                  <ChevronRight className={cn("h-4 w-4 text-gray-500 transition-transform", isExpanded && "rotate-90")} />
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+          </div>
+
+          {/* Methods Row */}
+          {game.methodOperations.length > 0 && (
+            <div className={cn("flex flex-wrap items-center gap-1.5 mt-2", (compact || isMobile) ? "ml-0" : "ml-16")}>
+              {[...game.methodOperations].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)).map((operation) => {
+                const financialStatus = getFinancialStatus(operation);
+                return (
+                  <span key={operation.methodId} className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5", operation.result === 'Green' ? "bg-emerald-500/20 text-emerald-400" : operation.result === 'Red' ? "bg-red-500/20 text-red-400" : operation.result === 'Void' ? "bg-amber-500/20 text-amber-400" : financialStatus.complete ? "bg-emerald-500/10 border border-emerald-500/30 text-muted-foreground" : "bg-muted text-muted-foreground")}>
+                    {getMethodName(operation.methodId)}{financialStatus.hasOdd && <span className="opacity-80">@{operation.odd?.toFixed(2)}</span>}
+                    {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}{operation.result === 'Red' && <X className="h-2.5 w-2.5" />}{operation.result === 'Void' && <Minus className="h-2.5 w-2.5" />}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Notes */}
+          <div className={cn("mt-2", (compact || isMobile) ? "ml-0" : "ml-16")}>
+            <Collapsible>
+              <CollapsibleTrigger className="text-[10px] text-gray-500 hover:text-gray-400 flex items-center gap-1">
+                <FileText className="h-3 w-3" />
+                {game.notes ? 'Ver observações' : 'Adicionar observação'}
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-1">
+                  <GameNotesEditor notes={game.notes} onSave={(notes) => onUpdate(game.id, { notes })} compact />
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+
+          {/* AI Moment */}
+          <div className={cn("mt-2 mb-1 flex items-center gap-1.5 text-[10px] text-gray-400 italic", (compact || isMobile) ? "ml-0" : "ml-16")}>
+            <Sparkles className="h-3 w-3 text-emerald-500/60" />
+            {aiMomentText}
           </div>
         </div>
-
-        {/* Methods Row */}
-        {game.methodOperations.length > 0 && (
-          <div className={cn("flex flex-wrap items-center gap-1.5 mt-2", compact ? "ml-14" : "ml-16")}>
-            {[...game.methodOperations].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)).map((operation) => {
-              const financialStatus = getFinancialStatus(operation);
-              return (
-                <span key={operation.methodId} className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5", operation.result === 'Green' ? "bg-emerald-500/20 text-emerald-400" : operation.result === 'Red' ? "bg-red-500/20 text-red-400" : operation.result === 'Void' ? "bg-amber-500/20 text-amber-400" : financialStatus.complete ? "bg-emerald-500/10 border border-emerald-500/30 text-muted-foreground" : "bg-muted text-muted-foreground")}>
-                  {getMethodName(operation.methodId)}{financialStatus.hasOdd && <span className="opacity-80">@{operation.odd?.toFixed(2)}</span>}
-                  {operation.result === 'Green' && <Check className="h-2.5 w-2.5" />}{operation.result === 'Red' && <X className="h-2.5 w-2.5" />}{operation.result === 'Void' && <Minus className="h-2.5 w-2.5" />}
-                </span>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Notes */}
-        <div className={cn("mt-2", compact ? "ml-14" : "ml-16")}>
-          <Collapsible><CollapsibleTrigger className="text-[10px] text-gray-500 hover:text-gray-400 flex items-center gap-1"><FileText className="h-3 w-3" />{game.notes ? 'Ver observações' : 'Adicionar observação'}</CollapsibleTrigger><CollapsibleContent><div className="mt-1"><GameNotesEditor notes={game.notes} onSave={(notes) => onUpdate(game.id, { notes })} compact /></div></CollapsibleContent></Collapsible>
-        </div>
-
-        {/* AI Moment */}
-        {!compact && isLive && aiMomentText && (
-          <div className={cn("mt-2 mb-1 flex items-center gap-1.5 text-[10px] text-gray-400 italic", compact ? "ml-14" : "ml-16")}>
-            <Sparkles className="h-3 w-3 text-emerald-500/60" />{aiMomentText}
-          </div>
-        )}
       </div>
 
       <CollapsibleContent>
@@ -404,11 +452,25 @@ export function GameListItem({
                 {game.methodOperations.map((operation) => (
                   <div key={operation.methodId} className="flex items-center gap-1.5">
                     <div className="flex flex-col">
-                      <span className={cn("text-[10px] px-2.5 py-1 rounded-full font-semibold", operation.result === 'Green' ? "bg-emerald-500 text-white" : operation.result === 'Red' ? "bg-red-500 text-white" : "bg-zinc-700 text-zinc-300")}>{getMethodName(operation.methodId)}</span>
+                      <span
+                        className={cn(
+                          "text-[10px] px-2.5 py-1 rounded-full font-semibold flex items-center gap-1",
+                          operation.result === 'Green' ? "bg-emerald-500 text-white" : operation.result === 'Red' ? "bg-red-500 text-white" : "bg-zinc-700 text-zinc-300",
+                          !methods.some(m => m.id === operation.methodId) && "ring-1 ring-amber-500/50"
+                        )}
+                        title={!methods.some(m => m.id === operation.methodId) ? "Método não encontrado" : undefined}
+                      >
+                        {!methods.some(m => m.id === operation.methodId) && <AlertCircle className="h-2.5 w-2.5 text-amber-500" />}
+                        {getMethodName(operation.methodId)}
+                      </span>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => handleResultClick(operation.methodId, 'Green')} className={cn("h-6 w-6 rounded-full flex items-center justify-center border", operation.result === 'Green' ? "bg-emerald-500 border-emerald-500" : "bg-zinc-800 border-emerald-500/50 text-emerald-500")}><Check className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => handleResultClick(operation.methodId, 'Red')} className={cn("h-6 w-6 rounded-full flex items-center justify-center border", operation.result === 'Red' ? "bg-red-500 border-red-500" : "bg-zinc-800 border-red-500/50 text-red-500")}><X className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => handleResultClick(operation.methodId, 'Green')} className={cn("h-6 w-6 rounded-full flex items-center justify-center border", operation.result === 'Green' ? "bg-emerald-500 border-emerald-500" : "bg-zinc-800 border-emerald-500/50 text-emerald-500")}>
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => handleResultClick(operation.methodId, 'Red')} className={cn("h-6 w-6 rounded-full flex items-center justify-center border", operation.result === 'Red' ? "bg-red-500 border-red-500" : "bg-zinc-800 border-red-500/50 text-red-500")}>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))}

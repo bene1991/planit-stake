@@ -14,6 +14,7 @@ export const TelegramSettings = () => {
   const [chatId, setChatId] = useState(settings?.telegram_chat_id || '');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingGoal, setTestingGoal] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
@@ -57,6 +58,37 @@ export const TelegramSettings = () => {
       toast.error('Erro ao testar: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleTestGoal = async () => {
+    if (!botToken.trim() || !chatId.trim()) {
+      toast.error('Configure o Bot Token e Chat ID primeiro');
+      return;
+    }
+
+    setTestingGoal(true);
+    try {
+      const msg = `⚽ <b>GOL!</b> Teste FC\n⚽ Jogador: Jogador Teste (Teste FC)\nTeste FC 1 - 0 Exemplo United\n🏟 Liga de Teste | ⏱ 16'`;
+      const { error } = await supabase.functions.invoke('send-telegram-notification', {
+        body: {
+          action: 'send',
+          message: msg,
+          type: 'info',
+          botToken: botToken.trim(),
+          chatId: chatId.trim(),
+        },
+      });
+
+      if (error) {
+        toast.error('Erro ao enviar: ' + error.message);
+      } else {
+        toast.success('✅ Alerta de gol enviado com sucesso!');
+      }
+    } catch (error: any) {
+      toast.error('Erro ao testar: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setTestingGoal(false);
     }
   };
 
@@ -104,6 +136,14 @@ export const TelegramSettings = () => {
             disabled={testing || loading}
           >
             {testing ? 'Enviando...' : 'Testar Envio'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleTestGoal}
+            disabled={testingGoal || loading}
+            title="Testa o formato da mensagem de GOL"
+          >
+            {testingGoal ? 'Enviando...' : 'Testar Alerta de Gol'}
           </Button>
         </div>
       </CardContent>

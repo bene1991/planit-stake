@@ -58,12 +58,35 @@ export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
     return Math.abs(num).toFixed(1);
   };
 
+  // Translate common advice phrases from API
+  const translateAdvice = (advice: string) => {
+    if (!advice) return advice;
+
+    const adviceLower = advice.toLowerCase();
+
+    if (adviceLower.includes('no predictions available')) {
+      return 'Nenhuma predição disponível';
+    }
+
+    // Some simple keyword translations for other common advices
+    let translated = advice;
+    translated = translated.replace(/Combo Winner :/gi, 'Vencedor Combinado :');
+    translated = translated.replace(/Winner :/gi, 'Vencedor :');
+    translated = translated.replace(/Double chance :/gi, 'Dupla chance :');
+    translated = translated.replace(/or/gi, 'ou');
+    translated = translated.replace(/Draw/gi, 'Empate');
+
+    return translated;
+  };
+
+  const translatedAdvice = predictions.advice ? translateAdvice(predictions.advice) : null;
+
   return (
     <div className="space-y-4">
       {/* Advice */}
-      {predictions.advice && (
+      {translatedAdvice && (
         <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 text-center">
-          <span className="text-xs font-semibold text-primary">{predictions.advice}</span>
+          <span className="text-xs font-semibold text-primary">{translatedAdvice}</span>
         </div>
       )}
 

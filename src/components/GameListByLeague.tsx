@@ -119,11 +119,11 @@ export function GameListByLeague({
     const groups = new Map<string, Game[]>();
 
     sortedGames.forEach((game) => {
-      const league = game.league || 'Outros';
-      if (!groups.has(league)) {
-        groups.set(league, []);
+      const leagueKey = game.country ? `${game.country} - ${game.league}` : (game.league || 'Outros');
+      if (!groups.has(leagueKey)) {
+        groups.set(leagueKey, []);
       }
-      groups.get(league)!.push(game);
+      groups.get(leagueKey)!.push(game);
     });
 
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
@@ -135,13 +135,13 @@ export function GameListByLeague({
 
   return (
     <div className="divide-y divide-border/50">
-      {gamesByLeague.map(([league, leagueGames]) => (
-        <div key={league || 'flat'}>
+      {gamesByLeague.map(([leagueKey, leagueGames]) => (
+        <div key={leagueKey || 'flat'}>
           {/* League Header - only show when grouped by league */}
-          {league && (
+          {leagueKey && (
             <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 sticky top-0 z-10">
               <Trophy className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold text-foreground">{league}</span>
+              <span className="text-sm font-semibold text-foreground">{leagueKey}</span>
               <span className="text-xs text-muted-foreground">({leagueGames.length})</span>
             </div>
           )}

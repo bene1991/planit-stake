@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { Game } from '@/hooks/useSupabaseGames';
 import { useNotifications } from '@/hooks/useNotifications';
 import {
   getMinutesUntilGameStart,
-  hasPendingOperations,
   getDailyStats,
   detectStreak,
   getPendingOperationsCount,
@@ -24,7 +23,13 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
   const { preferences, canShowNotification, markAsShown, requestNativePermission } = useNotifications();
   const navigate = useNavigate();
   const previousGamesRef = useRef<Game[]>([]);
+  const gamesRef = useRef<Game[]>(games);
   const [isPageVisible, setIsPageVisible] = useState(true);
+
+  // Sync games ref
+  useEffect(() => {
+    gamesRef.current = games;
+  }, [games]);
 
   // Detect page visibility
   useEffect(() => {
@@ -51,46 +56,28 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
     body: string,
     type: NotificationSoundType
   ) => {
-    if (import.meta.env.DEV) {
-      console.log('🔔 Telegram notification attempt:', { 
-        title, 
-        type, 
-        enabled: preferences.telegramEnabled,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    if (!preferences.telegramEnabled) {
-      if (import.meta.env.DEV) {
-        console.log('⚠️ Telegram notifications disabled in preferences');
-      }
-      return;
-    }
-
+    if (!preferences.telegramEnabled) return;
     const message = `${title}\n${body}`;
     await sendTelegramNotification(message);
   };
 
   // Show notification (toast, native, sound, and telegram)
-  const showNotification = (
+  const showNotification = useCallback((
     title: string,
     body: string,
     type: 'success' | 'warning' | 'error' | 'info' = 'info',
     action?: { label: string; onClick: () => void },
     skipSound: boolean = false
   ) => {
-    // Play sound (unless explicitly skipped)
     if (!skipSound) {
       playNotificationSound(type, preferences.soundEnabled);
     }
 
-    // Send to Telegram (async, non-blocking)
     sendTelegramMsg(title, body, type);
 
     const useNative = preferences.nativeEnabled && !isPageVisible && 'Notification' in window && Notification.permission === 'granted';
 
     if (useNative) {
-      // Native browser notification
       const notification = new Notification(title, {
         body,
         icon: '/favicon.svg',
@@ -107,7 +94,6 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
         };
       }
     } else {
-      // Internal toast (sonner)
       const toastFn = toast[type] || toast;
       toastFn(title, {
         description: body,
@@ -118,259 +104,175 @@ export const NotificationCenter = ({ children, games }: NotificationCenterProps)
         } : undefined,
       });
     }
-  };
+  }, [preferences.nativeEnabled, preferences.soundEnabled, preferences.telegramEnabled, isPageVisible]);
 
-  useEffect(() => {
+  const checkNotifications = useCallback(() => {
     if (!preferences.enabled) return;
 
-    const checkNotifications = () => {
-      console.log('🔍 Checking notifications (UTC-3)...', {
-        enabled: preferences.enabled,
-        gamesCount: games.length,
-        currentTimeBrasilia: getNowInBrasilia().toISOString(),
-        timestamp: new Date().toISOString(),
-        preferences: {
-          gameProximity: preferences.gameProximity,
-          gameLive: preferences.gameLive,
-          gameFinished: preferences.gameFinished,
-          telegramEnabled: preferences.telegramEnabled,
-          soundEnabled: preferences.soundEnabled
-        }
-      });
+    const currentGames = gamesRef.current;
+    const previousGames = previousGamesRef.current;
 
-      const previousGames = previousGamesRef.current;
+    // 1. Check game proximity alerts (15min, 5min)
+    if (preferences.gameProximity) {
+      currentGames.forEach(game => {
+        if (game.status !== 'Not Started') return;
 
-      // 1. Check game proximity alerts (15min, 5min)
-      if (preferences.gameProximity) {
-        if (import.meta.env.DEV) {
-          console.log('🎮 Total games to check:', games.length);
-        }
-        games.forEach(game => {
-          if (import.meta.env.DEV) {
-            console.log(`📋 Game: ${formatGameName(game)}`, {
-              status: game.status,
-              date: game.date,
-              time: game.time,
-              willCheck: game.status === 'Not Started'
-            });
-          }
-          
-          if (game.status !== 'Not Started') return;
-          
-          const minutesUntil = getMinutesUntilGameStart(game);
-          const gameName = formatGameName(game);
-          
-          if (import.meta.env.DEV) {
-            console.log(`⏰ Game "${gameName}": ${minutesUntil.toFixed(1)} minutes until start, Status: ${game.status}`);
-          }
-
-          // 15 minutes warning - expanded window (14-16 min)
-          if (minutesUntil <= 16 && minutesUntil >= 14) {
-            const notifId = `game-${game.id}-15min`;
-            if (canShowNotification(notifId)) {
-              if (import.meta.env.DEV) {
-                console.log(`📢 Triggering 15-min notification for ${gameName}`);
-              }
-              showNotification(
-                `⚠️ Jogo começa em 15 min: ${gameName}`,
-                'Prepare-se para o início',
-                'warning',
-                { label: 'Ver jogo', onClick: () => navigate('/daily-planning') }
-              );
-              markAsShown(notifId);
-            }
-          }
-
-          // 5 minutes critical alert - expanded window (4-6 min)
-          if (minutesUntil <= 6 && minutesUntil >= 4) {
-            const notifId = `game-${game.id}-5min`;
-            if (canShowNotification(notifId)) {
-              if (import.meta.env.DEV) {
-                console.log(`📢 Triggering 5-min notification for ${gameName}`);
-              }
-              showNotification(
-                `🔴 ATENÇÃO! Jogo começa em 5 min: ${gameName}`,
-                'Últimos minutos antes do início!',
-                'error',
-                { label: 'Ver jogo', onClick: () => navigate('/daily-planning') }
-              );
-              markAsShown(notifId);
-            }
-          }
-        });
-      }
-
-      // 2. Check game status changes (Live, Finished)
-      games.forEach(game => {
-        const previousGame = previousGames.find(g => g.id === game.id);
-        if (!previousGame) return;
-
+        const minutesUntil = getMinutesUntilGameStart(game);
         const gameName = formatGameName(game);
 
-        // Game went Live
-        if (preferences.gameLive && previousGame.status !== 'Live' && game.status === 'Live') {
-          const notifId = `game-${game.id}-live`;
-          if (canShowNotification(notifId, 120)) { // 2h cooldown
-            const message = `⚽ Jogo AO VIVO: ${game.homeTeam} x ${game.awayTeam} (${game.league})`;
-            // Skip sound — goal detection has its own dedicated sound
+        // 15 minutes warning
+        if (minutesUntil <= 16 && minutesUntil >= 14) {
+          const notifId = `game-${game.id}-15min`;
+          if (canShowNotification(notifId)) {
             showNotification(
-              message,
-              'O jogo começou!',
-              'success',
-              { label: 'Acompanhar', onClick: () => navigate('/daily-planning') },
-              true // skipSound: avoid double sound with goal detection
+              `⚠️ Jogo começa em 15 min: ${gameName}`,
+              'Prepare-se para o início',
+              'warning',
+              { label: 'Ver jogo', onClick: () => navigate('/daily-planning') }
             );
             markAsShown(notifId);
-
-            // Voice announcement — only if game has no goals yet
-            // (if there's already a score, the goal sound is playing instead)
-            const hasGoals = (game.finalScoreHome ?? 0) > 0 || (game.finalScoreAway ?? 0) > 0;
-            if (preferences.voiceAlerts && !hasGoals) {
-              playGameStartVoice();
-            }
           }
         }
 
-        // Game finished
-        if (preferences.gameFinished && previousGame.status !== 'Finished' && game.status === 'Finished') {
-          const notifId = `game-${game.id}-finished`;
-          if (canShowNotification(notifId, 180)) { // 3h cooldown
-            const message = `🏁 Jogo finalizado: ${game.homeTeam} x ${game.awayTeam}`;
+        // 5 minutes critical alert
+        if (minutesUntil <= 6 && minutesUntil >= 4) {
+          const notifId = `game-${game.id}-5min`;
+          if (canShowNotification(notifId)) {
             showNotification(
-              message,
-              'Hora de finalizar as operações',
-              'info',
-              { label: 'Ver resultado', onClick: () => navigate('/daily-planning') }
+              `🔴 ATENÇÃO! Jogo começa em 5 min: ${gameName}`,
+              'Últimos minutos antes do início!',
+              'error',
+              { label: 'Ver jogo', onClick: () => navigate('/daily-planning') }
             );
             markAsShown(notifId);
           }
         }
       });
+    }
 
-      // 3. Check pending operations
-      if (preferences.pendingOperations) {
-        const pendingCount = getPendingOperationsCount(games);
-        
-        if (pendingCount > 0) {
-          const notifId = `pending-ops-${new Date().toISOString().split('T')[0]}`;
-          if (canShowNotification(notifId, 120)) { // 2h cooldown
-            showNotification(
-              `⚡ ${pendingCount} operação${pendingCount > 1 ? 'ões' : ''} pendente${pendingCount > 1 ? 's' : ''}`,
-              'Não esqueça de finalizar',
-              'info',
-              { label: 'Finalizar', onClick: () => navigate('/daily-planning') }
-            );
-            markAsShown(notifId);
+    // 2. Check game status changes (Live, Finished)
+    currentGames.forEach(game => {
+      const previousGame = previousGames.find(g => g.id === game.id);
+      if (!previousGame) return;
+
+      const gameName = formatGameName(game);
+
+      // Game went Live
+      if (preferences.gameLive && previousGame.status !== 'Live' && previousGame.status !== 'Finished' && game.status === 'Live') {
+        const notifId = `game-${game.id}-live`;
+        if (canShowNotification(notifId, 120)) {
+          showNotification(
+            `⚽ Jogo AO VIVO: ${game.homeTeam} x ${game.awayTeam} (${game.league})`,
+            'O jogo começou!',
+            'success',
+            { label: 'Acompanhar', onClick: () => navigate('/daily-planning') },
+            true
+          );
+          markAsShown(notifId);
+
+          const hasGoals = (game.finalScoreHome ?? 0) > 0 || (game.finalScoreAway ?? 0) > 0;
+          if (preferences.voiceAlerts && !hasGoals) {
+            playGameStartVoice();
           }
         }
       }
 
-      // 4. Check daily goals and stats
-      const dailyStats = getDailyStats(games);
-      const today = new Date().toISOString().split('T')[0];
-
-      // Daily goals achievement
-      if (preferences.dailyGoals && dailyStats.greens >= 5) {
-        const notifId = `daily-goal-${today}`;
-        if (canShowNotification(notifId, 1440)) { // Once per day
+      // Game finished
+      if (preferences.gameFinished && previousGame.status !== 'Finished' && game.status === 'Finished') {
+        const notifId = `game-${game.id}-finished`;
+        if (canShowNotification(notifId, 180)) {
           showNotification(
-            '🎉 Parabéns! Meta de 5 greens alcançada!',
-            'Excelente performance hoje!',
+            `🏁 Jogo finalizado: ${game.homeTeam} x ${game.awayTeam}`,
+            'Hora de finalizar as operações',
+            'info',
+            { label: 'Ver resultado', onClick: () => navigate('/daily-planning') }
+          );
+          markAsShown(notifId);
+        }
+      }
+    });
+
+    // 3. Check pending operations
+    if (preferences.pendingOperations) {
+      const pendingCount = getPendingOperationsCount(currentGames);
+      if (pendingCount > 0) {
+        const notifId = `pending-ops-${new Date().toISOString().split('T')[0]}`;
+        if (canShowNotification(notifId, 120)) {
+          showNotification(
+            `⚡ ${pendingCount} operação${pendingCount > 1 ? 'ões' : ''} pendente${pendingCount > 1 ? 's' : ''}`,
+            'Não esqueça de finalizar',
+            'info',
+            { label: 'Finalizar', onClick: () => navigate('/daily-planning') }
+          );
+          markAsShown(notifId);
+        }
+      }
+    }
+
+    // 4. Check daily goals and stats
+    const dailyStats = getDailyStats(currentGames);
+    const today = new Date().toISOString().split('T')[0];
+
+    // Daily goals achievement
+    if (preferences.dailyGoals && dailyStats.greens >= 5) {
+      const notifId = `daily-goal-${today}`;
+      if (canShowNotification(notifId, 1440)) {
+        showNotification(
+          '🎉 Parabéns! Meta de 5 greens alcançada!',
+          'Excelente performance hoje!',
+          'success',
+          { label: 'Ver estatísticas', onClick: () => navigate('/statistics') }
+        );
+        markAsShown(notifId);
+      }
+    }
+
+    // 5. Check streaks
+    if (preferences.streakAlerts) {
+      const { streak, type } = detectStreak(currentGames);
+      if (type === 'green' && streak >= 5) {
+        const notifId = `streak-green-${streak}`;
+        if (canShowNotification(notifId, 180)) {
+          showNotification(
+            `🔥 Streak de ${streak} greens consecutivos!`,
+            'Você está em fogo!',
             'success',
-            { label: 'Ver estatísticas', onClick: () => navigate('/statistics') }
+            { label: 'Ver progresso', onClick: () => navigate('/statistics') }
           );
           markAsShown(notifId);
         }
       }
 
-      // Win rate alerts
-      if (preferences.winRateAlerts && dailyStats.total >= 3 && dailyStats.winRate < 50) {
-        const notifId = `winrate-low-${today}`;
-        if (canShowNotification(notifId, 240)) { // 4h cooldown
+      if (type === 'red' && streak >= 3) {
+        const notifId = `streak-red-${streak}`;
+        if (canShowNotification(notifId, 180)) {
           showNotification(
-            `⚠️ Win rate abaixo de 50% (${dailyStats.winRate.toFixed(1)}%)`,
-            'Revise sua estratégia',
-            'warning',
+            `🚨 Atenção: ${streak} reds seguidos`,
+            'Hora de revisar a estratégia',
+            'error',
             { label: 'Analisar', onClick: () => navigate('/statistics') }
           );
           markAsShown(notifId);
         }
       }
+    }
 
-      // 5. Check streaks
-      if (preferences.streakAlerts) {
-        const { streak, type } = detectStreak(games);
-        
-        if (type === 'green' && streak >= 5) {
-          const notifId = `streak-green-${streak}`;
-          if (canShowNotification(notifId, 180)) { // 3h cooldown
-            showNotification(
-              `🔥 Streak de ${streak} greens consecutivos!`,
-              'Você está em fogo!',
-              'success',
-              { label: 'Ver progresso', onClick: () => navigate('/statistics') }
-            );
-            markAsShown(notifId);
-          }
-        }
-        
-        if (type === 'red' && streak >= 3) {
-          const notifId = `streak-red-${streak}`;
-          if (canShowNotification(notifId, 180)) { // 3h cooldown
-            showNotification(
-              `🚨 Atenção: ${streak} reds seguidos`,
-              'Hora de revisar a estratégia',
-              'error',
-              { label: 'Analisar', onClick: () => navigate('/statistics') }
-            );
-            markAsShown(notifId);
-          }
-        }
-      }
+    previousGamesRef.current = currentGames;
+  }, [preferences, canShowNotification, markAsShown, navigate, showNotification]);
 
-      // 6. Check ROI alerts
-      if (preferences.roiAlerts && dailyStats.total > 0) {
-        const roi = dailyStats.roi;
-        
-        if (roi > 300) {
-          const notifId = `roi-profit-${today}`;
-          if (canShowNotification(notifId, 360)) { // 6h cooldown
-            showNotification(
-              `💵 +R$ ${roi.toFixed(2)} de lucro hoje!`,
-              'Ótimo trabalho!',
-              'success',
-              { label: 'Ver bankroll', onClick: () => navigate('/bankroll') }
-            );
-            markAsShown(notifId);
-          }
-        }
-        
-        if (roi < -200) {
-          const notifId = `roi-loss-${today}`;
-          if (canShowNotification(notifId, 360)) { // 6h cooldown
-            showNotification(
-              `⚠️ R$ ${roi.toFixed(2)} de prejuízo hoje`,
-              'Considere encerrar o dia',
-              'error',
-              { label: 'Revisar', onClick: () => navigate('/statistics') }
-            );
-            markAsShown(notifId);
-          }
-        }
-      }
+  // Main interval
+  useEffect(() => {
+    if (!preferences.enabled) return;
 
-      // Update previous games state
-      previousGamesRef.current = games;
-    };
-
-    // Initial check
-    checkNotifications();
-
-    // Check every 30 seconds for more precise timing
+    // Small random delay for initial check to avoid multi-tab race
+    const initialTimer = setTimeout(checkNotifications, Math.random() * 2000);
     const interval = setInterval(checkNotifications, 30000);
 
-    return () => clearInterval(interval);
-  }, [games, preferences, canShowNotification, markAsShown, navigate, isPageVisible, showNotification]);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [preferences.enabled, checkNotifications]);
 
   return <>{children}</>;
 };

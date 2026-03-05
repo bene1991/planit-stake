@@ -52,37 +52,59 @@ function buildTelegramGames(games: Game[], methods: Method[], selectedMethodIds:
   return result;
 }
 
+function buildMessageParts(telegramGames: TelegramGame[]): string[] {
+  if (telegramGames.length === 0) return [];
+
+  const messages: string[] = [];
+  const chunkSize = 15;
+
+  for (let i = 0; i < telegramGames.length; i += chunkSize) {
+    const chunk = telegramGames.slice(i, i + chunkSize);
+    let msg = '';
+
+    if (i === 0) {
+      msg += '📊 PLANEJAMENTO DO DIA\n';
+    } else {
+      msg += `📊 PLANEJAMENTO DO DIA (Parte ${Math.floor(i / chunkSize) + 1})\n`;
+    }
+
+    chunk.forEach((g, index) => {
+      const oddText = g.entryOdds ? g.entryOdds.toFixed(2) : 'A definir';
+      msg += `\n${i + index + 1}. 🏟 Jogo: ${g.homeTeam} x ${g.awayTeam}`;
+      msg += `\n📍 Liga: ${g.league}`;
+      msg += `\n⏰ Horário: ${g.time}`;
+      msg += `\n🎯 Mercado: ${g.market}`;
+      msg += `\n💰 Odd mínima para entrada: ${oddText}`;
+      msg += `\n⏱ Entrada somente com jogo em 0x0`;
+      msg += `\n📈 Responsabilidade: consultar planilha de alavancagem`;
+      msg += '\n';
+    });
+
+    // Add rules only to the last section
+    if (i + chunkSize >= telegramGames.length) {
+      msg += '\n---\n';
+      msg += '\n⚙️ Regras da operação:';
+      msg += '\n• Operar apenas um placar por jogo';
+      msg += '\n• Não entrar fora da odd definida';
+      msg += '\n';
+      msg += '\n💸 Gestão de banca (orientação):';
+      msg += '\n• Iniciar ciclo com no máximo 1% da banca';
+      msg += '\n• Seguir progressão da planilha sem improvisar';
+      msg += '\n• Ao atingir 100%, resetar para a responsabilidade inicial';
+      msg += '\n• Nunca ultrapassar o risco pré-definido';
+      msg += '\n• Só aumentar a stake inicial após atingir pelo menos 500% de resultado acumulado';
+      msg += '\n• Ao aumentar, nunca elevar mais do que 30% da stake atual';
+    }
+
+    messages.push(msg);
+  }
+
+  return messages;
+}
+
 function buildMessage(telegramGames: TelegramGame[]): string {
-  if (telegramGames.length === 0) return '';
-
-  let msg = '📊 PLANEJAMENTO DO DIA\n';
-
-  telegramGames.forEach((g, index) => {
-    const oddText = g.entryOdds ? g.entryOdds.toFixed(2) : 'A definir';
-    msg += `\n${index + 1}. 🏟 Jogo: ${g.homeTeam} x ${g.awayTeam}`;
-    msg += `\n📍 Liga: ${g.league}`;
-    msg += `\n⏰ Horário: ${g.time}`;
-    msg += `\n🎯 Mercado: ${g.market}`;
-    msg += `\n💰 Odd mínima para entrada: ${oddText}`;
-    msg += `\n⏱ Entrada somente com jogo em 0x0`;
-    msg += `\n📈 Responsabilidade: consultar planilha de alavancagem`;
-    msg += '\n';
-  });
-
-  msg += '\n---\n';
-  msg += '\n⚙️ Regras da operação:';
-  msg += '\n• Operar apenas um placar por jogo';
-  msg += '\n• Não entrar fora da odd definida';
-  msg += '\n';
-  msg += '\n💸 Gestão de banca (orientação):';
-  msg += '\n• Iniciar ciclo com no máximo 1% da banca';
-  msg += '\n• Seguir progressão da planilha sem improvisar';
-  msg += '\n• Ao atingir 100%, resetar para a responsabilidade inicial';
-  msg += '\n• Nunca ultrapassar o risco pré-definido';
-  msg += '\n• Só aumentar a stake inicial após atingir pelo menos 500% de resultado acumulado';
-  msg += '\n• Ao aumentar, nunca elevar mais do que 30% da stake atual';
-
-  return msg;
+  // Return the full message for display visually
+  return buildMessageParts(telegramGames).join('\n\n====================\n\n');
 }
 
 export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: TelegramPlanningMessageProps) {
@@ -109,6 +131,7 @@ export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: 
 
   const telegramGames = buildTelegramGames(games, methods, selectedMethodIds);
   const message = buildMessage(telegramGames);
+  const messageParts = buildMessageParts(telegramGames);
 
   const hasTelegramConfig = settings?.telegram_bot_token && settings?.telegram_chat_id;
 
@@ -129,45 +152,50 @@ export function TelegramPlanningMessage({ open, onOpenChange, games, methods }: 
 
     setSending(true);
     try {
-      const response = await fetch(
-        `https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: settings.telegram_chat_id,
-            text: message,
-          }),
-        }
-      );
+      let chatIdToUse = settings.telegram_chat_id;
+      let hasError = false;
 
-      const data = await response.json();
+      for (const part of messageParts) {
+        let retryCount = 0;
+        let success = false;
 
-      if (data.ok) {
-        toast.success('✅ Mensagem enviada ao Telegram!');
-        onOpenChange(false);
-      } else {
-        const newChatId = data.parameters?.migrate_to_chat_id;
-        if (newChatId) {
-          await updateSettings({ telegram_chat_id: String(newChatId) });
-          const retry = await fetch(
+        while (!success && retryCount < 2) {
+          const response = await fetch(
             `https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: newChatId, text: message }),
+              body: JSON.stringify({
+                chat_id: chatIdToUse,
+                text: part,
+              }),
             }
           );
-          const retryData = await retry.json();
-          if (retryData.ok) {
-            toast.success('✅ Mensagem enviada! Chat ID atualizado automaticamente para o supergrupo.');
-            onOpenChange(false);
+
+          const data = await response.json();
+
+          if (data.ok) {
+            success = true;
           } else {
-            toast.error('Erro ao reenviar após migração: ' + retryData.description);
+            const newChatId = data.parameters?.migrate_to_chat_id;
+            if (newChatId) {
+              chatIdToUse = String(newChatId);
+              await updateSettings({ telegram_chat_id: chatIdToUse });
+              retryCount++;
+            } else {
+              hasError = true;
+              toast.error('Erro do Telegram: ' + data.description);
+              break;
+            }
           }
-        } else {
-          toast.error('Erro do Telegram: ' + data.description);
         }
+
+        if (hasError) break;
+      }
+
+      if (!hasError) {
+        toast.success(messageParts.length > 1 ? '✅ Mensagens enviadas ao Telegram (divididas devido ao tamanho).' : '✅ Mensagem enviada ao Telegram!');
+        onOpenChange(false);
       }
     } catch (error: any) {
       toast.error('Erro ao enviar: ' + (error.message || 'Erro desconhecido'));

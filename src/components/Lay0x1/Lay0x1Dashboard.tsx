@@ -1,167 +1,126 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMemo, useState, useCallback } from 'react';
+import { useAIDiagnosticReport, type DiagnosticInput } from '@/hooks/useAIDiagnosticReport';
+import { AIDiagnosticReport } from '@/components/AIDiagnosticReport';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
-import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
-import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
-import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, Target, Trophy, AlertTriangle, BarChart3, Info, RefreshCw, Trash2, Ban, ChevronDown, Brain, Loader2, CalendarDays, DollarSign, Check, Edit2 } from 'lucide-react';
-import { useState, useMemo, useCallback } from 'react';
-import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { subDays, format, startOfDay } from 'date-fns';
-import { getNowInBrasilia } from '@/utils/timezone';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  TrendingUp, TrendingDown, Target, RefreshCw, Trash2, Undo2, Calendar as CalendarIcon, Ban, FilterX
+} from 'lucide-react';
+import { useLay0x1Analyses } from '@/hooks/useLay0x1Analyses';
+import { useLay0x1BlockedLeagues } from '@/hooks/useLay0x1BlockedLeagues';
+import { useLay0x1Weights } from '@/hooks/useLay0x1Weights';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { format, parseISO, startOfMonth, endOfMonth, isSameDay, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 export const Lay0x1Dashboard = () => {
-  const { analyses, metrics, resolveAnalysis, updateOdd, deleteAnalysis, refetch } = useLay0x1Analyses();
-  const { weights } = useLay0x1Weights();
+  const isMobile = useIsMobile();
+  const { analyses, loading, resolveAnalysis, unresolveAnalysis, updateOdd, deleteAnalysis, refetch } = useLay0x1Analyses();
   const { blockLeague, isBlocked } = useLay0x1BlockedLeagues();
+  const { weights } = useLay0x1Weights();
+  const { report: aiReport, loading: aiLoading, error: aiError, generateReport, clearReport } = useAIDiagnosticReport();
+
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [scoreInputs, setScoreInputs] = useState<Record<string, { home: string; away: string }>>({});
   const [oddInputs, setOddInputs] = useState<Record<string, string>>({});
-  const [calibrating, setCalibrating] = useState(false);
   const [autoResolving, setAutoResolving] = useState(false);
   const [resolveProgress, setResolveProgress] = useState({ current: 0, total: 0 });
-  const [expandedRedId, setExpandedRedId] = useState<string | null>(null);
-  const [analyzingRedId, setAnalyzingRedId] = useState<string | null>(null);
-  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
 
-  // Filter: only from 2 days ago onwards (to see recent history + pending)
-  const filterDateStr = useMemo(() => {
-    const now = getNowInBrasilia();
-    return format(subDays(now, 2), 'yyyy-MM-dd');
-  }, []);
+  // Filters State
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
-  const recentAnalyses = useMemo(() =>
-    analyses.filter(a => a.date >= filterDateStr),
-    [analyses, filterDateStr]
-  );
+  const filteredAnalyses = useMemo(() => {
+    return analyses.filter(a => {
+      const analysisDate = a.date ? parseISO(a.date) : parseISO(a.created_at);
 
-  // Pending = recent + no result
-  const pendingAnalyses = recentAnalyses.filter(a => !a.result);
+      // Filter by Month
+      if (monthFilter !== "all") {
+        const [year, month] = monthFilter.split('-').map(Number);
+        const filterStart = startOfMonth(new Date(year, month - 1));
+        const filterEnd = endOfMonth(new Date(year, month - 1));
+        if (!isWithinInterval(analysisDate, { start: filterStart, end: filterEnd })) {
+          return false;
+        }
+      }
 
-  // Resolved = recent + has result (regardless of classification)
-  const resolvedAnalyses = useMemo(() =>
-    recentAnalyses
-      .filter(a => a.result)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)),
-    [recentAnalyses]
-  );
+      // Filter by Day
+      if (selectedDate) {
+        if (!isSameDay(analysisDate, selectedDate)) {
+          return false;
+        }
+      }
 
-  // Metrics from recent data only
-  const filteredMetrics = useMemo(() => {
-    const all = recentAnalyses;
-    const resolved = all.filter(a => a.result);
-    const greens = resolved.filter(a => a.result === 'Green').length;
-    const reds = resolved.filter(a => a.result === 'Red').length;
-    const winRate = resolved.length > 0 ? Math.round((greens / resolved.length) * 1000) / 10 : 0;
-    return { total: all.length, resolved: resolved.length, pending: all.filter(a => !a.result).length, greens, reds, winRate };
-  }, [recentAnalyses]);
+      return true;
+    });
+  }, [analyses, monthFilter, selectedDate]);
 
-  // Real operation metrics - derived from analyses with odd_used
-  const realMetrics = useMemo(() => {
-    const realOps = analyses.filter(a => a.odd_used !== null && a.odd_used !== undefined);
-    const solved = realOps.filter(a => a.result);
-    const profitTotal = solved.reduce((acc, curr) => acc + (curr.profit || 0), 0);
-    const liabilityTotal = solved.reduce((acc, curr) => acc + (curr.liability || 0), 0);
-    const gCount = solved.filter(a => a.result === 'Green').length;
-    const rCount = solved.filter(a => a.result === 'Red').length;
-    const wRate = solved.length > 0 ? (gCount / solved.length) * 100 : 0;
-    const roi = liabilityTotal > 0 ? (profitTotal / liabilityTotal) * 100 : 0;
-
-    return {
-      total: realOps.length,
-      finished: solved.length,
-      greens: gCount,
-      reds: rCount,
-      profit: profitTotal,
-      winRate: wRate,
-      roi: roi
-    };
+  // Generate Month Options from unique months in analyses
+  const monthOptions = useMemo(() => {
+    const months = new Set<string>();
+    analyses.forEach(a => {
+      const date = a.date ? parseISO(a.date) : parseISO(a.created_at);
+      months.add(format(date, 'yyyy-MM'));
+    });
+    return Array.from(months).sort().reverse();
   }, [analyses]);
 
-  // Equity chart data
-  const equityData = useMemo(() => resolvedAnalyses
-    .slice().reverse()
-    .reduce((acc: { name: string; equity: number }[], a, i) => {
-      const prev = acc.length > 0 ? acc[acc.length - 1].equity : 0;
-      acc.push({ name: `#${i + 1}`, equity: prev + (a.result === 'Green' ? 1 : -1) });
-      return acc;
-    }, []), [resolvedAnalyses]);
+  const groupedResolved = useMemo(() => {
+    const resolved = filteredAnalyses.filter(a => a.result);
+    const groups: Record<string, typeof resolved> = {};
 
-  // Monthly evolution data
-  const monthlyData = useMemo(() => {
-    const byMonth: Record<string, { greens: number; total: number }> = {};
-    resolvedAnalyses.forEach(a => {
-      const month = a.date?.substring(0, 7) || 'N/A';
-      if (!byMonth[month]) byMonth[month] = { greens: 0, total: 0 };
-      byMonth[month].total++;
-      if (a.result === 'Green') byMonth[month].greens++;
+    resolved.forEach(a => {
+      const dateStr = a.date || a.created_at.split('T')[0];
+      if (!groups[dateStr]) groups[dateStr] = [];
+      groups[dateStr].push(a);
     });
-    return Object.entries(byMonth)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, { greens, total }]) => ({
-        month, winRate: Math.round((greens / total) * 100), total, greens,
-      }));
-  }, [resolvedAnalyses]);
 
-  // Daily results data
-  const dailyData = useMemo(() => {
-    const byDay: Record<string, { greens: number; reds: number; total: number }> = {};
-    resolvedAnalyses.forEach(a => {
-      const day = a.date || 'N/A';
-      if (!byDay[day]) byDay[day] = { greens: 0, reds: 0, total: 0 };
-      byDay[day].total++;
-      if (a.result === 'Green') byDay[day].greens++;
-      else byDay[day].reds++;
-    });
-    return Object.entries(byDay)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-30)
-      .map(([date, { greens, reds, total }]) => ({
-        date: date.substring(5),
-        greens,
-        reds: -reds,
-        total,
-        winRate: Math.round((greens / total) * 100),
-      }));
-  }, [resolvedAnalyses]);
+    return Object.entries(groups)
+      .sort(([dateA], [dateB]) => dateB.localeCompare(dateA));
+  }, [analyses]);
 
-  // League performance data
-  const leagueData = useMemo(() => {
-    const byLeague: Record<string, { greens: number; total: number }> = {};
-    resolvedAnalyses.forEach(a => {
-      const league = a.league || 'N/A';
-      if (!byLeague[league]) byLeague[league] = { greens: 0, total: 0 };
-      byLeague[league].total++;
-      if (a.result === 'Green') byLeague[league].greens++;
-    });
-    return Object.entries(byLeague)
-      .map(([league, { greens, total }]) => ({
-        league, leagueFull: league,
-        leagueShort: league.length > 20 ? league.substring(0, 18) + '…' : league,
-        winRate: Math.round((greens / total) * 100), total, greens,
-      }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [resolvedAnalyses]);
+  const pendingAnalyses = useMemo(() =>
+    filteredAnalyses.filter(a => !a.result),
+    [filteredAnalyses]
+  );
 
-  // Group resolved by date
-  const resolvedByDate = useMemo(() => {
-    const map = new Map<string, typeof resolvedAnalyses>();
-    for (const a of resolvedAnalyses) {
-      const day = a.date || 'N/A';
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(a);
-    }
-    return Array.from(map.entries()).sort(([a], [b]) => b.localeCompare(a));
-  }, [resolvedAnalyses]);
+  const totalProfit = useMemo(() =>
+    filteredAnalyses.filter(a => a.result && a.profit != null).reduce((sum, a) => sum + (a.profit || 0), 0),
+    [filteredAnalyses]
+  );
+
+  // metrics need to be calculated because useLay0x1Analyses provides a slightly different metrics object natively 
+  const resolved = filteredAnalyses.filter(a => a.result);
+  const greens = resolved.filter(a => a.result === 'Green').length;
+  const reds = resolved.filter(a => a.result === 'Red').length;
+  const winRate = resolved.length > 0 ? (greens / resolved.length) * 100 : 0;
+
+  const metrics = {
+    total: filteredAnalyses.length,
+    pending: filteredAnalyses.length - resolved.length,
+    greens,
+    reds,
+    winRate: Math.round(winRate * 10) / 10,
+  };
 
   const handleUpdateOdd = async (id: string) => {
     const val = oddInputs[id];
@@ -184,16 +143,6 @@ export const Lay0x1Dashboard = () => {
     setResolvingId(null);
   };
 
-  const handleCalibrate = async () => {
-    setCalibrating(true);
-    try {
-      const res = await supabase.functions.invoke('calibrate-lay0x1');
-      if (res.data?.error) toast.error(res.data.error);
-      else toast.success(`Calibração #${res.data?.cycle || '?'} concluída!`);
-    } catch { toast.error('Erro na calibração'); }
-    setCalibrating(false);
-  };
-
   const handleAutoResolve = useCallback(async () => {
     if (pendingAnalyses.length === 0) return;
     setAutoResolving(true);
@@ -203,267 +152,290 @@ export const Lay0x1Dashboard = () => {
 
     for (let i = 0; i < pendingAnalyses.length; i += BATCH_SIZE) {
       const batch = pendingAnalyses.slice(i, i + BATCH_SIZE);
+      console.log(`[Lay 0x1] Resolvendo lote ${i / BATCH_SIZE + 1}. Tamanho: ${batch.length}`);
+
       await Promise.all(batch.map(async (analysis) => {
         try {
+          console.log(`[Lay 0x1] Checando fixture ${analysis.fixture_id} (${analysis.home_team} x ${analysis.away_team})`);
           const res = await supabase.functions.invoke('api-football', {
             body: { endpoint: 'fixtures', params: { id: analysis.fixture_id } },
           });
+
           const fixture = res.data?.response?.[0];
+          if (!fixture) {
+            console.warn(`[Lay 0x1] Fixture ${analysis.fixture_id} não encontrada na API`);
+            skippedCount++;
+            return;
+          }
+
           const status = fixture?.fixture?.status?.short;
-          if (['FT', 'AET', 'PEN'].includes(status)) {
-            await resolveAnalysis(analysis.id, fixture.goals?.home ?? 0, fixture.goals?.away ?? 0);
+          const homeGoals = fixture.goals?.home ?? 0;
+          const awayGoals = fixture.goals?.away ?? 0;
+
+          console.log(`[Lay 0x1] Status fixture ${analysis.fixture_id}: ${status} | Placar: ${homeGoals}-${awayGoals}`);
+
+          // Accept regular final statuses plus awarded/walkover
+          if (['FT', 'AET', 'PEN', 'AWD', 'WO', 'ABD', 'CANC'].includes(status)) {
+            await resolveAnalysis(analysis.id, homeGoals, awayGoals);
             resolvedCount++;
-          } else { skippedCount++; }
-        } catch { skippedCount++; }
+            console.log(`[Lay 0x1] ✅ Resolvido: ${analysis.id}`);
+          } else {
+            console.log(`[Lay 0x1] ⏳ Jogo ainda em andamento ou outro status: ${status}`);
+            skippedCount++;
+          }
+        } catch (err) {
+          console.error(`[Lay 0x1] Erro ao processar ${analysis.fixture_id}:`, err);
+          skippedCount++;
+        }
         setResolveProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }));
     }
 
     setAutoResolving(false);
     if (resolvedCount > 0) {
-      toast.success(`${resolvedCount} resolvido(s)${skippedCount > 0 ? ` • ${skippedCount} pendentes` : ''}`);
+      const extra = skippedCount > 0 ? ` • ${skippedCount} pendentes` : '';
+      toast.success(`${resolvedCount} resolvido(s)${extra}`);
       refetch();
     } else if (skippedCount > 0) {
       toast.info(`Nenhum jogo terminou (${skippedCount} pendentes)`);
     }
   }, [pendingAnalyses, resolveAnalysis, refetch]);
 
-  const handleReanalyzeRed = useCallback(async (analysisId: string) => {
-    setAnalyzingRedId(analysisId);
-    try {
-      const res = await supabase.functions.invoke('analyze-red-lay0x1', {
-        body: { analysis_id: analysisId },
-      });
-      if (res.data?.analysis) {
-        toast.success('Análise de IA atualizada');
-        refetch();
-      } else {
-        toast.error(res.data?.error || 'Erro na análise');
-      }
-    } catch { toast.error('Erro ao chamar IA'); }
-    setAnalyzingRedId(null);
-  }, [refetch]);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* Real Financial Summary Banner */}
-      {realMetrics.finished > 0 && (
-        <Card className="border-emerald-500/30 bg-emerald-500/5">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-500/20 p-2 rounded-full">
-                <DollarSign className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-emerald-400">Desempenho Real (Banca)</p>
-                <p className="text-xs text-muted-foreground">{realMetrics.finished} operações encerradas</p>
-              </div>
+      {/* Filters */}
+      <Card className="bg-secondary/20 border-border/40">
+        <CardContent className="p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex-1 min-w-[140px]">
+              <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Filtrar por mês" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Meses</SelectItem>
+                  {monthOptions.map(m => (
+                    <SelectItem key={m} value={m}>
+                      {format(parseISO(`${m}-01`), 'MMMM yyyy', { locale: ptBR })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex gap-6">
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground font-medium uppercase">Lucro/Prejuízo</p>
-                <p className={`text-lg font-bold ${realMetrics.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  R$ {realMetrics.profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground font-medium uppercase">ROI Real</p>
-                <p className={`text-lg font-bold ${realMetrics.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {realMetrics.roi.toFixed(1)}%
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Info banner */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-        <CalendarDays className="w-3.5 h-3.5" />
-        <span>Dados a partir de {filterDateStr} (excluindo backtest antigo)</span>
-      </div>
-
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Target className="w-5 h-5 mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold">{filteredMetrics.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <Trophy className="w-5 h-5 mx-auto text-emerald-400 mb-1" />
-            <p className="text-2xl font-bold text-emerald-400">{filteredMetrics.greens}</p>
-            <p className="text-xs text-muted-foreground">Greens</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <AlertTriangle className="w-5 h-5 mx-auto text-red-400 mb-1" />
-            <p className="text-2xl font-bold text-red-400">{filteredMetrics.reds}</p>
-            <p className="text-xs text-muted-foreground">Reds</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <BarChart3 className="w-5 h-5 mx-auto text-blue-400 mb-1" />
-            <p className="text-2xl font-bold">{filteredMetrics.winRate}%</p>
-            <p className="text-xs text-muted-foreground">Win Rate</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Equity Chart */}
-      {equityData.length > 1 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Curva de Equity Estimada</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={equityData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <RechartsTooltip />
-                <Line type="monotone" dataKey="equity" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Monthly Evolution */}
-      {monthlyData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Evolução Mensal
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" domain={[0, 100]} />
-                <RechartsTooltip formatter={(value: number) => `${value}%`} />
-                <Bar dataKey="winRate" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Daily Results */}
-      {dailyData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <CalendarDays className="w-4 h-4" /> Resultados por Dia
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dailyData} stackOffset="sign">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <RechartsTooltip
-                  formatter={(value: number, name: string) => {
-                    const absVal = Math.abs(value);
-                    return [absVal, name === 'greens' ? 'Greens' : 'Reds'];
-                  }}
-                  labelFormatter={(label) => `Dia: ${label}`}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-9 text-xs justify-start text-left font-normal w-[140px]",
+                    !selectedDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                  {selectedDate ? format(selectedDate, "dd/MM/yyyy") : "Filtrar por dia"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  initialFocus
+                  locale={ptBR}
                 />
-                <Bar dataKey="greens" fill="hsl(142 71% 45%)" radius={[4, 4, 0, 0]} stackId="stack" />
-                <Bar dataKey="reds" fill="hsl(0 84% 60%)" radius={[0, 0, 4, 4]} stackId="stack" />
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="flex items-center justify-center gap-4 mt-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Greens</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Reds</span>
-            </div>
+              </PopoverContent>
+            </Popover>
+
+            {(monthFilter !== "all" || selectedDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 px-2 text-xs text-muted-foreground hover:text-primary"
+                onClick={() => {
+                  setMonthFilter("all");
+                  setSelectedDate(undefined);
+                }}
+              >
+                <FilterX className="mr-2 h-3.5 w-3.5" />
+                Limpar
+              </Button>
+            )}
+
+            {filteredAnalyses.length !== analyses.length && (
+              <div className="ml-auto">
+                <Badge variant="secondary" className="text-[10px] py-0 h-5">
+                  Mostrando {filteredAnalyses.length} de {analyses.length}
+                </Badge>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* KPI Cards */}
+      <div className={cn(
+        "grid gap-2",
+        isMobile ? "grid-cols-2" : "grid-cols-4"
+      )}>
+        <Card>
+          <CardContent className="p-2 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase truncate">Total</p>
+            <p className="text-xl font-bold truncate">{metrics.total}</p>
           </CardContent>
         </Card>
-      )}
-
-      {leagueData.length > 0 && (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" /> Performance por Liga
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="space-y-2">
-              {leagueData.map(l => (
-                <div key={l.leagueFull} className="flex items-center justify-between text-xs">
-                  <span className="truncate flex-1 mr-2">{l.leagueShort}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${l.winRate}%`,
-                          backgroundColor: l.winRate >= 70 ? 'hsl(var(--primary))' : l.winRate >= 50 ? 'hsl(45 93% 47%)' : 'hsl(0 84% 60%)',
-                        }}
-                      />
-                    </div>
-                    <span className="w-10 text-right font-medium">{l.winRate}%</span>
-                    <span className="w-8 text-right text-muted-foreground">({l.total})</span>
-                    {!isBlocked(l.leagueFull) && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0"
-                              onClick={() => blockLeague(l.leagueFull, l.winRate < 50 ? 'performance_ruim' : 'nao_disponivel')}>
-                              <Ban className="w-3 h-3 text-muted-foreground hover:text-red-400" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Bloquear liga</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {isBlocked(l.leagueFull) && (
-                      <Badge variant="outline" className="text-red-400 text-[10px] px-1">bloqueada</Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <CardContent className="p-2 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase truncate">Pendentes</p>
+            <p className="text-xl font-bold text-yellow-400 truncate">{metrics.pending}</p>
           </CardContent>
         </Card>
-      )}
-
-      {/* Calibration */}
-      {filteredMetrics.resolved >= 10 && (
         <Card>
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-2 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase truncate">Win Rate</p>
+            <p className={`text-xl font-bold truncate ${metrics.winRate >= 70 ? 'text-emerald-400' : metrics.winRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {metrics.winRate}%
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-2 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase truncate">Lucro</p>
+            <p className={`text-xl font-bold truncate ${totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(metrics.total > 100 ? 0 : 0)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Green/Red Split */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="border-emerald-500/20">
+          <CardContent className="p-3 flex items-center gap-3">
+            <TrendingUp className="w-8 h-8 text-emerald-400" />
             <div>
-              <p className="text-sm font-medium">Modelo Evolutivo</p>
-              <p className="text-xs text-muted-foreground">
-                Ciclo #{weights.cycle_count} • {filteredMetrics.resolved} jogos resolvidos
-                {filteredMetrics.resolved > 0 && ` • Próx. calibração: ${30 - (filteredMetrics.resolved % 30)} jogos`}
-              </p>
+              <p className="text-xs text-muted-foreground">Greens</p>
+              <p className="text-xl font-bold text-emerald-400">{metrics.greens}</p>
             </div>
-            <Button size="sm" variant="outline" onClick={handleCalibrate} disabled={calibrating}>
-              {calibrating ? 'Calibrando...' : 'Recalibrar Pesos'}
-            </Button>
           </CardContent>
         </Card>
-      )}
+        <Card className="border-red-500/20">
+          <CardContent className="p-3 flex items-center gap-3">
+            <TrendingDown className="w-8 h-8 text-red-400" />
+            <div>
+              <p className="text-xs text-muted-foreground">Reds</p>
+              <p className="text-xl font-bold text-red-400">{metrics.reds}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Pending */}
+      {/* AI Diagnostic Report */}
+      <AIDiagnosticReport
+        report={aiReport}
+        loading={aiLoading}
+        error={aiError}
+        onClear={clearReport}
+        tabLabel="Lay 0x1"
+        onGenerate={() => {
+          const resolvedList = filteredAnalyses.filter(a => a.result);
+          const redList = resolvedList.filter(a => a.result === 'Red');
+
+          // League breakdown
+          const leagueMap: Record<string, { total: number; greens: number; reds: number; profit: number }> = {};
+          resolvedList.forEach(a => {
+            const l = a.league || 'Desconhecida';
+            if (!leagueMap[l]) leagueMap[l] = { total: 0, greens: 0, reds: 0, profit: 0 };
+            leagueMap[l].total++;
+            if (a.result === 'Green') leagueMap[l].greens++;
+            else leagueMap[l].reds++;
+            leagueMap[l].profit += (a.profit || 0) / 1000;
+          });
+
+          // Odd range stats
+          const oddRanges: Record<string, { total: number; greens: number; reds: number; profit: number }> = {};
+          resolvedList.forEach(a => {
+            const odd = a.odd_used || 0;
+            let range = 'Sem odd';
+            if (odd > 0 && odd < 5) range = `${Math.floor(odd)}.00-${Math.floor(odd)}.99`;
+            else if (odd >= 5) range = '5.00+';
+            if (!oddRanges[range]) oddRanges[range] = { total: 0, greens: 0, reds: 0, profit: 0 };
+            oddRanges[range].total++;
+            if (a.result === 'Green') oddRanges[range].greens++;
+            else oddRanges[range].reds++;
+            oddRanges[range].profit += (a.profit || 0) / 1000;
+          });
+
+          // Recent trend
+          const dayMap: Record<string, { greens: number; reds: number; profit: number }> = {};
+          resolvedList.forEach(a => {
+            const d = a.date || a.created_at?.split('T')[0] || '';
+            if (!dayMap[d]) dayMap[d] = { greens: 0, reds: 0, profit: 0 };
+            if (a.result === 'Green') dayMap[d].greens++;
+            else dayMap[d].reds++;
+            dayMap[d].profit += (a.profit || 0) / 1000;
+          });
+          const recentTrend = Object.entries(dayMap)
+            .sort(([a], [b]) => b.localeCompare(a))
+            .slice(0, 10)
+            .map(([date, d]) => ({ date, ...d }));
+
+          // Avg odd
+          const oddsUsed = resolvedList.filter(a => a.odd_used && a.odd_used > 0);
+          const avgOdd = oddsUsed.length > 0 ? oddsUsed.reduce((s, a) => s + (a.odd_used || 0), 0) / oddsUsed.length : 0;
+
+          const input: DiagnosticInput = {
+            tab: 'lay0x1',
+            metrics: {
+              total: resolvedList.length,
+              greens: metrics.greens,
+              reds: metrics.reds,
+              winRate: metrics.winRate,
+              profit: totalProfit / 1000,
+              avgOdd,
+            },
+            redAnalysis: redList.map(a => ({
+              game: `${a.home_team} vs ${a.away_team}`,
+              league: a.league,
+              score: `${a.final_score_home ?? '?'}-${a.final_score_away ?? '?'}`,
+              criteria: a.criteria_snapshot || {},
+              date: a.date || '',
+            })),
+            leagueBreakdown: Object.entries(leagueMap).map(([name, d]) => ({
+              name,
+              ...d,
+              winRate: d.total > 0 ? (d.greens / d.total) * 100 : 0,
+            })),
+            paramSnapshot: weights || {},
+            oddRangeStats: Object.entries(oddRanges).map(([range, d]) => ({
+              range,
+              ...d,
+              winRate: d.total > 0 ? (d.greens / d.total) * 100 : 0,
+            })),
+            recentTrend,
+          };
+
+          generateReport(input);
+        }}
+      />
+
+      {/* Pending Section */}
       {pendingAnalyses.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold">Pendentes ({pendingAnalyses.length})</h3>
             <Button size="sm" variant="outline" className="gap-2 text-xs" disabled={autoResolving} onClick={handleAutoResolve}>
               <RefreshCw className={`w-3.5 h-3.5 ${autoResolving ? 'animate-spin' : ''}`} />
-              {autoResolving ? `Resolvendo ${resolveProgress.current}/${resolveProgress.total}...` : 'Resolver Pendentes'}
+              {autoResolving ? `Resolvendo ${resolveProgress.current}/${resolveProgress.total}...` : 'Resolver Todos'}
             </Button>
           </div>
           {autoResolving && (
@@ -471,14 +443,17 @@ export const Lay0x1Dashboard = () => {
           )}
           <div className="space-y-2">
             {pendingAnalyses.map(a => (
-              <Card key={a.id}>
-                <CardContent className="p-3 flex items-center justify-between gap-2 flex-wrap">
+              <Card key={a.id} className="cursor-pointer hover:border-primary/50 transition-colors">
+                <CardContent className="p-3 flex flex-col gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{a.home_team} vs {a.away_team}</p>
                     <p className="text-xs text-muted-foreground">{a.league} • {a.date} • Score: {a.score_value}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 border-r pr-2 mr-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className={cn(
+                      "flex items-center gap-1",
+                      !isMobile && "border-r pr-2"
+                    )}>
                       <span className="text-[10px] text-muted-foreground uppercase font-bold">Odd</span>
                       <Input placeholder="0.00" className="w-14 h-8 text-center text-xs bg-emerald-500/5 border-emerald-500/20"
                         value={oddInputs[a.id] || a.odd_used || ''}
@@ -486,41 +461,24 @@ export const Lay0x1Dashboard = () => {
                         onBlur={() => handleUpdateOdd(a.id)}
                       />
                     </div>
-                    <Input placeholder="H" className="w-10 h-8 text-center text-xs"
-                      value={scoreInputs[a.id]?.home || ''}
-                      onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], home: e.target.value } }))} />
-                    <span className="text-xs">x</span>
-                    <Input placeholder="A" className="w-10 h-8 text-center text-xs"
-                      value={scoreInputs[a.id]?.away || ''}
-                      onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], away: e.target.value } }))} />
-                    <Button size="sm" variant="outline" className="h-8 text-xs"
-                      disabled={resolvingId === a.id} onClick={() => handleResolve(a.id)}>
-                      {resolvingId === a.id ? '...' : 'OK'}
-                    </Button>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
-                            onClick={() => deleteAnalysis(a.id)}>
-                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Excluir (adiado/cancelado)</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    {!isBlocked(a.league) && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"
-                              onClick={() => blockLeague(a.league, 'nao_disponivel')}>
-                              <Ban className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Bloquear liga</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    {isMobile && <div className="w-full h-0" />}
+                    <div className="flex items-center gap-1.5">
+                      <Input placeholder="H" className="w-10 h-8 text-center text-xs"
+                        value={scoreInputs[a.id]?.home || ''}
+                        onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], home: e.target.value } }))} />
+                      <span className="text-xs text-muted-foreground">x</span>
+                      <Input placeholder="A" className="w-10 h-8 text-center text-xs"
+                        value={scoreInputs[a.id]?.away || ''}
+                        onChange={(e) => setScoreInputs(prev => ({ ...prev, [a.id]: { ...prev[a.id], away: e.target.value } }))} />
+                      <Button size="sm" variant="outline" className="h-8 text-xs px-2"
+                        disabled={resolvingId === a.id} onClick={() => handleResolve(a.id)}>
+                        {resolvingId === a.id ? '...' : 'OK'}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 w-10 p-0"
+                        onClick={() => deleteAnalysis(a.id)}>
+                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -529,183 +487,74 @@ export const Lay0x1Dashboard = () => {
         </div>
       )}
 
-      {/* Resolved — grouped by date */}
-      {resolvedByDate.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-2">Histórico ({resolvedAnalyses.length})</h3>
-          <div className="space-y-3">
-            {resolvedByDate.map(([date, dayAnalyses]) => (
-              <div key={date}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold text-muted-foreground">{date}</span>
-                  <span className="text-xs text-muted-foreground">({dayAnalyses.length} jogo{dayAnalyses.length > 1 ? 's' : ''})</span>
-                  <div className="flex-1 h-px bg-border/30" />
+      {/* Recent Resolved Grouped by Date */}
+      {groupedResolved.length > 0 && (
+        <div className="space-y-4 mt-4">
+          <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+            <CalendarIcon className="w-4 h-4" />
+            Histórico de Resultados
+          </h3>
+          <div className="space-y-6">
+            {groupedResolved.map(([date, items]) => (
+              <div key={date} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-[1px] flex-1 bg-border/50" />
+                  <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-0.5 bg-secondary/50 rounded-full border border-border/50">
+                    {format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR })}
+                  </span>
+                  <div className="h-[1px] flex-1 bg-border/50" />
                 </div>
-                <div className="space-y-1.5">
-                  {dayAnalyses.map(a => {
-                    const aiAnalysis = a.criteria_snapshot?.ai_red_analysis;
-                    const redInsights = a.criteria_snapshot?.red_insights as string[] | undefined;
-                    const isExpanded = expandedRedId === a.id;
-
-                    return (
-                      <Card key={a.id}>
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-medium">{a.home_team} vs {a.away_team}</p>
-                              <p className="text-xs text-muted-foreground">{a.league}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {editingHistoryId === a.id ? (
-                                <div className="flex items-center gap-1 border-r pr-2 mr-1">
-                                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Odd</span>
-                                  <Input placeholder="0.00" className="w-14 h-7 text-center text-[10px] bg-emerald-500/5 border-emerald-500/20"
-                                    defaultValue={a.odd_used || ''}
-                                    onBlur={(e) => {
-                                      const val = e.target.value;
-                                      if (!val) return;
-                                      const odd = parseFloat(val.replace(',', '.'));
-                                      if (!isNaN(odd) && odd > 1) updateOdd(a.id, odd);
-                                    }}
-                                  />
-                                  <Input placeholder="H" className="w-8 h-7 text-center text-[10px]"
-                                    defaultValue={a.final_score_home ?? ''}
-                                    onBlur={(e) => {
-                                      const val = parseInt(e.target.value);
-                                      if (!isNaN(val)) resolveAnalysis(a.id, val, a.final_score_away ?? 0);
-                                    }} />
-                                  <span className="text-[10px]">x</span>
-                                  <Input placeholder="A" className="w-8 h-7 text-center text-[10px]"
-                                    defaultValue={a.final_score_away ?? ''}
-                                    onBlur={(e) => {
-                                      const val = parseInt(e.target.value);
-                                      if (!isNaN(val)) resolveAnalysis(a.id, a.final_score_home ?? 0, val);
-                                    }} />
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingHistoryId(null)}>
-                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-muted-foreground flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
-                                  onClick={() => setEditingHistoryId(a.id)}>
-                                  {a.odd_used && <span className="mr-1 text-[10px] font-bold text-emerald-500/80">@{a.odd_used}</span>}
-                                  {a.final_score_home}-{a.final_score_away}
-                                  <Edit2 className="w-2.5 h-2.5 opacity-50 ml-1" />
-                                </span>
-                              )}
-                              <Badge className={a.result === 'Green' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}>
-                                {a.result}
-                              </Badge>
-                              {a.was_0x1 && <Badge variant="outline" className="text-red-400 text-xs">0x1</Badge>}
-
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
-                                onClick={() => deleteAnalysis(a.id)}>
-                                <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />
-                              </Button>
-
-                              {a.was_0x1 && (
-                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                                  onClick={() => setExpandedRedId(isExpanded ? null : a.id)}>
-                                  <ChevronDown className={`w-4 h-4 text-red-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                </Button>
-                              )}
-                              {redInsights && redInsights.length > 0 && !a.was_0x1 && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Info className="w-4 h-4 text-red-400 cursor-pointer" />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left" className="max-w-xs">
-                                      <ul className="text-xs space-y-0.5">
-                                        {redInsights.map((insight, i) => <li key={i}>• {insight}</li>)}
-                                      </ul>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Expanded AI Red Analysis */}
-                          {a.was_0x1 && isExpanded && (
-                            <div className="mt-3 pt-3 border-t border-border space-y-2">
-                              {aiAnalysis ? (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                    <Brain className="w-4 h-4 text-red-400" />
-                                    <span className="text-xs font-semibold text-red-400">Análise IA Pós-Red</span>
-                                    {aiAnalysis.risk_score && (
-                                      <Badge variant="outline" className="text-xs">
-                                        Risco: {aiAnalysis.risk_score}/10
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{aiAnalysis.summary}</p>
-                                  {aiAnalysis.key_factors?.length > 0 && (
-                                    <div>
-                                      <p className="text-xs font-medium mb-1">Fatores-chave:</p>
-                                      <ul className="text-xs text-muted-foreground space-y-0.5">
-                                        {aiAnalysis.key_factors.map((f: string, i: number) => <li key={i}>• {f}</li>)}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  {aiAnalysis.league_recommendation && (
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="text-muted-foreground">Liga:</span>
-                                      <Badge variant="outline" className={
-                                        aiAnalysis.league_recommendation === 'bloquear' ? 'text-red-400' :
-                                          aiAnalysis.league_recommendation === 'monitorar' ? 'text-yellow-400' : 'text-emerald-400'
-                                      }>
-                                        {aiAnalysis.league_recommendation}
-                                      </Badge>
-                                      <span className="text-muted-foreground">{aiAnalysis.league_reason}</span>
-                                    </div>
-                                  )}
-                                  {aiAnalysis.threshold_suggestions?.length > 0 && (
-                                    <div>
-                                      <p className="text-xs font-medium mb-1">Sugestões de ajuste:</p>
-                                      {aiAnalysis.threshold_suggestions.map((s: any, i: number) => (
-                                        <p key={i} className="text-xs text-muted-foreground">
-                                          {s.param}: {s.current} → {s.suggested} ({s.reason})
-                                        </p>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {aiAnalysis.pattern_detected && (
-                                    <p className="text-xs text-yellow-400">⚠️ Padrão: {aiAnalysis.pattern_detected}</p>
-                                  )}
-                                  <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground"
-                                    disabled={analyzingRedId === a.id}
-                                    onClick={() => handleReanalyzeRed(a.id)}>
-                                    {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
-                                    Re-analisar com IA
-                                  </Button>
-                                </>
-                              ) : (
-                                <div className="text-center">
-                                  <p className="text-xs text-muted-foreground mb-2">
-                                    {redInsights?.length ? redInsights.map((ins, i) => <span key={i} className="block">• {ins}</span>) : 'Nenhuma análise detalhada disponível'}
-                                  </p>
-                                  <Button variant="outline" size="sm" className="gap-1 text-xs"
-                                    disabled={analyzingRedId === a.id}
-                                    onClick={() => handleReanalyzeRed(a.id)}>
-                                    {analyzingRedId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
-                                    Analisar com IA
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
+                <div className="space-y-1">
+                  {items.map(a => (
+                    <div key={a.id} className={`flex items-center justify-between px-3 py-2 rounded-md border text-xs transition-colors hover:bg-secondary/20 ${a.result === 'Green' ? 'border-emerald-500/10 bg-emerald-500/5' : 'border-red-500/10 bg-red-500/5'}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge variant="outline" className={`text-[10px] px-1 h-4 ${a.result === 'Green' ? 'text-emerald-400 border-emerald-500/30' : 'text-red-400 border-red-500/30'}`}>
+                          {a.result}
+                        </Badge>
+                        <span className="truncate font-medium">{a.home_team} x {a.away_team}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-2">
+                          {a.final_score_home != null && (
+                            <span className="font-mono font-bold opacity-70">{a.final_score_home}-{a.final_score_away}</span>
                           )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                          {a.profit != null && (
+                            <span className={`font-mono font-bold ${a.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {a.profit >= 0 ? '+' : ''}{a.profit.toFixed(0)}
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 hover:text-primary transition-colors"
+                          title="Desfazer resolução"
+                          onClick={() => unresolveAnalysis(a.id)}
+                        >
+                          <Undo2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {analyses.length === 0 && (
+        <Card className="border-dashed mt-4">
+          <CardContent className="p-6 text-center space-y-2">
+            <Target className="w-8 h-8 mx-auto text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              {analyses.length > 0 ? 'Nenhuma análise corresponde aos filtros' : 'Nenhuma análise Lay 0x1 registrada'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {analyses.length > 0 ? 'Tente ajustar os filtros de data' : 'Use o Scanner para analisar jogos'}
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

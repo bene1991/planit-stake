@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, Home, BarChart3, Wallet, CalendarDays, FlaskConical, Activity, Target } from "lucide-react";
+import { Menu, Home, BarChart3, Wallet, CalendarDays, FlaskConical, Target, Crosshair, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,8 +19,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { to: "/bankroll", label: "Banca", icon: Wallet },
     { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
     { to: "/method-analysis", label: "Análise", icon: FlaskConical },
-    { to: "/monitor", label: "Monitor", icon: Activity },
     { to: "/lay-0x1", label: "Lay 0x1", icon: Target },
+    { to: "/lay-1x0", label: "Lay 1x0", icon: Crosshair },
+    { to: "/robo", label: "Robô", icon: Bot },
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -96,38 +97,68 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[280px] bg-card border-l border-border/30">
-                <div className="flex flex-col gap-6 mt-8">
-                  {user && (
-                    <>
+              <SheetContent side="right" className="w-[280px] bg-card border-l border-border/30 p-0">
+                <div className="flex flex-col h-full">
+                  <div className="p-6 border-b border-white/5">
+                    <span className="text-xl font-bold">
+                      <span className="text-foreground">vini</span>
+                      <span className="text-primary">trader</span>
+                      <span className="text-primary text-2xl">.</span>
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto py-4">
+                    <div className="px-2 space-y-1">
+                      {navItems.map((item) => (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setOpen(false)}
+                          className={cn(
+                            "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all",
+                            isActive(item.to)
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          )}
+                        >
+                          <item.icon className="h-5 w-5" />
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 border-t border-white/5 bg-muted/20">
+                    {user ? (
+                      <div className="space-y-2">
+                        <Link
+                          to="/account"
+                          onClick={() => setOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-primary"
+                        >
+                          Conta
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            signOut();
+                            setOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                        >
+                          Sair
+                        </button>
+                      </div>
+                    ) : (
                       <Link
-                        to="/account"
+                        to="/auth"
                         onClick={() => setOpen(false)}
-                        className="flex items-center gap-3 text-base font-medium text-muted-foreground hover:text-primary"
+                        className="flex items-center justify-center gap-3 px-4 py-3 bg-primary text-primary-foreground rounded-lg text-sm font-bold"
                       >
-                        Conta
+                        Entrar
                       </Link>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          signOut();
-                          setOpen(false);
-                        }}
-                        className="flex items-center gap-3 text-base font-medium text-destructive hover:text-destructive/80"
-                      >
-                        Sair
-                      </button>
-                    </>
-                  )}
-                  {!user && (
-                    <Link
-                      to="/auth"
-                      onClick={() => setOpen(false)}
-                      className="flex items-center gap-3 text-base font-medium text-primary"
-                    >
-                      Entrar
-                    </Link>
-                  )}
+                    )}
+                  </div>
                 </div>
               </SheetContent>
             </Sheet>

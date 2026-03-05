@@ -29,6 +29,10 @@ interface H2HFixture {
   league: { name: string; logo: string };
   teams: { home: { id: number; name: string; logo: string; winner: boolean | null }; away: { id: number; name: string; logo: string; winner: boolean | null } };
   goals: { home: number | null; away: number | null };
+  score: {
+    halftime: { home: number | null; away: number | null };
+    fulltime: { home: number | null; away: number | null };
+  };
 }
 
 interface Prediction {
@@ -97,14 +101,18 @@ export function usePreMatchAnalysis(fixtureId: string | undefined) {
       const getValue = (r: PromiseSettledResult<any>) => r.status === 'fulfilled' ? r.value : null;
 
       const standingsData = getValue(standingsRes);
-      // standings response has nested array structure
-      const allStandings = standingsData?.response?.[0]?.league?.standings?.[0] || null;
+      // standings response has nested array structure (e.g. groups in cups or divided leagues)
+      let allStandings = null;
+      if (standingsData?.response?.[0]?.league?.standings) {
+        const groups = standingsData.response[0].league.standings;
+        allStandings = groups.flat();
+      }
 
       setData({
         standings: allStandings,
         homeStats: getValue(homeStatsRes)?.response || null,
         awayStats: getValue(awayStatsRes)?.response || null,
-        h2h: getValue(h2hRes)?.response || null,
+        h2h: getValue(h2hRes)?.response?.length ? getValue(h2hRes).response : (getValue(predRes)?.response?.[0]?.h2h || null),
         homeLastMatches: getValue(homeLastRes)?.response || null,
         awayLastMatches: getValue(awayLastRes)?.response || null,
         prediction: getValue(predRes)?.response?.[0] || null,

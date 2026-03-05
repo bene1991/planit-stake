@@ -34,6 +34,8 @@ export interface Game {
   date: string;
   time: string;
   league: string;
+  country?: string;
+  leagueFlag?: string;
   homeTeam: string;
   awayTeam: string;
   homeTeamLogo?: string;

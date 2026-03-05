@@ -22,6 +22,8 @@ import { useLay0x1RealOperations } from '@/hooks/useLay0x1RealOperations';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import { getNowInBrasilia } from '@/utils/timezone';
+import { evaluateIASelection, autoRelaxThresholds, type IASelectionThresholds } from '@/utils/iaSelectionFilter';
+import { useIAThresholds } from '@/hooks/useIAThresholds';
 
 interface AnalysisResult {
   fixture_id: string;
@@ -41,6 +43,16 @@ interface AnalysisResult {
   final_score_away?: number;
   fixture_status?: string;
   is_backtest: boolean;
+  ia_selected?: boolean;
+  ia_justification?: string;
+  ia_criteria?: {
+    btts_pct: number;
+    over25_pct: number;
+    home_clean_sheet_pct: number;
+    away_clean_sheet_pct: number;
+    home_goals_avg_10: number;
+    away_conceded_avg_10: number;
+  };
 }
 
 const CACHE_KEY_PREFIX = 'lay0x1_results_';
@@ -155,6 +167,7 @@ export const Lay0x1Scanner = () => {
   const { weights, saveWeights } = useLay0x1Weights();
   const { analyses, saveAnalysis } = useLay0x1Analyses();
   const { blockedNames, blockLeague } = useLay0x1BlockedLeagues();
+  const { thresholds: iaThresholds, meta: iaMeta, calibrating: iaCalibratingState, calibrate: iaCalibrateAction } = useIAThresholds();
   const { games, addGame } = useSupabaseGames();
   const { settings } = useSettings();
   const [results, setResults] = useState<AnalysisResult[]>([]);
@@ -284,7 +297,7 @@ export const Lay0x1Scanner = () => {
         return;
       }
 
-      const PARALLEL_DATES = 5; // Aumentado de 3 para 5 para maior velocidade
+      const PARALLEL_DATES = 10; // Aumentado de 5 para 10 para maior velocidade
       for (let i = 0; i < missing.length; i += PARALLEL_DATES) {
         const batch = missing.slice(i, i + PARALLEL_DATES);
         setMissingProgress({ current: Math.min(i + PARALLEL_DATES, missing.length), total: missing.length });
@@ -383,6 +396,8 @@ export const Lay0x1Scanner = () => {
             classification: r.classification,
             criteria_snapshot: r.criteria,
             weights_snapshot: weights,
+            source_list: r.ia_selected ? 'ia_selection' : 'lista_padrao',
+            ia_justification: r.ia_justification,
           }, true);
           if (result) savedCount++;
         }
@@ -391,7 +406,9 @@ export const Lay0x1Scanner = () => {
         if (savedCount > 0) {
           toast.success(`${savedCount} jogo(s) aprovado(s) salvo(s) automaticamente${skipped > 0 ? ` (${skipped} já existiam)` : ''}`);
         } else if (approvedResults.length > 0 && skipped === approvedResults.length) {
-          toast.info(`${approvedResults.length} aprovado(s) já estavam salvos`);
+          toast.info(`${approvedResults.length} aprovado(s) já estavam salvos no Dashboard Lay0x1`);
+        } else if (approvedResults.length > 0 && savedCount === 0) {
+          toast.error(`Atenção: Houve falha ao salvar ${approvedResults.length} jogos aprovados no banco de dados. Atualize o banco!`);
         } else {
           toast.success(`${resMeta.total_fixtures} jogos analisados → 0 aprovados`);
         }
@@ -422,7 +439,14 @@ export const Lay0x1Scanner = () => {
       criteria_snapshot: result.criteria,
       weights_snapshot: weights,
       is_backtest: result.is_backtest,
+      source_list: result.ia_selected ? 'ia_selection' : 'lista_padrao',
+      ia_justification: result.ia_justification,
     });
+
+    if (!result.is_backtest) {
+      await handleSendToPlanning(result);
+    }
+
     setResults(prev => {
       const updated = prev.map(r =>
         r.fixture_id === result.fixture_id ? { ...r, approved: true } : r
@@ -439,7 +463,7 @@ export const Lay0x1Scanner = () => {
       }
       return updated;
     });
-    toast.success('Análise salva!');
+    toast.success('Análise salva no Dashboard Lay 0x1!');
     setSavingId(null);
   };
 
@@ -487,6 +511,67 @@ export const Lay0x1Scanner = () => {
   );
 
   const approvedResults = filteredResults.filter(r => r.approved);
+
+  // Smart IA Selection — fully autonomous with auto-relaxation
+  const iaEvaluation = useMemo(() => {
+    // Build IA inputs from available criteria
+    const gameInputs = approvedResults.map(r => ({
+      awayOdd: r.criteria?.away_odd || 0,
+      homeGoalsAvg: r.criteria?.home_goals_avg || 0,
+      awayConcededAvg: r.criteria?.away_conceded_avg || 0,
+      bttsPct: r.ia_criteria?.btts_pct ?? 0,
+      over25Pct: r.ia_criteria?.over25_pct ?? 0,
+      homeCleanSheetPct: r.ia_criteria?.home_clean_sheet_pct ?? 0,
+      awayCleanSheetPct: r.ia_criteria?.away_clean_sheet_pct ?? 0,
+    }));
+
+    // Base thresholds from DB (or defaults)
+    const baseThresholds: IASelectionThresholds = {
+      maxAwayOdd: iaThresholds.max_away_odd,
+      minHomeGoalsAvg: iaThresholds.min_home_goals_avg,
+      minAwayConcededAvg: iaThresholds.min_away_conceded_avg,
+      minBttsPct: iaThresholds.min_btts_pct,
+      minOver25Pct: iaThresholds.min_over25_pct,
+      maxHomeCleanSheetPct: iaThresholds.max_home_clean_sheet_pct,
+      maxAwayCleanSheetPct: iaThresholds.max_away_clean_sheet_pct,
+    };
+
+    // Auto-relax: if 0 games pass, IA automatically widens criteria
+    const { thresholds: effectiveThresholds, relaxed, rounds } = autoRelaxThresholds(
+      gameInputs,
+      baseThresholds,
+      Math.max(1, Math.round(gameInputs.length * 0.3)), // target: ~30% of approved
+      5, // max relaxation rounds
+    );
+
+    // Evaluate every game with effective (possibly relaxed) thresholds
+    const enriched = approvedResults.map((r, i) => {
+      if (r.ia_selected !== undefined) return r;
+
+      const input = gameInputs[i];
+      const iaResult = evaluateIASelection(input, effectiveThresholds);
+
+      return {
+        ...r,
+        ia_selected: iaResult.selected,
+        ia_justification: iaResult.justification,
+        ia_criteria: {
+          btts_pct: input.bttsPct,
+          over25_pct: input.over25Pct,
+          home_clean_sheet_pct: input.homeCleanSheetPct,
+          away_clean_sheet_pct: input.awayCleanSheetPct,
+          home_goals_avg_10: input.homeGoalsAvg,
+          away_conceded_avg_10: input.awayConcededAvg,
+        },
+      };
+    });
+
+    return { enriched, relaxed, rounds, effectiveThresholds };
+  }, [approvedResults, iaThresholds]);
+
+  const enrichedApproved = iaEvaluation.enriched;
+  const iaSelectionResults = enrichedApproved.filter(r => r.ia_selected);
+  const standardApprovedResults = enrichedApproved; // ALL approved = Filtro Padrão
   const rejectedResults = filteredResults.filter(r => !r.approved);
 
   // Telegram send handler for Lay 0x1 approved games
@@ -616,224 +701,123 @@ export const Lay0x1Scanner = () => {
   };
 
   return (
-    <div className={cn(
-      !isMobile && "grid grid-cols-[35%_1fr] gap-4 h-[calc(100vh-120px)]"
-    )}>
-      <div className={cn("space-y-4", !isMobile && "overflow-y-auto pr-2")}>
+    <div className={cn('grid gap-4', !isMobile && 'grid-cols-[1fr_380px]')}>
+      <div className="space-y-4">
         {/* Search Bar */}
         <Card>
-          <CardContent className="p-4">
-            {/* Date shortcuts */}
-            <div className="flex flex-wrap gap-2 mb-3">
+          <CardContent className="p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => { setRangeMode(null); setSelectedDate(e.target.value); }}
+                className="flex-1 text-sm"
+              />
+              <Button onClick={analyzeGames} disabled={loading} size="sm" className="gap-2">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar'}
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
-                variant={!rangeMode && selectedDate === format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'}
+                variant={!rangeMode && selectedDate === todayStr ? 'default' : 'ghost'}
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => handleSingleDateClick(todayStr)}
+              >
+                <Calendar className="w-3 h-3 mr-1" /> Hoje
+              </Button>
+              <Button
+                variant={!rangeMode && selectedDate === format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd') ? 'default' : 'ghost'}
                 size="sm"
                 className="text-xs h-7"
                 onClick={() => handleSingleDateClick(format(subDays(getNowInBrasilia(), 1), 'yyyy-MM-dd'))}
               >
                 Ontem
               </Button>
-              {rangeShortcuts.map(s => (
-                <Button
-                  key={s.label}
-                  variant={rangeMode?.days === s.days ? 'default' : 'outline'}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() => handleRangeClick(s)}
-                >
-                  {s.label}
-                </Button>
-              ))}
-              <Button
-                variant={!rangeMode && selectedDate === todayStr ? 'default' : 'outline'}
-                size="sm"
-                className="text-xs h-7"
-                onClick={() => handleSingleDateClick(todayStr)}
-              >
-                Hoje
-              </Button>
+              <div className="flex-1" />
+              {results.length > 0 && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={clearCache} className="text-xs h-7 text-muted-foreground mr-1">
+                    <Trash2 className="w-3 h-3 mr-1" /> Limpar
+                  </Button>
+                  {!isBacktest && !rangeMode && approvedResults.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={handleSendTelegram} disabled={sendingTelegram} className="text-xs h-7 text-blue-400">
+                      <Send className="w-3 h-3 mr-1" /> Telegram
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
-
-            {!rangeMode && (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => { setRangeMode(null); setSelectedDate(e.target.value); }}
-                  className="w-full sm:w-auto"
-                />
-                <Button onClick={analyzeGames} disabled={loading} className="gap-2">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isBacktest ? <FlaskConical className="w-4 h-4" /> : <Search className="w-4 h-4" />}
-                  {loading ? 'Analisando...' : isBacktest ? 'Backtest' : 'Analisar Jogos do Dia'}
-                </Button>
-                {results.length > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
-                    <Trash2 className="w-3 h-3" /> Limpar cache
-                  </Button>
-                )}
-                {!isBacktest && !rangeMode && approvedResults.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={handleSendTelegram} disabled={sendingTelegram} className="gap-1 text-xs">
-                    <Send className="w-3 h-3" />
-                    {sendingTelegram ? 'Enviando...' : `Telegram (${approvedResults.length})`}
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {isBacktest && !rangeMode && (
-              <div className="mt-2 flex items-center gap-2">
-                <Badge variant="outline" className="text-yellow-400 border-yellow-500/30">
-                  <FlaskConical className="w-3 h-3 mr-1" /> Modo Backtest
-                </Badge>
-                <span className="text-xs text-muted-foreground">Jogos não serão salvos automaticamente</span>
-              </div>
-            )}
-
-            {loading && (
-              <div className="mt-3 space-y-1">
-                <Progress value={undefined} className="h-2" />
-                <p className="text-xs text-muted-foreground">Buscando jogos, filtrando por odds e analisando em lotes paralelos... (até 2 min)</p>
-              </div>
-            )}
-
-            {!loading && !rangeMode && meta && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {meta.total_fixtures} jogos no dia → {meta.pre_filtered} com odd casa &lt; visitante → {approvedResults.length} aprovados
-              </p>
-            )}
           </CardContent>
         </Card>
 
-        {/* Range Mode Summary */}
-        {rangeMode && rangeData && (
-          <Card className="border-primary/20">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-primary" />
-                  <h3 className="text-sm font-semibold">
-                    Últimos {rangeMode.days} dias
-                    <span className="text-muted-foreground font-normal ml-1">
-                      ({rangeData.analyzedDays}/{rangeData.totalDays} analisados)
-                    </span>
-                  </h3>
-                </div>
-                {(rangeData.analyzedDays > 0) && (
-                  <Button variant="ghost" size="sm" onClick={clearCache} className="gap-1 text-xs text-muted-foreground">
-                    <Trash2 className="w-3 h-3" /> Limpar cache
-                  </Button>
-                )}
+        {/* Loading */}
+        {loading && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">Analisando jogos Lay 0x1...</span>
               </div>
-
-              {rangeData.missingDates.length > 0 && (
-                <div className="mb-3">
-                  <Button
-                    onClick={analyzeMissingDays}
-                    disabled={analyzingMissing}
-                    size="sm"
-                    variant="outline"
-                    className="gap-2 text-xs"
-                  >
-                    {analyzingMissing ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Analisando {missingProgress.current}/{missingProgress.total}...
-                      </>
-                    ) : (
-                      <>
-                        <FlaskConical className="w-3 h-3" />
-                        Analisar {rangeData.missingDates.length} dia(s) faltante(s)
-                      </>
-                    )}
-                  </Button>
-                  {analyzingMissing && (
-                    <Progress value={(missingProgress.current / missingProgress.total) * 100} className="h-1.5 mt-2" />
-                  )}
-                </div>
-              )}
-
-              {backtestStats && backtestStats.finished > 0 && (
-                <div className="grid grid-cols-4 gap-3 text-center">
-                  <div>
-                    <p className="text-lg font-bold">{backtestStats.total}</p>
-                    <p className="text-xs text-muted-foreground">Aprovados</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-emerald-400">{backtestStats.greens}</p>
-                    <p className="text-xs text-muted-foreground">Green</p>
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-red-400">{backtestStats.reds}</p>
-                    <p className="text-xs text-muted-foreground">Red</p>
-                  </div>
-                  <div>
-                    <p className={`text-lg font-bold ${backtestStats.winRate >= 70 ? 'text-emerald-400' : backtestStats.winRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                      {backtestStats.winRate.toFixed(0)}%
-                    </p>
-                    <p className="text-xs text-muted-foreground">Win Rate</p>
-                  </div>
-                </div>
-              )}
-
-              {backtestStats && backtestStats.finished < backtestStats.total && backtestStats.total > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
-                </p>
-              )}
-
-              {rangeData.analyzedDays === 0 && (
-                <p className="text-xs text-muted-foreground">Nenhum dia analisado ainda. Clique no botão acima para analisar.</p>
-              )}
-
-              {(rangeMode || isBacktest) && approvedResults.length > 0 && (
-                <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
-                  onClick={saveBacktestForCalibration}>
-                  {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                  Salvar para Calibração ({approvedResults.length})
-                </Button>
-              )}
+              <Progress value={50} className="h-1" />
             </CardContent>
           </Card>
         )}
 
-        {/* Single day Backtest Summary */}
-        {!rangeMode && isBacktest && backtestStats && backtestStats.finished > 0 && (
-          <Card className="border-yellow-500/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-3">
+        {/* Meta info */}
+        {meta && !loading && !rangeMode && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground px-1 flex-wrap">
+            <span>{meta.total_fixtures} jogos</span>
+            <span>→ {meta.pre_filtered} pré-filtrados</span>
+            <span>→ {meta.analyzed} analisados</span>
+            <span className="text-emerald-400 font-semibold">
+              {approvedResults.length} aprovados
+            </span>
+          </div>
+        )}
+
+        {/* Backtest Stats */}
+        {backtestStats && (
+          <Card className="border-yellow-500/30 mt-2">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4 text-yellow-400" />
-                <h3 className="text-sm font-semibold">Resultado do Backtest</h3>
+                <span className="text-sm font-semibold text-yellow-400">
+                  Backtest {rangeMode ? `últimos ${rangeMode.days} dias` : selectedDate}
+                </span>
               </div>
-              <div className="grid grid-cols-4 gap-3 text-center">
+              <div className={cn(
+                "grid gap-2 text-center text-xs",
+                isMobile ? "grid-cols-3" : "grid-cols-5"
+              )}>
                 <div>
-                  <p className="text-lg font-bold">{backtestStats.total}</p>
-                  <p className="text-xs text-muted-foreground">Aprovados</p>
+                  <p className="text-muted-foreground">Total</p>
+                  <p className="font-bold">{backtestStats.total}</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-emerald-400">{backtestStats.greens}</p>
-                  <p className="text-xs text-muted-foreground">Green</p>
+                  <p className="text-muted-foreground">Finalizados</p>
+                  <p className="font-bold">{backtestStats.finished}</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-red-400">{backtestStats.reds}</p>
-                  <p className="text-xs text-muted-foreground">Red</p>
+                  <p className="text-muted-foreground">Greens</p>
+                  <p className="font-bold text-emerald-400">{backtestStats.greens}</p>
                 </div>
                 <div>
-                  <p className={`text-lg font-bold ${backtestStats.winRate >= 70 ? 'text-emerald-400' : backtestStats.winRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {backtestStats.winRate.toFixed(0)}%
-                  </p>
-                  <p className="text-xs text-muted-foreground">Win Rate</p>
+                  <p className="text-muted-foreground">Reds</p>
+                  <p className="font-bold text-red-400">{backtestStats.reds}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Win Rate</p>
+                  <p className="font-bold">{backtestStats.winRate.toFixed(1)}%</p>
                 </div>
               </div>
-              {backtestStats.finished < backtestStats.total && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {backtestStats.total - backtestStats.finished} jogo(s) sem placar final disponível
-                </p>
-              )}
-              {approvedResults.length > 0 && (
-                <Button variant="outline" size="sm" className="gap-2 text-xs mt-2" disabled={savingBacktest}
+              {(rangeMode || isBacktest) && approvedResults.length > 0 && (
+                <Button variant="outline" size="sm" className="w-full gap-2 text-[10px] mt-4" disabled={savingBacktest}
                   onClick={saveBacktestForCalibration}>
                   {savingBacktest ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                  Salvar para Calibração ({approvedResults.length})
+                  Salvar para Calib.
                 </Button>
               )}
             </CardContent>
@@ -886,15 +870,17 @@ export const Lay0x1Scanner = () => {
           </CollapsibleContent>
         </Collapsible>
 
+
+
         {/* Results — grouped by league, Fulltrader style */}
         {!loading && results.length > 0 && (
           <>
-            {approvedResults.length > 0 && (
+            {standardApprovedResults.length > 0 && (
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-emerald-400 mb-2">
-                  ✅ Aprovados ({approvedResults.length})
+                  ✅ Aprovados ({standardApprovedResults.length})
                 </h3>
-                {groupByLeague(approvedResults).map(([leagueName, leagueResults]) => (
+                {groupByLeague(standardApprovedResults).map(([leagueName, leagueResults]) => (
                   <div key={leagueName}>
                     <div className="flex items-center gap-2 px-1 py-1.5">
                       <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
@@ -927,6 +913,65 @@ export const Lay0x1Scanner = () => {
                           awayTeamLogo={r.away_team_logo}
                           onSelect={() => setSelectedResult(r)}
                           isSelected={selectedResult?.fixture_id === r.fixture_id}
+                          iaSelected={false}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* LIST 2: IA Selection — Independent AI-curated sub-list */}
+            {iaSelectionResults.length > 0 && (
+              <div className="space-y-1 mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gradient-to-r from-cyan-500/15 to-blue-500/15 border border-cyan-500/30">
+                    <span className="text-sm font-semibold text-cyan-400">🤖 IA Selection ({iaSelectionResults.length})</span>
+                  </div>
+                  {iaEvaluation.relaxed && (
+                    <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-500/30">
+                      auto-ajustada ({iaEvaluation.rounds}x)
+                    </Badge>
+                  )}
+                  <div className="flex-1 h-px bg-cyan-500/20" />
+                </div>
+                {groupByLeague(iaSelectionResults).map(([leagueName, leagueResults]) => (
+                  <div key={`ia-${leagueName}`}>
+                    <div className="flex items-center gap-2 px-1 py-1.5">
+                      <span className="text-xs font-semibold text-muted-foreground">{leagueName}</span>
+                      <div className="flex-1 h-px bg-border/30" />
+                    </div>
+                    <div className="space-y-1">
+                      {leagueResults.map(r => (
+                        <Lay0x1ScoreCard
+                          key={`ia-${r.fixture_id}`}
+                          homeTeam={r.home_team}
+                          awayTeam={r.away_team}
+                          league={r.league}
+                          time={r.time}
+                          scoreValue={r.score_value}
+                          classification={r.classification}
+                          approved={r.approved}
+                          criteria={r.criteria}
+                          reasons={r.reasons}
+                          onSave={!isBacktest && !rangeMode ? () => handleSave(r) : undefined}
+                          saving={savingId === r.fixture_id}
+                          backtestResult={getBacktestResult(r)}
+                          onBlockLeague={(name) => blockLeague(name, 'nao_disponivel')}
+                          onSendToPlanning={!isBacktest && !rangeMode ? () => handleSendToPlanning(r) : undefined}
+                          sendingToPlanning={sendingPlanningId === r.fixture_id}
+                          alreadyInPlanning={planningFixtureIds.has(r.fixture_id)}
+                          homeOdd={r.criteria?.home_odd}
+                          drawOdd={r.criteria?.draw_odd}
+                          awayOdd={r.criteria?.away_odd}
+                          homeTeamLogo={r.home_team_logo}
+                          awayTeamLogo={r.away_team_logo}
+                          onSelect={() => setSelectedResult(r)}
+                          isSelected={selectedResult?.fixture_id === r.fixture_id}
+                          iaSelected={r.ia_selected}
+                          iaJustification={r.ia_justification}
+                          iaCriteria={r.ia_criteria}
                         />
                       ))}
                     </div>

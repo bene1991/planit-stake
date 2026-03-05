@@ -28,6 +28,8 @@ export interface Game {
   date: string;
   time: string;
   league: string;
+  country?: string;
+  leagueFlag?: string;
   homeTeam: string;
   awayTeam: string;
   homeTeamLogo?: string;
@@ -91,7 +93,7 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
   // Map games with their operations
   return gamesData.map((game) => {
     const gameOperations = operationsByGameId.get(game.id) || [];
-    
+
     const methodOperations: MethodOperation[] = gameOperations.map(op => ({
       methodId: op.method_id,
       operationType: op.operation_type as 'Back' | 'Lay' | undefined,
@@ -112,6 +114,8 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
       date: game.date,
       time: game.time,
       league: game.league,
+      country: game.country || undefined,
+      leagueFlag: game.league_flag || undefined,
       homeTeam: game.home_team,
       awayTeam: game.away_team,
       homeTeamLogo: game.home_team_logo || undefined,
@@ -164,6 +168,8 @@ export const useSupabaseGames = () => {
           date: game.date,
           time: game.time,
           league: game.league,
+          country: game.country,
+          league_flag: game.leagueFlag,
           home_team: game.homeTeam,
           away_team: game.awayTeam,
           home_team_logo: game.homeTeamLogo,
@@ -239,6 +245,8 @@ export const useSupabaseGames = () => {
       if (updates.date) gameUpdates.date = updates.date;
       if (updates.time) gameUpdates.time = updates.time;
       if (updates.league) gameUpdates.league = updates.league;
+      if (updates.country) gameUpdates.country = updates.country;
+      if (updates.leagueFlag) gameUpdates.league_flag = updates.leagueFlag;
       if (updates.homeTeam) gameUpdates.home_team = updates.homeTeam;
       if (updates.awayTeam) gameUpdates.away_team = updates.awayTeam;
       if (updates.homeTeamLogo !== undefined) gameUpdates.home_team_logo = updates.homeTeamLogo;

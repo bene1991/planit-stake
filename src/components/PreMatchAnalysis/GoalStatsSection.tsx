@@ -159,7 +159,7 @@ export function GoalStatsSection({ homeStats, awayStats, homeTeam, awayTeam, hom
 
   const isSeasonMode = gameCount === "season" || !computed;
 
-  if (isSeasonMode && (!homeStats?.goals || !awayStats?.goals)) {
+  if (isSeasonMode && !homeStats?.goals && !seasonComputed) {
     return <p className="text-muted-foreground text-sm text-center py-4">Estatísticas indisponíveis</p>;
   }
 
@@ -204,10 +204,32 @@ export function GoalStatsSection({ homeStats, awayStats, homeTeam, awayTeam, hom
 
       {isSeasonMode ? (
         <>
-          <StatBar label="Média Gols Marcados" homeVal={parseFloat(homeStats?.goals?.for?.average?.total ?? '0')} awayVal={parseFloat(awayStats?.goals?.for?.average?.total ?? '0')} format={fmtDec} />
-          <StatBar label="Média Gols Sofridos" homeVal={parseFloat(homeStats?.goals?.against?.average?.total ?? '0')} awayVal={parseFloat(awayStats?.goals?.against?.average?.total ?? '0')} format={fmtDec} />
-          <CountPctBar label="Clean Sheets" homeCount={homeStats?.clean_sheet?.total ?? 0} homeTotal={homeStats?.games?.played?.total ?? 0} awayCount={awayStats?.clean_sheet?.total ?? 0} awayTotal={awayStats?.games?.played?.total ?? 0} />
-          <CountPctBar label="Não Marcou" homeCount={homeStats?.failed_to_score?.total ?? 0} homeTotal={homeStats?.games?.played?.total ?? 0} awayCount={awayStats?.failed_to_score?.total ?? 0} awayTotal={awayStats?.games?.played?.total ?? 0} />
+          <StatBar
+            label="Média Gols Marcados"
+            homeVal={homeStats?.goals ? parseFloat(homeStats.goals.for.average.total) : (seasonComputed?.home.avgFor || 0)}
+            awayVal={awayStats?.goals ? parseFloat(awayStats.goals.for.average.total) : (seasonComputed?.away.avgFor || 0)}
+            format={fmtDec}
+          />
+          <StatBar
+            label="Média Gols Sofridos"
+            homeVal={homeStats?.goals ? parseFloat(homeStats.goals.against.average.total) : (seasonComputed?.home.avgAgainst || 0)}
+            awayVal={awayStats?.goals ? parseFloat(awayStats.goals.against.average.total) : (seasonComputed?.away.avgAgainst || 0)}
+            format={fmtDec}
+          />
+          <CountPctBar
+            label="Clean Sheets"
+            homeCount={homeStats?.clean_sheet ? homeStats.clean_sheet.total : (seasonComputed?.home.cleanSheets || 0)}
+            homeTotal={homeStats?.games?.played?.total ?? (seasonComputed?.home.gamesUsed || 0)}
+            awayCount={awayStats?.clean_sheet ? awayStats.clean_sheet.total : (seasonComputed?.away.cleanSheets || 0)}
+            awayTotal={awayStats?.games?.played?.total ?? (seasonComputed?.away.gamesUsed || 0)}
+          />
+          <CountPctBar
+            label="Não Marcou"
+            homeCount={homeStats?.failed_to_score ? homeStats.failed_to_score.total : (seasonComputed?.home.failedToScore || 0)}
+            homeTotal={homeStats?.games?.played?.total ?? (seasonComputed?.home.gamesUsed || 0)}
+            awayCount={awayStats?.failed_to_score ? awayStats.failed_to_score.total : (seasonComputed?.away.failedToScore || 0)}
+            awayTotal={awayStats?.games?.played?.total ?? (seasonComputed?.away.gamesUsed || 0)}
+          />
           {seasonComputed && (
             <>
               <StatBar label="% Over 1.5" homeVal={seasonComputed.home.over15Pct} awayVal={seasonComputed.away.over15Pct} format={fmtPct} />
@@ -235,14 +257,14 @@ export function GoalStatsSection({ homeStats, awayStats, homeTeam, awayTeam, hom
         <>
           <StatBar
             label="Média Marcados (Casa × Fora)"
-            homeVal={parseFloat(homeStats?.goals?.for?.average?.home ?? '0')}
-            awayVal={parseFloat(awayStats?.goals?.for?.average?.away ?? '0')}
+            homeVal={homeStats?.goals ? parseFloat(homeStats.goals.for.average.home) : (seasonComputed?.home.homeAvgFor || 0)}
+            awayVal={awayStats?.goals ? parseFloat(awayStats.goals.for.average.away) : (seasonComputed?.away.awayAvgFor || 0)}
             format={fmtDec}
           />
           <StatBar
             label="Média Sofridos (Casa × Fora)"
-            homeVal={parseFloat(homeStats?.goals?.against?.average?.home ?? '0')}
-            awayVal={parseFloat(awayStats?.goals?.against?.average?.away ?? '0')}
+            homeVal={homeStats?.goals ? parseFloat(homeStats.goals.against.average.home) : (seasonComputed?.home.homeAvgAgainst || 0)}
+            awayVal={awayStats?.goals ? parseFloat(awayStats.goals.against.average.away) : (seasonComputed?.away.awayAvgAgainst || 0)}
             format={fmtDec}
           />
         </>

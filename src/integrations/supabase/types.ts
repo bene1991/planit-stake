@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
@@ -430,9 +430,67 @@ export type Database = {
         }
         Relationships: []
       }
+      lay_operations_real: {
+        Row: {
+          away_team: string
+          created_at: string
+          final_score_away: number | null
+          final_score_home: number | null
+          fixture_id: string
+          home_team: string
+          id: string
+          league: string
+          liability: number
+          odd_used: number
+          operation_date: string
+          profit: number | null
+          stake: number
+          status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          away_team: string
+          created_at?: string
+          final_score_away?: number | null
+          final_score_home?: number | null
+          fixture_id: string
+          home_team: string
+          id?: string
+          league: string
+          liability?: number
+          odd_used: number
+          operation_date: string
+          profit?: number | null
+          stake: number
+          status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          away_team?: string
+          created_at?: string
+          final_score_away?: number | null
+          final_score_home?: number | null
+          fixture_id?: string
+          home_team?: string
+          id?: string
+          league?: string
+          liability?: number
+          odd_used?: number
+          operation_date?: string
+          profit?: number | null
+          stake?: number
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       lay0x1_analyses: {
         Row: {
           away_team: string
+          away_team_logo: string | null
           classification: string
           created_at: string
           criteria_snapshot: Json
@@ -441,7 +499,10 @@ export type Database = {
           final_score_home: number | null
           fixture_id: string
           home_team: string
+          home_team_logo: string | null
+          ia_justification: string | null
           id: string
+          is_backtest: boolean
           league: string
           liability: number | null
           odd_used: number | null
@@ -450,12 +511,14 @@ export type Database = {
           resolved_at: string | null
           result: string | null
           score_value: number
+          source_list: string
           stake: number | null
           was_0x1: boolean | null
           weights_snapshot: Json
         }
         Insert: {
           away_team: string
+          away_team_logo?: string | null
           classification?: string
           created_at?: string
           criteria_snapshot?: Json
@@ -464,7 +527,10 @@ export type Database = {
           final_score_home?: number | null
           fixture_id: string
           home_team: string
+          home_team_logo?: string | null
+          ia_justification?: string | null
           id?: string
+          is_backtest?: boolean
           league: string
           liability?: number | null
           odd_used?: number | null
@@ -473,12 +539,14 @@ export type Database = {
           resolved_at?: string | null
           result?: string | null
           score_value?: number
+          source_list?: string
           stake?: number | null
           was_0x1?: boolean | null
           weights_snapshot?: Json
         }
         Update: {
           away_team?: string
+          away_team_logo?: string | null
           classification?: string
           created_at?: string
           criteria_snapshot?: Json
@@ -487,7 +555,10 @@ export type Database = {
           final_score_home?: number | null
           fixture_id?: string
           home_team?: string
+          home_team_logo?: string | null
+          ia_justification?: string | null
           id?: string
+          is_backtest?: boolean
           league?: string
           liability?: number | null
           odd_used?: number | null
@@ -496,6 +567,7 @@ export type Database = {
           resolved_at?: string | null
           result?: string | null
           score_value?: number
+          source_list?: string
           stake?: number | null
           was_0x1?: boolean | null
           weights_snapshot?: Json
@@ -586,6 +658,210 @@ export type Database = {
         }
         Relationships: []
       }
+      lay0x1_ia_evolution_log: {
+        Row: {
+          adjustment_reason: string | null
+          created_at: string | null
+          cycle: number
+          ia_games: number
+          ia_win_rate: number | null
+          id: string
+          owner_id: string
+          standard_win_rate: number | null
+          thresholds_after: Json
+          thresholds_before: Json
+          total_games_analyzed: number
+        }
+        Insert: {
+          adjustment_reason?: string | null
+          created_at?: string | null
+          cycle: number
+          ia_games?: number
+          ia_win_rate?: number | null
+          id?: string
+          owner_id: string
+          standard_win_rate?: number | null
+          thresholds_after: Json
+          thresholds_before: Json
+          total_games_analyzed?: number
+        }
+        Update: {
+          adjustment_reason?: string | null
+          created_at?: string | null
+          cycle?: number
+          ia_games?: number
+          ia_win_rate?: number | null
+          id?: string
+          owner_id?: string
+          standard_win_rate?: number | null
+          thresholds_after?: Json
+          thresholds_before?: Json
+          total_games_analyzed?: number
+        }
+        Relationships: []
+      }
+      lay0x1_ia_thresholds: {
+        Row: {
+          bound_max_away_odd: number
+          bound_max_btts: number
+          bound_max_cs: number
+          bound_max_home_goals: number
+          bound_min_away_odd: number
+          bound_min_btts: number
+          bound_min_cs: number
+          bound_min_home_goals: number
+          calibration_trigger: number
+          created_at: string | null
+          cycle: number
+          games_since_calibration: number
+          id: string
+          last_calibrated_at: string | null
+          max_away_clean_sheet_pct: number
+          max_away_odd: number
+          max_home_clean_sheet_pct: number
+          min_away_conceded_avg: number
+          min_btts_pct: number
+          min_home_goals_avg: number
+          min_over25_pct: number
+          owner_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          bound_max_away_odd?: number
+          bound_max_btts?: number
+          bound_max_cs?: number
+          bound_max_home_goals?: number
+          bound_min_away_odd?: number
+          bound_min_btts?: number
+          bound_min_cs?: number
+          bound_min_home_goals?: number
+          calibration_trigger?: number
+          created_at?: string | null
+          cycle?: number
+          games_since_calibration?: number
+          id?: string
+          last_calibrated_at?: string | null
+          max_away_clean_sheet_pct?: number
+          max_away_odd?: number
+          max_home_clean_sheet_pct?: number
+          min_away_conceded_avg?: number
+          min_btts_pct?: number
+          min_home_goals_avg?: number
+          min_over25_pct?: number
+          owner_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          bound_max_away_odd?: number
+          bound_max_btts?: number
+          bound_max_cs?: number
+          bound_max_home_goals?: number
+          bound_min_away_odd?: number
+          bound_min_btts?: number
+          bound_min_cs?: number
+          bound_min_home_goals?: number
+          calibration_trigger?: number
+          created_at?: string | null
+          cycle?: number
+          games_since_calibration?: number
+          id?: string
+          last_calibrated_at?: string | null
+          max_away_clean_sheet_pct?: number
+          max_away_odd?: number
+          max_home_clean_sheet_pct?: number
+          min_away_conceded_avg?: number
+          min_btts_pct?: number
+          min_home_goals_avg?: number
+          min_over25_pct?: number
+          owner_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      lay0x1_odds_cache: {
+        Row: {
+          away_odd: number
+          cached_at: string
+          date: string
+          draw_odd: number
+          fixture_id: number
+          home_odd: number
+          id: string
+        }
+        Insert: {
+          away_odd?: number
+          cached_at?: string
+          date: string
+          draw_odd?: number
+          fixture_id: number
+          home_odd?: number
+          id?: string
+        }
+        Update: {
+          away_odd?: number
+          cached_at?: string
+          date?: string
+          draw_odd?: number
+          fixture_id?: number
+          home_odd?: number
+          id?: string
+        }
+        Relationships: []
+      }
+      lay0x1_stats_cache: {
+        Row: {
+          away_clean_sheet_pct: number | null
+          away_conceded_avg: number
+          away_goals_avg: number | null
+          btts_pct: number | null
+          cached_at: string
+          date: string
+          fixture_id: number
+          h2h_0x1_count: number
+          home_clean_sheet_pct: number | null
+          home_conceded_avg: number | null
+          home_goals_avg: number
+          id: string
+          league_goals_avg: number
+          over15_combined: number
+          over25_pct: number | null
+        }
+        Insert: {
+          away_clean_sheet_pct?: number | null
+          away_conceded_avg?: number
+          away_goals_avg?: number | null
+          btts_pct?: number | null
+          cached_at?: string
+          date: string
+          fixture_id: number
+          h2h_0x1_count?: number
+          home_clean_sheet_pct?: number | null
+          home_conceded_avg?: number | null
+          home_goals_avg?: number
+          id?: string
+          league_goals_avg?: number
+          over15_combined?: number
+          over25_pct?: number | null
+        }
+        Update: {
+          away_clean_sheet_pct?: number | null
+          away_conceded_avg?: number
+          away_goals_avg?: number | null
+          btts_pct?: number | null
+          cached_at?: string
+          date?: string
+          fixture_id?: number
+          h2h_0x1_count?: number
+          home_clean_sheet_pct?: number | null
+          home_conceded_avg?: number | null
+          home_goals_avg?: number
+          id?: string
+          league_goals_avg?: number
+          over15_combined?: number
+          over25_pct?: number | null
+        }
+        Relationships: []
+      }
       lay0x1_weights: {
         Row: {
           created_at: string
@@ -649,62 +925,133 @@ export type Database = {
         }
         Relationships: []
       }
-      lay_operations_real: {
+      lay1x0_analyses: {
         Row: {
-          id: string
-          fixture_id: string
-          operation_date: string
-          home_team: string
           away_team: string
+          away_team_logo: string | null
+          classification: string
+          created_at: string | null
+          criteria_snapshot: Json | null
+          date: string
+          fixture_id: string
+          home_team: string
+          home_team_logo: string | null
+          ia_justification: string | null
+          id: string
+          is_backtest: boolean | null
           league: string
-          odd_used: number
-          liability: number
-          stake: number
-          status: string
-          profit: number | null
-          final_score_home: number | null
-          final_score_away: number | null
           owner_id: string
-          created_at: string
-          updated_at: string
+          profit: number | null
+          result: string | null
+          score_value: number
+          source_list: string | null
+          weights_snapshot: Json | null
         }
         Insert: {
-          id?: string
-          fixture_id: string
-          operation_date: string
-          home_team: string
           away_team: string
+          away_team_logo?: string | null
+          classification?: string
+          created_at?: string | null
+          criteria_snapshot?: Json | null
+          date: string
+          fixture_id: string
+          home_team: string
+          home_team_logo?: string | null
+          ia_justification?: string | null
+          id?: string
+          is_backtest?: boolean | null
           league: string
-          odd_used: number
-          liability?: number
-          stake: number
-          status?: string
+          owner_id: string
           profit?: number | null
-          final_score_home?: number | null
-          final_score_away?: number | null
-          owner_id?: string
-          created_at?: string
-          updated_at?: string
+          result?: string | null
+          score_value?: number
+          source_list?: string | null
+          weights_snapshot?: Json | null
         }
         Update: {
-          id?: string
-          fixture_id?: string
-          operation_date?: string
-          home_team?: string
           away_team?: string
+          away_team_logo?: string | null
+          classification?: string
+          created_at?: string | null
+          criteria_snapshot?: Json | null
+          date?: string
+          fixture_id?: string
+          home_team?: string
+          home_team_logo?: string | null
+          ia_justification?: string | null
+          id?: string
+          is_backtest?: boolean | null
           league?: string
-          odd_used?: number
-          liability?: number
-          stake?: number
-          status?: string
-          profit?: number | null
-          final_score_home?: number | null
-          final_score_away?: number | null
           owner_id?: string
-          created_at?: string
-          updated_at?: string
+          profit?: number | null
+          result?: string | null
+          score_value?: number
+          source_list?: string | null
+          weights_snapshot?: Json | null
         }
         Relationships: []
+      }
+      live_alerts: {
+        Row: {
+          away_team: string | null
+          created_at: string
+          final_score: string | null
+          fixture_id: string
+          goal_ht_result: string | null
+          home_team: string | null
+          id: string
+          league_id: string | null
+          league_name: string | null
+          minute_at_alert: number
+          over15_result: string | null
+          stats_snapshot: Json | null
+          updated_at: string
+          variation_id: string | null
+          variation_name: string | null
+        }
+        Insert: {
+          away_team?: string | null
+          created_at?: string
+          final_score?: string | null
+          fixture_id: string
+          goal_ht_result?: string | null
+          home_team?: string | null
+          id?: string
+          league_id?: string | null
+          league_name?: string | null
+          minute_at_alert: number
+          over15_result?: string | null
+          stats_snapshot?: Json | null
+          updated_at?: string
+          variation_id?: string | null
+          variation_name?: string | null
+        }
+        Update: {
+          away_team?: string | null
+          created_at?: string
+          final_score?: string | null
+          fixture_id?: string
+          goal_ht_result?: string | null
+          home_team?: string | null
+          id?: string
+          league_id?: string | null
+          league_name?: string | null
+          minute_at_alert?: number
+          over15_result?: string | null
+          stats_snapshot?: Json | null
+          updated_at?: string
+          variation_id?: string | null
+          variation_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_alerts_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "robot_variations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       live_monitor_state: {
         Row: {
@@ -752,6 +1099,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      live_stats_snapshots: {
+        Row: {
+          created_at: string
+          fixture_id: string
+          id: string
+          minute: number
+          stats_json: Json
+        }
+        Insert: {
+          created_at?: string
+          fixture_id: string
+          id?: string
+          minute: number
+          stats_json: Json
+        }
+        Update: {
+          created_at?: string
+          fixture_id?: string
+          id?: string
+          minute?: number
+          stats_json?: Json
+        }
+        Relationships: []
       }
       method_operations: {
         Row: {
@@ -993,6 +1364,143 @@ export type Database = {
         }
         Relationships: []
       }
+      robot_blocked_leagues: {
+        Row: {
+          active: boolean | null
+          created_at: string
+          id: string
+          league_id: string
+          league_name: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string
+          id?: string
+          league_id: string
+          league_name: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string
+          id?: string
+          league_id?: string
+          league_name?: string
+        }
+        Relationships: []
+      }
+      robot_execution_logs: {
+        Row: {
+          created_at: string
+          details: Json | null
+          execution_time: string
+          fixture_id: string
+          id: string
+          league_id: string | null
+          reason: string
+          stage: string
+          variation_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          execution_time?: string
+          fixture_id: string
+          id?: string
+          league_id?: string | null
+          reason: string
+          stage: string
+          variation_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          execution_time?: string
+          fixture_id?: string
+          id?: string
+          league_id?: string | null
+          reason?: string
+          stage?: string
+          variation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "robot_execution_logs_variation_id_fkey"
+            columns: ["variation_id"]
+            isOneToOne: false
+            referencedRelation: "robot_variations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      robot_variations: {
+        Row: {
+          active: boolean | null
+          created_at: string
+          description: string | null
+          first_half_only: boolean | null
+          id: string
+          max_minute: number | null
+          min_combined_shots: number | null
+          min_dangerous_attacks: number | null
+          min_lambda_total: number | null
+          min_minute: number | null
+          min_over15_pre: number | null
+          min_possession: number | null
+          min_shots: number | null
+          min_shots_on_target: number | null
+          min_expected_goals: number | null
+          min_corners: number | null
+          min_shots_insidebox: number | null
+          name: string
+          require_score_zero: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string
+          description?: string | null
+          first_half_only?: boolean | null
+          id?: string
+          max_minute?: number | null
+          min_combined_shots?: number | null
+          min_dangerous_attacks?: number | null
+          min_lambda_total?: number | null
+          min_minute?: number | null
+          min_over15_pre?: number | null
+          min_possession?: number | null
+          min_shots?: number | null
+          min_shots_on_target?: number | null
+          min_expected_goals?: number | null
+          min_corners?: number | null
+          min_shots_insidebox?: number | null
+          name: string
+          require_score_zero?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string
+          description?: string | null
+          first_half_only?: boolean | null
+          id?: string
+          max_minute?: number | null
+          min_combined_shots?: number | null
+          min_dangerous_attacks?: number | null
+          min_lambda_total?: number | null
+          min_minute?: number | null
+          min_over15_pre?: number | null
+          min_possession?: number | null
+          min_shots?: number | null
+          min_shots_on_target?: number | null
+          min_expected_goals?: number | null
+          min_corners?: number | null
+          min_shots_insidebox?: number | null
+          name?: string
+          require_score_zero?: boolean | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           api_key: string | null
@@ -1081,6 +1589,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      telegram_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          message: string
+          metadata: Json | null
+          status: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message: string
+          metadata?: Json | null
+          status?: string
+          type: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message?: string
+          metadata?: Json | null
+          status?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       user_favorite_leagues: {
         Row: {

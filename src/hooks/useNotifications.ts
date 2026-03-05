@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export interface NotificationPreferences {
   enabled: boolean;
@@ -71,12 +71,27 @@ export const useNotifications = () => {
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
   }, [state]);
 
+  // Sync state between tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STATE_KEY && e.newValue) {
+        setState(JSON.parse(e.newValue));
+      }
+      if (e.key === PREFERENCES_KEY && e.newValue) {
+        setPreferences(JSON.parse(e.newValue));
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Reset daily notifications at midnight
   useEffect(() => {
     const checkMidnight = () => {
       const now = new Date();
       const lastCheck = new Date(state.lastChecked);
-      
+
       if (now.getDate() !== lastCheck.getDate()) {
         setState(prev => ({
           ...prev,
@@ -97,27 +112,35 @@ export const useNotifications = () => {
     setPreferences(prev => ({ ...prev, ...updates }));
   };
 
-  const canShowNotification = (
+  const canShowNotification = useCallback((
     notificationId: string,
     cooldownMinutes: number = 60
   ): boolean => {
     const shown = state.shownNotifications.find(n => n.id === notificationId);
-    
+
     if (!shown) return true;
-    
+
     const timeSince = Date.now() - shown.timestamp;
     return timeSince > (cooldownMinutes * 60 * 1000);
-  };
+  }, [state.shownNotifications]);
 
-  const markAsShown = (notificationId: string) => {
-    setState(prev => ({
-      ...prev,
-      shownNotifications: [
-        ...prev.shownNotifications.filter(n => n.id !== notificationId),
-        { id: notificationId, timestamp: Date.now() }
-      ],
-    }));
-  };
+  const markAsShown = useCallback((notificationId: string) => {
+    setState(prev => {
+      // Avoid redundant updates if already shown recently
+      const recentlyShown = prev.shownNotifications.find(
+        n => n.id === notificationId && (Date.now() - n.timestamp) < 5000
+      );
+      if (recentlyShown) return prev;
+
+      return {
+        ...prev,
+        shownNotifications: [
+          ...prev.shownNotifications.filter(n => n.id !== notificationId),
+          { id: notificationId, timestamp: Date.now() }
+        ],
+      };
+    });
+  }, []);
 
   const requestNativePermission = async (): Promise<boolean> => {
     if (!('Notification' in window)) {

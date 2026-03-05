@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { useSupabaseBankroll } from "@/hooks/useSupabaseBankroll";
-import { useLiveScores, GoalDetectedCallback } from "@/hooks/useLiveScores";
+import { useLiveScoresContext } from "@/contexts/LiveScoresContext";
+import { GoalDetectedCallback } from "@/hooks/useLiveScores";
 import { RedCardEvent } from "@/hooks/useFixtureCache";
 import { useNotifications } from "@/hooks/useNotifications";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
@@ -12,16 +13,21 @@ import { useOperationalSettings } from "@/hooks/useOperationalSettings";
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
 import { updateGameStatuses } from "@/utils/gameStatus";
 import { playGoalSound, playNotificationSound, playRedCardVoice } from "@/utils/soundManager";
-import { sendTelegramNotification } from "@/utils/telegramNotification";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiPause } from "@/hooks/useApiPause";
+import { autoResolveMethod } from "@/utils/gameResolution";
 
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, Download, CheckCircle, XCircle, RefreshCw, CalendarIcon, ChevronDown, Globe, Settings, Trash2, Pause, Play, Send, FileText, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Calendar, Download, CheckCircle, XCircle, RefreshCw,
+  CalendarIcon, ChevronDown, Globe, Settings, Trash2,
+  Pause, Play, Send, FileText, BarChart3, MoreVertical,
+  AlertCircle
+} from "lucide-react";
 import { GameListByLeague } from "@/components/GameListByLeague";
 import { GameStatusTabs, GameStatusFilter, GameSortOrder } from "@/components/GameStatusTabs";
 import { MethodSelector } from "@/components/MethodSelector";
@@ -40,6 +46,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -57,9 +64,6 @@ export default function DailyPlanning() {
   const { isPaused, toggle: toggleApiPause } = useApiPause();
   const { preferences: notifPrefs } = useNotifications();
 
-
-  // State for highlighting the last game with a goal
-  const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
   // Split panel state
   const isMobile = useIsMobile();
@@ -98,10 +102,34 @@ export default function DailyPlanning() {
   const [customDateTo, setCustomDateTo] = useState<Date>();
 
   // Callback when score is persisted - update local state immediately
-  const handleScorePersisted = useCallback((gameId: string, homeScore: number, awayScore: number) => {
+  const handleScorePersisted = useCallback(async (gameId: string, homeScore: number, awayScore: number) => {
+    console.log(`[DailyPlanning] Score persisted for ${gameId}: ${homeScore}-${awayScore}. Attempting smart resolution...`);
+
+    // Auto-resolve any recognizable methods
+    const game = games.find(g => g.id === gameId);
+    if (game && game.methodOperations.length > 0) {
+      let updated = false;
+      const newOperations = game.methodOperations.map(op => {
+        if (!op.result) {
+          const methodName = getMethodName(op.methodId);
+          const result = autoResolveMethod(methodName, homeScore, awayScore);
+          if (result) {
+            updated = true;
+            return { ...op, result };
+          }
+        }
+        return op;
+      });
+
+      if (updated) {
+        await updateGame(gameId, { methodOperations: newOperations });
+        toast.success(`Jogo ${game.homeTeam} resolvido automaticamente!`);
+      }
+    }
+
     // Refresh games to get the persisted data
     refreshGames();
-  }, [refreshGames]);
+  }, [games, refreshGames, updateGame, bankroll.methods]);
 
   // Helper: check if a game is still pending (has methods without results)
   const isGamePending = useCallback((game: Game) => {
@@ -111,121 +139,29 @@ export default function DailyPlanning() {
     return game.methodOperations.some(op => !op.result);
   }, []);
 
-  // Goal detection callback - called by useLiveScores when a goal is detected
-  const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game) => {
-    // IGNORE games that are already fully signaled (all methods have Green/Red)
-    if (!isGamePending(game)) {
-      console.log(`[DailyPlanning] Ignoring goal for completed game: ${game.homeTeam} vs ${game.awayTeam}`);
-      return;
-    }
+  // NOTE: Goal and Red Card detection handlers removed from here.
+  // They are now handled globally in App.tsx via LiveScoresProvider.
 
-    // === DEDUP LAYER 2: sessionStorage-based dedup (survives remounts/HMR) ===
-    const goalKey = `${gameId}-${homeScore}-${awayScore}`;
-    try {
-      const stored = sessionStorage.getItem('notifiedGoalKeys');
-      const keys: string[] = stored ? JSON.parse(stored) : [];
-      if (keys.includes(goalKey)) {
-        console.log(`[DailyPlanning] Dedup: goal already notified for key=${goalKey}, skipping`);
-        return;
-      }
-      // Keep last 50 keys max to avoid unbounded growth
-      keys.push(goalKey);
-      if (keys.length > 50) keys.splice(0, keys.length - 50);
-      sessionStorage.setItem('notifiedGoalKeys', JSON.stringify(keys));
-    } catch {
-      // sessionStorage fail - proceed but log
-      console.warn('[DailyPlanning] sessionStorage dedup failed, proceeding');
-    }
 
-    console.log(`[DailyPlanning] ⚽ GOAL! ${team === 'home' ? game.homeTeam : game.awayTeam} scores! ${game.homeTeam} ${homeScore}-${awayScore} ${game.awayTeam}`);
 
-    // Play celebration sound (Layer 3 dedup inside playGoalSound)
-    playGoalSound();
-
-    // Highlight this game with golden border immediately
-    setHighlightedGameId(gameId);
-
-    // Send Telegram notification immediately (non-blocking, cached settings)
-    if (notifPrefs.telegramEnabled) {
-      const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
-      const msg = `⚽ <b>GOL!</b> ${scoringTeamName}\n${game.homeTeam} ${homeScore} x ${awayScore} ${game.awayTeam}\n🏟 ${game.league}`;
-      sendTelegramNotification(msg).catch(err =>
-        console.error('[DailyPlanning] Telegram goal error:', err)
-      );
-    }
-
-    // Send push notification ONLY if app is in background (user can't hear the sound)
-    if (user && document.hidden) {
-      const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
-      supabase.functions.invoke('send-push-notification', {
-        body: {
-          userId: user.id,
-          payload: {
-            title: '⚽ GOL!',
-            body: `${scoringTeamName} marca! ${game.homeTeam} ${homeScore} x ${awayScore} ${game.awayTeam}`,
-            icon: '/pwa-192x192.png',
-            badge: '/pwa-192x192.png',
-            data: {
-              type: 'goal',
-              homeTeam: game.homeTeam,
-              awayTeam: game.awayTeam,
-              homeScore,
-              awayScore
-            }
-          }
-        }
-      }).catch(err => console.error('[DailyPlanning] Push notification error:', err));
-    }
-  }, [user, isGamePending, notifPrefs.telegramEnabled]);
-
-  // Red card detection callback
-  const handleRedCardDetected = useCallback((event: RedCardEvent) => {
-    if (!notifPrefs.redCardAlerts || !notifPrefs.enabled) return;
-
-    const teamLabel = event.team === 'home' ? 'Casa' : 'Fora';
-    const playerName = event.player || 'Jogador';
-    const message = `🟥 Cartão Vermelho! ${playerName} - ${teamLabel} (${event.minute}')`;
-
-    console.log(`[DailyPlanning] ${message}`);
-
-    // Visual toast
-    toast.error(message, { duration: 8000 });
-
-    // Sound alert
-    if (notifPrefs.soundEnabled) {
-      playNotificationSound('error', true);
-    }
-
-    // Voice alert
-    if (notifPrefs.voiceAlerts) {
-      playRedCardVoice();
-    }
-
-    // Push notification (background only)
-    if (user && document.hidden) {
-      supabase.functions.invoke('send-push-notification', {
-        body: {
-          userId: user.id,
-          payload: {
-            title: '🟥 Cartão Vermelho!',
-            body: `${playerName} - ${teamLabel} (${event.minute}')`,
-            icon: '/pwa-192x192.png',
-            badge: '/pwa-192x192.png',
-            data: { type: 'red_card', fixtureId: event.fixtureId }
-          }
-        }
-      }).catch(err => console.error('[DailyPlanning] Push red card error:', err));
-    }
-  }, [user, notifPrefs]);
-
-  // Optimized live scores - uses configurable interval + auto-economy
+  // Use global live scores context
   const {
     getScoreForGame,
     refresh: refreshLiveScores,
     loading: scoresLoading,
     lastRefresh,
-    scores: liveScores
-  } = useLiveScores(games, handleScorePersisted, handleGoalDetected, intervalMs, isPaused);
+    scores: liveScores,
+    highlightedGameId,
+    setHighlightedGameId
+  } = useLiveScoresContext();
+
+  // Red card detection is now handled globally in App.tsx.
+  // We can still keep a local handler if we want visual toasts on this page specifically,
+  // but let's avoid duplicates by relying on the global one.
+  const handleRedCardDetected = useCallback((event: RedCardEvent) => {
+    // Rely on global toast/sound, or add specific page behavior here if needed.
+    console.log('[DailyPlanning] Red card seen via context logic (optional page-specific behavior can go here)');
+  }, []);
 
 
   // Track if we already did the initial highlight check
@@ -445,6 +381,8 @@ export default function DailyPlanning() {
         date: game.date,
         time: game.time,
         league: game.league,
+        country: game.country,
+        leagueFlag: game.leagueFlag,
         homeTeam: game.homeTeam,
         awayTeam: game.awayTeam,
         homeTeamLogo: game.homeTeamLogo,
@@ -457,12 +395,51 @@ export default function DailyPlanning() {
     await refreshGames();
   };
 
+  const handleSmartResolveAll = async () => {
+    const finishedWithScores = games.filter(g =>
+      g.status === 'Finished' &&
+      g.finalScoreHome !== undefined &&
+      g.finalScoreAway !== undefined &&
+      g.methodOperations.some(op => !op.result)
+    );
+
+    if (finishedWithScores.length === 0) {
+      toast.info('Nenhum jogo finalizado para resolver.');
+      return;
+    }
+
+    let resolvedCount = 0;
+    for (const game of finishedWithScores) {
+      const newOperations = game.methodOperations.map(op => {
+        if (!op.result) {
+          const methodName = getMethodName(op.methodId);
+          const result = autoResolveMethod(methodName, game.finalScoreHome!, game.finalScoreAway!);
+          if (result) return { ...op, result };
+        }
+        return op;
+      });
+
+      const hasChanges = newOperations.some((op, i) => op.result !== game.methodOperations[i].result);
+      if (hasChanges) {
+        await updateGame(game.id, { methodOperations: newOperations });
+        resolvedCount++;
+      }
+    }
+
+    if (resolvedCount > 0) {
+      toast.success(`${resolvedCount} jogo(s) resolvido(s) com sucesso!`);
+      refreshGames();
+    } else {
+      toast.info('Métodos não reconhecidos para resolução automática.');
+    }
+  };
+
   // Get today's date in Brasilia timezone
   const todayDate = format(getNowInBrasilia(), 'yyyy-MM-dd');
 
   // Separar jogos: PENDENTES (pelo menos 1 operação sem resultado) vs FINALIZADOS (todas com resultado)
   const pendingGames = games.filter((game) =>
-    game.methodOperations.some((op) => !op.result)
+    game.methodOperations.length === 0 || game.methodOperations.some((op) => !op.result)
   );
 
   const finalizedGames = games.filter((game) =>
@@ -502,7 +479,7 @@ export default function DailyPlanning() {
     if (planningStatusFilter !== 'all') {
       if (planningStatusFilter === 'pending') {
         filtered = filtered.filter(game =>
-          game.methodOperations.some(op => !op.result)
+          game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result)
         );
       } else if (planningStatusFilter === 'live') {
         filtered = filtered.filter(game => game.status === 'Live');
@@ -615,11 +592,18 @@ export default function DailyPlanning() {
   );
 
   const getMethodName = (methodId: string) => {
-    return bankroll.methods.find((m) => m.id === methodId)?.name || 'Método';
+    const method = bankroll.methods.find((m) => m.id === methodId);
+    if (method) return method.name;
+
+    // Fallback mais descritivo para métodos órfãos
+    const shortId = methodId?.substring(0, 4) || '????';
+    return `Método (${shortId}...)`;
   };
 
   const handleSelectGame = useCallback((game: Game) => {
     setSelectedGame(game);
+    sessionStorage.setItem('ai_trader_active_game', JSON.stringify(game));
+    toast.success(`Jogo ${game.homeTeam} selecionado para o AI Trader`);
   }, []);
 
   if (gamesLoading || bankrollLoading) {
@@ -632,28 +616,135 @@ export default function DailyPlanning() {
 
   return (
     <div className={cn(
-      "fixed inset-0 top-16 bg-background flex overflow-hidden w-full max-w-none z-0",
-      isMobile ? "relative top-0 flex-col h-auto overflow-y-auto pb-20" : "grid grid-cols-[420px_1fr_280px] gap-0"
+      "fixed inset-0 top-16 bg-background flex w-full max-w-none z-0 overflow-y-auto custom-scrollbar",
+      isMobile ? "relative top-0 flex-col h-auto overflow-y-auto pb-24" : "grid grid-cols-[480px_1fr] gap-0"
     )}>
       {/* COLUMN 1: LEFT - Game List (420px) */}
       <aside className={cn(
-        "w-[420px] border-r border-border bg-background flex flex-col h-full min-h-0 shrink-0",
-        isMobile && "w-full h-[calc(100vh-140px)] border-r-0 border-b shrink-0"
+        "w-[480px] border-r border-border bg-background flex flex-col h-fit min-h-full shrink-0",
+        isMobile && "w-full h-auto border-r-0 border-b shrink-0"
       )}>
-        <div className="p-4 border-b border-border space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              Jogos
+        <div className="p-4 border-b border-border space-y-3 shrink-0">
+          <div className="flex justify-between items-center bg-[#121A24] rounded-lg p-2 border border-white/5 shadow-sm">
+            <h2 className="text-xl font-black italic uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-emerald-600 flex items-center gap-1.5 drop-shadow-sm">
+              <CalendarIcon className="h-4 w-4 text-emerald-500" />
+              PLANEJAMENTO
+            </h2>
+            <div className="flex items-center gap-2">
               {liveGames > 0 && (
                 <Badge variant="destructive" className="animate-pulse text-[10px] h-5">
                   {liveGames} LIVE
                 </Badge>
               )}
-            </h2>
-            <Button type="button" variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-7 text-xs px-2">
-              <Globe className="h-3 w-3 mr-1" />
-              Buscar
-            </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground relative">
+                    <Settings className="h-4 w-4" />
+                    {isPaused && (
+                      <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[280px] p-0 border-border bg-[#0B0F14]/95 backdrop-blur-xl">
+                  {/* CONFIG PANEL INCORPORATED INTO POPOVER */}
+                  <div className="flex flex-col h-full max-h-[80vh] overflow-y-auto custom-scrollbar">
+                    <div className="p-4 border-b border-border space-y-4">
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                        <Settings className="h-4 w-4 text-primary" />
+                        Config & Status
+                      </h3>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-2 rounded bg-muted/30 border border-white/5">
+                          <span className="text-[11px] font-medium text-muted-foreground">API Football</span>
+                          <ApiRequestIndicator />
+                        </div>
+
+                        <div className="flex items-center justify-between p-2 rounded bg-muted/30 border border-white/5">
+                          <span className="text-[11px] font-medium text-muted-foreground">Telegram Bots</span>
+                          <Badge variant={notifPrefs.telegramEnabled ? "default" : "secondary"} className="text-[10px] h-5">
+                            {notifPrefs.telegramEnabled ? "Ativo" : "Off"}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8 text-xs bg-[#121A24]/60">
+                          <Send className="h-3 w-3 mr-2" />
+                          Sinais
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowSummaryModal(true)} className="h-8 text-xs bg-[#121A24]/60">
+                          <FileText className="h-3 w-3 mr-2" />
+                          Resumo
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="p-4 space-y-4 border-b border-border">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Controles Globais</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleGlobalRefresh}
+                          disabled={scoresLoading || isPaused}
+                          className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+                        >
+                          <RefreshCw className={cn("h-3 w-3", scoresLoading && "animate-spin")} />
+                        </Button>
+                      </div>
+
+                      <Button
+                        variant={isPaused ? "destructive" : "secondary"}
+                        size="sm"
+                        onClick={toggleApiPause}
+                        className={cn("w-full h-9", isPaused && "animate-pulse")}
+                      >
+                        {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
+                        {isPaused ? 'Retomar Sistema' : 'Pausar Sistema'}
+                      </Button>
+
+                      <Button variant="outline" size="sm" onClick={handleExport} className="w-full h-9 bg-[#121A24]/60">
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar CSV
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSmartResolveAll}
+                        className="w-full h-9 bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Resolver Todos
+                      </Button>
+                    </div>
+
+                    <div className="p-4 font-mono text-[10px] space-y-2 opacity-60">
+                      <div className="flex justify-between">
+                        <span>Server Time:</span>
+                        <span>{format(getNowInBrasilia(), 'HH:mm:ss')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Last Data Pool:</span>
+                        <span>{lastRefresh ? format(lastRefresh, 'HH:mm:ss') : '--:--'}</span>
+                      </div>
+                      {hasActiveGames && !isPaused && (
+                        <div className="flex justify-between text-emerald-500">
+                          <span>Next Update:</span>
+                          <span>{secondsUntilRefresh}s</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button type="button" variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8 text-xs px-3 bg-emerald-500 hover:bg-emerald-600 text-black shadow-md shadow-emerald-500/20 font-medium">
+                <Globe className="h-3 w-3 mr-1.5" />
+                Buscar Jogos
+              </Button>
+            </div>
           </div>
 
           <GameStatusTabs
@@ -665,7 +756,7 @@ export default function DailyPlanning() {
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-2" style={{ maxHeight: isMobile ? 'calc(100vh - 200px)' : undefined }}>
+        <div className="flex-1 p-2 space-y-2">
           {sortedPlanned.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
               <Calendar className="h-8 w-8 mx-auto mb-2 opacity-20" />
@@ -700,8 +791,8 @@ export default function DailyPlanning() {
       </aside>
 
       {/* COLUMN 2: CENTER - Analysis & History (1fr) */}
-      <main className="flex flex-col h-full bg-[#0B0F14]/50 overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+      <main className="flex flex-col min-h-full bg-[#0B0F14]/50">
+        <div className="flex-1 p-6 space-y-6">
           {/* Header & Metrics */}
           {(() => {
             const todayGames = games.filter(g => g.date === todayDate);
@@ -709,35 +800,158 @@ export default function DailyPlanning() {
             const todayGreens = todayOps.filter(op => op.result === 'Green').length;
             const todayReds = todayOps.filter(op => op.result === 'Red').length;
             const todayTotal = todayGreens + todayReds;
-            const todayProfitMoney = todayOps.reduce((sum, op) => op.profit != null ? sum + op.profit : sum, 0);
-            const todayProfitStakes = todayProfitMoney / stakeReference;
+            // Calculate total profit money and stakes using aggressive fallback for quick-clicks
+            let todayProfitMoney = 0;
+            todayOps.forEach(op => {
+              if (op.profit != null) {
+                todayProfitMoney += op.profit;
+              } else if (op.result) {
+                const methodObj = bankroll.methods.find(m => m.id === op.methodId);
+                const isLay = methodObj?.name?.toLowerCase().includes('lay') || op.operationType === 'Lay';
+                const type = isLay ? 'Lay' : 'Back';
+                const fallbackStake = op.stakeValue || stakeReference;
+                const fallbackOdd = op.odd || op.entryOdds || 2.0;
+                const commissionRate = op.commissionRate ?? 0.045;
+
+                if (type === 'Back') {
+                  if (op.result === 'Green') {
+                    todayProfitMoney += fallbackStake * (fallbackOdd - 1) * (1 - commissionRate);
+                  } else if (op.result === 'Red') {
+                    todayProfitMoney -= fallbackStake;
+                  }
+                } else {
+                  if (op.result === 'Green') {
+                    const stakeLay = fallbackStake / (fallbackOdd - 1);
+                    todayProfitMoney += stakeLay * (1 - commissionRate);
+                  } else if (op.result === 'Red') {
+                    todayProfitMoney -= fallbackStake;
+                  }
+                }
+              }
+            });
+
+            const todayProfitStakes = stakeReference > 0 ? todayProfitMoney / stakeReference : 0;
+            const todayWinRate = todayTotal > 0 ? ((todayGreens / todayTotal) * 100).toFixed(1) : '0.0';
+
+            // Streak calculation
+            const sortedOps = [...todayOps].reverse(); // most recent first
+            let streakType: 'Green' | 'Red' | null = null;
+            let streakCount = 0;
+            for (const op of sortedOps) {
+              if (!streakType) {
+                streakType = op.result as 'Green' | 'Red';
+                streakCount = 1;
+              } else if (op.result === streakType) {
+                streakCount++;
+              } else {
+                break;
+              }
+            }
+
+            // Per-method breakdown
+            const methodBreakdown = new Map<string, { name: string; greens: number; reds: number; profit: number }>();
+            for (const game of todayGames) {
+              for (const op of game.methodOperations) {
+                if (!op.result) continue;
+                const name = getMethodName(op.methodId);
+                const existing = methodBreakdown.get(op.methodId) || { name, greens: 0, reds: 0, profit: 0 };
+                if (op.result === 'Green') existing.greens++;
+                else if (op.result === 'Red') existing.reds++;
+
+                let opProfit = 0;
+                if (op.profit != null) {
+                  opProfit = op.profit;
+                } else if (op.result) {
+                  const isLay = name.toLowerCase().includes('lay') || op.operationType === 'Lay';
+                  const type = isLay ? 'Lay' : 'Back';
+                  const fallbackStake = op.stakeValue || stakeReference;
+                  const fallbackOdd = op.odd || op.entryOdds || 2.0;
+                  const commissionRate = op.commissionRate ?? 0.045;
+
+                  if (type === 'Back') {
+                    if (op.result === 'Green') {
+                      opProfit = fallbackStake * (fallbackOdd - 1) * (1 - commissionRate);
+                    } else if (op.result === 'Red') {
+                      opProfit = -fallbackStake;
+                    }
+                  } else {
+                    if (op.result === 'Green') {
+                      const stakeLay = fallbackStake / (fallbackOdd - 1);
+                      opProfit = stakeLay * (1 - commissionRate);
+                    } else if (op.result === 'Red') {
+                      opProfit = -fallbackStake;
+                    }
+                  }
+                }
+
+                existing.profit += opProfit;
+                methodBreakdown.set(op.methodId, existing);
+              }
+            }
 
             return (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Lucro Hoje</p>
-                  <p className={cn("text-xl font-bold mt-1", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
-                    {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  </p>
-                  <p className="text-[10px] opacity-70">
-                    {todayProfitStakes >= 0 ? '+' : ''}{todayProfitStakes.toFixed(2)} st
-                  </p>
-                </Card>
-                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Performance</p>
-                  <p className="text-xl font-bold mt-1">{todayTotal}</p>
-                  <p className="text-[10px] text-muted-foreground">{todayGreens}G / {todayReds}R</p>
-                </Card>
-                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Live Agora</p>
-                  <p className="text-xl font-bold mt-1">{liveGames}</p>
-                  <p className="text-[10px] text-muted-foreground">Jogos em andamento</p>
-                </Card>
-                <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Win Rate</p>
-                  <p className="text-xl font-bold mt-1">{winRate}%</p>
-                  <p className="text-[10px] text-muted-foreground">Média geral</p>
-                </Card>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Lucro Hoje</p>
+                    <p className={cn("text-xl font-bold mt-1", todayProfitMoney >= 0 ? "text-emerald-500" : "text-red-500")}>
+                      {todayProfitMoney >= 0 ? '+' : ''}{todayProfitMoney.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    <p className="text-[10px] opacity-70">
+                      {todayProfitStakes >= 0 ? '+' : ''}{todayProfitStakes.toFixed(2)} st
+                    </p>
+                  </Card>
+                  <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Operações Hoje</p>
+                    <p className="text-xl font-bold mt-1">{todayTotal}</p>
+                    <p className="text-[10px] text-muted-foreground">{todayGreens}G / {todayReds}R</p>
+                  </Card>
+                  <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Win Rate Hoje</p>
+                    <p className="text-xl font-bold mt-1">{todayWinRate}%</p>
+                    <p className="text-[10px] text-muted-foreground">Média geral</p>
+                  </Card>
+                  <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Jogos Hoje</p>
+                    <p className="text-xl font-bold mt-1">{todayGames.length}</p>
+                    <p className="text-[10px] text-muted-foreground">{liveGames} ao vivo</p>
+                  </Card>
+                  <Card className="p-4 bg-[#121A24] border-white/5 shadow-sm">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Streak Atual</p>
+                    <p className={cn("text-xl font-bold mt-1", streakType === 'Green' ? "text-emerald-500" : streakType === 'Red' ? "text-red-500" : "text-muted-foreground")}>
+                      {streakCount > 0 ? `${streakCount} ${streakType}` : '—'}
+                    </p>
+                  </Card>
+                </div>
+
+                {/* Per-method P&L badges */}
+                {methodBreakdown.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {Array.from(methodBreakdown.entries())
+                      .sort(([, a], [, b]) => b.profit - a.profit)
+                      .map(([id, m]) => {
+                        const isOrphaned = !bankroll.methods.some(bm => bm.id === id);
+                        return (
+                          <span
+                            key={id}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border shadow-sm",
+                              m.profit >= 0
+                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                : "bg-red-500/10 text-red-500 border-red-500/20",
+                              isOrphaned && "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                            )}
+                            title={isOrphaned ? "Método não encontrado na banca (pode ter sido deletado)" : undefined}
+                          >
+                            {isOrphaned && <AlertCircle className="h-3 w-3" />}
+                            {m.name}: <span className="opacity-90 mx-1">{m.profit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                            <span className="text-[9px] opacity-60 font-medium">({m.greens}G / {m.reds}R)</span>
+                          </span>
+                        );
+                      })
+                    }
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -764,112 +978,82 @@ export default function DailyPlanning() {
 
           {/* History Section (Visible but styled) */}
           <section className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-white/5 pb-2">
-              <CheckCircle className="h-4 w-4 text-emerald-500" />
-              <h3 className="text-md font-bold">Histórico Recente</h3>
-            </div>
-            {groupedHistory.slice(0, 1).map(({ date, games }) => (
-              <div key={date} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {games.map((game) => (
-                  <Card key={game.id} className="p-3 bg-[#121A24] border-white/5 hover:bg-[#1A232E] transition-colors cursor-pointer" onClick={() => handleSelectGame(game)}>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="opacity-50">{game.time}</span>
-                      <Badge variant={game.methodOperations.every(op => op.result === 'Green') ? 'default' : 'secondary'} className="text-[10px] h-4">
-                        {game.finalScoreHome}-{game.finalScoreAway}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 font-medium text-sm truncate">
-                      {game.homeTeam} vs {game.awayTeam}
-                    </div>
-                  </Card>
-                ))}
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-emerald-500" />
+                <h3 className="text-md font-bold">Histórico Recente</h3>
               </div>
-            ))}
+              <Select value={historyPeriod} onValueChange={(val: any) => setHistoryPeriod(val)}>
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="yesterday">Ontem</SelectItem>
+                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
+                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="all">Todo o Período</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {groupedHistory.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground text-sm">
+                Nenhum jogo finalizado no período selecionado.
+              </div>
+            ) : (
+              groupedHistory.map(({ date, games }) => (
+                <div key={date} className="space-y-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground ml-1">
+                    {format(new Date(`${date}T12:00:00`), "dd 'de' MMMM", { locale: ptBR })}
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {games.map((game) => (
+                      <Card key={game.id} className="p-3 bg-[#121A24] border-white/5 hover:bg-[#1A232E] transition-colors relative group cursor-pointer" onClick={() => handleSelectGame(game)}>
+                        <div className="flex justify-between items-start text-xs">
+                          <span className="opacity-50 mt-1">{game.time}</span>
+                          <div className="flex items-center gap-1">
+                            <Badge variant={game.methodOperations.every(op => op.result === 'Green') ? 'default' : game.methodOperations.some(op => op.result === 'Red') ? 'destructive' : 'secondary'} className="text-[10px] h-5 px-2">
+                              {game.finalScoreHome}-{game.finalScoreAway}
+                            </Badge>
+
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditGameMethods(game); }}>
+                                  <Settings className="h-4 w-4 mr-2" />Editar resultados
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(game.id); }} className="text-destructive">
+                                  <Trash2 className="h-4 w-4 mr-2" />Excluir jogo
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                        <div className="mt-1 font-medium text-sm truncate pr-6">
+                          {game.homeTeam} vs {game.awayTeam}
+                        </div>
+
+                        {/* Status lines for methods */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {game.methodOperations.map(op => (
+                            <div key={op.methodId} className={cn("w-1.5 h-1.5 rounded-full", op.result === 'Green' ? "bg-emerald-500" : op.result === 'Red' ? "bg-red-500" : "bg-amber-500")} title={op.result} />
+                          ))}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
           </section>
         </div>
       </main>
 
-      {/* COLUMN 3: RIGHT - Status & Logs (280px) */}
-      <aside className={cn(
-        "w-[280px] border-l border-border bg-background flex flex-col h-full shrink-0",
-        isMobile && "hidden"
-      )}>
-        <div className="p-4 border-b border-border space-y-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Config & Status</h3>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-2 rounded bg-muted/30 border border-white/5">
-              <span className="text-xs font-medium">API Football</span>
-              <ApiRequestIndicator />
-            </div>
-
-            <div className="flex items-center justify-between p-2 rounded bg-muted/30 border border-white/5">
-              <span className="text-xs font-medium">Telegram Bots</span>
-              <Badge variant={notifPrefs.telegramEnabled ? "default" : "secondary"} className="text-[10px] h-5">
-                {notifPrefs.telegramEnabled ? "Ativo" : "Off"}
-              </Badge>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowTelegramModal(true)} className="h-8 text-xs">
-              <Send className="h-3 w-3 mr-2" />
-              Sinais
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowSummaryModal(true)} className="h-8 text-xs">
-              <FileText className="h-3 w-3 mr-2" />
-              Resumo
-            </Button>
-          </div>
-        </div>
-
-        <div className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase text-muted-foreground">Controles Globais</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleGlobalRefresh}
-              disabled={scoresLoading || isPaused}
-              className="h-6 w-6 p-0"
-            >
-              <RefreshCw className={cn("h-3 w-3", scoresLoading && "animate-spin")} />
-            </Button>
-          </div>
-
-          <Button
-            variant={isPaused ? "destructive" : "secondary"}
-            size="sm"
-            onClick={toggleApiPause}
-            className={cn("w-full h-9", isPaused && "animate-pulse")}
-          >
-            {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
-            {isPaused ? 'Retomar Sistema' : 'Pausar Sistema'}
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleExport} className="w-full h-9">
-            <Download className="h-4 w-4 mr-2" />
-            Exportar CSV
-          </Button>
-        </div>
-
-        <div className="mt-auto p-4 border-t border-border bg-muted/5 font-mono text-[10px] space-y-2 opacity-60">
-          <div className="flex justify-between">
-            <span>Server Time:</span>
-            <span>{format(getNowInBrasilia(), 'HH:mm:ss')}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Last Data Pool:</span>
-            <span>{lastRefresh ? format(lastRefresh, 'HH:mm:ss') : '--:--'}</span>
-          </div>
-          {hasActiveGames && !isPaused && (
-            <div className="flex justify-between text-emerald-500">
-              <span>Next Update:</span>
-              <span>{secondsUntilRefresh}s</span>
-            </div>
-          )}
-        </div>
-      </aside>
 
       {/* Modals & Components */}
       <ApiGameBrowser

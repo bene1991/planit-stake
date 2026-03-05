@@ -31,6 +31,8 @@ interface StatValues {
   yellow: number;
   red: number;
   offsides: number;
+  attacks_total: number;
+  attacks_dangerous: number;
 }
 
 interface MomentumPoint {
@@ -73,6 +75,8 @@ const STAT_MAPPING: Record<string, keyof StatValues> = {
   'Yellow Cards': 'yellow',
   'Red Cards': 'red',
   'Offsides': 'offsides',
+  'Total Attacks': 'attacks_total',
+  'Dangerous Attacks': 'attacks_dangerous',
 };
 
 // Event weights for momentum calculation (expanded for richer momentum)
@@ -85,15 +89,15 @@ const EVENT_WEIGHTS: Record<string, number> = {
   'Shot on Goal': 8,
   'Shot': 4,
   'Corner': 4,
-  
+
   // Medium pressure events
   'Foul': 2,            // Suffering a foul indicates pressure
   'Offside': 2,         // Offside indicates attack attempt
-  
+
   // Events that benefit opponent
   'Red Card': 10,
   'Yellow Card': 1,
-  
+
   // Defensive events (benefit the attacking team)
   'Save': 3,            // Goalkeeper save indicates opponent pressure
 };
@@ -123,6 +127,8 @@ function normalizeStatistics(statsRaw: ApiTeamStats[]): NormalizedStats {
     yellow: 0,
     red: 0,
     offsides: 0,
+    attacks_total: 0,
+    attacks_dangerous: 0,
   };
 
   const result: NormalizedStats = {
@@ -160,7 +166,7 @@ function getEventWeight(type: string, detail: string): number {
   if (type === 'Goal') {
     return EVENT_WEIGHTS['Goal'];
   }
-  
+
   // Check for shots
   if (type === 'Shot' || type === 'shot') {
     if (detail?.toLowerCase().includes('on goal') || detail?.toLowerCase().includes('saved')) {
@@ -182,10 +188,10 @@ function getEventWeight(type: string, detail: string): number {
 
   // Fouls - team that suffered the foul was attacking
   if (type === 'Foul') return EVENT_WEIGHTS['Foul'];
-  
+
   // Offsides - indicates attack attempt
   if (type === 'Offside' || type === 'offside') return EVENT_WEIGHTS['Offside'];
-  
+
   // Goalkeeper saves - attacking team forced the save
   if (type === 'Save' || detail?.toLowerCase().includes('save')) {
     return EVENT_WEIGHTS['Save'];
@@ -195,8 +201,8 @@ function getEventWeight(type: string, detail: string): number {
 }
 
 function calculateMomentum(
-  events: ApiEvent[], 
-  homeTeamId: number, 
+  events: ApiEvent[],
+  homeTeamId: number,
   maxMinute: number,
   stats: NormalizedStats
 ): MomentumPoint[] {
@@ -212,10 +218,18 @@ function calculateMomentum(
     away: maxMinute > 0 ? (stats.away.shots_total / maxMinute) * 1.5 : 0,
   };
 
-  // Apply baseline to each played minute
+  // Apply baseline with natural variance (match rhythm waves)
+  const homeBase = (stats.home.possession || 50) / 100;
+  const awayBase = (stats.away.possession || 50) / 100;
+
   for (let m = 1; m <= maxMinute; m++) {
-    rawMomentum.home[m] += shotsPerMinute.home;
-    rawMomentum.away[m] += shotsPerMinute.away;
+    // Add a light wave pattern (approx 15 min wavelength) to simulate match energy shifts
+    const sinWave = Math.sin(m / 2.5);
+    const homeWave = homeBase * (1 + (sinWave * 0.3));
+    const awayWave = awayBase * (1 + (-sinWave * 0.3));
+
+    rawMomentum.home[m] += shotsPerMinute.home + homeWave;
+    rawMomentum.away[m] += shotsPerMinute.away + awayWave;
   }
 
   // Accumulate event weights by minute
@@ -227,7 +241,7 @@ function calculateMomentum(
     if (weight === 0) continue;
 
     const isHome = event.team?.id === homeTeamId;
-    
+
     // Red cards benefit the opposing team
     if (event.type === 'Card' && event.detail?.toLowerCase().includes('red')) {
       if (isHome) {
@@ -317,7 +331,7 @@ serve(async (req) => {
 
   try {
     const { fixture_id, skip_cache } = await req.json();
-    
+
     if (!fixture_id) {
       throw new Error('fixture_id is required');
     }
@@ -436,10 +450,10 @@ serve(async (req) => {
     ]);
 
     // Check for rate limit errors - return stale cache if available
-    const rateLimited = fixtureData?.errors?.rateLimit || 
-      statsData?.errors?.rateLimit || 
+    const rateLimited = fixtureData?.errors?.rateLimit ||
+      statsData?.errors?.rateLimit ||
       eventsData?.errors?.rateLimit;
-    
+
     if (rateLimited && cached) {
       console.log(`[STALE CACHE] Rate limited, returning stale data for ${fixtureIdNum}`);
       return new Response(JSON.stringify({
@@ -468,9 +482,9 @@ serve(async (req) => {
         key_events: [],
         cached: false,
         error: 'Fixture not found in API',
-      }), { 
+      }), {
         status: 200, // Return 200 so client can handle gracefully
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
@@ -479,11 +493,26 @@ serve(async (req) => {
     const homeTeamId = fixture.teams?.home?.id;
 
     // Process statistics
-    const statsRaw = statsData.response || [];
+    let statsRaw = statsData.response || [];
+
+    // If API returned empty stats, but we have cached stats, preserve them
+    // This happens frequently when games just finished or API is lagging
+    if ((!statsRaw || statsRaw.length === 0) && cached?.stats_raw && Array.isArray(cached.stats_raw) && cached.stats_raw.length > 0) {
+      console.log(`[WARNING] API returned empty stats for ${fixtureIdNum}. Preserving cached stats.`);
+      statsRaw = cached.stats_raw;
+    }
+
     const normalizedStats = normalizeStatistics(statsRaw);
 
     // Process events, calculate momentum, and extract key events
-    const eventsRaw = eventsData.response || [];
+    let eventsRaw = eventsData.response || [];
+
+    // Preserve cached events if API returns empty
+    if ((!eventsRaw || eventsRaw.length === 0) && cached?.events_raw && Array.isArray(cached.events_raw) && cached.events_raw.length > 0) {
+      console.log(`[WARNING] API returned empty events for ${fixtureIdNum}. Preserving cached events.`);
+      eventsRaw = cached.events_raw;
+    }
+
     const momentumSeries = calculateMomentum(eventsRaw, homeTeamId, minuteNow, normalizedStats);
     const keyEvents = extractKeyEvents(eventsRaw, homeTeamId);
 

@@ -77,19 +77,24 @@ export function LastMatchesSection({ homeMatches, awayMatches, homeTeam, awayTea
   if (!homeMatches?.length && !awayMatches?.length) return <p className="text-muted-foreground text-sm text-center py-4">Últimos jogos indisponíveis</p>;
 
   return (
-    <div className="space-y-4">
-      {homeMatches?.length ? (
-        <div>
-          <h4 className="text-xs font-semibold text-primary mb-2">{homeTeam}</h4>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <h4 className="text-xs font-semibold text-primary mb-2">{homeTeam}</h4>
+        {homeMatches?.length ? (
           <MatchList matches={homeMatches} teamId={homeTeamId} teamName={homeTeam} />
-        </div>
-      ) : null}
-      {awayMatches?.length ? (
-        <div>
-          <h4 className="text-xs font-semibold text-destructive mb-2">{awayTeam}</h4>
+        ) : (
+          <p className="text-[10px] text-muted-foreground italic">Sem dados recentes</p>
+        )}
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-destructive mb-2">{awayTeam}</h4>
+        {awayMatches?.length ? (
           <MatchList matches={awayMatches} teamId={awayTeamId} teamName={awayTeam} />
-        </div>
-      ) : null}
+        ) : (
+          <p className="text-[10px] text-muted-foreground italic">Sem dados recentes</p>
+        )}
+      </div>
     </div>
   );
 }

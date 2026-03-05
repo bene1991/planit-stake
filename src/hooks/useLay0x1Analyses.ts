@@ -28,6 +28,8 @@ export interface Lay0x1Analysis {
   stake?: number;
   profit?: number;
   is_backtest?: boolean;
+  source_list?: string;
+  ia_justification?: string;
 }
 
 export const useLay0x1Analyses = () => {
@@ -64,7 +66,9 @@ export const useLay0x1Analyses = () => {
 
     if (error) {
       console.error('Error saving analysis:', error);
-      if (!silent) toast.error('Erro ao salvar no Dashboard: ' + error.message);
+      if (!silent || error.message.includes('does not exist')) {
+        toast.error('Erro de Banco de Dados: ' + error.message, { duration: 10000 });
+      }
       return null;
     }
 
@@ -131,10 +135,11 @@ export const useLay0x1Analyses = () => {
     const result = was0x1 ? 'Red' : 'Green';
 
     const analysis = analyses.find(a => a.id === id);
-    let profit = undefined;
-    if (analysis?.odd_used && analysis.stake) {
-      profit = was0x1 ? -1000 : analysis.stake;
-    }
+    const liability = analysis?.liability || 1000;
+    const stake = analysis?.stake || 0;
+
+    // Profit: -liability for Red, stake for Green (if odd was set)
+    let profit = was0x1 ? -liability : (stake > 0 ? stake : undefined);
 
     const { error } = await (supabase as any)
       .from('lay0x1_analyses')
@@ -211,6 +216,33 @@ export const useLay0x1Analyses = () => {
     return error;
   }, [user, analyses]);
 
+  const unresolveAnalysis = useCallback(async (id: string) => {
+    if (!user) return;
+    const { error } = await (supabase as any)
+      .from('lay0x1_analyses')
+      .update({
+        final_score_home: null,
+        final_score_away: null,
+        was_0x1: null,
+        result: null,
+        profit: null,
+        resolved_at: null,
+      })
+      .eq('id', id)
+      .eq('owner_id', user.id);
+
+    if (!error) {
+      setAnalyses(prev => prev.map(a => a.id === id ? {
+        ...a, final_score_home: undefined, final_score_away: undefined,
+        was_0x1: undefined, result: undefined, profit: undefined, resolved_at: undefined,
+      } : a));
+      toast.success('Resultado removido - voltou para pendentes');
+    } else {
+      toast.error('Erro ao desfazer resolução');
+    }
+    return error;
+  }, [user]);
+
   // Metrics
   const resolved = analyses.filter(a => a.result);
   const greens = resolved.filter(a => a.result === 'Green').length;
@@ -226,7 +258,33 @@ export const useLay0x1Analyses = () => {
     winRate: Math.round(winRate * 10) / 10,
   };
 
-  return { analyses, loading, metrics, saveAnalysis, deleteAnalysis, updateOdd, resolveAnalysis, refetch: fetchAnalyses };
+  // Metrics split by source_list for the comparison dashboard
+  const computeSourceMetrics = (source: string) => {
+    const sourceAnalyses = analyses.filter(a => (a.source_list || 'lista_padrao') === source);
+    const sourceResolved = sourceAnalyses.filter(a => a.result);
+    const sourceGreens = sourceResolved.filter(a => a.result === 'Green').length;
+    const sourceReds = sourceResolved.filter(a => a.result === 'Red').length;
+    const sourceWinRate = sourceResolved.length > 0 ? (sourceGreens / sourceResolved.length) * 100 : 0;
+    const totalProfit = sourceResolved.reduce((sum, a) => sum + (a.profit || 0), 0);
+    const totalStake = sourceResolved.reduce((sum, a) => sum + (a.stake || 0), 0);
+    const roi = totalStake > 0 ? (totalProfit / totalStake) * 100 : 0;
+    return {
+      total: sourceAnalyses.length,
+      resolved: sourceResolved.length,
+      greens: sourceGreens,
+      reds: sourceReds,
+      winRate: Math.round(sourceWinRate * 10) / 10,
+      totalProfit: Math.round(totalProfit * 100) / 100,
+      roi: Math.round(roi * 10) / 10,
+    };
+  };
+
+  const metricsBySource = {
+    lista_padrao: computeSourceMetrics('lista_padrao'),
+    ia_selection: computeSourceMetrics('ia_selection'),
+  };
+
+  return { analyses, loading, metrics, metricsBySource, saveAnalysis, deleteAnalysis, updateOdd, resolveAnalysis, unresolveAnalysis, refetch: fetchAnalyses };
 };
 
 // Fallback local insights when AI is unavailable

@@ -16,6 +16,7 @@ import { FixtureLinker } from "@/components/LiveStats/FixtureLinker";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { calculateProfit, calculatePotentialProfit, formatCurrency } from "@/utils/profitCalculator";
 import { DEFAULT_COMMISSION } from "@/hooks/useOperationalSettings";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface GameCardProps {
   game: Game;
@@ -28,6 +29,7 @@ interface GameCardProps {
 }
 
 export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh, isFinalized }: GameCardProps) {
+  const isMobile = useIsMobile();
   const [editingMethod, setEditingMethod] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [methodForm, setMethodForm] = useState({
@@ -40,7 +42,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
   // Busca dinâmica de logos quando não existem no banco
   const { logoUrl: homeLogo } = useTeamLogo(game.homeTeam);
   const { logoUrl: awayLogo } = useTeamLogo(game.awayTeam);
-  
+
   // Usa logo do banco ou logo buscado dinamicamente
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
@@ -89,16 +91,16 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
     const updatedOperations = game.methodOperations.map((op) =>
       op.methodId === methodId
         ? {
-            ...op,
-            operationType: methodForm.operationType as "Back" | "Lay",
-            entryOdds: entry,
-            exitOdds: exit,
-            result,
-            stakeValue: stake,
-            odd: entry,
-            profit,
-            commissionRate: DEFAULT_COMMISSION
-          }
+          ...op,
+          operationType: methodForm.operationType as "Back" | "Lay",
+          entryOdds: entry,
+          exitOdds: exit,
+          result,
+          stakeValue: stake,
+          odd: entry,
+          profit,
+          commissionRate: DEFAULT_COMMISSION
+        }
         : op
     );
 
@@ -158,20 +160,26 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                 />
               )}
             </div>
-            
+
             {/* Times com escudos acima dos nomes */}
             <div className="flex items-center justify-between gap-3">
               {/* Time da casa */}
-              <div className="flex-1 flex flex-col items-center gap-1.5">
+              <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
                 {homeTeamLogo && (
-                  <Avatar className="h-10 w-10 ring-2 ring-background shadow-apple-sm">
+                  <Avatar className={cn(
+                    "ring-2 ring-background shadow-apple-sm",
+                    isMobile ? "h-8 w-8" : "h-10 w-10"
+                  )}>
                     <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
                     <AvatarFallback className="text-xs bg-muted">
-                      <Shield className="h-5 w-5" />
+                      <Shield className={cn(isMobile ? "h-3 w-3" : "h-5 w-5")} />
                     </AvatarFallback>
                   </Avatar>
                 )}
-                <p className="text-[11px] font-semibold text-foreground text-center leading-tight">
+                <p className={cn(
+                  "font-semibold text-foreground text-center leading-tight truncate w-full",
+                  isMobile ? "text-[10px]" : "text-[11px]"
+                )}>
                   {game.homeTeam}
                 </p>
               </div>
@@ -187,16 +195,22 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
               </div>
 
               {/* Time visitante */}
-              <div className="flex-1 flex flex-col items-center gap-1.5">
+              <div className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
                 {awayTeamLogo && (
-                  <Avatar className="h-10 w-10 ring-2 ring-background shadow-apple-sm">
+                  <Avatar className={cn(
+                    "ring-2 ring-background shadow-apple-sm",
+                    isMobile ? "h-8 w-8" : "h-10 w-10"
+                  )}>
                     <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
                     <AvatarFallback className="text-xs bg-muted">
-                      <Shield className="h-5 w-5" />
+                      <Shield className={cn(isMobile ? "h-3 w-3" : "h-5 w-5")} />
                     </AvatarFallback>
                   </Avatar>
                 )}
-                <p className="text-[11px] font-semibold text-foreground text-center leading-tight">
+                <p className={cn(
+                  "font-semibold text-foreground text-center leading-tight truncate w-full",
+                  isMobile ? "text-[10px]" : "text-[11px]"
+                )}>
                   {game.awayTeam}
                 </p>
               </div>
@@ -277,7 +291,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                   return (
                     <div key={operation.methodId} className="space-y-2 p-3 rounded-xl bg-secondary/50 border-2 border-border/60">
                       <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
                           <p className="font-semibold text-xs truncate">{methodName}</p>
                           {operation.operationType && operation.entryOdds && operation.exitOdds && (
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -314,7 +328,10 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                       {/* Form inline */}
                       {isEditing && (
                         <div className="p-3 bg-secondary/80 rounded-xl border-2 border-border/60 space-y-3">
-                          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+                          <div className={cn(
+                            "grid gap-3",
+                            isMobile ? "grid-cols-1" : "grid-cols-2 md:grid-cols-4"
+                          )}>
                             <div>
                               <Label className="text-xs font-medium mb-1">Tipo</Label>
                               <Select
@@ -372,7 +389,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               />
                             </div>
                           </div>
-                          
+
                           {/* Profit preview */}
                           {methodForm.operationType && methodForm.stakeValue && methodForm.entryOdds && (
                             <div className="flex items-center gap-2 text-xs p-2 bg-background/50 rounded-lg">
@@ -395,8 +412,8 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                             </div>
                           )}
                           <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               onClick={() => handleSaveMethod(operation.methodId)}
                               className="h-8 text-xs px-4 rounded-lg"
                             >
@@ -531,7 +548,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         />
                       </div>
                     </div>
-                    
+
                     {/* Profit preview */}
                     {methodForm.operationType && methodForm.stakeValue && methodForm.entryOdds && (
                       <div className="flex items-center gap-2 text-xs p-2 bg-background/50 rounded-lg">
@@ -554,8 +571,8 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={() => handleSaveMethod(operation.methodId)}
                         className="h-8 text-xs px-4 rounded-lg"
                       >

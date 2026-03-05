@@ -180,19 +180,28 @@ serve(async (req) => {
     }
 
     // 4b. Fetch finalized games (any method_operation with result)
-    const { data: finalizedOps } = await sb
+    const { data: allOps } = await sb
       .from('method_operations')
-      .select('game_id')
-      .in('game_id', gameIds)
-      .not('result', 'is', null);
+      .select('game_id, result')
+      .in('game_id', gameIds);
 
     const finalizedGameIds = new Set<string>();
-    if (finalizedOps) {
-      for (const op of finalizedOps) {
-        finalizedGameIds.add(op.game_id);
+    if (allOps) {
+      const opsByGame = new Map<string, any[]>();
+      for (const op of allOps) {
+        const list = opsByGame.get(op.game_id) || [];
+        list.push(op);
+        opsByGame.set(op.game_id, list);
+      }
+
+      for (const [gId, ops] of opsByGame.entries()) {
+        const isFullyResolved = ops.length > 0 && ops.every(op => op.result !== null);
+        if (isFullyResolved) {
+          finalizedGameIds.add(gId);
+        }
       }
     }
-    console.log(`[Monitor] ${finalizedGameIds.size} games already finalized by user`);
+    console.log(`[Monitor] ${finalizedGameIds.size} games fully finalized by user`);
 
     let notificationsSent = 0;
     let gamesUpdated = 0;
@@ -225,41 +234,74 @@ serve(async (req) => {
 
         if (isFinalized) {
           console.log(`[Monitor] Skipping goal notification - game already finalized by user`);
-        } else if (telegramSettings) {
-          let scoringTeam = '';
-          if (currentHome > prevHome) scoringTeam = game.home_team;
-          else if (currentAway > prevAway) scoringTeam = game.away_team;
+        } else {
+          const goalKey = `goal_${currentHome}_${currentAway}`;
+          // Atomic check and record
+          const { data: isNewGoal, error: rpcErr } = await sb.rpc('mark_game_event_notified', {
+            p_game_id: game.id,
+            p_event_key: goalKey,
+            p_home: currentHome,
+            p_away: currentAway
+          });
 
-          const msg = `⚽ <b>GOL! ${scoringTeam}</b>\n${game.home_team} ${currentHome} - ${currentAway} ${game.away_team}\n🏟 ${game.league} | ⏱ ${minute}'`;
-          const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
-          if (sent) notificationsSent++;
+          if (rpcErr) {
+            console.error('[Monitor] RPC Goal Error:', rpcErr);
+          } else if (isNewGoal) {
+            notifiedEvents.push(goalKey);
+            if (telegramSettings) {
+              let scoringTeam = '';
+              if (currentHome > prevHome) scoringTeam = game.home_team;
+              else if (currentAway > prevAway) scoringTeam = game.away_team;
+
+              const msg = `⚽ <b>GOL! ${scoringTeam}</b>\n${game.home_team} ${currentHome} - ${currentAway} ${game.away_team}\n🏟 ${game.league} | ⏱ ${minute}'`;
+              const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
+              if (sent) notificationsSent++;
+            }
+          } else {
+            console.log(`[Monitor] Skipping duplicate goal notification for ${goalKey}`);
+          }
         }
       }
 
       // --- Detect RED CARDS ---
-      // Fetch events for this fixture to check for red cards
       const events = await fetchFixtureEvents(apiKey, fixtureId);
       for (const event of events) {
         if (event.type === 'Card' && event.detail === 'Red Card') {
           const eventKey = `red_${event.time?.elapsed}_${event.player?.name}`;
           if (!notifiedEvents.includes(eventKey)) {
-            notifiedEvents.push(eventKey);
             console.log(`[Monitor] RED CARD in ${game.home_team} vs ${game.away_team}: ${event.player?.name}`);
 
             if (isFinalized) {
               console.log(`[Monitor] Skipping red card notification - game already finalized by user`);
-            } else if (telegramSettings) {
-              const playerName = event.player?.name || 'Desconhecido';
-              const teamName = event.team?.name || '';
-              const msg = `🟥 <b>CARTÃO VERMELHO!</b>\nJogador: ${playerName} (${teamName})\n${game.home_team} ${currentHome} - ${currentAway} ${game.away_team} | ⏱ ${event.time?.elapsed}'`;
-              const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
-              if (sent) notificationsSent++;
+            } else {
+              // Atomic check and record
+              const { data: isNewRed, error: rpcErr } = await sb.rpc('mark_game_event_notified', {
+                p_game_id: game.id,
+                p_event_key: eventKey,
+                p_home: currentHome,
+                p_away: currentAway
+              });
+
+              if (rpcErr) {
+                console.error('[Monitor] RPC Red Card Error:', rpcErr);
+              } else if (isNewRed) {
+                notifiedEvents.push(eventKey);
+                if (telegramSettings) {
+                  const playerName = event.player?.name || 'Desconhecido';
+                  const teamName = event.team?.name || '';
+                  const msg = `🟥 <b>CARTÃO VERMELHO!</b>\nJogador: ${playerName} (${teamName})\n${game.home_team} ${currentHome} - ${currentAway} ${game.away_team} | ⏱ ${event.time?.elapsed}'`;
+                  const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
+                  if (sent) notificationsSent++;
+                }
+              } else {
+                console.log(`[Monitor] Skipping duplicate red card notification for ${eventKey}`);
+              }
             }
           }
         }
       }
 
-      // 6. Upsert monitor state
+      // 6. Upsert monitor state (ensure all score updates are persisted)
       await sb
         .from('live_monitor_state')
         .upsert({

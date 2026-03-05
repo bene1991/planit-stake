@@ -7,6 +7,7 @@ import { Shield, Loader2, BarChart3 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMemo } from "react";
 import type { MathAnalysisData } from "./MathAnalysisSection";
+import { poisson } from "@/utils/poisson";
 
 interface Lay0x1Data {
   awayOdd: number;
@@ -26,17 +27,6 @@ interface Props {
   lay0x1Data?: Lay0x1Data;
 }
 
-// Duplicated Poisson helpers to compute MathAnalysisData for Lay0x1RiskPanel
-function factorial(n: number): number {
-  if (n <= 1) return 1;
-  let r = 1;
-  for (let i = 2; i <= n; i++) r *= i;
-  return r;
-}
-function poisson(k: number, lambda: number): number {
-  if (lambda <= 0) return k === 0 ? 1 : 0;
-  return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
-}
 
 export function FixtureDetailPanel({ fixtureId, homeTeam, awayTeam, homeTeamLogo, awayTeamLogo, league, time, lay0x1Data }: Props) {
   const { data, loading } = usePreMatchAnalysis(fixtureId);

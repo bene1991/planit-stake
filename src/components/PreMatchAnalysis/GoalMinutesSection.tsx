@@ -20,10 +20,13 @@ interface Props {
 const PERIODS = ['0-15', '16-30', '31-45', '46-60', '61-75', '76-90', '91-105', '106-120'];
 
 export function GoalMinutesSection({ homeStats, awayStats, homeTeam, awayTeam }: Props) {
-  if (!homeStats || !awayStats) return <p className="text-muted-foreground text-sm text-center py-4">Minutagem indisponível</p>;
+  // Safe helper to extract minutes object, returning empty mapping fallback
+  const getMinutes = (stats: TeamStats | null) => {
+    return stats?.goals?.for?.minute || {};
+  };
 
-  const homeMinutes = homeStats.goals.for.minute;
-  const awayMinutes = awayStats.goals.for.minute;
+  const homeMinutes = getMinutes(homeStats);
+  const awayMinutes = getMinutes(awayStats);
 
   const maxGoals = PERIODS.reduce((max, p) => {
     const h = homeMinutes[p]?.total || 0;
@@ -31,12 +34,8 @@ export function GoalMinutesSection({ homeStats, awayStats, homeTeam, awayTeam }:
     return Math.max(max, h, a);
   }, 1);
 
-  // Filter out periods with no data
-  const activePeriods = PERIODS.filter(p => 
-    (homeMinutes[p]?.total || 0) > 0 || (awayMinutes[p]?.total || 0) > 0
-  );
-
-  if (!activePeriods.length) return <p className="text-muted-foreground text-sm text-center py-4">Sem dados de minutagem</p>;
+  // Instead of filtering active periods, force them ALL to show (or at least those > 0). If all 0, still render the grid.
+  const hasAnyData = PERIODS.some(p => (homeMinutes[p]?.total || 0) > 0 || (awayMinutes[p]?.total || 0) > 0);
 
   return (
     <div className="space-y-3">
@@ -46,7 +45,13 @@ export function GoalMinutesSection({ homeStats, awayStats, homeTeam, awayTeam }:
         <span className="text-destructive">{awayTeam}</span>
       </div>
 
-      {activePeriods.map(period => {
+      {!hasAnyData && (
+        <p className="text-[10px] text-muted-foreground text-center py-2">
+          Dados insuficientes (nenhum gol registrado na competição atual)
+        </p>
+      )}
+
+      {PERIODS.map(period => {
         const hGoals = homeMinutes[period]?.total || 0;
         const aGoals = awayMinutes[period]?.total || 0;
         return (
@@ -55,7 +60,7 @@ export function GoalMinutesSection({ homeStats, awayStats, homeTeam, awayTeam }:
               <div className="flex items-center gap-1 w-full justify-end">
                 <span className="text-[10px] text-foreground font-medium w-4 text-right">{hGoals}</span>
                 <div className="flex-1 max-w-[100px] bg-muted rounded-full h-3 overflow-hidden flex justify-end">
-                  <div className="bg-primary/70 rounded-full h-full" style={{ width: `${(hGoals / maxGoals) * 100}%` }} />
+                  <div className="bg-primary/70 rounded-full h-full" style={{ width: `${maxGoals > 0 ? (hGoals / maxGoals) * 100 : 0}%` }} />
                 </div>
               </div>
             </div>

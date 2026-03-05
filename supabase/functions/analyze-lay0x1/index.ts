@@ -71,6 +71,16 @@ interface AnalysisResult {
   final_score_away?: number;
   fixture_status?: string;
   is_backtest: boolean;
+  ia_selected: boolean;
+  ia_justification?: string;
+  ia_criteria: {
+    btts_pct: number;
+    over25_pct: number;
+    home_clean_sheet_pct: number;
+    away_clean_sheet_pct: number;
+    home_goals_avg_10: number;
+    away_conceded_avg_10: number;
+  };
 }
 
 function normalize(value: number, min: number, max: number): number {
@@ -133,7 +143,7 @@ async function fetchAllOddsPages(date: string): Promise<Map<number, { homeOdd: n
     const remainingPages: number[] = [];
     for (let p = 2; p <= totalPages; p++) remainingPages.push(p);
 
-    const BATCH_SIZE = 3;
+    const BATCH_SIZE = 1;
     for (let i = 0; i < remainingPages.length; i += BATCH_SIZE) {
       const batch = remainingPages.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(
@@ -216,11 +226,15 @@ async function getOddsWithCache(date: string): Promise<Map<number, { homeOdd: nu
   return oddsMap;
 }
 
-// Cache for team statistics (per fixture per date)
-async function getStatsFromCache(date: string, fixtureId: number): Promise<{
+interface CachedStats {
   home_goals_avg: number; away_conceded_avg: number;
   over15_combined: number; league_goals_avg: number; h2h_0x1_count: number;
-} | null> {
+  btts_pct: number; over25_pct: number;
+  home_clean_sheet_pct: number; away_clean_sheet_pct: number;
+}
+
+// Cache for team statistics (per fixture per date)
+async function getStatsFromCache(date: string, fixtureId: number): Promise<CachedStats | null> {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const { createClient } = await import("npm:@supabase/supabase-js@2");
@@ -240,7 +254,6 @@ async function getStatsFromCache(date: string, fixtureId: number): Promise<{
     // Reject cached entries where either key stat is 0 — force re-fetch with fallback
     if (homeAvg === 0 || awayAvg === 0) {
       console.log(`[STATS-CACHE] Rejecting bad cache for fixture ${fixtureId}: homeGoalsAvg=${homeAvg}, awayConcededAvg=${awayAvg}`);
-      // Delete the bad entry so it doesn't keep being checked
       await serviceClient
         .from('lay0x1_stats_cache')
         .delete()
@@ -255,6 +268,10 @@ async function getStatsFromCache(date: string, fixtureId: number): Promise<{
       over15_combined: parseFloat(data.over15_combined),
       league_goals_avg: parseFloat(data.league_goals_avg),
       h2h_0x1_count: data.h2h_0x1_count,
+      btts_pct: parseFloat(data.btts_pct || '0'),
+      over25_pct: parseFloat(data.over25_pct || '0'),
+      home_clean_sheet_pct: parseFloat(data.home_clean_sheet_pct || '0'),
+      away_clean_sheet_pct: parseFloat(data.away_clean_sheet_pct || '0'),
     };
   }
   return null;
@@ -264,6 +281,8 @@ async function getStatsFromCache(date: string, fixtureId: number): Promise<{
 async function saveStatsToCache(date: string, fixtureId: number, stats: {
   home_goals_avg: number; away_conceded_avg: number;
   over15_combined: number; league_goals_avg: number; h2h_0x1_count: number;
+  btts_pct: number; over25_pct: number;
+  home_clean_sheet_pct: number; away_clean_sheet_pct: number;
 }): Promise<void> {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -290,16 +309,18 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+      console.error('[AUTH] Missing or invalid Authorization header:', authHeader);
+      return new Response(JSON.stringify({ error: 'Unauthorized (No Bearer Token)' }), { status: 401, headers: corsHeaders });
     }
 
     const supabase = getSupabaseClient(authHeader);
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+      console.error('[AUTH] Supabase Auth Error:', userError?.message || 'No user found');
+      return new Response(JSON.stringify({ error: 'Unauthorized (Invalid Token)', details: userError?.message }), { status: 401, headers: corsHeaders });
     }
-    const userId = user.id;
 
+    const userId = user.id;
     const body = await req.json();
     const { date, fixture_ids, weights_override, is_backtest = false } = body;
 
@@ -446,6 +467,12 @@ serve(async (req) => {
         let leagueGoalsAvg: number;
         let h2h0x1Count: number;
 
+        // ── IA Selection variables ──
+        let bttsPct = 0;
+        let over25Pct = 0;
+        let homeCleanSheetPct = 0;
+        let awayCleanSheetPct = 0;
+
         if (cachedStats) {
           // Use cached values for determinism
           homeGoalsAvg = cachedStats.home_goals_avg;
@@ -453,6 +480,10 @@ serve(async (req) => {
           over15Combined = cachedStats.over15_combined;
           leagueGoalsAvg = cachedStats.league_goals_avg;
           h2h0x1Count = cachedStats.h2h_0x1_count;
+          bttsPct = cachedStats.btts_pct;
+          over25Pct = cachedStats.over25_pct;
+          homeCleanSheetPct = cachedStats.home_clean_sheet_pct;
+          awayCleanSheetPct = cachedStats.away_clean_sheet_pct;
           console.log(`[STATS-CACHE] HIT for fixture ${fixtureId}`);
         } else {
           // Fetch from API
@@ -464,8 +495,17 @@ serve(async (req) => {
           if (homeOdd === 0 || awayOdd === 0) {
             parallelCalls.push(callApiFootball('odds', { fixture: fixtureId }));
           }
+          // Fetch last 10 fixtures for each team (for IA stats)
+          parallelCalls.push(callApiFootball('fixtures', { team: homeTeamId, last: 10, season }));
+          parallelCalls.push(callApiFootball('fixtures', { team: awayTeamId, last: 10, season }));
 
-          const [h2hData, homeStatsData, awayStatsData, oddsDataSingle] = await Promise.all(parallelCalls);
+          const allResults = await Promise.all(parallelCalls);
+          const h2hData = allResults[0];
+          const homeStatsData = allResults[1];
+          const awayStatsData = allResults[2];
+          const oddsDataSingle = (homeOdd === 0 || awayOdd === 0) ? allResults[3] : null;
+          const homeLast10Data = (homeOdd === 0 || awayOdd === 0) ? allResults[4] : allResults[3];
+          const awayLast10Data = (homeOdd === 0 || awayOdd === 0) ? allResults[5] : allResults[4];
 
           if ((homeOdd === 0 || awayOdd === 0) && oddsDataSingle) {
             const oddsResp = oddsDataSingle?.response || [];
@@ -489,57 +529,71 @@ serve(async (req) => {
           const awayGoalsAgainst = awayStatsData?.response?.goals?.against;
           awayConcededAvg = awayGoalsAgainst?.average?.away ? parseFloat(awayGoalsAgainst.average.away) : 0;
 
+          // ── IA Stats from last 10 fixtures ──
+          const homeLast10 = homeLast10Data?.response || [];
+          const awayLast10 = awayLast10Data?.response || [];
+
+          // BTTS %: compute from combined last 10 of both teams
+          const allLast10 = [...homeLast10, ...awayLast10];
+          if (allLast10.length > 0) {
+            const bttsGames = allLast10.filter((m: any) => (m.goals?.home ?? 0) > 0 && (m.goals?.away ?? 0) > 0);
+            bttsPct = (bttsGames.length / allLast10.length) * 100;
+          }
+
+          // Over 2.5 %
+          if (allLast10.length > 0) {
+            const over25Games = allLast10.filter((m: any) => ((m.goals?.home ?? 0) + (m.goals?.away ?? 0)) > 2);
+            over25Pct = (over25Games.length / allLast10.length) * 100;
+          }
+
+          // Home clean sheet % (home games only from last 10)
+          const homeHomeGames = homeLast10.filter((m: any) => m.teams?.home?.id === homeTeamId);
+          if (homeHomeGames.length > 0) {
+            const homeCS = homeHomeGames.filter((m: any) => (m.goals?.away ?? 0) === 0);
+            homeCleanSheetPct = (homeCS.length / homeHomeGames.length) * 100;
+          }
+
+          // Away clean sheet % (away games only from last 10)
+          const awayAwayGames = awayLast10.filter((m: any) => m.teams?.away?.id === awayTeamId);
+          if (awayAwayGames.length > 0) {
+            const awayCS = awayAwayGames.filter((m: any) => (m.goals?.home ?? 0) === 0);
+            awayCleanSheetPct = (awayCS.length / awayAwayGames.length) * 100;
+          }
+
           // ─── FALLBACK: If stats returned 0, compute from recent fixtures ───
           if (homeGoalsAvg === 0 || awayConcededAvg === 0) {
             console.log(`[STATS] Incomplete for fixture ${fixtureId}: homeGoalsAvg=${homeGoalsAvg}, awayConcededAvg=${awayConcededAvg}. Running fallback...`);
 
-            const fallbackCalls: Promise<any>[] = [];
-            if (homeGoalsAvg === 0) {
-              fallbackCalls.push(callApiFootball('fixtures', { team: homeTeamId, last: 15, season }));
-            } else {
-              fallbackCalls.push(Promise.resolve(null));
-            }
-            if (awayConcededAvg === 0) {
-              fallbackCalls.push(callApiFootball('fixtures', { team: awayTeamId, last: 15, season }));
-            } else {
-              fallbackCalls.push(Promise.resolve(null));
-            }
-
-            const [homeFallback, awayFallback] = await Promise.all(fallbackCalls);
-
-            // Home team: avg goals scored at HOME
-            if (homeGoalsAvg === 0 && homeFallback) {
-              const allMatches = homeFallback?.response || [];
-              const homeGames = allMatches.filter((m: any) => m.teams?.home?.id === homeTeamId);
+            // Use already-fetched last 10 data as fallback
+            if (homeGoalsAvg === 0 && homeLast10.length > 0) {
+              const homeGames = homeLast10.filter((m: any) => m.teams?.home?.id === homeTeamId);
               if (homeGames.length > 0) {
                 const totalGoals = homeGames.reduce((sum: number, m: any) => sum + (m.goals?.home ?? 0), 0);
                 homeGoalsAvg = totalGoals / homeGames.length;
                 console.log(`[STATS-FALLBACK] Home goals avg from ${homeGames.length} home fixtures: ${homeGoalsAvg.toFixed(2)}`);
-              } else if (allMatches.length > 0) {
-                const totalGoals = allMatches.reduce((sum: number, m: any) => {
+              } else {
+                const totalGoals = homeLast10.reduce((sum: number, m: any) => {
                   const isHome = m.teams?.home?.id === homeTeamId;
                   return sum + (isHome ? (m.goals?.home ?? 0) : (m.goals?.away ?? 0));
                 }, 0);
-                homeGoalsAvg = totalGoals / allMatches.length;
-                console.log(`[STATS-FALLBACK] Home goals avg (all venues) from ${allMatches.length} fixtures: ${homeGoalsAvg.toFixed(2)}`);
+                homeGoalsAvg = totalGoals / homeLast10.length;
+                console.log(`[STATS-FALLBACK] Home goals avg (all venues) from ${homeLast10.length} fixtures: ${homeGoalsAvg.toFixed(2)}`);
               }
             }
 
-            // Away team: avg goals conceded when AWAY
-            if (awayConcededAvg === 0 && awayFallback) {
-              const allMatches = awayFallback?.response || [];
-              const awayGames = allMatches.filter((m: any) => m.teams?.away?.id === awayTeamId);
+            if (awayConcededAvg === 0 && awayLast10.length > 0) {
+              const awayGames = awayLast10.filter((m: any) => m.teams?.away?.id === awayTeamId);
               if (awayGames.length > 0) {
                 const totalConceded = awayGames.reduce((sum: number, m: any) => sum + (m.goals?.home ?? 0), 0);
                 awayConcededAvg = totalConceded / awayGames.length;
                 console.log(`[STATS-FALLBACK] Away conceded avg from ${awayGames.length} away fixtures: ${awayConcededAvg.toFixed(2)}`);
-              } else if (allMatches.length > 0) {
-                const totalConceded = allMatches.reduce((sum: number, m: any) => {
+              } else {
+                const totalConceded = awayLast10.reduce((sum: number, m: any) => {
                   const isAway = m.teams?.away?.id === awayTeamId;
                   return sum + (isAway ? (m.goals?.home ?? 0) : (m.goals?.away ?? 0));
                 }, 0);
-                awayConcededAvg = totalConceded / allMatches.length;
-                console.log(`[STATS-FALLBACK] Away conceded avg (all venues) from ${allMatches.length} fixtures: ${awayConcededAvg.toFixed(2)}`);
+                awayConcededAvg = totalConceded / awayLast10.length;
+                console.log(`[STATS-FALLBACK] Away conceded avg (all venues) from ${awayLast10.length} fixtures: ${awayConcededAvg.toFixed(2)}`);
               }
             }
           }
@@ -558,6 +612,10 @@ serve(async (req) => {
               over15_combined: over15Combined,
               league_goals_avg: leagueGoalsAvg,
               h2h_0x1_count: h2h0x1Count,
+              btts_pct: bttsPct,
+              over25_pct: over25Pct,
+              home_clean_sheet_pct: homeCleanSheetPct,
+              away_clean_sheet_pct: awayCleanSheetPct,
             });
             console.log(`[STATS-CACHE] SAVED for fixture ${fixtureId}`);
           } else {
@@ -598,6 +656,64 @@ serve(async (req) => {
 
         const isApproved = allCriteriaMet;
 
+        // ── IA Selection evaluation (only for approved games) ──
+        let iaSelected = false;
+        let iaJustification: string | undefined;
+        const iaCriteria = {
+          btts_pct: Math.round(bttsPct * 10) / 10,
+          over25_pct: Math.round(over25Pct * 10) / 10,
+          home_clean_sheet_pct: Math.round(homeCleanSheetPct * 10) / 10,
+          away_clean_sheet_pct: Math.round(awayCleanSheetPct * 10) / 10,
+          home_goals_avg_10: Math.round(homeGoalsAvg * 100) / 100,
+          away_conceded_avg_10: Math.round(awayConcededAvg * 100) / 100,
+        };
+
+        if (isApproved) {
+          const iaReasons: string[] = [];
+          const iaNotes: string[] = [];
+
+          // 1. Away odd ceiling
+          if (awayOdd >= 5.0) {
+            iaReasons.push(`Odd Visitante @${awayOdd.toFixed(2)} ≥ 5.00`);
+          } else {
+            iaNotes.push(`Odd Visitante @${awayOdd.toFixed(2)}`);
+          }
+          // 2. Home goals avg > 1.2
+          if (homeGoalsAvg <= 1.2) {
+            iaReasons.push(`Casa média ${homeGoalsAvg.toFixed(2)} gols/jogo (mín: >1.2)`);
+          } else {
+            iaNotes.push(`Casa com média ${homeGoalsAvg.toFixed(1)} gols/jogo`);
+          }
+          // 3. Away conceded avg > 1.5
+          if (awayConcededAvg <= 1.5) {
+            iaReasons.push(`Visitante sofre ${awayConcededAvg.toFixed(2)} gols/jogo (mín: >1.5)`);
+          } else {
+            iaNotes.push(`Visitante com defesa vazada (${awayConcededAvg.toFixed(1)} gols sofridos/jogo)`);
+          }
+          // 4. BTTS > 50% OR Over 2.5 > 60%
+          const bttsMet = bttsPct > 50;
+          const over25Met = over25Pct > 60;
+          if (!bttsMet && !over25Met) {
+            iaReasons.push(`BTTS ${bttsPct.toFixed(0)}% e Over 2.5 ${over25Pct.toFixed(0)}%`);
+          } else {
+            if (bttsMet) iaNotes.push(`BTTS ${bttsPct.toFixed(0)}%`);
+            if (over25Met) iaNotes.push(`Over 2.5 em ${over25Pct.toFixed(0)}%`);
+          }
+          // 5. Home clean sheet rejection
+          if (homeCleanSheetPct > 50) {
+            iaReasons.push(`Casa CS ${homeCleanSheetPct.toFixed(0)}% (máx: 50%)`);
+          }
+          // 6. Away clean sheet rejection
+          if (awayCleanSheetPct > 40) {
+            iaReasons.push(`Visitante CS fora ${awayCleanSheetPct.toFixed(0)}% (máx: 40%)`);
+          }
+
+          iaSelected = iaReasons.length === 0;
+          iaJustification = iaSelected
+            ? `Aprovado: ${iaNotes.join(' + ')}`
+            : `Rejeitado IA: ${iaReasons.join(' | ')}`;
+        }
+
         return {
           fixture_id: String(fixtureId),
           home_team: homeTeam,
@@ -626,6 +742,9 @@ serve(async (req) => {
           final_score_away: finalScoreAway,
           fixture_status: fixtureStatus,
           is_backtest: is_backtest,
+          ia_selected: iaSelected,
+          ia_justification: iaJustification,
+          ia_criteria: iaCriteria,
         };
       } catch (err) {
         console.error(`Error analyzing fixture ${fixtureId}:`, err);

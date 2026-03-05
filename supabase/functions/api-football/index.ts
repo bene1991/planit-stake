@@ -19,11 +19,11 @@ let lastRateLimit: { limit: number; remaining: number; used: number } | null = n
 
 // Cache TTL configuration (in milliseconds)
 const CACHE_TTL: Record<string, number> = {
-  live: 40 * 1000,
+  live: 15 * 1000,
   fixtures_date: 10 * 60 * 1000,
-  fixtures_id: 60 * 1000,
-  statistics: 60 * 1000,
-  events: 60 * 1000,
+  fixtures_id: 30 * 1000,
+  statistics: 15 * 1000,
+  events: 30 * 1000,
   leagues: 24 * 60 * 60 * 1000,
   teams: 24 * 60 * 60 * 1000,
   standings: 60 * 60 * 1000,
@@ -131,17 +131,18 @@ serve(async (req) => {
 
   try {
     const { endpoint, params = {} }: ApiFootballRequest = await req.json();
-    
+
     if (!endpoint) throw new Error('Endpoint is required');
-    
+
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
     if (!apiKey) throw new Error('API_FOOTBALL_KEY not configured');
 
     const cacheKey = getCacheKey(endpoint, params);
     const ttl = getTTL(endpoint, params);
-    
+    const ignoreCache = params.ignoreCache === true || params.ignoreCache === 'true';
+
     // L1: Check in-memory cache first (fastest)
-    const l1Data = getFromL1(cacheKey);
+    const l1Data = ignoreCache ? null : getFromL1(cacheKey);
     if (l1Data) {
       console.log(`[L1 HIT] ${cacheKey}`);
       return new Response(
@@ -151,7 +152,7 @@ serve(async (req) => {
     }
 
     // L2: Check database cache (persistent across instances)
-    const l2Data = await getFromL2(cacheKey);
+    const l2Data = ignoreCache ? null : await getFromL2(cacheKey);
     if (l2Data) {
       console.log(`[L2 HIT] ${cacheKey}`);
       // Warm L1 with L2 data
@@ -167,11 +168,11 @@ serve(async (req) => {
     // Build query string
     const queryParams = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && value !== '') {
+      if (value !== undefined && value !== null && value !== '' && key !== 'ignoreCache') {
         queryParams.append(key, String(value));
       }
     }
-    
+
     if (endpoint === 'fixtures' && !params.timezone) {
       queryParams.append('timezone', 'America/Sao_Paulo');
     }
@@ -205,6 +206,10 @@ serve(async (req) => {
       }
     }
 
+    if (!response) {
+      throw new Error('API-Football network error: Failed to receive any response after maximum retries');
+    }
+
     // Extract rate limit headers
     const rateLimitLimit = parseInt(response.headers.get('x-ratelimit-requests-limit') || '0', 10);
     const rateLimitRemaining = parseInt(response.headers.get('x-ratelimit-requests-remaining') || '0', 10);
@@ -212,11 +217,13 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error('API-Football error:', JSON.stringify(data));
-      throw new Error(`API-Football error: ${data.message || response.statusText}`);
+      throw new Error(`API-Football error: ${data?.message || response.statusText}`);
     }
 
     if (data.errors && Object.keys(data.errors).length > 0) {
       console.error('API-Football errors:', JSON.stringify(data.errors));
+      // PREVENT CACHING OF ERRORS (e.g. rate limit, invalid subscription)
+      throw new Error(`API-Football logic error: ${JSON.stringify(data.errors)}`);
     }
 
     if (rateLimitLimit > 0) {
@@ -224,7 +231,7 @@ serve(async (req) => {
       lastRateLimit = { limit: rateLimitLimit, remaining: rateLimitRemaining, used: rateLimitUsed };
     }
 
-    // Save to both L1 and L2 caches
+    // Save to both L1 and L2 caches ONLY if valid
     setL1(cacheKey, data, ttl);
     setL2(cacheKey, data, ttl); // fire-and-forget
     console.log(`[CACHED L1+L2] ${cacheKey} for ${ttl / 1000}s`);
@@ -241,7 +248,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in api-football function:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+
     return new Response(
       JSON.stringify({ error: errorMessage, errors: { request: errorMessage }, response: [], results: 0 }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
