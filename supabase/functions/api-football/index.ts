@@ -34,25 +34,29 @@ const CACHE_TTL: Record<string, number> = {
 };
 
 function getCacheKey(endpoint: string, params: Record<string, unknown>): string {
+  // Normalize endpoint: remove leading '/' and trailing '?'
+  const cleanEndpoint = endpoint.replace(/^\/+/, '').replace(/\?$/, '');
   const sortedParams = Object.keys(params)
     .sort()
     .map(key => `${key}=${params[key]}`)
     .join('&');
-  return `${endpoint}?${sortedParams}`;
+  return sortedParams ? `${cleanEndpoint}?${sortedParams}` : cleanEndpoint;
 }
 
 function getTTL(endpoint: string, params: Record<string, unknown>): number {
+  // Normalize endpoint: remove leading '/' and trailing '?'
+  const cleanEndpoint = endpoint.replace(/^\/+/, '').replace(/\?$/, '');
   if (params.live === 'all') return CACHE_TTL.live;
-  if (endpoint === 'fixtures' && params.id) return CACHE_TTL.fixtures_id;
-  if (endpoint === 'fixtures' && params.date) return CACHE_TTL.fixtures_date;
-  if (endpoint === 'fixtures/statistics') return CACHE_TTL.statistics;
-  if (endpoint === 'fixtures/events') return CACHE_TTL.events;
-  if (endpoint === 'leagues') return CACHE_TTL.leagues;
-  if (endpoint === 'teams') return CACHE_TTL.teams;
-  if (endpoint === 'standings') return CACHE_TTL.standings;
-  if (endpoint === 'odds') return CACHE_TTL.odds;
-  if (endpoint === 'odds/live') return CACHE_TTL.odds_live;
-  if (endpoint === 'bookmakers') return CACHE_TTL.bookmakers;
+  if (cleanEndpoint === 'fixtures' && params.id) return CACHE_TTL.fixtures_id;
+  if (cleanEndpoint === 'fixtures' && params.date) return CACHE_TTL.fixtures_date;
+  if (cleanEndpoint === 'fixtures/statistics') return CACHE_TTL.statistics;
+  if (cleanEndpoint === 'fixtures/events') return CACHE_TTL.events;
+  if (cleanEndpoint === 'leagues') return CACHE_TTL.leagues;
+  if (cleanEndpoint === 'teams') return CACHE_TTL.teams;
+  if (cleanEndpoint === 'standings') return CACHE_TTL.standings;
+  if (cleanEndpoint === 'odds') return CACHE_TTL.odds;
+  if (cleanEndpoint === 'odds/live') return CACHE_TTL.odds_live;
+  if (cleanEndpoint === 'bookmakers') return CACHE_TTL.bookmakers;
   return CACHE_TTL.default;
 }
 
@@ -130,9 +134,17 @@ serve(async (req) => {
   }
 
   try {
-    const { endpoint, params = {} }: ApiFootballRequest = await req.json();
+    const body = await req.json();
+    const { endpoint } = body;
+    let { params } = body;
 
     if (!endpoint) throw new Error('Endpoint is required');
+
+    // If params is not explicitly provided, treat other body properties as params
+    if (!params) {
+      const { endpoint: _, ...rest } = body;
+      params = rest;
+    }
 
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
     if (!apiKey) throw new Error('API_FOOTBALL_KEY not configured');

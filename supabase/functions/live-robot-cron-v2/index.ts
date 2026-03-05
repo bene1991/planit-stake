@@ -112,7 +112,7 @@ async function runRobot() {
                 continue;
             }
 
-            const apiStatsData = await callApiFootball(`fixtures/statistics?fixture=${fId}`);
+            const apiStatsData = await callApiFootball('fixtures/statistics', { fixture: fId });
             const rawStats = apiStatsData?.response || [];
             if (rawStats.length < 2) {
                 logsBuffer.push({

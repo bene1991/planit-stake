@@ -124,7 +124,7 @@ serve(async (req) => {
       // Fetch precise stats
       let statsData;
       try {
-        statsData = await callApiFootball(`fixtures/statistics?fixture=${fixtureId}`);
+        statsData = await callApiFootball('fixtures/statistics', { fixture: fixtureId });
       } catch (e) { console.error(`Error fetching stats for ${fixtureId}:`, e); continue; }
 
       const rawStats = statsData?.response || [];
