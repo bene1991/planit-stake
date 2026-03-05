@@ -24,6 +24,47 @@ async function callApiFootball(endpoint: string) {
   return res.json();
 }
 
+async function sendTelegramResult(
+  homeTeam: string,
+  awayTeam: string,
+  leagueName: string,
+  variationName: string,
+  resultType: 'green' | 'red',
+  market: string,
+  finalScore: string,
+) {
+  try {
+    // Get first user with telegram configured
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('telegram_bot_token, telegram_chat_id')
+      .not('telegram_bot_token', 'is', null)
+      .not('telegram_chat_id', 'is', null)
+      .limit(1)
+      .single();
+
+    if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) return;
+
+    const emoji = resultType === 'green' ? '✅' : '❌';
+    const label = resultType === 'green' ? 'GREEN' : 'RED';
+    const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
+
+    const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
+
+    await fetch(`https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: settings.telegram_chat_id,
+        text: msg,
+        parse_mode: 'HTML',
+      }),
+    });
+  } catch (err) {
+    console.error('[Resolver] Telegram error:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -34,7 +75,7 @@ serve(async (req) => {
 
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
-      .select('id, fixture_id, goal_ht_result, over15_result')
+      .select('id, fixture_id, home_team, away_team, league_name, variation_name, goal_ht_result, over15_result, final_score')
       .or('goal_ht_result.eq.pending,over15_result.eq.pending')
       .limit(50); // limit to avoid timeout
 
@@ -75,22 +116,35 @@ serve(async (req) => {
           const updates: any = { updated_at: new Date().toISOString() };
           let hasUpdate = false;
 
+          // Resolve Goal HT
           if (alert.goal_ht_result === 'pending' && isHtFinished) {
-            updates.goal_ht_result = htGoals > 0 ? 'green' : 'red';
+            const result = htGoals > 0 ? 'green' : 'red';
+            updates.goal_ht_result = result;
             hasUpdate = true;
+
+            // Send Telegram notification for HT result
+            const finalScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
+            await sendTelegramResult(
+              alert.home_team, alert.away_team,
+              alert.league_name || '', alert.variation_name || 'Padrão',
+              result as 'green' | 'red', 'goal_ht', finalScore,
+            );
           }
 
+          // Resolve Over 1.5
           if (alert.over15_result === 'pending' && isMatchFinished) {
             const finalScore = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
-            if (totalGoals >= 2) {
-              updates.over15_result = 'green';
-              updates.final_score = finalScore;
-              hasUpdate = true;
-            } else {
-              updates.over15_result = 'red';
-              updates.final_score = finalScore;
-              hasUpdate = true;
-            }
+            const result = totalGoals >= 2 ? 'green' : 'red';
+            updates.over15_result = result;
+            updates.final_score = finalScore;
+            hasUpdate = true;
+
+            // Send Telegram notification for Over 1.5 result
+            await sendTelegramResult(
+              alert.home_team, alert.away_team,
+              alert.league_name || '', alert.variation_name || 'Padrão',
+              result as 'green' | 'red', 'over15', finalScore,
+            );
           }
 
           if (hasUpdate) {
