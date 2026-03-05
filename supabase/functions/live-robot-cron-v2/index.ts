@@ -353,6 +353,22 @@ async function runRobot() {
         } catch (monErr) {
             console.error('[Cron] Failed to trigger monitor:', monErr);
         }
+
+        // Trigger the alerts resolver to resolve pending HT/FT results and send Telegram notifications
+        try {
+            console.log('[Cron] Triggering live-alerts-resolver-v3...');
+            const resolverRes = await fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver-v3`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                },
+            });
+            const resolverData = await resolverRes.json();
+            console.log('[Cron] Resolver result:', JSON.stringify(resolverData));
+        } catch (resolverErr) {
+            console.error('[Cron] Failed to trigger resolver:', resolverErr);
+        }
     } catch (e) {
         console.error('Robot error:', e);
     }

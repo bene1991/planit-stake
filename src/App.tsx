@@ -22,19 +22,37 @@ import { GoalDetectedCallback, RedCardEvent } from "@/hooks/useLiveScores";
 import { playGoalSound, playNotificationSound, playRedCardVoice } from "./utils/soundManager";
 import { useLiveScoresContext } from "@/contexts/LiveScoresContext";
 
+// Helper to retry lazy loading if it fails (common for stale chunks after deploy)
+const lazyWithRetry = (componentImport: () => Promise<any>) =>
+  lazy(async () => {
+    const pageHasAlreadyBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem('page-has-been-force-refreshed') || 'false'
+    );
+
+    try {
+      return await componentImport();
+    } catch (error) {
+      if (!pageHasAlreadyBeenForceRefreshed) {
+        window.sessionStorage.setItem('page-has-been-force-refreshed', 'true');
+        return window.location.reload();
+      }
+      throw error;
+    }
+  });
+
 // Lazy-loaded pages — only loaded when the route is visited
-const BankrollManagement = lazy(() => import("./pages/BankrollManagement"));
-const DailyPlanning = lazy(() => import("./pages/DailyPlanning"));
-const Performance = lazy(() => import("./pages/Performance"));
-const MonthlyReport = lazy(() => import("./pages/MonthlyReport"));
-const MethodAnalysis = lazy(() => import("./pages/MethodAnalysis"));
-const Auth = lazy(() => import("./pages/Auth"));
-const Account = lazy(() => import("./pages/Account"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const MatchbookOdds = lazy(() => import("./pages/MatchbookOdds"));
-const Lay0x1 = lazy(() => import("./pages/Lay0x1"));
-const Lay1x0 = lazy(() => import("./pages/Lay1x0"));
-const RoboAoVivo = lazy(() => import("./pages/RoboAoVivo"));
+const BankrollManagement = lazyWithRetry(() => import("./pages/BankrollManagement"));
+const DailyPlanning = lazyWithRetry(() => import("./pages/DailyPlanning"));
+const Performance = lazyWithRetry(() => import("./pages/Performance"));
+const MonthlyReport = lazyWithRetry(() => import("./pages/MonthlyReport"));
+const MethodAnalysis = lazyWithRetry(() => import("./pages/MethodAnalysis"));
+const Auth = lazyWithRetry(() => import("./pages/Auth"));
+const Account = lazyWithRetry(() => import("./pages/Account"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const MatchbookOdds = lazyWithRetry(() => import("./pages/MatchbookOdds"));
+const Lay0x1 = lazyWithRetry(() => import("./pages/Lay0x1"));
+const Lay1x0 = lazyWithRetry(() => import("./pages/Lay1x0"));
+const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
 
 const PageLoader = () => (
   <div className="flex min-h-[60vh] items-center justify-center">

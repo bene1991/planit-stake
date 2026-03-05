@@ -44,7 +44,7 @@ self.addEventListener('push', (event) => {
     renotify: true,
     requireInteraction: true,
     // Vibração especial para gol! 🎉
-    vibrate: isGoalNotification 
+    vibrate: isGoalNotification
       ? [300, 100, 300, 100, 300, 100, 500] // Padrão de comemoração
       : [200],
     data: {
@@ -62,7 +62,7 @@ self.addEventListener('push', (event) => {
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification click:', event);
-  
+
   event.notification.close();
 
   event.waitUntil(
@@ -93,8 +93,21 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 // Handle messages from the main thread
 self.addEventListener('message', (event) => {
   console.log('[SW] Message received:', event.data);
-  
+
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+
+  if (event.data?.type === 'CLEAR_CACHE') {
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            console.log('[SW] Clearing cache:', cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+      })
+    );
   }
 });

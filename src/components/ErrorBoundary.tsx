@@ -18,6 +18,8 @@ function isChunkLoadError(error: Error): boolean {
         msg.includes('loading chunk') ||
         msg.includes('loading css chunk') ||
         msg.includes('dynamically imported module') ||
+        msg.includes('unexpected token') || // Often happens when HTML is served instead of JS
+        msg.includes('script error') ||
         (error.name === 'TypeError' && msg.includes('failed to fetch'))
     );
 }
@@ -35,17 +37,31 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        console.error('[ErrorBoundary]', error, errorInfo);
+        console.error('[ErrorBoundary] Caught error:', error, errorInfo);
 
         // Auto-reload once for chunk load errors (e.g. after Vercel redeploy)
         if (isChunkLoadError(error)) {
             const lastReload = sessionStorage.getItem(RELOAD_KEY);
             const now = Date.now();
-            // Only auto-reload if we haven't reloaded in the last 10 seconds
-            if (!lastReload || now - Number(lastReload) > 10_000) {
+
+            // Only auto-reload if we haven't reloaded in the last 15 seconds
+            // This prevents an infinite loop if the error persists
+            if (!lastReload || now - Number(lastReload) > 15_000) {
+                console.warn('[ErrorBoundary] Chunk load error detected. Attempting auto-reload...');
                 sessionStorage.setItem(RELOAD_KEY, String(now));
-                window.location.reload();
+
+                // Clear Service Worker cache if possible
+                if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                }
+
+                // Small delay to ensure session storage is updated and cache clear message is sent
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
                 return;
+            } else {
+                console.error('[ErrorBoundary] Repeated chunk error. Stopping auto-reload to avoid loop.');
             }
         }
     }
