@@ -620,15 +620,20 @@ export const Lay0x1Scanner = () => {
     }
   }, [approvedResults, selectedDate, settings]);
 
-  // Group results by league for Fulltrader-style rendering
+  // Group results by league for Fulltrader-style rendering, sorted by time
   const groupByLeague = useCallback((items: AnalysisResult[]): [string, AnalysisResult[]][] => {
+    const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     const map = new Map<string, AnalysisResult[]>();
-    for (const item of items) {
+    for (const item of sorted) {
       const key = item.league;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(item);
     }
-    return Array.from(map.entries());
+    return Array.from(map.entries()).sort((a, b) => {
+      const timeA = a[1][0]?.time || '';
+      const timeB = b[1][0]?.time || '';
+      return timeA.localeCompare(timeB);
+    });
   }, []);
 
   const saveBacktestForCalibration = useCallback(async () => {

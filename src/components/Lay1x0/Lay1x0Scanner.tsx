@@ -349,13 +349,18 @@ export const Lay1x0Scanner = () => {
     };
 
     const groupByLeague = (items: AnalysisResult[]) => {
+        const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
         const map = new Map<string, AnalysisResult[]>();
-        items.forEach(r => {
+        sorted.forEach(r => {
             const arr = map.get(r.league) || [];
             arr.push(r);
             map.set(r.league, arr);
         });
-        return Array.from(map.entries());
+        return Array.from(map.entries()).sort((a, b) => {
+            const timeA = a[1][0]?.time || '';
+            const timeB = b[1][0]?.time || '';
+            return timeA.localeCompare(timeB);
+        });
     };
 
     return (
