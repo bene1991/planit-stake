@@ -31,7 +31,7 @@ const STATE_KEY = 'vt-notification-state';
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   enabled: true,
   nativeEnabled: false,
-  telegramEnabled: false,
+  telegramEnabled: true,
   soundEnabled: true,
   gameProximity: true,
   gameLive: true,
@@ -53,7 +53,16 @@ const DEFAULT_STATE: NotificationState = {
 export const useNotifications = () => {
   const [preferences, setPreferences] = useState<NotificationPreferences>(() => {
     const stored = localStorage.getItem(PREFERENCES_KEY);
-    return stored ? JSON.parse(stored) : DEFAULT_PREFERENCES;
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Migration: if telegramEnabled was false (old default), flip it to true
+      if (parsed.telegramEnabled === false) {
+        parsed.telegramEnabled = true;
+        localStorage.setItem(PREFERENCES_KEY, JSON.stringify(parsed));
+      }
+      return { ...DEFAULT_PREFERENCES, ...parsed };
+    }
+    return DEFAULT_PREFERENCES;
   });
 
   const [state, setState] = useState<NotificationState>(() => {
