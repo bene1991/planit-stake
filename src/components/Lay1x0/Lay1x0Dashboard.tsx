@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAIDiagnosticReport, type DiagnosticInput } from '@/hooks/useAIDiagnosticReport';
 import { AIDiagnosticReport } from '@/components/AIDiagnosticReport';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,6 +31,15 @@ import { format, parseISO, startOfMonth, endOfMonth, isSameDay, isWithinInterval
 import { ptBR } from 'date-fns/locale';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+
+const playSuccessSound = () => {
+    try {
+        const audio = new Audio('/sounds/notification-success.mp3');
+        audio.play().catch(e => console.warn('Audio play blocked:', e));
+    } catch (e) {
+        console.warn('Audio play failed:', e);
+    }
+};
 
 export const Lay1x0Dashboard = () => {
     const isMobile = useIsMobile();
@@ -95,6 +104,17 @@ export const Lay1x0Dashboard = () => {
 
         return Object.entries(groups)
             .sort(([dateA], [dateB]) => dateB.localeCompare(dateA));
+    }, [analyses]);
+
+    // Sound alert when new green results arrive
+    const prevGreensRef = useRef<number>(0);
+    useEffect(() => {
+        const currentGreens = analyses.filter(a => a.result === 'Green').length;
+        if (currentGreens > prevGreensRef.current && prevGreensRef.current > 0) {
+            playSuccessSound();
+            toast.success('Novo GOL detectado em um jogo do planejamento!');
+        }
+        prevGreensRef.current = currentGreens;
     }, [analyses]);
 
     const pendingAnalyses = useMemo(() =>

@@ -283,6 +283,34 @@ async function runRobot() {
                     }
                 }
 
+                // NEW: Ensure game is in 'games' table for live monitoring
+                if (processedNames.length > 0 && defaultUserId) {
+                    try {
+                        const { error: gameUpsertErr } = await supabase
+                            .from('games')
+                            .upsert({
+                                owner_id: defaultUserId,
+                                api_fixture_id: fId,
+                                date: new Date().toISOString().split('T')[0],
+                                time: tElapsed + "'",
+                                league: lName,
+                                home_team: hTeam,
+                                away_team: aTeam,
+                                home_team_logo: f.teams.home.logo,
+                                away_team_logo: f.teams.away.logo,
+                                status: 'Live'
+                            }, { onConflict: 'api_fixture_id' });
+
+                        if (gameUpsertErr) {
+                            console.error(`[Cron] Error upserting game ${fId}:`, gameUpsertErr);
+                        } else {
+                            console.log(`[Cron] Game ${fId} upserted/updated in games table for monitoring`);
+                        }
+                    } catch (upsertCatch) {
+                        console.error(`[Cron] Upsert exception for ${fId}:`, upsertCatch);
+                    }
+                }
+
                 // Send ONE combined Telegram notification for all NEW transformations
                 if (processedNames.length > 0) {
                     try {

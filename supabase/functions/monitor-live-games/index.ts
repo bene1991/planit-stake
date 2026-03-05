@@ -248,6 +248,45 @@ serve(async (req) => {
             console.error('[Monitor] RPC Goal Error:', rpcErr);
           } else if (isNewGoal) {
             notifiedEvents.push(goalKey);
+
+            // --- SYNC RESULTS TO OTHER TABLES ---
+            try {
+              const scoreStr = `${currentHome}x${currentAway}`;
+
+              // 1. Update live_alerts
+              const alertUpdates: any = {
+                final_score: scoreStr,
+                updated_at: new Date().toISOString()
+              };
+              // If it's a goal in the first 45 mins, HT result is Green
+              if (minute <= 45) alertUpdates.goal_ht_result = 'green';
+              // If total goals >= 2, Over 1.5 is Green
+              if (currentHome + currentAway >= 2) alertUpdates.over15_result = 'green';
+
+              const { error: alertErr } = await sb.from('live_alerts')
+                .update(alertUpdates)
+                .eq('fixture_id', fixtureId);
+
+              if (alertErr) console.error('[Monitor] Error updating live_alerts:', alertErr);
+
+              // 2. Update lay1x0_analyses (Real-time "Gold Card" feedback)
+              // For Lay 1x0, any score that isn't 1-0 is a Green if a goal happened
+              if (currentHome !== 1 || currentAway !== 0) {
+                const { error: analysisErr } = await sb.from('lay1x0_analyses')
+                  .update({
+                    result: 'Green',
+                    final_score_home: currentHome,
+                    final_score_away: currentAway,
+                    resolved_at: new Date().toISOString()
+                  })
+                  .eq('fixture_id', fixtureId);
+
+                if (analysisErr) console.error('[Monitor] Error updating lay1x0_analyses:', analysisErr);
+              }
+            } catch (syncErr) {
+              console.error('[Monitor] Result sync error:', syncErr);
+            }
+
             if (telegramSettings) {
               let scoringTeam = '';
               if (currentHome > prevHome) scoringTeam = game.home_team;

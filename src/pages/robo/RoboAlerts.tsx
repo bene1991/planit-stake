@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, BellRing, Target, Clock, ArrowRight } from "lucide-react";
+import { Loader2, BellRing, Target, Clock, ArrowRight, Volume2 } from "lucide-react";
 import { toast } from "sonner";
+import { useRef } from 'react';
 import {
     Table,
     TableBody,
@@ -25,12 +26,83 @@ export default function RoboAlerts() {
     const [alerts, setAlerts] = useState<LiveAlert[]>([]);
     const [loading, setLoading] = useState(true);
     const [liveStats, setLiveStats] = useState<Record<string, any>>({});
+    const prevAlertsRef = useRef<string[]>([]);
+    const prevResultsRef = useRef<Record<string, string>>({});
+
+    const playAlertSound = () => {
+        try {
+            const audio = new Audio('/sounds/notification-info.mp3');
+            audio.play().catch(e => console.warn('Audio play blocked:', e));
+        } catch (e) {
+            console.warn('Audio play failed:', e);
+        }
+    };
+
+    const playGoalSound = () => {
+        try {
+            const audio = new Audio('/sounds/notification-success.mp3');
+            audio.play().catch(e => console.warn('Audio play blocked:', e));
+        } catch (e) {
+            console.warn('Audio play failed:', e);
+        }
+    };
 
     useEffect(() => {
         fetchAlerts();
-        const interval = setInterval(fetchAlerts, 30000);
-        return () => clearInterval(interval);
-    }, []);
+
+        // Polling for stats is fine, but alerts should be real-time
+        const interval = setInterval(() => {
+            if (alerts.length > 0) {
+                const uniqueIds = [...new Set(alerts.map(a => String(a.fixture_id)))];
+                updateLiveStats(uniqueIds);
+            }
+        }, 30000);
+
+        // Real-time subscription for alerts
+        console.log('[RoboAlerts] Starting real-time subscription');
+        const channel = supabase
+            .channel('public:live_alerts')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'live_alerts'
+                },
+                (payload) => {
+                    console.log('[RoboAlerts] Change detected:', payload);
+
+                    if (payload.eventType === 'INSERT') {
+                        const newAlert = payload.new as LiveAlert;
+                        setAlerts(prev => [newAlert, ...prev].slice(0, 100));
+                        playAlertSound();
+                        toast.info(`Novo Alerta: ${newAlert.home_team} vs ${newAlert.away_team}`);
+                    } else if (payload.eventType === 'UPDATE') {
+                        const updated = payload.new as LiveAlert;
+                        const old = payload.old as LiveAlert;
+
+                        setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a));
+
+                        // Check if goal happened
+                        if (
+                            (updated.goal_ht_result === 'green' && old?.goal_ht_result !== 'green') ||
+                            (updated.over15_result === 'green' && old?.over15_result !== 'green')
+                        ) {
+                            playGoalSound();
+                            toast.success(`GOL! ${updated.home_team} vs ${updated.away_team}`);
+                        }
+                    } else if (payload.eventType === 'DELETE') {
+                        setAlerts(prev => prev.filter(a => a.id !== payload.old.id));
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            clearInterval(interval);
+            supabase.removeChannel(channel);
+        };
+    }, [alerts]); // Re-bind interval when alert count changes to keep IDs fresh
 
 
     const updateLiveStats = async (fixtureIds: string[]) => {
@@ -153,14 +225,32 @@ export default function RoboAlerts() {
                                     const snap = a.stats_snapshot;
                                     const h = snap?.h || {};
                                     const aTeam = snap?.a || {};
+                                    const current = liveStats[String(a.fixture_id)];
+
                                     const gameKey = `${a.fixture_id}_${a.minute_at_alert}`;
                                     const isDuplicate = seenGames.has(gameKey);
                                     seenGames.add(gameKey);
 
-                                    const current = liveStats[String(a.fixture_id)];
+                                    // Calculate if a goal happened after the alert
+                                    const alertTotalGoals = (h.goals || 0) + (aTeam.goals || 0);
+                                    const currentTotalGoals = current ? (current.goalsHome + current.goalsAway) : 0;
+                                    const finalTotalGoals = a.final_score ? a.final_score.split('x').reduce((sum: number, val: string) => sum + parseInt(val), 0) : 0;
+
+                                    const hasGoalHappened =
+                                        a.goal_ht_result === 'green' ||
+                                        a.over15_result === 'green' ||
+                                        (current && currentTotalGoals > alertTotalGoals) ||
+                                        (a.final_score && finalTotalGoals > alertTotalGoals);
 
                                     return (
-                                        <TableRow key={a.id} className={`border-[#2a3142] hover:bg-[#1e2333]/50 transition-colors ${isDuplicate ? 'opacity-50' : ''}`}>
+                                        <TableRow
+                                            key={a.id}
+                                            className={cn(
+                                                "border-[#2a3142] hover:bg-[#1e2333]/50 transition-colors",
+                                                isDuplicate && "opacity-50",
+                                                hasGoalHappened && "goal-highlight"
+                                            )}
+                                        >
                                             <TableCell className={cn("text-zinc-400 text-[10px]", !isMobile && "text-sm")}>
                                                 {format(new Date(a.created_at), isMobile ? 'dd/MM HH:mm' : 'dd/MM/yyyy HH:mm')}
                                             </TableCell>

@@ -57,7 +57,41 @@ export const useLay1x0Analyses = () => {
         setLoading(false);
     }, [user]);
 
-    useEffect(() => { fetchAnalyses(); }, [fetchAnalyses]);
+    useEffect(() => {
+        fetchAnalyses();
+
+        // Real-time subscription
+        if (!user) return;
+
+        console.log('[useLay1x0Analyses] Starting subscription for lay1x0_analyses');
+        const channel = supabase
+            .channel('lay1x0-realtime-' + user.id)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'lay1x0_analyses',
+                    filter: `owner_id=eq.${user.id}`
+                },
+                (payload) => {
+                    console.log('[useLay1x0Analyses] Change detected:', payload);
+                    if (payload.eventType === 'INSERT') {
+                        setAnalyses(prev => [payload.new as Lay1x0Analysis, ...prev]);
+                    } else if (payload.eventType === 'UPDATE') {
+                        setAnalyses(prev => prev.map(a => a.id === payload.new.id ? payload.new as Lay1x0Analysis : a));
+                    } else if (payload.eventType === 'DELETE') {
+                        setAnalyses(prev => prev.filter(a => a.id !== payload.old.id));
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            console.log('[useLay1x0Analyses] Stopping subscription');
+            supabase.removeChannel(channel);
+        };
+    }, [user, fetchAnalyses]);
 
     const saveAnalysis = useCallback(async (analysis: Omit<Lay1x0Analysis, 'id' | 'owner_id' | 'created_at'>, silent = false) => {
         if (!user) return null;
