@@ -425,15 +425,15 @@ export default function RoboReports() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full xl:w-auto">
                     <Select value={selectedLeague} onValueChange={setSelectedLeague}>
                         <SelectTrigger className="w-[200px] bg-[#2a3142] border-[#2a3142]">
                             <SelectValue placeholder="Todas as Ligas" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todas as Ligas</SelectItem>
-                            {leagues.map(l => l && <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                            {leagues.map(l => l && <SelectItem key={l} value={l}>{l.length > 20 ? l.substring(0, 20) + '...' : l}</SelectItem>)}
                         </SelectContent>
                     </Select>
 
@@ -448,7 +448,7 @@ export default function RoboReports() {
                     </Select>
 
                     <Select value={dateFilter} onValueChange={setDateFilter}>
-                        <SelectTrigger className="w-[200px] bg-[#2a3142] border-[#2a3142]">
+                        <SelectTrigger className="w-full xl:w-[200px] bg-[#2a3142] border-[#2a3142]">
                             <SelectValue placeholder="Período" />
                         </SelectTrigger>
                         <SelectContent>
@@ -460,7 +460,7 @@ export default function RoboReports() {
                     </Select>
                 </div>
 
-                <div className="text-sm text-gray-400 bg-[#2a3142] px-4 py-2 rounded-md font-medium border border-[#3b4256]">
+                <div className="text-sm w-full xl:w-auto text-gray-400 bg-[#2a3142] px-4 py-2 rounded-md font-medium border border-[#3b4256] text-center xl:text-left shadow-sm">
                     Total de Jogos Únicos: <span className="text-white ml-2 text-base">{processedFixtures.length}</span>
                 </div>
             </div>
@@ -468,16 +468,16 @@ export default function RoboReports() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* 1. Curva Acumulada de Probabilidade */}
                 <Card className="bg-[#1e2333] border-[#2a3142] md:col-span-2 lg:col-span-3">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Curva Acumulada de Probabilidade (1º Gol após alerta)</CardTitle>
-                        <CardDescription>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base sm:text-lg">Curva Acumulada de Probabilidade (1º Gol após alerta)</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
                             Acompanhe a zona de maior aceleração (onde o gráfico sobe mais rápido) para identificar o momento ideal de entrada no mercado. <br />
-                            <span className="font-semibold text-gray-500">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
+                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="h-[380px]">
+                    <CardContent className="h-[300px] sm:h-[380px] p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={cumulativeChartData.data} margin={{ top: 20, right: 30, left: 20, bottom: 25 }}>
+                            <AreaChart data={cumulativeChartData.data} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorProb" x1="0" y1="0" x2="1" y2="0">
                                         <stop offset="0%" stopColor="#22c55e" stopOpacity={0.7} />
@@ -490,9 +490,9 @@ export default function RoboReports() {
                                         <stop offset="100%" stopColor="#ef4444" stopOpacity={0.2} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.5} />
-                                <XAxis dataKey="minutesAfter" stroke="#8b949e" unit="'" label={{ value: 'Minutos Após Alerta', position: 'insideBottom', offset: -15, fill: '#8b949e' }} />
-                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.5} vertical={false} />
+                                <XAxis dataKey="minutesAfter" stroke="#8b949e" tick={{ fontSize: 10 }} unit="'" />
+                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
                                 <Tooltip content={<CustomProbabilityTooltip />} />
 
                                 {cumulativeChartData.hotZone && (
@@ -520,8 +520,8 @@ export default function RoboReports() {
                                 <Area type="monotone" dataKey="probability" stroke="url(#colorProb)" strokeWidth={4} fill="url(#colorProbFill)" activeDot={{ r: 6, fill: '#fff', stroke: '#ef4444', strokeWidth: 2 }} />
                             </AreaChart>
                         </ResponsiveContainer>
-                        <div className="text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
-                            <span className="font-semibold text-gray-300">Como ler este gráfico?</span> O gráfico demonstra a chance acumulada de ocorrer o primeiro gol do jogo <b>após</b> o alerta do robô. A <b>Zona Quente</b> destaca o período de 15 minutos onde essa probabilidade cresce mais rápido (maior eficácia do padrão ofensivo).
+                        <div className="text-[10px] sm:text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
+                            <span className="font-semibold text-gray-300">Como ler?</span> O gráfico demonstra a chance acumulada de ocorrer o primeiro gol do jogo <b>após</b> o alerta. A <b>Zona Quente</b> destaca o período de 15 minutos onde a chance cresce mais rápido.
                         </div>
                     </CardContent>
                 </Card>
@@ -531,19 +531,19 @@ export default function RoboReports() {
 
                 {/* 2. Gols por Período */}
                 <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Gols por Período (Todos os Gols)</CardTitle>
-                        <CardDescription>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base sm:text-lg">Gols por Período (Todos os Gols)</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
                             Distribuição dos minutos no placar <br />
-                            <span className="font-semibold text-gray-500">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
+                            <span className="font-semibold text-gray-500 inline-block mt-1">Base: {processedFixtures.length} jogos únicos</span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="h-[300px]">
+                    <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={goalPeriodsData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" />
-                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 11 }} />
-                                <YAxis stroke="#8b949e" />
+                            <BarChart data={goalPeriodsData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                                <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
                                 <Tooltip content={<CustomBarTooltip />} />
                                 <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Gols">
                                     {
@@ -559,19 +559,19 @@ export default function RoboReports() {
 
                 {/* 3. Tempo até o 1o gol */}
                 <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Tempo até 1º Gol</CardTitle>
-                        <CardDescription>
-                            Minutos passados do alerta até o primeiro gol <br />
-                            <span className="font-semibold text-gray-500">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base sm:text-lg">Tempo até 1º Gol</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
+                            Minutos passados do alerta até o gol <br />
+                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="h-[300px]">
+                    <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={timeToFirstGoalData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" />
-                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={50} />
-                                <YAxis stroke="#8b949e" />
+                            <BarChart data={timeToFirstGoalData} margin={{ top: 20, right: 10, left: -20, bottom: 15 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} interval={0} angle={-45} textAnchor="end" height={40} />
+                                <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
                                 <Tooltip content={<CustomBarTooltip />} />
                                 <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Jogos">
                                     {
@@ -587,19 +587,19 @@ export default function RoboReports() {
 
                 {/* 4. Tempo até o 2o gol */}
                 <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Tempo até 2º Gol</CardTitle>
-                        <CardDescription>
-                            Minutos passados do alerta até o segundo gol <br />
-                            <span className="font-semibold text-gray-500">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base sm:text-lg">Tempo até 2º Gol</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
+                            Minutos passados do alerta até o 2º gol <br />
+                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="h-[300px]">
+                    <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={timeToSecondGoalData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" />
-                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={50} />
-                                <YAxis stroke="#8b949e" />
+                            <BarChart data={timeToSecondGoalData} margin={{ top: 20, right: 10, left: -20, bottom: 15 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} interval={0} angle={-45} textAnchor="end" height={40} />
+                                <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
                                 <Tooltip content={<CustomBarTooltip />} />
                                 <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Jogos">
                                     {
@@ -615,19 +615,19 @@ export default function RoboReports() {
 
                 {/* 5. Performance por Variação */}
                 <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Performance por Variação</CardTitle>
-                        <CardDescription>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base sm:text-lg">Performance por Variação</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
                             Taxa de acerto (Green) por variação <br />
-                            <span className="font-semibold text-gray-500">Base de dados: {validRawAlerts.length} alertas analisados</span>
+                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {validRawAlerts.length} alertas</span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="h-[300px]">
+                    <CardContent className="h-[280px] sm:h-[300px] p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={variationPerformanceData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} />
-                                <XAxis dataKey="name" stroke="#8b949e" angle={-40} textAnchor="end" height={80} tick={{ fontSize: 10 }} interval={0} />
-                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} />
+                            <BarChart data={variationPerformanceData} margin={{ top: 20, right: 10, left: -25, bottom: 45 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
+                                <XAxis dataKey="name" stroke="#8b949e" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 8 }} interval={0} />
+                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
                                 <Tooltip content={<CustomVariationTooltip />} />
                                 <Bar dataKey="winRate" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Win Rate" />
                             </BarChart>
@@ -637,27 +637,27 @@ export default function RoboReports() {
 
                 {/* 6. Performance por Liga (Deduplicada) */}
                 <Card className="bg-[#1e2333] border-[#2a3142] md:col-span-2">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Top Ligas (Min. 3 jogos)</CardTitle>
-                        <CardDescription>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base sm:text-lg">Top Ligas (Min. 3 jogos)</CardTitle>
+                        <CardDescription className="text-xs sm:text-sm">
                             Win Rate filtrado por jogo único <br />
-                            <span className="font-semibold text-gray-500">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
+                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="h-[300px]">
+                    <CardContent className="h-[320px] sm:h-[300px] p-2 sm:p-6">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={leaguePerformanceData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} />
-                                <XAxis dataKey="name" stroke="#8b949e" angle={-40} textAnchor="end" height={80} tick={{ fontSize: 10 }} interval={0} />
-                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} />
-                                <Legend verticalAlign="top" height={36} />
+                            <BarChart data={leaguePerformanceData} margin={{ top: 10, right: 10, left: -25, bottom: 45 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
+                                <XAxis dataKey="name" stroke="#8b949e" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 8 }} interval={0} />
+                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
+                                <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px', paddingTop: '5px' }} />
                                 <Tooltip content={<CustomLeagueTooltip />} cursor={{ fill: '#2a3142', opacity: 0.4 }} />
-                                <Bar dataKey="htWinRate" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Win Rate HT" />
-                                <Bar dataKey="over15WinRate" fill="#14b8a6" radius={[4, 4, 0, 0]} name="Win Rate Over 1.5" />
+                                <Bar dataKey="htWinRate" fill="#3b82f6" radius={[2, 2, 0, 0]} name="Win Rate HT" />
+                                <Bar dataKey="over15WinRate" fill="#14b8a6" radius={[2, 2, 0, 0]} name="Win Rate Over 1.5" />
                             </BarChart>
                         </ResponsiveContainer>
-                        <div className="text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
-                            O gráfico mapeia o desempenho consolidado por campeonato, isolando <b>partidas únicas</b> (onde houveram múltiplos alertas, apenas o primeiro é calculado). Ligas com menos de 3 jogos não são exibidas para evitar distorções estatísticas enganosas. Ordenação baseada em volume de jogos.
+                        <div className="text-[10px] sm:text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
+                            Gráfico mapeia desempenho consolidado por campeonato, isolando <b>partidas únicas</b>. Ligas c/ menos de 3 jogos não são exibidas.
                         </div>
                     </CardContent>
                 </Card>

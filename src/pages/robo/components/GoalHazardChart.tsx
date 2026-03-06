@@ -161,16 +161,16 @@ export default function GoalHazardChart({ processedFixtures }: GoalHazardChartPr
                         A <b>Linha Média</b> azul contrasta esse pico matemático reportando o tempo prático em que os gols costumam ser materializados caso o evento saia.
                     </CardDescription>
                 </div>
-                <div className="text-xs flex flex-col items-end gap-1 font-semibold text-gray-500 mt-3 sm:mt-0 whitespace-nowrap">
+                <div className="text-[10px] sm:text-xs flex flex-col items-start sm:items-end gap-1 font-semibold text-gray-500 mt-3 sm:mt-0 whitespace-nowrap">
                     <span className="bg-[#2a3142] px-3 py-1.5 rounded-md border border-[#3b4256]">Base analisada: {processedFixtures.length} partidas</span>
                     {averageGoalTime && (
                         <span className="text-[#0ea5e9]">Tempo médio até gol: {Math.round(averageGoalTime)} minutos</span>
                     )}
                 </div>
             </CardHeader>
-            <CardContent className="h-[380px] pt-4">
+            <CardContent className="h-[300px] sm:h-[380px] p-2 sm:p-6 pt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 25 }}>
+                    <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -25, bottom: 0 }}>
                         <defs>
                             <linearGradient id="colorHazardLine" x1="0" y1="0" x2="1" y2="0">
                                 <stop offset="0%" stopColor="#22c55e" stopOpacity={1} />
@@ -183,16 +183,16 @@ export default function GoalHazardChart({ processedFixtures }: GoalHazardChartPr
                                 <stop offset="80%" stopColor="#ef4444" stopOpacity={0.3} />
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
                         <XAxis
                             dataKey="minute"
                             stroke="#8b949e"
-                            tick={{ fontSize: 11 }}
-                            label={{ value: 'Minutos Após Alerta', position: 'insideBottom', offset: -15, fill: '#8b949e', fontSize: 12 }}
+                            tick={{ fontSize: 10 }}
+                            unit="'"
                         />
                         <YAxis
                             stroke="#8b949e"
-                            tick={{ fontSize: 11 }}
+                            tick={{ fontSize: 10 }}
                             tickFormatter={(val) => `${val}%`}
                         />
                         <Tooltip content={<CustomHazardTooltip averageGoalTime={averageGoalTime} />} />
@@ -205,11 +205,11 @@ export default function GoalHazardChart({ processedFixtures }: GoalHazardChartPr
                                 strokeWidth={2}
                                 label={{
                                     value: `Média (${Math.round(averageGoalTime)}m)`,
-                                    position: 'insideTopLeft',
+                                    position: 'insideTopRight',
                                     fill: '#0ea5e9',
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     fontWeight: 'bold',
-                                    offset: 15
+                                    offset: 10
                                 }}
                             />
                         )}
@@ -220,7 +220,7 @@ export default function GoalHazardChart({ processedFixtures }: GoalHazardChartPr
                                 x2={idealZone.end}
                                 fill="#ef4444"
                                 fillOpacity={0.1}
-                                label={{ value: '🎯 Zona de Entrada Ideal', position: 'insideTop', fill: '#ef4444', fontSize: 12, fontWeight: 'bold' }}
+                                label={{ value: '🎯 Zona Quente', position: 'insideTop', fill: '#ef4444', fontSize: 10, fontWeight: 'bold' }}
                             />
                         )}
 
@@ -228,11 +228,11 @@ export default function GoalHazardChart({ processedFixtures }: GoalHazardChartPr
                             <ReferenceDot
                                 x={peakMinute.minute}
                                 y={peakMinute.value}
-                                r={6}
+                                r={5}
                                 fill="#ef4444"
                                 stroke="#fff"
                                 strokeWidth={2}
-                                label={{ value: 'Pico', position: 'top', fill: '#fff', fontSize: 11, offset: 10 }}
+                                label={{ value: 'Pico', position: 'top', fill: '#fff', fontSize: 10, offset: 8 }}
                             />
                         )}
 
