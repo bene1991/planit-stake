@@ -305,25 +305,53 @@ export function GameListItem({
                 {/* Center Column: Teams and Score */}
                 <div className="flex flex-col justify-center py-1 min-w-0 overflow-hidden">
                   <div className="flex items-center justify-between gap-2 w-full">
-                    <div className="flex-1 space-y-1.5 min-w-0">
-                      {/* Home Team */}
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
-                          <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-                          <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-2 w-2" /></AvatarFallback>
-                        </Avatar>
-                        <span className="text-[11px] sm:text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
-                        {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                    <div className="flex-1 space-y-2 min-w-0">
+                      {/* Home Team Section */}
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
+                            <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+                            <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-2 w-2" /></AvatarFallback>
+                          </Avatar>
+                          <span className="text-[11px] sm:text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
+                          {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                        </div>
+                        {/* Home Goals */}
+                        {homeGoals.length > 0 && (
+                          <div className="flex flex-col gap-0.5 pl-6 sm:pl-7 text-[9px] text-gray-400">
+                            {homeGoals.map((g, i) => (
+                              <span key={`h-g-${i}`} className="truncate flex items-center gap-1.5">
+                                <span className="text-gray-500 text-[8px]">⚽</span>
+                                <span className="text-gray-300">{g.playerName}</span>
+                                <span className="text-emerald-500/60">({g.minute}')</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Away Team */}
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
-                          <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-                          <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-2 w-2" /></AvatarFallback>
-                        </Avatar>
-                        <span className="text-[11px] sm:text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
-                        {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                      {/* Away Team Section */}
+                      <div className="flex flex-col gap-0.5 mt-1 border-t border-white/5 pt-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
+                            <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+                            <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-2 w-2" /></AvatarFallback>
+                          </Avatar>
+                          <span className="text-[11px] sm:text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
+                          {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
+                        </div>
+                        {/* Away Goals */}
+                        {awayGoals.length > 0 && (
+                          <div className="flex flex-col gap-0.5 pl-6 sm:pl-7 text-[9px] text-gray-400">
+                            {awayGoals.map((g, i) => (
+                              <span key={`a-g-${i}`} className="truncate flex items-center gap-1.5">
+                                <span className="text-gray-500 text-[8px]">⚽</span>
+                                <span className="text-gray-300">{g.playerName}</span>
+                                <span className="text-emerald-500/60">({g.minute}')</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -338,33 +366,6 @@ export function GameListItem({
                       </div>
                     </div>
                   </div>
-
-                  {/* Goal Events Info - Attached to Teams Side */}
-                  {(homeGoals.length > 0 || awayGoals.length > 0) && (
-                    <div className="flex flex-col gap-1 mt-3 px-1 border-t border-white/5 pt-2 w-full">
-                      {[
-                        ...homeGoals.map(g => ({ ...g, isHome: true })),
-                        ...awayGoals.map(g => ({ ...g, isHome: false }))
-                      ]
-                        .sort((a, b) => parseInt(String(a.minute).replace(/\D/g, '') || '0') - parseInt(String(b.minute).replace(/\D/g, '') || '0'))
-                        .map((g, i) => (
-                          <div key={`g-${i}`} className="flex items-center gap-1.5 text-[10px] w-full text-gray-400">
-                            <span className="text-[9px] opacity-70">⚽</span>
-                            <span className="text-emerald-500/70 font-medium w-6 text-right shrink-0">{g.minute}'</span>
-                            <span className={cn(
-                              "truncate max-w-[120px] sm:max-w-[180px]",
-                              g.isHome ? "text-gray-300" : "text-gray-400"
-                            )}>
-                              {g.playerName}
-                            </span>
-                            {/* Tiny indicator to match team vertical orientation implicitly */}
-                            <span className={cn("text-[8px] bg-white/5 px-1 py-0.5 rounded flex-shrink-0 ml-auto", g.isHome ? "text-gray-300" : "text-gray-500")}>
-                              {g.isHome ? "CASA" : "FORA"}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                  )}
 
                   {isLive && (
                     <div className="w-full mt-3 pb-1">
