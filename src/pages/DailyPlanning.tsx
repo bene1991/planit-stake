@@ -617,16 +617,16 @@ export default function DailyPlanning() {
   return (
     <div className={cn(
       "fixed inset-0 top-16 bg-background flex w-full max-w-none z-0 overflow-y-auto custom-scrollbar",
-      isMobile ? "relative top-0 flex-col h-auto overflow-y-auto pb-24" : "grid grid-cols-[480px_1fr] gap-0"
+      isMobile ? "relative top-0 flex-col h-auto overflow-y-auto pb-24" : "grid grid-cols-[clamp(400px,30%,480px)_1fr] gap-0"
     )}>
       {/* COLUMN 1: LEFT - Game List (420px) */}
       <aside className={cn(
-        "w-[480px] border-r border-border bg-background flex flex-col h-fit min-h-full shrink-0",
+        "w-full sm:w-[480px] lg:w-[480px] border-r border-border bg-background flex flex-col h-fit min-h-full shrink-0",
         isMobile && "w-full h-auto border-r-0 border-b shrink-0"
       )}>
         <div className="p-4 border-b border-border space-y-3 shrink-0">
-          <div className="flex justify-between items-center bg-[#121A24] rounded-lg p-2 border border-white/5 shadow-sm">
-            <h2 className="text-xl font-black italic uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-emerald-600 flex items-center gap-1.5 drop-shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#121A24] rounded-lg p-3 border border-white/5 shadow-sm">
+            <h2 className="text-lg sm:text-xl font-black italic uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-emerald-600 flex items-center gap-1.5 drop-shadow-sm">
               <CalendarIcon className="h-4 w-4 text-emerald-500" />
               PLANEJAMENTO
             </h2>
@@ -740,8 +740,8 @@ export default function DailyPlanning() {
                 </PopoverContent>
               </Popover>
 
-              <Button type="button" variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8 text-xs px-3 bg-emerald-500 hover:bg-emerald-600 text-black shadow-md shadow-emerald-500/20 font-medium">
-                <Globe className="h-3 w-3 mr-1.5" />
+              <Button type="button" variant="default" size="sm" onClick={() => setShowApiBrowser(true)} className="h-8 text-[11px] sm:text-xs px-2 sm:px-3 bg-emerald-500 hover:bg-emerald-600 text-black shadow-md shadow-emerald-500/20 font-medium whitespace-nowrap">
+                <Globe className="h-3 w-3 mr-1" />
                 Buscar Jogos
               </Button>
             </div>

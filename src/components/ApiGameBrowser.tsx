@@ -243,7 +243,7 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-auto h-8"
+                  className="w-full sm:w-auto h-8 text-xs"
                 />
               </div>
 

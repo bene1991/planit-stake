@@ -313,7 +313,7 @@ export function GameListItem({
                             <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
                             <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
                           </Avatar>
-                          <span className="text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate max-w-[120px] sm:max-w-none">{game.homeTeam}</span>
                           {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
                         </div>
                         {homeGoals.length > 0 && (
@@ -334,7 +334,7 @@ export function GameListItem({
                             <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
                             <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
                           </Avatar>
-                          <span className="text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate max-w-[120px] sm:max-w-none">{game.awayTeam}</span>
                           {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
                         </div>
                         {awayGoals.length > 0 && (
@@ -350,15 +350,15 @@ export function GameListItem({
                     </div>
 
                     <div className={cn(
-                      "flex flex-col items-end justify-center",
-                      isMobile ? "px-1" : "px-4 pl-0"
+                      "flex flex-col items-end justify-center shrink-0",
+                      isMobile ? "pl-2" : "px-4 pl-0"
                     )}>
                       <div className={cn(
                         "flex items-center gap-2 font-black tabular-nums bg-[#1A232E]/60 rounded-md border border-white/5 shadow-inner",
                         isMobile ? "text-lg px-2 py-1" : "text-xl px-3 py-1.5"
                       )}>
                         <span className={cn("transition-colors", hasScore ? "text-emerald-500" : "text-emerald-500/30")}>{hasScore ? homeScore : '0'}</span>
-                        <span className="text-gray-700 text-xs">:</span>
+                        <span className="text-gray-700 text-[10px]">:</span>
                         <span className={cn("transition-colors", hasScore ? "text-emerald-500" : "text-emerald-500/30")}>{hasScore ? awayScore : '0'}</span>
                       </div>
                     </div>
