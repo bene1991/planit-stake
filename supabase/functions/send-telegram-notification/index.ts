@@ -111,6 +111,20 @@ serve(async (req) => {
       if (settings?.telegram_chat_id) chatId = settings.telegram_chat_id;
     }
 
+    // Global fallback for automated processes (no userId)
+    if (!botToken || !chatId) {
+      const { data: fallbackSettings } = await supabaseAdmin
+        .from('settings')
+        .select('telegram_bot_token, telegram_chat_id')
+        .not('telegram_bot_token', 'is', null)
+        .not('telegram_chat_id', 'is', null)
+        .limit(1)
+        .single();
+
+      if (fallbackSettings?.telegram_bot_token) botToken = fallbackSettings.telegram_bot_token;
+      if (fallbackSettings?.telegram_chat_id) chatId = fallbackSettings.telegram_chat_id;
+    }
+
     if (!botToken || !chatId) {
       throw new Error('Telegram credentials not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Supabase secrets or configure in account settings.');
     }

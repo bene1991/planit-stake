@@ -693,17 +693,13 @@ export function useLiveScores(
     const hasLive = hasLiveGames;
     const userInterval = activeIntervalMs || DEFAULT_ACTIVE_INTERVAL;
 
-    // Auto-economy: raise floor when credits are low
+    // Auto-economy: only restrict when critically low to respect user choice
     const remaining = remainingCreditsRef.current;
     let creditFloor = userInterval;
     if (remaining !== null) {
-      if (remaining < 500) {
-        creditFloor = 300 * 1000; // 5 min
-        console.warn(`[useLiveScores] ⚠️ CREDITS LOW (${remaining}) - forcing 5min interval`);
-      } else if (remaining < 2000) {
-        creditFloor = 120 * 1000;
-      } else if (remaining < 5000) {
-        creditFloor = 60 * 1000;
+      if (remaining < 100) {
+        creditFloor = 120 * 1000; // 2 min only if under 100
+        console.warn(`[useLiveScores] ⚠️ CREDITS CRITICALLY LOW (${remaining}) - forcing 2min interval`);
       }
     }
 

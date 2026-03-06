@@ -341,26 +341,21 @@ export function GameListItem({
 
                   {/* Goal Events Row */}
                   {(homeGoals.length > 0 || awayGoals.length > 0) && (
-                    <div className="flex justify-between items-start mt-2 px-1 text-[9px] sm:text-[10px] text-gray-400">
-                      {/* Home Goals */}
-                      <div className="flex flex-col gap-0.5 max-w-[45%] text-left">
-                        {homeGoals.map((g, i) => (
-                          <span key={`h-g-${i}`} className="truncate flex items-center gap-1">
-                            <span className="text-emerald-500/70 text-[8px]">⚽</span>
-                            {g.playerName} <span className="text-emerald-500/50">({g.minute}')</span>
+                    <div className="flex flex-col gap-0.5 mt-2 px-1 text-[10px] text-gray-400">
+                      {[
+                        ...homeGoals.map(g => ({ ...g, isHome: true })),
+                        ...awayGoals.map(g => ({ ...g, isHome: false }))
+                      ]
+                        .sort((a, b) => parseInt(String(a.minute).replace(/\D/g, '') || '0') - parseInt(String(b.minute).replace(/\D/g, '') || '0'))
+                        .map((g, i) => (
+                          <span key={`g-${i}`} className="truncate flex items-center justify-start gap-1.5">
+                            <span className="text-gray-500 text-[10px]">⚽</span>
+                            <span className={g.isHome ? "text-gray-300 font-medium" : "text-gray-500"}>
+                              {g.playerName}
+                            </span>
+                            <span className="text-emerald-500/60 ml-0.5">({g.minute}')</span>
                           </span>
                         ))}
-                      </div>
-
-                      {/* Away Goals */}
-                      <div className="flex flex-col gap-0.5 max-w-[45%] text-right items-end">
-                        {awayGoals.map((g, i) => (
-                          <span key={`a-g-${i}`} className="truncate flex items-center justify-end gap-1">
-                            <span className="text-emerald-500/50">({g.minute}')</span> {g.playerName}
-                            <span className="text-emerald-500/70 text-[8px]">⚽</span>
-                          </span>
-                        ))}
-                      </div>
                     </div>
                   )}
 
