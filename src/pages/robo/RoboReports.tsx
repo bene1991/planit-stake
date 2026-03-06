@@ -5,10 +5,16 @@ import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    ScatterChart, Scatter, ZAxis, AreaChart, Area, ReferenceArea, ReferenceLine, ReferenceDot, Cell
+    AreaChart, Area, ReferenceArea, ReferenceLine, ReferenceDot, Cell
 } from 'recharts';
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap } from "lucide-react";
 import GoalHazardChart from './components/GoalHazardChart';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { useStrategySimulations, StrategySimulation } from "@/hooks/useStrategySimulations";
+import { toast } from 'sonner';
 
 // Tooltip customizado para o gráfico de probabilidade acumulada
 const CustomProbabilityTooltip = ({ active, payload }: any) => {
@@ -123,21 +129,35 @@ export default function RoboReports() {
     const [selectedVariation, setSelectedVariation] = useState<string>("all");
     const [dateFilter, setDateFilter] = useState<string>("all");
 
-    // Fetch all historic alerts and active variations
+    // Simulation states
+    const [entryMin, setEntryMin] = useState<number>(20);
+    const [exitMin, setExitMin] = useState<number>(45);
+    const [greenStake, setGreenStake] = useState<number>(1.0);
+    const [redStake, setRedStake] = useState<number>(1.5);
+    const [simName, setSimName] = useState<string>("");
+
+    const { simulations, saveSimulation, deleteSimulation } = useStrategySimulations();
+
+    // Fetch all historic alerts, active variations and game statuses
     const { data, isLoading } = useQuery({
         queryKey: ['robo-reports-data'],
         queryFn: async () => {
-            const [alertsRes, variationsRes] = await Promise.all([
+            const [alertsRes, variationsRes, gamesRes] = await Promise.all([
                 supabase.from('live_alerts').select('*'),
-                supabase.from('robot_variations').select('name').eq('active', true)
+                supabase.from('robot_variations').select('name').eq('active', true),
+                supabase.from('games').select('api_fixture_id, status')
             ]);
 
             if (alertsRes.error) throw alertsRes.error;
             if (variationsRes.error) throw variationsRes.error;
+            if (gamesRes.error) throw gamesRes.error;
+
+            const gamesMap = new Map(gamesRes.data?.map(g => [String(g.api_fixture_id), g.status]) || []);
 
             return {
                 alerts: alertsRes.data,
-                activeVariations: variationsRes.data.map(v => v.name)
+                activeVariations: variationsRes.data.map(v => v.name),
+                gamesMap
             };
         }
     });
@@ -193,33 +213,167 @@ export default function RoboReports() {
         return deduplicated.map(alert => {
             const alertMinute = alert.minute_at_alert || 0;
             const allGoalEvents: any[] = typeof alert.goal_events === 'string' ? JSON.parse(alert.goal_events) : (alert.goal_events || []);
+            // Garantir que fixture_id seja string para busca no Map
+            const fixtureStatus = data?.gamesMap.get(String(alert.fixture_id));
 
             // Only consider goals strictly after the alert
-            const validGoals = allGoalEvents.filter(e => e.minute > alertMinute).sort((a, b) => a.minute - b.minute);
+            const validGoals = allGoalEvents.filter(e => {
+                const realMin = e.minute + (e.extra || 0);
+                return realMin > alertMinute;
+            }).sort((a, b) => (a.minute + (a.extra || 0)) - (b.minute + (b.extra || 0)));
 
             const firstGoal = validGoals[0] || null;
             const secondGoal = validGoals[1] || null;
 
-            const timeToFirstGoal = firstGoal ? (firstGoal.minute - alertMinute) : null;
-            const timeToSecondGoal = secondGoal ? (secondGoal.minute - alertMinute) : null;
+            const timeToFirstGoal = firstGoal ? ((firstGoal.minute + (firstGoal.extra || 0)) - alertMinute) : null;
+            const timeToSecondGoal = secondGoal ? ((secondGoal.minute + (secondGoal.extra || 0)) - alertMinute) : null;
 
             // Definition of Green/HT Green per the request
-            const htGreen = alert.goal_ht_result === 'green' || (firstGoal && firstGoal.minute <= 45);
+            const htGreen = alert.goal_ht_result === 'green' || (firstGoal && (firstGoal.minute + (firstGoal.extra || 0)) <= 45);
             const over15Green = alert.over15_result === 'green' || allGoalEvents.length >= 2;
 
             return {
                 ...alert,
                 allGoalEvents,
                 validGoals,
-                firstGoalMinute: firstGoal?.minute,
-                secondGoalMinute: secondGoal?.minute,
+                fixtureStatus,
+                firstGoalMinute: firstGoal ? (firstGoal.minute + (firstGoal.extra || 0)) : undefined,
+                secondGoalMinute: secondGoal ? (secondGoal.minute + (secondGoal.extra || 0)) : undefined,
                 timeToFirstGoal,
                 timeToSecondGoal,
                 htGreen,
                 over15Green
             };
         });
-    }, [validRawAlerts]);
+    }, [validRawAlerts, data?.gamesMap]);
+
+    // Lógica da Simulação de Estratégia
+    const simulationResult = useMemo(() => {
+        if (!processedFixtures.length) return null;
+
+        const datasetSize = processedFixtures.length;
+        // Jogos que atingiram o exit_minute ou são FT/Finished
+        // Jogos que atingiram o exit_minute ou são FT/Finished
+        const analyzableGames = processedFixtures.filter(f => {
+            const finishedStatuses = ['Finished', 'FT', 'AET', 'PEN'];
+            const isFinishedInMap = finishedStatuses.includes(f.fixtureStatus);
+
+            // Fallback: se não estiver no gamesMap, mas tiver final_score no alerta ou for antigo
+            const hasFinalScore = f.final_score && f.final_score !== 'pending';
+            const isOldAlert = f.created_at ? (new Date().getTime() - new Date(f.created_at).getTime() > 3 * 60 * 60 * 1000) : false;
+
+            return isFinishedInMap || hasFinalScore || isOldAlert;
+        });
+
+        const actuallyAnalyzed = analyzableGames.length;
+        let greens = 0;
+        let reds = 0;
+        let totalGoalsInWindow = 0;
+        let cumulativeStakes = 0;
+        const equityCurveData: any[] = [];
+
+        analyzableGames.forEach((game, index) => {
+            const goalsInWindow = game.allGoalEvents.filter((g: any) => {
+                const realMin = g.minute + (g.extra || 0);
+                return realMin >= entryMin && realMin <= exitMin;
+            });
+
+            totalGoalsInWindow += goalsInWindow.length;
+
+            if (goalsInWindow.length > 0) {
+                greens++;
+                cumulativeStakes += greenStake;
+            } else {
+                reds++;
+                cumulativeStakes -= redStake;
+            }
+
+            equityCurveData.push({
+                index: index + 1,
+                profit: parseFloat(cumulativeStakes.toFixed(2)),
+                game: `${game.home_team} vs ${game.away_team}`
+            });
+        });
+
+        const winRate = actuallyAnalyzed > 0 ? (greens / actuallyAnalyzed) * 100 : 0;
+        const totalStakes = parseFloat(cumulativeStakes.toFixed(2));
+        // Investimento total: cada jogo "custa" redStake se perdermos ou greenStake se ganharmos? 
+        // Na verdade, o ROI em apostas geralmente é baseado na stake de entrada. Assumimos stake 1 por jogo para simplificar.
+        const roi = actuallyAnalyzed > 0 ? (totalStakes / actuallyAnalyzed) * 100 : 0;
+        const avgProfit = actuallyAnalyzed > 0 ? (totalStakes / actuallyAnalyzed) : 0;
+
+        return {
+            datasetSize,
+            actuallyAnalyzed,
+            greens,
+            reds,
+            totalGoalsInWindow,
+            winRate: Math.round(winRate * 10) / 10,
+            totalStakes: parseFloat(cumulativeStakes.toFixed(2)),
+            roi: parseFloat(roi.toFixed(1)),
+            avgProfit: parseFloat(avgProfit.toFixed(3)),
+            equityCurveData,
+            analyzedGames: analyzableGames.map(game => {
+                const goalsInWindow = game.allGoalEvents.filter((g: any) => {
+                    const realMin = g.minute + (g.extra || 0);
+                    return realMin >= entryMin && realMin <= exitMin;
+                });
+                return {
+                    fixture_id: game.fixture_id,
+                    home_team: game.home_team,
+                    away_team: game.away_team,
+                    league: game.league_name,
+                    minute_at_alert: game.minute_at_alert,
+                    result: goalsInWindow.length > 0 ? 'green' : 'red',
+                    goals: goalsInWindow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
+                    final_score: game.final_score || 'N/A'
+                };
+            })
+        };
+    }, [processedFixtures, entryMin, exitMin, greenStake, redStake]);
+
+    const handleSaveSim = () => {
+        if (!simName) {
+            toast.error("Dê um nome para a simulação");
+            return;
+        }
+
+        if (!simulationResult) return;
+
+        saveSimulation.mutate({
+            name: simName,
+            entry_minute: entryMin,
+            exit_minute: exitMin,
+            green_stake: greenStake,
+            red_stake: redStake,
+            dataset_size: simulationResult.datasetSize,
+            games_analyzed: simulationResult.actuallyAnalyzed,
+            greens: simulationResult.greens,
+            reds: simulationResult.reds,
+            goals_in_window: simulationResult.totalGoalsInWindow,
+            win_rate: simulationResult.winRate,
+            total_stakes: simulationResult.totalStakes,
+            avg_profit: simulationResult.avgProfit,
+            roi: simulationResult.roi,
+            filters_snapshot: {
+                league: selectedLeague,
+                variation: selectedVariation,
+                date: dateFilter
+            },
+            simulation_version: 'v2'
+        });
+        setSimName("");
+    };
+
+    const handleRecalculate = (sim: StrategySimulation) => {
+        setEntryMin(sim.entry_minute);
+        setExitMin(sim.exit_minute);
+        setGreenStake(sim.green_stake || 1.0);
+        setRedStake(sim.red_stake || 1.5);
+        // Os filtros precisam ser aplicados manualmente pelo usuário para refletir o snapshot se desejar,
+        // mas o Recalcular usa os filtros ATUAIS da tela conforme pedido.
+        toast.info(`Recalculando ${sim.name} com base nos filtros atuais.`);
+    };
 
     // Data Processing for Charts
 
@@ -424,245 +578,508 @@ export default function RoboReports() {
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full xl:w-auto">
-                    <Select value={selectedLeague} onValueChange={setSelectedLeague}>
-                        <SelectTrigger className="w-[200px] bg-[#2a3142] border-[#2a3142]">
-                            <SelectValue placeholder="Todas as Ligas" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Todas as Ligas</SelectItem>
-                            {leagues.map(l => l && <SelectItem key={l} value={l}>{l.length > 20 ? l.substring(0, 20) + '...' : l}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
+        <Tabs defaultValue="charts" className="space-y-6">
+            <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-[#1e2333]/50 p-4 rounded-lg border border-[#2a3142]">
+                <div className="flex flex-col md:flex-row gap-4 flex-1">
+                    <TabsList className="bg-[#1e2333] border border-[#2a3142]">
+                        <TabsTrigger value="charts" className="data-[state=active]:bg-[#2a3142]">
+                            <BarChart3 className="w-4 h-4 mr-2" /> Análise Geral
+                        </TabsTrigger>
+                        <TabsTrigger value="simulation" className="data-[state=active]:bg-[#2a3142]">
+                            <TrendingUp className="w-4 h-4 mr-2" /> Simulação de Estratégia
+                        </TabsTrigger>
+                    </TabsList>
 
-                    <Select value={selectedVariation} onValueChange={setSelectedVariation}>
-                        <SelectTrigger className="w-[200px] bg-[#2a3142] border-[#2a3142]">
-                            <SelectValue placeholder="Todas as Variações" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Todas as Variações</SelectItem>
-                            {variations.map(v => v && <SelectItem key={v} value={v}>{v}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <Select value={selectedLeague} onValueChange={setSelectedLeague}>
+                            <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
+                                <SelectValue placeholder="Todas as Ligas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas as Ligas</SelectItem>
+                                {leagues.map(l => l && <SelectItem key={l} value={l}>{l.length > 20 ? l.substring(0, 20) + '...' : l}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
 
-                    <Select value={dateFilter} onValueChange={setDateFilter}>
-                        <SelectTrigger className="w-full xl:w-[200px] bg-[#2a3142] border-[#2a3142]">
-                            <SelectValue placeholder="Período" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Desde o Início</SelectItem>
-                            <SelectItem value="today">Hoje</SelectItem>
-                            <SelectItem value="this_week">Últimos 7 dias</SelectItem>
-                            <SelectItem value="this_month">Últimos 30 dias</SelectItem>
-                        </SelectContent>
-                    </Select>
+                        <Select value={selectedVariation} onValueChange={setSelectedVariation}>
+                            <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
+                                <SelectValue placeholder="Todas as Variações" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas as Variações</SelectItem>
+                                {variations.map(v => v && <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+
+                        <Select value={dateFilter} onValueChange={setDateFilter}>
+                            <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
+                                <SelectValue placeholder="Período" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Desde o Início</SelectItem>
+                                <SelectItem value="today">Hoje</SelectItem>
+                                <SelectItem value="this_week">Últimos 7 dias</SelectItem>
+                                <SelectItem value="this_month">Últimos 30 dias</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
 
-                <div className="text-sm w-full xl:w-auto text-gray-400 bg-[#2a3142] px-4 py-2 rounded-md font-medium border border-[#3b4256] text-center xl:text-left shadow-sm">
-                    Total de Jogos Únicos: <span className="text-white ml-2 text-base">{processedFixtures.length}</span>
+                <div className="text-sm text-gray-400 bg-[#2a3142] px-4 py-2 rounded-md font-medium border border-[#3b4256] shadow-sm">
+                    Jogos Únicos: <span className="text-white ml-1 text-base">{processedFixtures.length}</span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* 1. Curva Acumulada de Probabilidade */}
-                <Card className="bg-[#1e2333] border-[#2a3142] md:col-span-2 lg:col-span-3">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base sm:text-lg">Curva Acumulada de Probabilidade (1º Gol após alerta)</CardTitle>
-                        <CardDescription className="text-xs sm:text-sm">
-                            Acompanhe a zona de maior aceleração (onde o gráfico sobe mais rápido) para identificar o momento ideal de entrada no mercado. <br />
-                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[300px] sm:h-[380px] p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={cumulativeChartData.data} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorProb" x1="0" y1="0" x2="1" y2="0">
-                                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.7} />
-                                        <stop offset="50%" stopColor="#eab308" stopOpacity={0.7} />
-                                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0.7} />
-                                    </linearGradient>
-                                    <linearGradient id="colorProbFill" x1="0" y1="0" x2="1" y2="0">
-                                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.2} />
-                                        <stop offset="50%" stopColor="#eab308" stopOpacity={0.2} />
-                                        <stop offset="100%" stopColor="#ef4444" stopOpacity={0.2} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.5} vertical={false} />
-                                <XAxis dataKey="minutesAfter" stroke="#8b949e" tick={{ fontSize: 10 }} unit="'" />
-                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
-                                <Tooltip content={<CustomProbabilityTooltip />} />
+            <TabsContent value="charts" className="space-y-6 mt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* 1. Curva Acumulada de Probabilidade */}
+                    <Card className="bg-[#1e2333] border-[#2a3142] md:col-span-2 lg:col-span-3">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base sm:text-lg">Curva Acumulada de Probabilidade (1º Gol após alerta)</CardTitle>
+                            <CardDescription className="text-xs sm:text-sm">
+                                Acompanhe a zona de maior aceleração (onde o gráfico sobe mais rápido) para identificar o momento ideal de entrada no mercado. <br />
+                                <span className="font-semibold text-gray-500 mt-1 inline-block">Base de dados: {processedFixtures.length} jogos únicos analisados</span>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[300px] sm:h-[380px] p-2 sm:p-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={cumulativeChartData.data} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorProb" x1="0" y1="0" x2="1" y2="0">
+                                            <stop offset="0%" stopColor="#22c55e" stopOpacity={0.7} />
+                                            <stop offset="50%" stopColor="#eab308" stopOpacity={0.7} />
+                                            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.7} />
+                                        </linearGradient>
+                                        <linearGradient id="colorProbFill" x1="0" y1="0" x2="1" y2="0">
+                                            <stop offset="0%" stopColor="#22c55e" stopOpacity={0.2} />
+                                            <stop offset="50%" stopColor="#eab308" stopOpacity={0.2} />
+                                            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.2} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.5} vertical={false} />
+                                    <XAxis dataKey="minutesAfter" stroke="#8b949e" tick={{ fontSize: 10 }} unit="'" />
+                                    <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
+                                    <Tooltip content={<CustomProbabilityTooltip />} />
 
-                                {cumulativeChartData.hotZone && (
-                                    <ReferenceArea
-                                        x1={cumulativeChartData.hotZone.start}
-                                        x2={cumulativeChartData.hotZone.end}
-                                        fill="#f59e0b"
-                                        fillOpacity={0.15}
-                                        label={{ value: '🔥 Zona Quente', position: 'insideTop', fill: '#f59e0b', fontSize: 13, fontWeight: 'bold' }}
+                                    {cumulativeChartData.hotZone && (
+                                        <ReferenceArea
+                                            x1={cumulativeChartData.hotZone.start}
+                                            x2={cumulativeChartData.hotZone.end}
+                                            fill="#f59e0b"
+                                            fillOpacity={0.15}
+                                            label={{ value: '🔥 Zona Quente', position: 'insideTop', fill: '#f59e0b', fontSize: 13, fontWeight: 'bold' }}
+                                        />
+                                    )}
+
+                                    <ReferenceLine x={0} stroke="#9ca3af" strokeDasharray="3 3" label={{ position: 'top', value: 'Alerta', fill: '#9ca3af', fontSize: 12 }} />
+
+                                    {cumulativeChartData.percentiles.p25 !== null && (
+                                        <ReferenceDot x={cumulativeChartData.percentiles.p25} y={25} r={5} fill="#22c55e" stroke="none" />
+                                    )}
+                                    {cumulativeChartData.percentiles.p50 !== null && (
+                                        <ReferenceDot x={cumulativeChartData.percentiles.p50} y={50} r={5} fill="#eab308" stroke="none" />
+                                    )}
+                                    {cumulativeChartData.percentiles.p75 !== null && (
+                                        <ReferenceDot x={cumulativeChartData.percentiles.p75} y={75} r={5} fill="#ef4444" stroke="none" />
+                                    )}
+
+                                    <Area type="monotone" dataKey="probability" stroke="url(#colorProb)" strokeWidth={4} fill="url(#colorProbFill)" activeDot={{ r: 6, fill: '#fff', stroke: '#ef4444', strokeWidth: 2 }} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                            <div className="text-[10px] sm:text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
+                                <span className="font-semibold text-gray-300">Como ler?</span> O gráfico demonstra a chance acumulada de ocorrer o primeiro gol do jogo <b>após</b> o alerta. A <b>Zona Quente</b> destaca o período de 15 minutos onde a chance cresce mais rápido.
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Hazard Rate de Gol */}
+                    <GoalHazardChart processedFixtures={processedFixtures} />
+
+                    {/* 2. Gols por Período */}
+                    <Card className="bg-[#1e2333] border-[#2a3142]">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base sm:text-lg">Gols por Período (Todos os Gols)</CardTitle>
+                            <CardDescription className="text-xs sm:text-sm">
+                                Distribuição dos minutos no placar <br />
+                                <span className="font-semibold text-gray-500 inline-block mt-1">Base: {processedFixtures.length} jogos únicos</span>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={goalPeriodsData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                                    <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
+                                    <Tooltip content={<CustomBarTooltip />} />
+                                    <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Gols">
+                                        {
+                                            goalPeriodsData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.gols, Math.max(...goalPeriodsData.map(d => d.gols)))} />
+                                            ))
+                                        }
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* 3. Tempo até o 1o gol */}
+                    <Card className="bg-[#1e2333] border-[#2a3142]">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base sm:text-lg">Tempo até 1º Gol</CardTitle>
+                            <CardDescription className="text-xs sm:text-sm">
+                                Minutos passados do alerta até o gol <br />
+                                <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={timeToFirstGoalData} margin={{ top: 20, right: 10, left: -20, bottom: 15 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} interval={0} angle={-45} textAnchor="end" height={40} />
+                                    <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
+                                    <Tooltip content={<CustomBarTooltip />} />
+                                    <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Jogos">
+                                        {
+                                            timeToFirstGoalData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.gols, Math.max(...timeToFirstGoalData.map(d => d.gols)))} />
+                                            ))
+                                        }
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* 4. Tempo até o 2o gol */}
+                    <Card className="bg-[#1e2333] border-[#2a3142]">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base sm:text-lg">Tempo até 2º Gol</CardTitle>
+                            <CardDescription className="text-xs sm:text-sm">
+                                Minutos passados do alerta até o 2º gol <br />
+                                <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={timeToSecondGoalData} margin={{ top: 20, right: 10, left: -20, bottom: 15 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} interval={0} angle={-45} textAnchor="end" height={40} />
+                                    <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
+                                    <Tooltip content={<CustomBarTooltip />} />
+                                    <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Jogos">
+                                        {
+                                            timeToSecondGoalData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.gols, Math.max(...timeToSecondGoalData.map(d => d.gols)))} />
+                                            ))
+                                        }
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* 5. Performance por Variação */}
+                    <Card className="bg-[#1e2333] border-[#2a3142]">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base sm:text-lg">Performance por Variação</CardTitle>
+                            <CardDescription className="text-xs sm:text-sm">
+                                Taxa de acerto (Green) por variação <br />
+                                <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {validRawAlerts.length} alertas</span>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[280px] sm:h-[300px] p-2 sm:p-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={variationPerformanceData} margin={{ top: 20, right: 10, left: -25, bottom: 45 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
+                                    <XAxis dataKey="name" stroke="#8b949e" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 8 }} interval={0} />
+                                    <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
+                                    <Tooltip content={<CustomVariationTooltip />} />
+                                    <Bar dataKey="winRate" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Win Rate" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* 6. Performance por Liga (Deduplicada) */}
+                    <Card className="bg-[#1e2333] border-[#2a3142] md:col-span-2">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base sm:text-lg">Top Ligas (Min. 3 jogos)</CardTitle>
+                            <CardDescription className="text-xs sm:text-sm">
+                                Win Rate filtrado por jogo único <br />
+                                <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="h-[320px] sm:h-[300px] p-2 sm:p-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={leaguePerformanceData} margin={{ top: 10, right: 10, left: -25, bottom: 45 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
+                                    <XAxis dataKey="name" stroke="#8b949e" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 8 }} interval={0} />
+                                    <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
+                                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px', paddingTop: '5px' }} />
+                                    <Tooltip content={<CustomLeagueTooltip />} cursor={{ fill: '#2a3142', opacity: 0.4 }} />
+                                    <Bar dataKey="htWinRate" fill="#3b82f6" radius={[2, 2, 0, 0]} name="Win Rate HT" />
+                                    <Bar dataKey="over15WinRate" fill="#14b8a6" radius={[2, 2, 0, 0]} name="Win Rate Over 1.5" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                            <div className="text-[10px] sm:text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
+                                Gráfico mapeia desempenho consolidado por campeonato, isolando <b>partidas únicas</b>. Ligas c/ menos de 3 jogos não são exibidas.
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            </TabsContent>
+
+            <TabsContent value="simulation" className="space-y-6 mt-0">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <Card className="bg-[#1e2333] border-[#2a3142] lg:col-span-1">
+                        <CardHeader>
+                            <CardTitle className="text-lg flex items-center">
+                                <TrendingUp className="w-5 h-5 mr-2 text-emerald-400" /> Configuração
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-gray-400">Minuto de Entrada</Label>
+                                    <Input
+                                        type="number"
+                                        value={entryMin}
+                                        onChange={(e) => setEntryMin(Number(e.target.value))}
+                                        className="bg-[#2a3142] border-[#3b4256]"
                                     />
-                                )}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-gray-400">Minuto de Saída</Label>
+                                    <Input
+                                        type="number"
+                                        value={exitMin}
+                                        onChange={(e) => setExitMin(Number(e.target.value))}
+                                        className="bg-[#2a3142] border-[#3b4256]"
+                                    />
+                                </div>
+                            </div>
 
-                                <ReferenceLine x={0} stroke="#9ca3af" strokeDasharray="3 3" label={{ position: 'top', value: 'Alerta', fill: '#9ca3af', fontSize: 12 }} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-gray-400">Ganho no Green</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.1"
+                                        value={greenStake}
+                                        onChange={(e) => setGreenStake(Number(e.target.value))}
+                                        className="bg-[#2a3142] border-[#3b4256]"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-gray-400">Perda no Red</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.1"
+                                        value={redStake}
+                                        onChange={(e) => setRedStake(Number(e.target.value))}
+                                        className="bg-[#2a3142] border-[#3b4256]"
+                                    />
+                                </div>
+                            </div>
+                            <div className="pt-4 border-t border-[#2a3142] space-y-4">
+                                <Label className="text-gray-400">Salvar Simulação</Label>
+                                <Input
+                                    placeholder="Nome da simulação..."
+                                    value={simName}
+                                    onChange={(e) => setSimName(e.target.value)}
+                                    className="bg-[#2a3142] border-[#3b4256]"
+                                />
+                                <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveSim}>
+                                    <Plus className="w-4 h-4 mr-2" /> Salvar Resultados
+                                </Button>
+                            </div>
 
-                                {cumulativeChartData.percentiles.p25 !== null && (
-                                    <ReferenceDot x={cumulativeChartData.percentiles.p25} y={25} r={5} fill="#22c55e" stroke="none" />
-                                )}
-                                {cumulativeChartData.percentiles.p50 !== null && (
-                                    <ReferenceDot x={cumulativeChartData.percentiles.p50} y={50} r={5} fill="#eab308" stroke="none" />
-                                )}
-                                {cumulativeChartData.percentiles.p75 !== null && (
-                                    <ReferenceDot x={cumulativeChartData.percentiles.p75} y={75} r={5} fill="#ef4444" stroke="none" />
-                                )}
+                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                                <p className="text-[10px] text-blue-400 flex items-start">
+                                    <Info className="w-3 h-3 mr-1 mt-0.5 shrink-0" />
+                                    A simulação utiliza os filtros de Liga e Variação ativos no topo da tela. Jogos que não atingiram o minuto de saída são ignorados.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                                <Area type="monotone" dataKey="probability" stroke="url(#colorProb)" strokeWidth={4} fill="url(#colorProbFill)" activeDot={{ r: 6, fill: '#fff', stroke: '#ef4444', strokeWidth: 2 }} />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                        <div className="text-[10px] sm:text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
-                            <span className="font-semibold text-gray-300">Como ler?</span> O gráfico demonstra a chance acumulada de ocorrer o primeiro gol do jogo <b>após</b> o alerta. A <b>Zona Quente</b> destaca o período de 15 minutos onde a chance cresce mais rápido.
-                        </div>
-                    </CardContent>
-                </Card>
+                    <div className="lg:col-span-3 space-y-6">
+                        {simulationResult && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <Card className="bg-[#1e2333] border-[#2a3142] p-4">
+                                        <p className="text-xs text-gray-400 uppercase font-medium">Amostragem</p>
+                                        <p className="text-2xl font-bold text-white mt-1">{simulationResult.actuallyAnalyzed}</p>
+                                        <p className="text-[10px] text-gray-500 mt-1">de {simulationResult.datasetSize} jogos filtrados</p>
+                                    </Card>
+                                    <Card className="bg-[#1e2333] border-[#2a3142] p-4">
+                                        <p className="text-xs text-gray-400 uppercase font-medium">Win Rate</p>
+                                        <p className="text-2xl font-bold text-emerald-400 mt-1">{simulationResult.winRate}%</p>
+                                        <p className="text-[10px] text-gray-500 mt-1">{simulationResult.greens} Greens / {simulationResult.reds} Reds</p>
+                                    </Card>
+                                    <Card className="bg-[#1e2333] border-[#2a3142] p-4">
+                                        <p className="text-xs text-gray-400 uppercase font-medium">Lucro em Stakes</p>
+                                        <p className={`text-2xl font-bold mt-1 ${simulationResult.totalStakes >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {simulationResult.totalStakes > 0 ? '+' : ''}{simulationResult.totalStakes}
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 mt-1">ROI: {simulationResult.roi.toFixed(1)}%</p>
+                                    </Card>
+                                    <Card className="bg-[#1e2333] border-[#2a3142] p-4">
+                                        <p className="text-xs text-gray-400 uppercase font-medium">Gols na Janela</p>
+                                        <p className="text-2xl font-bold text-blue-400 mt-1">{simulationResult.totalGoalsInWindow}</p>
+                                        <p className="text-[10px] text-gray-500 mt-1">total no intervalo</p>
+                                    </Card>
+                                </div>
 
-                {/* Hazard Rate de Gol */}
-                <GoalHazardChart processedFixtures={processedFixtures} />
+                                <Card className="bg-[#1e2333] border-[#2a3142]">
+                                    <CardHeader className="py-4">
+                                        <CardTitle className="text-base flex items-center">
+                                            <List className="w-4 h-4 mr-2 text-blue-400" /> Detalhes dos Jogos Analisados
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-0">
+                                        <div className="overflow-x-auto max-h-[400px]">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="bg-[#2a3142]/50 text-gray-400 text-[10px] uppercase sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-3 font-medium">Partida</th>
+                                                        <th className="px-4 py-3 font-medium">Liga</th>
+                                                        <th className="px-4 py-3 font-medium">Alerta</th>
+                                                        <th className="px-4 py-3 font-medium">Gols ({entryMin}'-{exitMin}')</th>
+                                                        <th className="px-4 py-2 font-medium text-right">Fim</th>
+                                                        <th className="px-4 py-3 font-medium text-right">Resultado</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[#2a3142]">
+                                                    {simulationResult.analyzedGames.map((game: any, idx: number) => (
+                                                        <tr key={`${game.fixture_id}-${idx}`} className="hover:bg-white/5 transition-colors border-b border-[#2a3142]/50">
+                                                            <td className="px-4 py-3 font-medium text-gray-200">
+                                                                <div className="flex flex-col">
+                                                                    <span className="truncate max-w-[150px] sm:max-w-none">{game.home_team} vs {game.away_team}</span>
+                                                                    <span className="text-[9px] text-gray-500">ID: {game.fixture_id}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]">{game.league}</td>
+                                                            <td className="px-4 py-3 text-gray-400">{game.minute_at_alert}'</td>
+                                                            <td className="px-4 py-3">
+                                                                {game.goals ? (
+                                                                    <span className="text-emerald-400 font-medium">{game.goals}</span>
+                                                                ) : (
+                                                                    <span className="text-gray-600">-</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-gray-400 text-right text-xs">{game.final_score}</td>
+                                                            <td className="px-4 py-3 text-right">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${game.result === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                                                                    }`}>
+                                                                    {game.result === 'green' ? `+${greenStake}` : `-${redStake}`}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        )}
 
-                {/* 2. Gols por Período */}
-                <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base sm:text-lg">Gols por Período (Todos os Gols)</CardTitle>
-                        <CardDescription className="text-xs sm:text-sm">
-                            Distribuição dos minutos no placar <br />
-                            <span className="font-semibold text-gray-500 inline-block mt-1">Base: {processedFixtures.length} jogos únicos</span>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={goalPeriodsData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
-                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                                <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
-                                <Tooltip content={<CustomBarTooltip />} />
-                                <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Gols">
-                                    {
-                                        goalPeriodsData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.gols, Math.max(...goalPeriodsData.map(d => d.gols)))} />
-                                        ))
-                                    }
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
+                        <Card className="bg-[#1e2333] border-[#2a3142]">
+                            <CardHeader className="pb-0">
+                                <CardTitle className="text-base font-semibold">Evolução Patrimonial (Equity Curve)</CardTitle>
+                                <CardDescription className="text-xs">Saldo acumulativo de stakes ao longo da série.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="h-[300px] pt-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={simulationResult?.equityCurveData || []}>
+                                        <defs>
+                                            <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} opacity={0.5} />
+                                        <XAxis dataKey="index" hide />
+                                        <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#1a1f2d', border: '1px solid #2a3142', color: '#fff' }}
+                                            labelStyle={{ color: '#8b949e' }}
+                                        />
+                                        <ReferenceLine y={0} stroke="#4b5563" />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="profit"
+                                            stroke="#10b981"
+                                            strokeWidth={3}
+                                            fillOpacity={1}
+                                            fill="url(#colorEquity)"
+                                            animationDuration={1000}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
 
-                {/* 3. Tempo até o 1o gol */}
-                <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base sm:text-lg">Tempo até 1º Gol</CardTitle>
-                        <CardDescription className="text-xs sm:text-sm">
-                            Minutos passados do alerta até o gol <br />
-                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={timeToFirstGoalData} margin={{ top: 20, right: 10, left: -20, bottom: 15 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
-                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} interval={0} angle={-45} textAnchor="end" height={40} />
-                                <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
-                                <Tooltip content={<CustomBarTooltip />} />
-                                <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Jogos">
-                                    {
-                                        timeToFirstGoalData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.gols, Math.max(...timeToFirstGoalData.map(d => d.gols)))} />
-                                        ))
-                                    }
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
+                <div className="space-y-4">
+                    <h3 className="text-white font-semibold flex items-center">
+                        <RotateCcw className="w-4 h-4 mr-2 text-indigo-400" /> Simulações Salvas
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {simulations?.map((sim) => (
+                            <Card key={sim.id} className="bg-[#1e2333] border-[#2a3142] hover:border-emerald-500/30 transition-colors">
+                                <CardContent className="p-4 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold text-white">{sim.name}</p>
+                                            <p className="text-[10px] text-gray-400">{new Date(sim.created_at).toLocaleDateString()} • v.{sim.simulation_version}</p>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-400 hover:bg-rose-400/10" onClick={() => deleteSimulation.mutate(sim.id)}>
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
 
-                {/* 4. Tempo até o 2o gol */}
-                <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base sm:text-lg">Tempo até 2º Gol</CardTitle>
-                        <CardDescription className="text-xs sm:text-sm">
-                            Minutos passados do alerta até o 2º gol <br />
-                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[250px] sm:h-[300px] p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={timeToSecondGoalData} margin={{ top: 20, right: 10, left: -20, bottom: 15 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
-                                <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} interval={0} angle={-45} textAnchor="end" height={40} />
-                                <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
-                                <Tooltip content={<CustomBarTooltip />} />
-                                <Bar dataKey="gols" radius={[4, 4, 0, 0]} name="Jogos">
-                                    {
-                                        timeToSecondGoalData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={getHeatmapColor(entry.gols, Math.max(...timeToSecondGoalData.map(d => d.gols)))} />
-                                        ))
-                                    }
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
+                                    <div className="grid grid-cols-2 gap-2 text-xs py-2 border-y border-[#2a3142]">
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-400">Janela</span>
+                                            <span className="text-white font-medium">{sim.entry_minute}' → {sim.exit_minute}'</span>
+                                            <span className="text-[10px] text-gray-500">Stakes: +{sim.green_stake} / -{sim.red_stake}</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-400">Win Rate</span>
+                                            <span className="text-emerald-400 font-bold">{sim.win_rate}%</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-400">Amostragem</span>
+                                            <span className="text-white font-medium">{sim.games_analyzed} /{sim.dataset_size}</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-gray-400">ROI</span>
+                                            <span className={`font-bold ${sim.roi >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{sim.roi}%</span>
+                                        </div>
+                                    </div>
 
-                {/* 5. Performance por Variação */}
-                <Card className="bg-[#1e2333] border-[#2a3142]">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base sm:text-lg">Performance por Variação</CardTitle>
-                        <CardDescription className="text-xs sm:text-sm">
-                            Taxa de acerto (Green) por variação <br />
-                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {validRawAlerts.length} alertas</span>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[280px] sm:h-[300px] p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={variationPerformanceData} margin={{ top: 20, right: 10, left: -25, bottom: 45 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
-                                <XAxis dataKey="name" stroke="#8b949e" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 8 }} interval={0} />
-                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
-                                <Tooltip content={<CustomVariationTooltip />} />
-                                <Bar dataKey="winRate" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Win Rate" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
-
-                {/* 6. Performance por Liga (Deduplicada) */}
-                <Card className="bg-[#1e2333] border-[#2a3142] md:col-span-2">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base sm:text-lg">Top Ligas (Min. 3 jogos)</CardTitle>
-                        <CardDescription className="text-xs sm:text-sm">
-                            Win Rate filtrado por jogo único <br />
-                            <span className="font-semibold text-gray-500 mt-1 inline-block">Base: {processedFixtures.length} jogos únicos</span>
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[320px] sm:h-[300px] p-2 sm:p-6">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={leaguePerformanceData} margin={{ top: 10, right: 10, left: -25, bottom: 45 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" opacity={0.4} vertical={false} />
-                                <XAxis dataKey="name" stroke="#8b949e" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 8 }} interval={0} />
-                                <YAxis stroke="#8b949e" domain={[0, 100]} tickFormatter={(val) => `${val}%`} tick={{ fontSize: 10 }} />
-                                <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px', paddingTop: '5px' }} />
-                                <Tooltip content={<CustomLeagueTooltip />} cursor={{ fill: '#2a3142', opacity: 0.4 }} />
-                                <Bar dataKey="htWinRate" fill="#3b82f6" radius={[2, 2, 0, 0]} name="Win Rate HT" />
-                                <Bar dataKey="over15WinRate" fill="#14b8a6" radius={[2, 2, 0, 0]} name="Win Rate Over 1.5" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                        <div className="text-[10px] sm:text-xs text-gray-400 text-center mt-3 mx-auto w-full md:w-3/4">
-                            Gráfico mapeia desempenho consolidado por campeonato, isolando <b>partidas únicas</b>. Ligas c/ menos de 3 jogos não são exibidas.
-                        </div>
-                    </CardContent>
-                </Card>
-
-            </div>
-        </div>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full bg-transparent border-[#3b4256] text-gray-300 hover:text-white"
+                                        onClick={() => handleRecalculate(sim)}
+                                    >
+                                        <RotateCcw className="w-3 h-3 mr-2" /> Recalcular com Filtros Atuais
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        ))}
+                        {simulations?.length === 0 && (
+                            <div className="col-span-full py-8 text-center bg-[#2a3142]/20 rounded-lg border border-dashed border-[#2a3142]">
+                                <p className="text-gray-500 text-sm italic">Nenhuma simulação salva ainda.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </TabsContent>
+        </Tabs>
     );
 }
