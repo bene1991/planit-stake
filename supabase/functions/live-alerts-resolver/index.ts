@@ -51,15 +51,24 @@ async function sendTelegramResult(
 
     const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
 
-    await fetch(`https://api.telegram.org/bot${settings.telegram_bot_token}/sendMessage`, {
+    const payload = {
+      action: 'sendAlert',
+      type: resultType === 'green' ? 'success' : 'error',
+      message: msg
+    };
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: settings.telegram_chat_id,
-        text: msg,
-        parse_mode: 'HTML',
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify(payload),
     });
+
+    if (!response.ok) {
+      console.error('[Resolver] Telegram target function failed:', await response.text());
+    }
   } catch (err) {
     console.error('[Resolver] Telegram error:', err);
   }

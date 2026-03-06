@@ -21,20 +21,27 @@ function escapeHtml(text: string): string {
         .replace(/'/g, "&#039;");
 }
 
-async function callApiFootball(endpoint: string, params: Record<string, unknown> = {}) {
+async function callApiFootball(endpoint: string, token: string, params: Record<string, unknown> = {}) {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            'Authorization': token.startsWith('Bearer ') ? token : `Bearer ${token}`,
         },
         body: JSON.stringify({ endpoint, ...params }),
     });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    if (!res.ok) {
+        const errorText = await res.text().catch(() => 'No body');
+        console.error(`[Cron] API call failed: ${res.status} ${res.statusText}`, errorText);
+        throw new Error(`API error: ${res.status} - ${errorText.substring(0, 100)}`);
+    }
     return res.json();
 }
 
-async function runRobot() {
+
+async function runRobot(authHeader: string) {
+    const authToken = authHeader.replace('Bearer ', '');
+    const supabase = createClient(SUPABASE_URL, authToken);
     const logsBuffer: any[] = [];
     try {
         // Get default user ID for notifications (first user with telegram configured)
@@ -53,18 +60,23 @@ async function runRobot() {
         const { data: variations } = await supabase.from('robot_variations').select('*').eq('active', true);
         if (!variations || variations.length === 0) return;
 
-        const apiData = await callApiFootball('fixtures?live=all');
+        const apiData = await callApiFootball('fixtures?live=all', authToken);
         const fixtures = apiData?.response || [];
 
         // Heartbeat log to show cron is alive
-        await supabase.from('robot_execution_logs').insert([{
+        const { error: heartbeatErr } = await supabase.from('robot_execution_logs').insert([{
             fixture_id: '0',
-            league_id: 0,
+            league_id: '0',
             variation_id: null,
             stage: 'CRON_HEARTBEAT',
             reason: `Cron executado: ${fixtures.length} jogos ao vivo encontrados`,
             details: { fixture_count: fixtures.length }
         }]);
+
+        if (heartbeatErr) {
+            console.error('[Cron] Failed to insert heartbeat log:', heartbeatErr);
+            throw new Error(`DB error: ${heartbeatErr.message}`);
+        }
 
         for (const f of fixtures) {
             const fId = String(f.fixture.id), lId = String(f.league.id), lName = f.league.name;
@@ -112,7 +124,7 @@ async function runRobot() {
                 continue;
             }
 
-            const apiStatsData = await callApiFootball('fixtures/statistics', { fixture: fId });
+            const apiStatsData = await callApiFootball('fixtures/statistics', authToken, { fixture: fId });
             const rawStats = apiStatsData?.response || [];
             if (rawStats.length < 2) {
                 logsBuffer.push({
@@ -216,7 +228,7 @@ async function runRobot() {
                 const needsZeroScore = matchedResults.some(v => v.require_score_zero);
                 if (needsZeroScore) {
                     try {
-                        const freshData = await callApiFootball('fixtures', { id: fId, ignoreCache: true });
+                        const freshData = await callApiFootball('fixtures', authToken, { id: fId, ignoreCache: true });
                         const freshFixture = freshData?.response?.[0];
                         if (freshFixture) {
                             const freshHomeGoals = freshFixture.goals.home || 0;
@@ -351,8 +363,10 @@ async function runRobot() {
             await fetch(`${SUPABASE_URL}/functions/v1/monitor-live-games`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                    'Content-Type': 'application/json',
+                    'Authorization': authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`,
                 },
+                body: JSON.stringify({ fixtures }),
             });
         } catch (monErr) {
             console.error('[Cron] Failed to trigger monitor:', monErr);
@@ -360,8 +374,8 @@ async function runRobot() {
 
         // Trigger the alerts resolver to resolve pending HT/FT results and send Telegram notifications
         try {
-            console.log('[Cron] Triggering live-alerts-resolver-v3...');
-            const resolverRes = await fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver-v3`, {
+            console.log('[Cron] Triggering live-alerts-resolver...');
+            const resolverRes = await fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -375,11 +389,32 @@ async function runRobot() {
         }
     } catch (e) {
         console.error('Robot error:', e);
+        try {
+            await supabase.from('robot_execution_logs').insert([{
+                fixture_id: '0',
+                league_id: '0',
+                variation_id: null,
+                stage: 'CRON_ERROR',
+                reason: `Erro crítico no Robô: ${e instanceof Error ? e.message : String(e)}`,
+                details: { stack: e instanceof Error ? e.stack : null }
+            }]);
+        } catch (logErr) {
+            console.error('Failed to log robot error to DB:', logErr);
+        }
     }
 }
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-    await runRobot();
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+        return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
+            status: 401,
+            headers: corsHeaders
+        });
+    }
+
+    await runRobot(authHeader);
     return new Response(JSON.stringify({ status: 'ok' }), { headers: corsHeaders });
 });

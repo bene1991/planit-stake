@@ -24,7 +24,7 @@ interface GameWithState {
   };
 }
 
-function getSupabaseAdmin() {
+function createSupabaseClient() {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -62,36 +62,33 @@ async function fetchFixtureEvents(apiKey: string, fixtureId: string): Promise<an
 
 async function sendTelegram(botToken: string, chatId: string, message: string) {
   try {
-    const response = await fetch(
-      `https://api.telegram.org/bot${botToken}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: message,
-          parse_mode: 'HTML',
-        }),
-      }
-    );
-    const data = await response.json();
-    if (!data.ok) {
-      console.error('[Monitor] Telegram error:', data.description);
+    const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-telegram-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        botToken,
+        chatId,
+        message,
+        type: 'notification'
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[Monitor] Telegram function errored:', await response.text());
+      return false;
     }
-    return data.ok;
+    return true;
   } catch (err) {
     console.error('[Monitor] Telegram send error:', err);
     return false;
   }
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+async function handleMonitor(sb: ReturnType<typeof createClient>, fixtures: any[]) {
   try {
-    const sb = getSupabaseAdmin();
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
     if (!apiKey) throw new Error('API_FOOTBALL_KEY not configured');
 
@@ -228,6 +225,42 @@ serve(async (req) => {
 
       const isFinalized = finalizedGameIds.has(game.id);
 
+      // --- Detect GAME STATUS CHANGES (Start, HT, FT) ---
+      const prevStatusStr = state?.status || (game.status === 'Pending' ? 'NS' : 'Live');
+      const currentShortStatus = fixture.fixture.status.short;
+
+      // Jogo Iniciou (Was Not Started, now in First Half)
+      if (prevStatusStr !== '1H' && currentShortStatus === '1H') {
+        const gameStartKey = `start_${fixtureId}`;
+        if (!notifiedEvents.includes(gameStartKey)) {
+          console.log(`[Monitor] Jogo Iniciado: ${game.home_team} vs ${game.away_team}`);
+          notifiedEvents.push(gameStartKey);
+
+          if (telegramSettings) {
+            const msg = `▶️ <b>JOGO INICIADO</b>\n⚽ ${game.home_team} vs ${game.away_team}\n🏟 ${game.league}`;
+            sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
+          }
+        }
+      }
+
+      // Final de Jogo ou Intervalo
+      const isFinished = ['FT', 'AET', 'PEN'].includes(currentShortStatus);
+      const isHalfTime = currentShortStatus === 'HT';
+
+      if (isFinished || isHalfTime) {
+        const endStatusKey = `end_${fixtureId}_${currentShortStatus}`;
+        if (!notifiedEvents.includes(endStatusKey)) {
+          console.log(`[Monitor] Jogo ${isFinished ? 'Terminou' : 'no Intervalo'}: ${game.home_team} vs ${game.away_team}`);
+          notifiedEvents.push(endStatusKey);
+
+          if (telegramSettings) {
+            const statusLabel = isFinished ? 'FIM DE JOGO' : 'INTERVALO';
+            const msg = `🏁 <b>${statusLabel}</b>\n⚽ ${game.home_team} ${currentHome} - ${currentAway} ${game.away_team}\n🏟 ${game.league}`;
+            sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
+          }
+        }
+      }
+
       // --- Detect GOALS ---
       if (currentHome > prevHome || currentAway > prevAway) {
         console.log(`[Monitor] GOAL detected in ${game.home_team} vs ${game.away_team}: ${currentHome}-${currentAway} (was ${prevHome}-${prevAway})`);
@@ -253,9 +286,21 @@ serve(async (req) => {
             try {
               const scoreStr = `${currentHome}x${currentAway}`;
 
-              // 1. Update live_alerts
+              // 1. Fetch events and Update live_alerts
+              const liveEvents = await fetchFixtureEvents(apiKey, fixtureId);
+              const goalEvents = liveEvents
+                .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
+                .map((e: any) => ({
+                  minute: e.time.elapsed,
+                  extra: e.time.extra,
+                  team: e.team?.name,
+                  player: e.player?.name,
+                  detail: e.detail
+                }));
+
               const alertUpdates: any = {
                 final_score: scoreStr,
+                goal_events: goalEvents,
                 updated_at: new Date().toISOString()
               };
               // If it's a goal in the first 45 mins, HT result is Green
@@ -398,5 +443,28 @@ serve(async (req) => {
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  }
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
+      status: 401,
+      headers: corsHeaders
+    });
+  }
+
+  try {
+    const { fixtures } = await req.json();
+    const supabase = createSupabaseClient();
+    return await handleMonitor(supabase, fixtures);
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
+      status: 400,
+      headers: corsHeaders
+    });
   }
 });
