@@ -49,9 +49,15 @@ export const LiveMatchGraphics = ({
         }
 
         if (effectiveHistory.length < 2) {
+            const hasNoStats = !stats || (stats.home.possession === 0 && stats.home.attacks_dangerous === 0);
+
             return (
-                <div className="h-32 flex items-center justify-center border border-dashed border-white/5 rounded-lg bg-black/20">
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-40 text-center px-4">Aguardando dados de pressão suficientes...</span>
+                <div className="h-32 flex flex-col items-center justify-center border border-dashed border-white/5 rounded-lg bg-black/20 px-4 text-center">
+                    {hasNoStats ? (
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-50">Estatísticas Inacessíveis Nesta Liga</span>
+                    ) : (
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-40">Aguardando dados de pressão suficientes...</span>
+                    )}
                 </div>
             );
         }

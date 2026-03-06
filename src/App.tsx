@@ -92,8 +92,6 @@ const AppContent = () => {
       // Highlight the game
       if (game.id) {
         setHighlightedGameId(game.id);
-        // Clear highlight after 30 seconds
-        setTimeout(() => setHighlightedGameId(null), 30000);
       }
     }
 
