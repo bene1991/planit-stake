@@ -283,7 +283,7 @@ export function GameListItem({
 
           <div className="flex items-start gap-3 w-full">
             <CollapsibleTrigger asChild>
-              <div className="flex-1 min-w-0 flex items-stretch gap-3">
+              <div className="flex-1 w-full min-w-0 flex items-stretch gap-3">
                 {/* Left Column: Time / Status */}
                 <div className="w-12 flex-shrink-0 flex flex-col items-center justify-center border-r border-white/5 pr-3 py-1">
                   {isLive || isFinished || isHalfTime || isPenalty || isExtraTime ? (
@@ -313,7 +313,7 @@ export function GameListItem({
                             <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
                             <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
                           </Avatar>
-                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate max-w-[120px] sm:max-w-none">{game.homeTeam}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
                           {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
                         </div>
                         {homeGoals.length > 0 && (
@@ -334,7 +334,7 @@ export function GameListItem({
                             <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
                             <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
                           </Avatar>
-                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate max-w-[120px] sm:max-w-none">{game.awayTeam}</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
                           {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
                         </div>
                         {awayGoals.length > 0 && (
@@ -383,8 +383,10 @@ export function GameListItem({
               </div>
             </CollapsibleTrigger>
 
-            {/* Actions */}
-            <div className="flex items-center gap-1 ml-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className={cn(
+              "flex items-center gap-1 ml-2 flex-shrink-0 transition-opacity",
+              !isMobile && "opacity-0 group-hover:opacity-100"
+            )}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
