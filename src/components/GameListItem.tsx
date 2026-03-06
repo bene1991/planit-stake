@@ -281,81 +281,56 @@ export function GameListItem({
             </div>
           )}
 
-          <div className="flex items-start gap-3 w-full">
+          <div className="grid grid-cols-[45px_1fr_auto] items-start gap-2 w-full">
             <CollapsibleTrigger asChild>
-              <div className="flex-1 w-full min-w-0 flex items-stretch gap-3">
+              <div className="grid grid-cols-[45px_1fr] items-stretch gap-2 col-span-2 cursor-pointer min-w-0 w-full">
                 {/* Left Column: Time / Status */}
-                <div className="w-12 flex-shrink-0 flex flex-col items-center justify-center border-r border-white/5 pr-3 py-1">
+                <div className="flex flex-col items-center justify-center border-r border-white/5 pr-2 py-1 min-h-[40px]">
                   {isLive || isFinished || isHalfTime || isPenalty || isExtraTime ? (
                     <>
-                      <span className={cn("text-[11px] font-black uppercase tracking-wider text-center", status.color)}>
+                      <span className={cn("text-[10px] font-black uppercase tracking-tight text-center leading-none", status.color)}>
                         {status.text}
                       </span>
                       {status.subText && (
-                        <span className={cn("text-[10px] font-medium text-center mt-0.5", status.color === 'text-primary' ? 'text-primary' : `${status.color}/80`)}>
+                        <span className={cn("text-[9px] font-bold text-center mt-0.5 leading-none", status.color === 'text-primary' ? 'text-primary' : `${status.color}/80`)}>
                           {status.subText}
                         </span>
                       )}
                     </>
                   ) : (
-                    <span className="text-[11px] font-bold text-muted-foreground">{game.time}</span>
+                    <span className="text-[10px] font-bold text-muted-foreground">{game.time}</span>
                   )}
                 </div>
 
-                {/* Center & Right Column: Teams and Score */}
-                <div className="flex-1 flex flex-col justify-center py-1 overflow-hidden">
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex-1 space-y-2 min-w-0">
-                      {/* Home Team & Scorers */}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5 flex-shrink-0">
-                            <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
-                            <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
-                          {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
-                        </div>
-                        {homeGoals.length > 0 && (
-                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
-                            {homeGoals.map((g, i) => (
-                              <div key={`h-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
-                                <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                {/* Center Column: Teams and Score */}
+                <div className="flex flex-col justify-center py-1 min-w-0 overflow-hidden">
+                  <div className="flex items-center justify-between gap-2 w-full">
+                    <div className="flex-1 space-y-1.5 min-w-0">
+                      {/* Home Team */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
+                          <AvatarImage src={homeTeamLogo} alt={game.homeTeam} />
+                          <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-2 w-2" /></AvatarFallback>
+                        </Avatar>
+                        <span className="text-[11px] sm:text-sm font-medium text-gray-200 truncate">{game.homeTeam}</span>
+                        {homeRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
                       </div>
 
-                      {/* Away Team & Scorers */}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5 flex-shrink-0">
-                            <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
-                            <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-3 w-3" /></AvatarFallback>
-                          </Avatar>
-                          <span className="text-xs sm:text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
-                          {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
-                        </div>
-                        {awayGoals.length > 0 && (
-                          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 ml-7">
-                            {awayGoals.map((g, i) => (
-                              <div key={`a-${i}`} className="text-[8px] text-gray-500 flex items-center gap-0.5">
-                                <span className="opacity-40 text-[7px]">⚽</span> {g.playerName} {g.minute}'
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      {/* Away Team */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Avatar className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0">
+                          <AvatarImage src={awayTeamLogo} alt={game.awayTeam} />
+                          <AvatarFallback className="bg-zinc-800 text-zinc-500 text-[8px]"><Shield className="h-2 w-2" /></AvatarFallback>
+                        </Avatar>
+                        <span className="text-[11px] sm:text-sm font-medium text-gray-200 truncate">{game.awayTeam}</span>
+                        {awayRedCards.length > 0 && <span className="text-red-500 font-bold text-[10px]">🟥</span>}
                       </div>
                     </div>
 
-                    <div className={cn(
-                      "flex flex-col items-end justify-center shrink-0",
-                      isMobile ? "pl-2" : "px-4 pl-0"
-                    )}>
+                    <div className="flex flex-col items-center justify-center shrink-0 ml-1">
                       <div className={cn(
-                        "flex items-center gap-2 font-black tabular-nums bg-[#1A232E]/60 rounded-md border border-white/5 shadow-inner",
-                        isMobile ? "text-lg px-2 py-1" : "text-xl px-3 py-1.5"
+                        "flex items-center gap-1 font-black tabular-nums bg-[#1A232E]/60 rounded border border-white/5 shadow-inner",
+                        isMobile ? "text-base px-1.5 py-0.5" : "text-xl px-3 py-1.5"
                       )}>
                         <span className={cn("transition-colors", hasScore ? "text-emerald-500" : "text-emerald-500/30")}>{hasScore ? homeScore : '0'}</span>
                         <span className="text-gray-700 text-[10px]">:</span>
@@ -364,9 +339,8 @@ export function GameListItem({
                     </div>
                   </div>
 
-                  {/* Live Graphics & Momentum - Moved inside a full-width container below names */}
                   {isLive && (
-                    <div className="w-full mt-4 pb-2">
+                    <div className="w-full mt-3 pb-1">
                       <LiveMatchGraphics
                         dominance={dominance}
                         ldiHistory={ldiHistory}
@@ -383,13 +357,14 @@ export function GameListItem({
               </div>
             </CollapsibleTrigger>
 
+            {/* Right Column: Actions */}
             <div className={cn(
-              "flex items-center gap-1 ml-2 flex-shrink-0 transition-opacity",
+              "flex flex-col items-center justify-center gap-1 transition-opacity",
               !isMobile && "opacity-0 group-hover:opacity-100"
             )}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-white/5">
                     <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -400,8 +375,8 @@ export function GameListItem({
                 </DropdownMenuContent>
               </DropdownMenu>
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-zinc-800">
-                  <ChevronRight className={cn("h-4 w-4 text-gray-500 transition-transform", isExpanded && "rotate-90")} />
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-white/5">
+                  <ChevronRight className={cn("h-3.5 w-3.5 text-gray-500 transition-transform", isExpanded && "rotate-90")} />
                 </Button>
               </CollapsibleTrigger>
             </div>
