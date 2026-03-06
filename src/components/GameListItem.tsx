@@ -339,22 +339,29 @@ export function GameListItem({
                     </div>
                   </div>
 
-                  {/* Goal Events Row */}
+                  {/* Goal Events Info - Attached to Teams Side */}
                   {(homeGoals.length > 0 || awayGoals.length > 0) && (
-                    <div className="flex flex-col gap-0.5 mt-2 px-1 text-[10px] text-gray-400">
+                    <div className="flex flex-col gap-1 mt-3 px-1 border-t border-white/5 pt-2 w-full">
                       {[
                         ...homeGoals.map(g => ({ ...g, isHome: true })),
                         ...awayGoals.map(g => ({ ...g, isHome: false }))
                       ]
                         .sort((a, b) => parseInt(String(a.minute).replace(/\D/g, '') || '0') - parseInt(String(b.minute).replace(/\D/g, '') || '0'))
                         .map((g, i) => (
-                          <span key={`g-${i}`} className="truncate flex items-center justify-start gap-1.5">
-                            <span className="text-gray-500 text-[10px]">⚽</span>
-                            <span className={g.isHome ? "text-gray-300 font-medium" : "text-gray-500"}>
+                          <div key={`g-${i}`} className="flex items-center gap-1.5 text-[10px] w-full text-gray-400">
+                            <span className="text-[9px] opacity-70">⚽</span>
+                            <span className="text-emerald-500/70 font-medium w-6 text-right shrink-0">{g.minute}'</span>
+                            <span className={cn(
+                              "truncate max-w-[120px] sm:max-w-[180px]",
+                              g.isHome ? "text-gray-300" : "text-gray-400"
+                            )}>
                               {g.playerName}
                             </span>
-                            <span className="text-emerald-500/60 ml-0.5">({g.minute}')</span>
-                          </span>
+                            {/* Tiny indicator to match team vertical orientation implicitly */}
+                            <span className={cn("text-[8px] bg-white/5 px-1 py-0.5 rounded flex-shrink-0 ml-auto", g.isHome ? "text-gray-300" : "text-gray-500")}>
+                              {g.isHome ? "CASA" : "FORA"}
+                            </span>
+                          </div>
                         ))}
                     </div>
                   )}
