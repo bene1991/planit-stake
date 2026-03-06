@@ -1224,69 +1224,148 @@ export default function RoboPerformance() {
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex-1 p-6 pt-2">
+                    <div className="flex-1 p-6 pt-2 overflow-y-auto custom-scrollbar">
                         {selectedVariationForChart && (
-                            <div className="h-full w-full bg-[#1e2333]/50 rounded-xl border border-[#2a3142] p-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart
-                                        data={(() => {
-                                            let currentProfit = 0;
-                                            const sortedGames = [...selectedVariationForChart.games]
-                                                .filter(g => !g.is_discarded)
-                                                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                            <div className="space-y-6">
+                                {/* HT Chart */}
+                                <div className="space-y-2">
+                                    <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                                        Método HT (Half Time)
+                                    </h4>
+                                    <div className="h-[250px] w-full bg-[#1e2333]/50 rounded-xl border border-[#2a3142] p-4">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart
+                                                data={(() => {
+                                                    let currentHtProfit = 0;
+                                                    const sortedGames = [...selectedVariationForChart.games]
+                                                        .filter(g => !g.is_discarded && !g.is_ht_discarded)
+                                                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-                                            return [
-                                                { date: 'Início', profit: 0 },
-                                                ...sortedGames.map(g => {
-                                                    currentProfit += (g.totalProfit || 0) / STAKE;
-                                                    return {
-                                                        date: format(parseISO(g.created_at), 'dd/MM HH:mm'),
-                                                        profit: Number(currentProfit.toFixed(2))
-                                                    };
-                                                })
-                                            ];
-                                        })()}
-                                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                    >
-                                        <defs>
-                                            <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
-                                        <XAxis
-                                            dataKey="date"
-                                            stroke="#71717a"
-                                            fontSize={10}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            minTickGap={30}
-                                        />
-                                        <YAxis
-                                            stroke="#71717a"
-                                            fontSize={10}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}u`}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{ backgroundColor: '#1e2333', borderColor: '#2a3142', fontSize: '12px' }}
-                                            itemStyle={{ color: '#60a5fa' }}
-                                            formatter={(value: number) => [`${value > 0 ? '+' : ''}${value} units`, 'Lucro Acumulado']}
-                                        />
-                                        <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="profit"
-                                            stroke="#60a5fa"
-                                            strokeWidth={3}
-                                            fillOpacity={1}
-                                            fill="url(#colorProfit)"
-                                            animationDuration={1000}
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
+                                                    return [
+                                                        { date: 'Início', profit: 0 },
+                                                        ...sortedGames.map(g => {
+                                                            currentHtProfit += (g.htProfit || 0) / STAKE;
+                                                            return {
+                                                                date: format(parseISO(g.created_at), 'dd/MM HH:mm'),
+                                                                profit: Number(currentHtProfit.toFixed(2))
+                                                            };
+                                                        })
+                                                    ];
+                                                })()}
+                                                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                            >
+                                                <defs>
+                                                    <linearGradient id="colorHt" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                                <XAxis
+                                                    dataKey="date"
+                                                    stroke="#71717a"
+                                                    fontSize={10}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    minTickGap={30}
+                                                />
+                                                <YAxis
+                                                    stroke="#71717a"
+                                                    fontSize={10}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}u`}
+                                                />
+                                                <Tooltip
+                                                    contentStyle={{ backgroundColor: '#1e2333', borderColor: '#2a3142', fontSize: '12px' }}
+                                                    itemStyle={{ color: '#10b981' }}
+                                                    formatter={(value: number) => [`${value > 0 ? '+' : ''}${value} units`, 'Lucro Acumulado HT']}
+                                                />
+                                                <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} />
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="profit"
+                                                    stroke="#10b981"
+                                                    strokeWidth={3}
+                                                    fillOpacity={1}
+                                                    fill="url(#colorHt)"
+                                                    animationDuration={1000}
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* O1.5 Chart */}
+                                <div className="space-y-2">
+                                    <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-blue-400" />
+                                        Método Over 1.5
+                                    </h4>
+                                    <div className="h-[250px] w-full bg-[#1e2333]/50 rounded-xl border border-[#2a3142] p-4">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart
+                                                data={(() => {
+                                                    let currentO15Profit = 0;
+                                                    const sortedGames = [...selectedVariationForChart.games]
+                                                        .filter(g => !g.is_discarded && !g.is_o15_discarded)
+                                                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+                                                    return [
+                                                        { date: 'Início', profit: 0 },
+                                                        ...sortedGames.map(g => {
+                                                            currentO15Profit += (g.o15Profit || 0) / STAKE;
+                                                            return {
+                                                                date: format(parseISO(g.created_at), 'dd/MM HH:mm'),
+                                                                profit: Number(currentO15Profit.toFixed(2))
+                                                            };
+                                                        })
+                                                    ];
+                                                })()}
+                                                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                            >
+                                                <defs>
+                                                    <linearGradient id="colorO15" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                                <XAxis
+                                                    dataKey="date"
+                                                    stroke="#71717a"
+                                                    fontSize={10}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    minTickGap={30}
+                                                />
+                                                <YAxis
+                                                    stroke="#71717a"
+                                                    fontSize={10}
+                                                    tickLine={false}
+                                                    axisLine={false}
+                                                    tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}u`}
+                                                />
+                                                <Tooltip
+                                                    contentStyle={{ backgroundColor: '#1e2333', borderColor: '#2a3142', fontSize: '12px' }}
+                                                    itemStyle={{ color: '#3b82f6' }}
+                                                    formatter={(value: number) => [`${value > 0 ? '+' : ''}${value} units`, 'Lucro Acumulado O1.5']}
+                                                />
+                                                <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} />
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="profit"
+                                                    stroke="#3b82f6"
+                                                    strokeWidth={3}
+                                                    fillOpacity={1}
+                                                    fill="url(#colorO15)"
+                                                    animationDuration={1000}
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
