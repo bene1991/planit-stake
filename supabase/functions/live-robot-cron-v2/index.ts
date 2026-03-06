@@ -96,14 +96,14 @@ async function runRobot() {
                 continue;
             }
 
-            // Allow First Half or Halftime
-            if (status !== 'First Half' && status !== 'Halftime') {
+            // Allow First Half, Halftime, or Second Half
+            if (!['First Half', 'Halftime', 'Second Half', '2nd Half', '2H'].some(s => status.includes(s))) {
                 logsBuffer.push({
                     fixture_id: fId,
                     league_id: lId,
                     variation_id: null,
                     stage: 'DISCARDED_PRE_FILTER',
-                    reason: `Status: ${status} (Não está no 1T/Intervalo)`,
+                    reason: `Status: ${status} (Não está no Tempo Regulamentar)`,
                     details
                 });
                 continue;
@@ -264,6 +264,7 @@ async function runRobot() {
                 if (isDuplicate) continue;
 
                 const processedNames = [];
+                const processedNamesForTelegram = [];
 
                 // Insert EACH matched variation separately so deduplication works in the future
                 for (const v of matchedResults) {
@@ -282,12 +283,16 @@ async function runRobot() {
                     const { error: alertErr } = await supabase.from('live_alerts').insert(alertData);
                     if (!alertErr) {
                         processedNames.push(v.name);
+                        if (v.send_telegram !== false) {
+                            processedNamesForTelegram.push(v.name);
+                        }
+
                         logsBuffer.push({
                             fixture_id: fId,
                             league_id: lId,
                             variation_id: v.id,
                             stage: 'ALERT_SENT',
-                            reason: `🚨 ${gameRef} - ALERTA GERADO! (${v.name})`,
+                            reason: `🚨 ${gameRef} - ALERTA GERADO! (${v.name})${v.send_telegram === false ? ' (Telegram desativado)' : ''}`,
                             details: { ...details, stats }
                         });
                     }
@@ -323,10 +328,10 @@ async function runRobot() {
                     }
                 }
 
-                // Send ONE combined Telegram notification for all NEW transformations
-                if (processedNames.length > 0) {
+                // Send ONE combined Telegram notification for all NEW transformations (if notification enabled)
+                if (processedNamesForTelegram.length > 0) {
                     try {
-                        const combinedNames = processedNames.join(', ');
+                        const combinedNames = processedNamesForTelegram.join(', ');
                         const escapedHome = escapeHtml(hTeam);
                         const escapedAway = escapeHtml(aTeam);
                         const escapedLeague = escapeHtml(lName);

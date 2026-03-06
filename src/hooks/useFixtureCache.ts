@@ -153,11 +153,11 @@ export function useFixtureCache(fixtureId: number | string | null | undefined, a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invalidateSignal]);
 
-  // Auto-refresh every 120s for live games (backend has 90s cache)
+  // Auto-refresh every 30s for live games (improves realtime sync to match API pace)
   useEffect(() => {
     if (!fixtureId || !autoFetch || globalPaused) return;
 
-    const REFRESH_INTERVAL = 120_000;
+    const REFRESH_INTERVAL = 30_000;
     const interval = setInterval(() => {
       const currentStatus = statusRef.current;
       if (!currentStatus || !FINISHED_STATUSES.includes(currentStatus)) {

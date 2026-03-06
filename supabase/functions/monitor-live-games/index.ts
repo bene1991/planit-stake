@@ -338,6 +338,9 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
         }
       }
 
+      // Pre-fetch events for detection (at most once per game)
+      const events = await fetchFixtureEvents(apiKey, fixtureId);
+
       // --- Detect GOALS ---
       if (currentHome > prevHome || currentAway > prevAway) {
         console.log(`[Monitor] GOAL detected in ${game.home_team} vs ${game.away_team}: ${currentHome}-${currentAway} (was ${prevHome}-${prevAway})`);
@@ -364,8 +367,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
               const scoreStr = `${currentHome}x${currentAway}`;
 
               // 1. Fetch events and Update live_alerts
-              const liveEvents = await fetchFixtureEvents(apiKey, fixtureId);
-              const goalEvents = liveEvents
+              const goalEvents = events
                 .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
                 .map((e: any) => ({
                   minute: e.time.elapsed,
@@ -425,7 +427,6 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
       }
 
       // --- Detect RED CARDS ---
-      const events = await fetchFixtureEvents(apiKey, fixtureId);
       for (const event of events) {
         if (event.type === 'Card' && event.detail === 'Red Card') {
           const eventKey = `red_${event.time?.elapsed}_${event.player?.name}`;

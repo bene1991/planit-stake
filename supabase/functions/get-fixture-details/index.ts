@@ -12,8 +12,8 @@ const FINISHED_STATUSES = ['FT', 'AET', 'PEN', 'AWD', 'WO', 'CANC', 'ABD', 'INT'
 // Status codes that indicate a live game (cache for 90s)
 const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'SUSP', 'LIVE'];
 
-// Cache TTL in seconds
-const LIVE_CACHE_TTL = 90;
+// Cache TTL in seconds (reduced to 30s to keep UI heavily synced with live actions)
+const LIVE_CACHE_TTL = 30;
 
 interface NormalizedStats {
   home: StatValues;

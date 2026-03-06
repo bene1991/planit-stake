@@ -165,29 +165,7 @@ export function GameListItem({
     return { hasOdd, hasStake, complete: hasOdd && hasStake, partial: (hasOdd || hasStake) && !(hasOdd && hasStake) };
   };
 
-  const homeScore = liveScore?.homeScore ?? game.finalScoreHome ?? null;
-  const awayScore = liveScore?.awayScore ?? game.finalScoreAway ?? null;
-  const hasScore = homeScore !== null;
-
-  const handleResultClick = (methodId: string, result: 'Green' | 'Red' | 'Void') => {
-    const updatedOperations = game.methodOperations.map(op =>
-      op.methodId === methodId ? { ...op, result } : op
-    );
-    onUpdate(game.id, { methodOperations: updatedOperations });
-  };
-
-  const status = useMemo(() => {
-    if (isHalfTime) return { text: 'INT', subText: '45\'', color: 'text-amber-500' };
-    if (isExtraTime) return { text: 'PRR', subText: localElapsed ? `${localElapsed.minutes}'` : '', color: 'text-orange-500' };
-    if (isPenalty) return { text: 'PEN', subText: '', color: 'text-purple-500' };
-    if (isLive && localElapsed) {
-      const period = localElapsed.minutes <= 45 ? '1T' : '2T';
-      return { text: period, subText: `${localElapsed.minutes}'`, color: 'text-primary' };
-    }
-    if (isFinished) return { text: 'FIM', subText: '', color: 'text-muted-foreground' };
-    return { text: game.time, subText: '', color: 'text-muted-foreground' };
-  }, [isHalfTime, isExtraTime, isPenalty, isLive, localElapsed, isFinished, game.time]);
-
+  // Calculate scores prioritizing the most comprehensive data source
   const { homeGoals, awayGoals } = useMemo(() => {
     const goals = { homeGoals: [] as any[], awayGoals: [] as any[] };
 
@@ -221,15 +199,44 @@ export function GameListItem({
       }
     }
 
-    if (homeScore > 0 && goals.homeGoals.length === 0) {
-      goals.homeGoals = Array(homeScore).fill(0).map(() => ({ playerName: 'Gol...', minute: '??', detail: '' }));
+    // Fallback if we have a score but no event details yet
+    const rawHome = liveScore?.homeScore ?? game.finalScoreHome ?? 0;
+    const rawAway = liveScore?.awayScore ?? game.finalScoreAway ?? 0;
+
+    if (rawHome > goals.homeGoals.length) {
+      const missing = rawHome - goals.homeGoals.length;
+      goals.homeGoals = [...goals.homeGoals, ...Array(missing).fill(0).map(() => ({ playerName: 'Gol...', minute: '??', detail: '' }))];
     }
-    if (awayScore > 0 && goals.awayGoals.length === 0) {
-      goals.awayGoals = Array(awayScore).fill(0).map(() => ({ playerName: 'Gol...', minute: '??', detail: '' }));
+    if (rawAway > goals.awayGoals.length) {
+      const missing = rawAway - goals.awayGoals.length;
+      goals.awayGoals = [...goals.awayGoals, ...Array(missing).fill(0).map(() => ({ playerName: 'Gol...', minute: '??', detail: '' }))];
     }
 
     return goals;
-  }, [fixtureCache?.key_events, liveScore?.events, liveScore?.homeTeamId, liveScore?.awayTeamId, game.goalEvents, homeScore, awayScore]);
+  }, [fixtureCache?.key_events, liveScore?.events, liveScore?.homeTeamId, liveScore?.awayTeamId, liveScore?.homeScore, liveScore?.awayScore, game.goalEvents, game.finalScoreHome, game.finalScoreAway]);
+
+  const homeScore = homeGoals.length;
+  const awayScore = awayGoals.length;
+  const hasScore = liveScore?.homeScore !== undefined || game.finalScoreHome !== undefined;
+
+  const handleResultClick = (methodId: string, result: 'Green' | 'Red' | 'Void') => {
+    const updatedOperations = game.methodOperations.map(op =>
+      op.methodId === methodId ? { ...op, result } : op
+    );
+    onUpdate(game.id, { methodOperations: updatedOperations });
+  };
+
+  const status = useMemo(() => {
+    if (isHalfTime) return { text: 'INT', subText: '45\'', color: 'text-amber-500' };
+    if (isExtraTime) return { text: 'PRR', subText: localElapsed ? `${localElapsed.minutes}'` : '', color: 'text-orange-500' };
+    if (isPenalty) return { text: 'PEN', subText: '', color: 'text-purple-500' };
+    if (isLive && localElapsed) {
+      const period = localElapsed.minutes <= 45 ? '1T' : '2T';
+      return { text: period, subText: `${localElapsed.minutes}'`, color: 'text-primary' };
+    }
+    if (isFinished) return { text: 'FIM', subText: '', color: 'text-muted-foreground' };
+    return { text: game.time, subText: '', color: 'text-muted-foreground' };
+  }, [isHalfTime, isExtraTime, isPenalty, isLive, localElapsed, isFinished, game.time]);
 
   const { homeRedCards, awayRedCards } = useMemo(() => {
     if (fixtureCache?.key_events?.length) {

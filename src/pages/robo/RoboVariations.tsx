@@ -39,6 +39,7 @@ interface Variation {
     min_possession: number;
     min_combined_shots: number;
     active: boolean;
+    send_telegram: boolean;
 }
 
 export default function RoboVariations() {
@@ -49,7 +50,8 @@ export default function RoboVariations() {
     const [formData, setFormData] = useState({
         name: '', description: '', min_minute: 15, max_minute: 30,
         require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
-        min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0
+        min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
+        send_telegram: true
     });
 
     useEffect(() => {
@@ -88,12 +90,28 @@ export default function RoboVariations() {
         }
     };
 
+    const toggleTelegram = async (id: string, currentStatus: boolean) => {
+        try {
+            const { error } = await supabase
+                .from('robot_variations')
+                .update({ send_telegram: !currentStatus })
+                .eq('id', id);
+
+            if (error) throw error;
+            setVariations(variations.map(v => v.id === id ? { ...v, send_telegram: !currentStatus } : v));
+            toast.success(`Notificação Telegram ${!currentStatus ? 'ativada' : 'desativada'} com sucesso.`);
+        } catch (error: any) {
+            toast.error('Erro ao alterar notificação', { description: error?.message || 'Erro desconhecido' });
+        }
+    };
+
     const handleOpenCreate = () => {
         setEditingVariation(null);
         setFormData({
             name: '', description: '', min_minute: 15, max_minute: 30,
             require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
-            min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0
+            min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
+            send_telegram: true
         });
         setIsModalOpen(true);
     };
@@ -112,7 +130,8 @@ export default function RoboVariations() {
             min_corners: v.min_corners || 0,
             min_shots_insidebox: v.min_shots_insidebox || 0,
             min_possession: v.min_possession,
-            min_combined_shots: v.min_combined_shots
+            min_combined_shots: v.min_combined_shots,
+            send_telegram: v.send_telegram ?? true
         });
         setIsModalOpen(true);
     };
@@ -181,8 +200,18 @@ export default function RoboVariations() {
                                     <div className="space-y-2"><Label>Minuto Final</Label><Input type="number" required min={0} max={90} value={formData.max_minute} onChange={e => setFormData({ ...formData, max_minute: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
                                 </div>
                                 <div className="flex items-center justify-between p-3 border border-[#2a3142] rounded-md bg-[#1e2333]">
-                                    <Label htmlFor="require-zero" className="cursor-pointer">Exigir Placar 0x0</Label>
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="require-zero" className="cursor-pointer">Exigir Placar 0x0</Label>
+                                        <p className="text-[10px] text-zinc-500">Ignorar jogos que já tiveram gols</p>
+                                    </div>
                                     <Switch id="require-zero" checked={formData.require_score_zero} onCheckedChange={(c) => setFormData({ ...formData, require_score_zero: c })} />
+                                </div>
+                                <div className="flex items-center justify-between p-3 border border-[#2a3142] rounded-md bg-[#1e2333]">
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="send-telegram" className="cursor-pointer">Notificação Telegram</Label>
+                                        <p className="text-[10px] text-zinc-500">Enviar alertas desta variação para o Telegram</p>
+                                    </div>
+                                    <Switch id="send-telegram" checked={formData.send_telegram} onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })} />
                                 </div>
                                 <h4 className="text-sm font-medium text-emerald-400 mt-4 mb-2">Estatísticas Ofensivas da Equipe que Pressiona</h4>
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -221,6 +250,7 @@ export default function RoboVariations() {
                             <TableHead className="text-[#a1a1aa] font-medium text-center whitespace-nowrap">Chutes na Área</TableHead>
                             <TableHead className="text-[#a1a1aa] font-medium text-center">Escanteios</TableHead>
                             <TableHead className="text-[#a1a1aa] font-medium text-center">Posse</TableHead>
+                            <TableHead className="text-[#a1a1aa] font-medium text-center">Telegram</TableHead>
                             <TableHead className="text-[#a1a1aa] font-medium text-center">Status</TableHead>
                             <TableHead className="text-right text-[#a1a1aa] font-medium">Ações</TableHead>
                         </TableRow>
@@ -263,6 +293,12 @@ export default function RoboVariations() {
                                     <TableCell className="text-center text-zinc-300">{v.min_shots_insidebox}</TableCell>
                                     <TableCell className="text-center text-zinc-300">{v.min_corners}</TableCell>
                                     <TableCell className="text-center text-zinc-300">{v.min_possession}%</TableCell>
+                                    <TableCell className="text-center">
+                                        <Switch
+                                            checked={v.send_telegram ?? true}
+                                            onCheckedChange={() => toggleTelegram(v.id, v.send_telegram ?? true)}
+                                        />
+                                    </TableCell>
                                     <TableCell className="text-center">
                                         <Badge variant="outline" className={v.active ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-red-500/10 text-red-500 border-red-500/20"}>
                                             {v.active ? 'Ativa' : 'Inativa'}

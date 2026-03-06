@@ -19,7 +19,7 @@ let lastRateLimit: { limit: number; remaining: number; used: number } | null = n
 
 // Cache TTL configuration (in milliseconds)
 const CACHE_TTL: Record<string, number> = {
-  live: 15 * 1000,
+  live: 5 * 1000,
   fixtures_date: 10 * 60 * 1000,
   fixtures_id: 30 * 1000,
   statistics: 15 * 1000,
@@ -129,9 +129,8 @@ interface ApiFootballRequest {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  console.log('[API-Football] Request received', { method: req.method });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
     const body = await req.json();

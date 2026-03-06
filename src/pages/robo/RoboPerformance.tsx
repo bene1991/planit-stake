@@ -26,7 +26,12 @@ import {
     ShieldX,
     ArrowUpDown,
     Brain,
-    Trophy
+    Trophy,
+    Check,
+    History,
+    Settings2,
+    Trash2,
+    Edit2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +52,10 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import {
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+    ResponsiveContainer, ReferenceLine
+} from 'recharts';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -107,6 +116,8 @@ export default function RoboPerformance() {
     const [showDiscarded, setShowDiscarded] = useState(false);
     const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
     const [selectedVariationForRanking, setSelectedVariationForRanking] = useState<PerformanceRow | null>(null);
+    const [selectedVariationForChart, setSelectedVariationForChart] = useState<PerformanceRow | null>(null);
+    const [isChartModalOpen, setIsChartModalOpen] = useState(false);
     const [isBlocking, setIsBlocking] = useState<string | null>(null);
     const [hideInactive, setHideInactive] = useState(false);
     const [hideEmpty, setHideEmpty] = useState(false);
@@ -886,6 +897,19 @@ export default function RoboPerformance() {
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
+                                                            className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedVariationForChart(row);
+                                                                setIsChartModalOpen(true);
+                                                            }}
+                                                            title="Ver Gráfico de Evolução"
+                                                        >
+                                                            <TrendingUp className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
                                                             className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1187,65 +1211,84 @@ export default function RoboPerformance() {
                 </Table>
             </div>
 
-            {/* Ranking Modal */}
-            <Dialog open={isRankingModalOpen} onOpenChange={setIsRankingModalOpen}>
-                <DialogContent className="bg-[#141824] border-[#2a3142] text-white max-w-2xl max-h-[80vh] overflow-hidden flex flex-col p-0">
+            {/* Equity Curve Chart Modal */}
+            <Dialog open={isChartModalOpen} onOpenChange={setIsChartModalOpen}>
+                <DialogContent className="bg-[#141824] border-[#2a3142] text-white max-w-4xl h-[80vh] flex flex-col p-0">
                     <DialogHeader className="p-6 pb-2">
                         <DialogTitle className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
-                            <Globe className="w-5 h-5 text-primary" />
-                            Ranking de Ligas - {selectedVariationForRanking?.variation_name}
+                            <TrendingUp className="w-5 h-5 text-blue-400" />
+                            Curva de Patrimônio - {selectedVariationForChart?.variation_name}
                         </DialogTitle>
                         <DialogDescription className="text-zinc-500 text-xs">
-                            Lista completa de ligas com desempenho detalhado por método.
+                            Evolução do lucro acumulado (unidades) ao longo do tempo para esta variação.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-y-auto p-6 pt-2 custom-scrollbar">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="border-[#2a3142] hover:bg-transparent">
-                                    <TableHead className="text-[#a1a1aa] font-bold text-[10px] uppercase">Liga</TableHead>
-                                    <TableHead className="text-[#a1a1aa] font-bold text-[10px] uppercase text-center">Lucro HT</TableHead>
-                                    <TableHead className="text-[#a1a1aa] font-bold text-[10px] uppercase text-center">Lucro O1.5</TableHead>
-                                    <TableHead className="text-[#a1a1aa] font-bold text-[10px] uppercase text-center">Ações</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {selectedVariationForRanking && Object.values(selectedVariationForRanking.leagues)
-                                    .sort((a, b) => (b.ht_profit + b.o15_profit) - (a.ht_profit + a.o15_profit))
-                                    .map((l) => (
-                                        <TableRow key={l.league_name} className="border-[#2a3142] hover:bg-[#1e2333]/30 transition-colors">
-                                            <TableCell className="py-3">
-                                                <div className="flex flex-col">
-                                                    <span className="text-xs font-bold text-white leading-none">{l.league_name}</span>
-                                                    <span className="text-[9px] text-zinc-500 mt-1 uppercase">Entradas: {l.total}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-center font-mono py-3">
-                                                <span className={cn("text-xs font-bold", l.ht_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                    {l.ht_profit >= 0 ? '+' : ''}{(l.ht_profit / STAKE).toFixed(1)}u
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-center font-mono py-3">
-                                                <span className={cn("text-xs font-bold", l.o15_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                    {l.o15_profit >= 0 ? '+' : ''}{(l.o15_profit / STAKE).toFixed(1)}u
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-center py-3">
-                                                <button
-                                                    onClick={() => handleBlockLeague(l.league_id, l.league_name)}
-                                                    disabled={isBlocking === l.league_id}
-                                                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[9px] font-black transition-colors border border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                                                    title="Bloquear alertas desta liga"
-                                                >
-                                                    {isBlocking === l.league_id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldX className="w-3 h-3" />}
-                                                    BLOQUEAR
-                                                </button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                            </TableBody>
-                        </Table>
+                    <div className="flex-1 p-6 pt-2">
+                        {selectedVariationForChart && (
+                            <div className="h-full w-full bg-[#1e2333]/50 rounded-xl border border-[#2a3142] p-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart
+                                        data={(() => {
+                                            let currentProfit = 0;
+                                            const sortedGames = [...selectedVariationForChart.games]
+                                                .filter(g => !g.is_discarded)
+                                                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+                                            return [
+                                                { date: 'Início', profit: 0 },
+                                                ...sortedGames.map(g => {
+                                                    currentProfit += (g.totalProfit || 0) / STAKE;
+                                                    return {
+                                                        date: format(parseISO(g.created_at), 'dd/MM HH:mm'),
+                                                        profit: Number(currentProfit.toFixed(2))
+                                                    };
+                                                })
+                                            ];
+                                        })()}
+                                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                    >
+                                        <defs>
+                                            <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                                        <XAxis
+                                            dataKey="date"
+                                            stroke="#71717a"
+                                            fontSize={10}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            minTickGap={30}
+                                        />
+                                        <YAxis
+                                            stroke="#71717a"
+                                            fontSize={10}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}u`}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#1e2333', borderColor: '#2a3142', fontSize: '12px' }}
+                                            itemStyle={{ color: '#60a5fa' }}
+                                            formatter={(value: number) => [`${value > 0 ? '+' : ''}${value} units`, 'Lucro Acumulado']}
+                                        />
+                                        <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="profit"
+                                            stroke="#60a5fa"
+                                            strokeWidth={3}
+                                            fillOpacity={1}
+                                            fill="url(#colorProfit)"
+                                            animationDuration={1000}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>

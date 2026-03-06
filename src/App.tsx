@@ -77,7 +77,12 @@ const AppContent = () => {
     const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
     if (!isPending) return;
 
-    // UI Toast and Sound (Foreground only)
+    // 1. UI Highlight (Always)
+    if (game.id) {
+      setHighlightedGameId(game.id);
+    }
+
+    // 2. UI Toast and Sound (Foreground only)
     if (notifPrefs.enabled) {
       const scoringTeamName = team === 'home' ? hTeam : aTeam;
       const message = `⚽ GOL! ${scoringTeamName} (${minute}')\n${hTeam} ${homeScore} - ${awayScore} ${aTeam}`;
@@ -87,11 +92,6 @@ const AppContent = () => {
 
       if (notifPrefs.soundEnabled) {
         playGoalSound();
-      }
-
-      // Highlight the game
-      if (game.id) {
-        setHighlightedGameId(game.id);
       }
     }
 
