@@ -8,9 +8,10 @@ import RoboBlockedLeagues from './robo/RoboBlockedLeagues';
 import RoboAlerts from './robo/RoboAlerts';
 import RoboPerformance from './robo/RoboPerformance';
 import RoboLogs from './robo/RoboLogs';
+import RoboReports from './robo/RoboReports';
 
 export default function RoboAoVivo() {
-    const [activeTab, setActiveTab] = useState("alerts");
+    const [activeTab, setActiveTab] = useState("reports");
 
     return (
         <div className="flex-1 space-y-4 p-8 pt-6">
@@ -21,10 +22,11 @@ export default function RoboAoVivo() {
                 </div>
             </div>
 
-            <Tabs defaultValue="alerts" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <Tabs defaultValue="reports" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="bg-[#1e2333]">
                     <TabsTrigger value="alerts" className="data-[state=active]:bg-[#2a3142]"><BellRing className="w-4 h-4 mr-2" /> Alertas</TabsTrigger>
                     <TabsTrigger value="performance" className="data-[state=active]:bg-[#2a3142]"><BarChart3 className="w-4 h-4 mr-2" /> Performance</TabsTrigger>
+                    <TabsTrigger value="reports" className="data-[state=active]:bg-[#2a3142]"><BarChart3 className="w-4 h-4 mr-2" /> Relatório</TabsTrigger>
                     <TabsTrigger value="variations" className="data-[state=active]:bg-[#2a3142]"><CopyPlus className="w-4 h-4 mr-2" /> Variações</TabsTrigger>
                     <TabsTrigger value="leagues" className="data-[state=active]:bg-[#2a3142]"><ShieldX className="w-4 h-4 mr-2" /> Ligas Bloqueadas</TabsTrigger>
                     <TabsTrigger value="logs" className="data-[state=active]:bg-[#2a3142]"><ListFilter className="w-4 h-4 mr-2" /> Logs da Edge</TabsTrigger>
@@ -38,6 +40,10 @@ export default function RoboAoVivo() {
 
                         <TabsContent value="performance" className="mt-0 border-0 outline-none">
                             <RoboPerformance />
+                        </TabsContent>
+
+                        <TabsContent value="reports" className="mt-0 border-0 outline-none">
+                            <RoboReports />
                         </TabsContent>
 
                         <TabsContent value="variations" className="mt-0 border-0 outline-none">

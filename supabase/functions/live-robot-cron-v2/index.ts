@@ -298,8 +298,10 @@ async function runRobot() {
                                 away_team: aTeam,
                                 home_team_logo: f.teams.home.logo,
                                 away_team_logo: f.teams.away.logo,
+                                final_score_home: stats.h.goals,
+                                final_score_away: stats.a.goals,
                                 status: 'Live'
-                            }, { onConflict: 'api_fixture_id' });
+                            }, { onConflict: 'owner_id,api_fixture_id' });
 
                         if (gameUpsertErr) {
                             console.error(`[Cron] Error upserting game ${fId}:`, gameUpsertErr);
@@ -319,6 +321,8 @@ async function runRobot() {
                         const escapedAway = escapeHtml(aTeam);
                         const escapedLeague = escapeHtml(lName);
                         const escapedFilters = escapeHtml(combinedNames);
+                        // Search deep link para facilitar a abertura do ticket
+                        const matchUrl = `https://bolsadeaposta.bet.br/b/exchange?q=${encodeURIComponent(hTeam)}`;
 
                         await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
                             method: 'POST',
@@ -328,7 +332,7 @@ async function runRobot() {
                             },
                             body: JSON.stringify({
                                 userId: defaultUserId,
-                                message: `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`,
+                                message: `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%\n\n👉 <a href="${matchUrl}">Abrir na Bolsa de Aposta</a>`,
                                 type: 'alert'
                             }),
                         });

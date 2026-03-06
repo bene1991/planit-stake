@@ -1,14 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import "https://deno.land/x/dotenv@v3.2.0/load.ts";
 
-dotenv.config();
-
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env");
-    process.exit(1);
+    console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+    Deno.exit(1);
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -29,6 +27,8 @@ async function callApiFootball(endpoint: string) {
 async function runBackfill() {
     console.log("Starting backfill for goal_events in live_alerts...");
 
+    // Find all alerts that are resolved (not pending) but have no goal_events
+    // We only care about games where total goals > 0, but to be safe we can check all resolved games or games with green results
     const { data: alerts, error } = await supabase
         .from('live_alerts')
         .select('*')
@@ -47,6 +47,9 @@ async function runBackfill() {
         return;
     }
 
+    console.log(`Found ${alerts.length} alerts to backfill. (These might share fixture IDs)`);
+
+    // Get unique fixture IDs to minimize API calls
     const uniqueFixtureIds = [...new Set(alerts.map(a => a.fixture_id))];
     console.log(`Unique fixtures to fetch: ${uniqueFixtureIds.length}`);
 
@@ -66,7 +69,7 @@ async function runBackfill() {
             }
 
             const totalGoals = (fixtureObj.goals.home || 0) + (fixtureObj.goals.away || 0);
-            
+
             if (totalGoals > 0) {
                 const goalEvents = fixtureObj.events
                     .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
@@ -91,8 +94,9 @@ async function runBackfill() {
                     }
                 }
             }
-            
-            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // Wait 1 second between requests to respect API rate limits
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
         } catch (e) {
             console.error(`Error processing fixture ${fixtureId}:`, e);

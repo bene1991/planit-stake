@@ -139,6 +139,20 @@ serve(async (req) => {
             updates.final_score = finalScore;
             hasUpdate = true;
 
+            // Extract goal events if there are goals
+            if (totalGoals > 0 && fixtureObj.events) {
+              const goalEvents = fixtureObj.events
+                .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
+                .map((e: any) => ({
+                  minute: e.time.elapsed,
+                  team: e.team?.name,
+                  player: e.player?.name,
+                  detail: e.detail
+                }));
+
+              updates.goal_events = goalEvents;
+            }
+
             // Send Telegram notification for Over 1.5 result
             await sendTelegramResult(
               alert.home_team, alert.away_team,

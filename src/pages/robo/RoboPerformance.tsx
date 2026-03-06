@@ -783,11 +783,100 @@ export default function RoboPerformance() {
                                                             className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-400/10"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                // Use the main diagnostic report generator but scoped to this variation
                                                                 setAiVariationId(row.variation_id);
-                                                                // The actual generation will be handled by the main AIDiagnosticReport's onGenerate
-                                                                // which we already updated to use aiVariationId.
-                                                                // We just need to scroll to it or ensure it shows.
+
+                                                                // Trigger generation immediately for this variation
+                                                                const allGames = row.games.filter((g: any) => !g.is_discarded);
+                                                                const totalGreens = row.ht_greens + row.o15_greens;
+                                                                const totalReds = row.ht_reds + row.o15_reds;
+                                                                const totalOps = totalGreens + totalReds;
+
+                                                                const redGames = allGames.filter((g: any) =>
+                                                                    g.goal_ht_result === 'red' || g.over15_result === 'red'
+                                                                );
+
+                                                                const leagueEntries = Object.values(row.leagues) as LeagueStat[];
+
+                                                                const dayMap: Record<string, { greens: number; reds: number; profit: number }> = {};
+                                                                allGames.forEach((g: any) => {
+                                                                    const d = g.created_at ? format(parseISO(g.created_at), 'yyyy-MM-dd') : '';
+                                                                    if (!d) return;
+                                                                    if (!dayMap[d]) dayMap[d] = { greens: 0, reds: 0, profit: 0 };
+                                                                    if (!g.is_ht_discarded && g.goal_ht_result === 'green') dayMap[d].greens++;
+                                                                    if (!g.is_ht_discarded && g.goal_ht_result === 'red') dayMap[d].reds++;
+                                                                    if (!g.is_o15_discarded && g.over15_result === 'green') dayMap[d].greens++;
+                                                                    if (!g.is_o15_discarded && g.over15_result === 'red') dayMap[d].reds++;
+                                                                    dayMap[d].profit += (g.totalProfit || 0) / STAKE;
+                                                                });
+
+                                                                const input: DiagnosticInput = {
+                                                                    tab: 'robo',
+                                                                    variationName: row.variation_name,
+                                                                    metrics: {
+                                                                        total: totalOps,
+                                                                        greens: totalGreens,
+                                                                        reds: totalReds,
+                                                                        winRate: totalOps > 0 ? (totalGreens / totalOps) * 100 : 0,
+                                                                        profit: row.total_profit / STAKE,
+                                                                        avgOdd: 0,
+                                                                    },
+                                                                    methodBreakdown: {
+                                                                        ht: {
+                                                                            greens: row.ht_greens,
+                                                                            reds: row.ht_reds,
+                                                                            profit: row.ht_profit / STAKE,
+                                                                            roi: row.ht_roi,
+                                                                        },
+                                                                        o15: {
+                                                                            greens: row.o15_greens,
+                                                                            reds: row.o15_reds,
+                                                                            profit: row.o15_profit / STAKE,
+                                                                            roi: row.o15_roi,
+                                                                        },
+                                                                    },
+                                                                    redAnalysis: redGames.slice(0, 15).map((g: any) => ({
+                                                                        game: `${g.home_team || '?'} vs ${g.away_team || '?'}`,
+                                                                        league: g.league_name || 'Desconhecida',
+                                                                        score: `HT:${g.goal_ht_result || '-'} O15:${g.over15_result || '-'}`,
+                                                                        criteria: {
+                                                                            ht_result: g.goal_ht_result,
+                                                                            o15_result: g.over15_result,
+                                                                            minute: g.minute_entered,
+                                                                            pressure_score: g.pressure_score,
+                                                                        },
+                                                                        date: g.created_at ? format(parseISO(g.created_at), 'yyyy-MM-dd') : '',
+                                                                    })),
+                                                                    leagueBreakdown: leagueEntries.map(l => ({
+                                                                        name: l.league_name,
+                                                                        total: l.total,
+                                                                        greens: l.ht_greens + l.o15_greens,
+                                                                        reds: l.ht_reds + l.o15_reds,
+                                                                        winRate: (() => {
+                                                                            const t = (l.ht_greens + l.o15_greens + l.ht_reds + l.o15_reds);
+                                                                            return t > 0 ? ((l.ht_greens + l.o15_greens) / t) * 100 : 0;
+                                                                        })(),
+                                                                        profit: l.ht_profit + l.o15_profit,
+                                                                    })),
+                                                                    paramSnapshot: {
+                                                                        min_minute: row.min_minute,
+                                                                        max_minute: row.max_minute,
+                                                                        min_expected_goals: row.min_expected_goals,
+                                                                        min_corners: row.min_corners,
+                                                                        min_shots_insidebox: row.min_shots_insidebox,
+                                                                        min_shots_on_target: row.min_shots_on_target,
+                                                                        min_combined_shots: row.min_combined_shots,
+                                                                        min_possession: row.min_possession,
+                                                                        min_lambda_total: row.min_lambda_total,
+                                                                        min_over15_pre: row.min_over15_pre,
+                                                                    },
+                                                                    oddRangeStats: [],
+                                                                    recentTrend: Object.entries(dayMap)
+                                                                        .sort(([a], [b]) => b.localeCompare(a))
+                                                                        .slice(0, 10)
+                                                                        .map(([date, d]) => ({ date, ...d })),
+                                                                };
+
+                                                                generateReport(input);
                                                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                                             }}
                                                             title="Gerar Diagnóstico AI"
