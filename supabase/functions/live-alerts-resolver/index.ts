@@ -32,7 +32,7 @@ async function sendTelegramResult(
   resultType: 'green' | 'red',
   market: string,
   finalScore: string,
-) {
+): Promise<boolean> {
   try {
     // Get first user with telegram configured
     const { data: settings } = await supabase
@@ -43,7 +43,7 @@ async function sendTelegramResult(
       .limit(1)
       .single();
 
-    if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) return;
+    if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) return true; // Pretend success if not configured yet
 
     const emoji = resultType === 'green' ? '✅' : '❌';
     const label = resultType === 'green' ? 'GREEN' : 'RED';
@@ -51,34 +51,34 @@ async function sendTelegramResult(
 
     const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
 
-    const payload = {
-      action: 'sendAlert',
-      type: resultType === 'green' ? 'success' : 'error',
-      message: msg
-    };
-
     const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        message: msg,
+        title: 'Atenção',
+        type: 'alert'
+      }),
     });
 
     if (!response.ok) {
       console.error('[Resolver] Telegram target function failed:', await response.text());
+      return false;
     }
+    return true;
   } catch (err) {
     console.error('[Resolver] Telegram error:', err);
+    return false;
   }
 }
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
-  // Use Service Role Key for automated background processing to bypass RLS
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
@@ -96,7 +96,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ status: 'ok', resolved: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const uniqueFixtureIds = [...new Set(pendingAlerts.map(a => a.fixture_id))];
+    const uniqueFixtureIds = [...new Set(pendingAlerts.map((a: any) => a.fixture_id))];
     console.log(`Processing ${pendingAlerts.length} alerts across ${uniqueFixtureIds.length} fixtures.`);
 
     let resolvedCount = 0;
@@ -121,16 +121,57 @@ serve(async (req) => {
         const isHtFinished = ['HT', '2H', 'FT', 'AET', 'PEN'].includes(statusStr) || timeElapsed > 45;
         const isMatchFinished = ['FT', 'AET', 'PEN'].includes(statusStr);
 
-        const alertsToUpdate = pendingAlerts.filter(a => a.fixture_id === fixtureId);
+        const alertsToUpdate = pendingAlerts.filter((a: any) => a.fixture_id === fixtureId);
 
         for (const alert of alertsToUpdate) {
           const updates: any = { updated_at: new Date().toISOString() };
           let hasUpdate = false;
 
-          // Sync Final Score and Goal Events if match finished and missing
+          // Resolve Goal HT
+          if (alert.goal_ht_result === 'pending' && isHtFinished) {
+            const result = htGoals > 0 ? 'green' : 'red';
+            const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
+
+            const sent = await sendTelegramResult(
+              supabase,
+              alert.home_team, alert.away_team,
+              alert.league_name || '', alert.variation_name || 'Padrão',
+              result as 'green' | 'red', 'goal_ht', htScore,
+            );
+
+            if (sent) {
+              updates.goal_ht_result = result;
+              hasUpdate = true;
+            } else {
+              console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
+            }
+          }
+
+          // Resolve Over 1.5
+          if (alert.over15_result === 'pending' && isMatchFinished) {
+            const result = totalGoals >= 2 ? 'green' : 'red';
+            const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
+
+            const sent = await sendTelegramResult(
+              supabase,
+              alert.home_team, alert.away_team,
+              alert.league_name || '', alert.variation_name || 'Padrão',
+              result as 'green' | 'red', 'over15', fs,
+            );
+
+            if (sent) {
+              updates.over15_result = result;
+              updates.final_score = fs;
+              hasUpdate = true;
+            } else {
+              console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+            }
+          }
+
+          // Sync Goal Events if match finished and missing (independent of notifications)
           if (isMatchFinished && (!alert.final_score || !alert.goal_events || (Array.isArray(alert.goal_events) && alert.goal_events.length === 0))) {
             const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
-            updates.final_score = fs;
+            if (!updates.final_score) updates.final_score = fs;
 
             if (totalGoals > 0 && fixtureObj.events) {
               const goalEvents = fixtureObj.events
@@ -147,36 +188,6 @@ serve(async (req) => {
               updates.goal_events = [];
             }
             hasUpdate = true;
-          }
-
-          // Resolve Goal HT
-          if (alert.goal_ht_result === 'pending' && isHtFinished) {
-            const result = htGoals > 0 ? 'green' : 'red';
-            updates.goal_ht_result = result;
-            hasUpdate = true;
-
-            const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
-            await sendTelegramResult(
-              supabase,
-              alert.home_team, alert.away_team,
-              alert.league_name || '', alert.variation_name || 'Padrão',
-              result as 'green' | 'red', 'goal_ht', htScore,
-            );
-          }
-
-          // Resolve Over 1.5
-          if (alert.over15_result === 'pending' && isMatchFinished) {
-            const result = totalGoals >= 2 ? 'green' : 'red';
-            updates.over15_result = result;
-            if (!updates.final_score) updates.final_score = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
-            hasUpdate = true;
-
-            await sendTelegramResult(
-              supabase,
-              alert.home_team, alert.away_team,
-              alert.league_name || '', alert.variation_name || 'Padrão',
-              result as 'green' | 'red', 'over15', updates.final_score!,
-            );
           }
 
           if (hasUpdate) {
@@ -199,7 +210,7 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ status: 'ok', resolved: resolvedCount }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Resolver Execution Error:', error);
     return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
   }

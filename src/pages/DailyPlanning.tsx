@@ -16,7 +16,6 @@ import { playGoalSound, playNotificationSound, playRedCardVoice } from "@/utils/
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiPause } from "@/hooks/useApiPause";
-import { autoResolveMethod } from "@/utils/gameResolution";
 
 import { DataMigration } from "@/components/DataMigration";
 import { Button } from "@/components/ui/button";
@@ -103,33 +102,11 @@ export default function DailyPlanning() {
 
   // Callback when score is persisted - update local state immediately
   const handleScorePersisted = useCallback(async (gameId: string, homeScore: number, awayScore: number) => {
-    console.log(`[DailyPlanning] Score persisted for ${gameId}: ${homeScore}-${awayScore}. Attempting smart resolution...`);
-
-    // Auto-resolve any recognizable methods
-    const game = games.find(g => g.id === gameId);
-    if (game && game.methodOperations.length > 0) {
-      let updated = false;
-      const newOperations = game.methodOperations.map(op => {
-        if (!op.result) {
-          const methodName = getMethodName(op.methodId);
-          const result = autoResolveMethod(methodName, homeScore, awayScore);
-          if (result) {
-            updated = true;
-            return { ...op, result };
-          }
-        }
-        return op;
-      });
-
-      if (updated) {
-        await updateGame(gameId, { methodOperations: newOperations });
-        toast.success(`Jogo ${game.homeTeam} resolvido automaticamente!`);
-      }
-    }
+    console.log(`[DailyPlanning] Score persisted for ${gameId}: ${homeScore}-${awayScore}. Manual resolution required by user request.`);
 
     // Refresh games to get the persisted data
     refreshGames();
-  }, [games, refreshGames, updateGame, bankroll.methods]);
+  }, [refreshGames]);
 
   // Helper: check if a game is still pending (has methods without results)
   const isGamePending = useCallback((game: Game) => {
@@ -325,13 +302,9 @@ export default function DailyPlanning() {
     updateStatusesRef.current = updateStatuses;
   }, [games, updateGame, refreshGames]);
 
-  // Auto-update game statuses every 30 seconds
+  // Auto-update game statuses - relies on handleGlobalRefresh triggered by useAutoRefresh hook
   useEffect(() => {
     updateStatusesRef.current();
-    const interval = setInterval(() => {
-      updateStatusesRef.current();
-    }, 30 * 1000);
-    return () => clearInterval(interval);
   }, []);
 
   const handleDelete = useCallback((gameId: string) => {
@@ -396,42 +369,7 @@ export default function DailyPlanning() {
   };
 
   const handleSmartResolveAll = async () => {
-    const finishedWithScores = games.filter(g =>
-      g.status === 'Finished' &&
-      g.finalScoreHome !== undefined &&
-      g.finalScoreAway !== undefined &&
-      g.methodOperations.some(op => !op.result)
-    );
-
-    if (finishedWithScores.length === 0) {
-      toast.info('Nenhum jogo finalizado para resolver.');
-      return;
-    }
-
-    let resolvedCount = 0;
-    for (const game of finishedWithScores) {
-      const newOperations = game.methodOperations.map(op => {
-        if (!op.result) {
-          const methodName = getMethodName(op.methodId);
-          const result = autoResolveMethod(methodName, game.finalScoreHome!, game.finalScoreAway!);
-          if (result) return { ...op, result };
-        }
-        return op;
-      });
-
-      const hasChanges = newOperations.some((op, i) => op.result !== game.methodOperations[i].result);
-      if (hasChanges) {
-        await updateGame(game.id, { methodOperations: newOperations });
-        resolvedCount++;
-      }
-    }
-
-    if (resolvedCount > 0) {
-      toast.success(`${resolvedCount} jogo(s) resolvido(s) com sucesso!`);
-      refreshGames();
-    } else {
-      toast.info('Métodos não reconhecidos para resolução automática.');
-    }
+    toast.info('A resolução automática foi desativada por sua solicitação. Defina os resultados manualmente.');
   };
 
   // Get today's date in Brasilia timezone

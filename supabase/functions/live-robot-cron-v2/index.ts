@@ -39,9 +39,7 @@ async function callApiFootball(endpoint: string, token: string, params: Record<s
 }
 
 
-async function runRobot(authHeader: string) {
-    const authToken = authHeader.replace('Bearer ', '');
-    const supabase = createClient(SUPABASE_URL, authToken);
+async function runRobot() {
     const logsBuffer: any[] = [];
     try {
         // Get default user ID for notifications (first user with telegram configured)
@@ -55,12 +53,12 @@ async function runRobot(authHeader: string) {
         const defaultUserId = defaultUserSettings?.owner_id;
 
         const { data: blockedLeagues } = await supabase.from('robot_blocked_leagues').select('league_id').eq('active', true);
-        const blockedSet = new Set(blockedLeagues?.map(l => String(l.league_id)) || []);
+        const blockedSet = new Set(blockedLeagues?.map((l: any) => String(l.league_id)) || []);
 
         const { data: variations } = await supabase.from('robot_variations').select('*').eq('active', true);
         if (!variations || variations.length === 0) return;
 
-        const apiData = await callApiFootball('fixtures?live=all', authToken);
+        const apiData = await callApiFootball('fixtures?live=all', SUPABASE_SERVICE_ROLE_KEY);
         const fixtures = apiData?.response || [];
 
         // Heartbeat log to show cron is alive
@@ -111,7 +109,7 @@ async function runRobot(authHeader: string) {
                 continue;
             }
 
-            const eligibleVariations = variations.filter(v => tElapsed >= v.min_minute && tElapsed <= v.max_minute);
+            const eligibleVariations = variations.filter((v: any) => tElapsed >= v.min_minute && tElapsed <= v.max_minute);
             if (eligibleVariations.length === 0) {
                 logsBuffer.push({
                     fixture_id: fId,
@@ -124,7 +122,7 @@ async function runRobot(authHeader: string) {
                 continue;
             }
 
-            const apiStatsData = await callApiFootball('fixtures/statistics', authToken, { fixture: fId });
+            const apiStatsData = await callApiFootball('fixtures/statistics', SUPABASE_SERVICE_ROLE_KEY, { fixture: fId });
             const rawStats = apiStatsData?.response || [];
             if (rawStats.length < 2) {
                 logsBuffer.push({
@@ -228,7 +226,7 @@ async function runRobot(authHeader: string) {
                 const needsZeroScore = matchedResults.some(v => v.require_score_zero);
                 if (needsZeroScore) {
                     try {
-                        const freshData = await callApiFootball('fixtures', authToken, { id: fId, ignoreCache: true });
+                        const freshData = await callApiFootball('fixtures', SUPABASE_SERVICE_ROLE_KEY, { id: fId, ignoreCache: true });
                         const freshFixture = freshData?.response?.[0];
                         if (freshFixture) {
                             const freshHomeGoals = freshFixture.goals.home || 0;
@@ -333,8 +331,7 @@ async function runRobot(authHeader: string) {
                         const escapedAway = escapeHtml(aTeam);
                         const escapedLeague = escapeHtml(lName);
                         const escapedFilters = escapeHtml(combinedNames);
-                        // Search deep link para facilitar a abertura do ticket
-                        const matchUrl = `https://bolsadeaposta.bet.br/b/exchange?q=${encodeURIComponent(hTeam)}`;
+
 
                         await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
                             method: 'POST',
@@ -344,7 +341,7 @@ async function runRobot(authHeader: string) {
                             },
                             body: JSON.stringify({
                                 userId: defaultUserId,
-                                message: `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%\n\n👉 <a href="${matchUrl}">Abrir na Bolsa de Aposta</a>`,
+                                message: `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`,
                                 type: 'alert'
                             }),
                         });
@@ -364,7 +361,7 @@ async function runRobot(authHeader: string) {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': authToken.startsWith('Bearer ') ? authToken : `Bearer ${authToken}`,
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
                 },
                 body: JSON.stringify({ fixtures }),
             });
@@ -404,17 +401,9 @@ async function runRobot(authHeader: string) {
     }
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-        return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
-            status: 401,
-            headers: corsHeaders
-        });
-    }
-
-    await runRobot(authHeader);
+    await runRobot();
     return new Response(JSON.stringify({ status: 'ok' }), { headers: corsHeaders });
 });

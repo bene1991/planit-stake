@@ -703,7 +703,7 @@ export function useLiveScores(
       }
     }
 
-    const effectiveInterval = hasLive
+    const effectiveInterval = hasGamesToMonitor
       ? Math.max(userInterval, creditFloor)
       : REFRESH_INTERVAL_IDLE;
 

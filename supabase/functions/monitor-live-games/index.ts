@@ -60,8 +60,9 @@ async function fetchFixtureEvents(apiKey: string, fixtureId: string): Promise<an
   }
 }
 
-async function sendTelegram(botToken: string, chatId: string, message: string) {
+async function sendTelegram(botToken: string, chatId: string, payload: string | { message: string, title?: string, type?: string }) {
   try {
+    const body = typeof payload === 'string' ? { message: payload, type: 'notification' } : payload;
     const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-telegram-notification`, {
       method: 'POST',
       headers: {
@@ -71,8 +72,7 @@ async function sendTelegram(botToken: string, chatId: string, message: string) {
       body: JSON.stringify({
         botToken,
         chatId,
-        message,
-        type: 'notification'
+        ...body
       }),
     });
 
@@ -87,12 +87,12 @@ async function sendTelegram(botToken: string, chatId: string, message: string) {
   }
 }
 
-async function handleMonitor(sb: ReturnType<typeof createClient>, fixtures: any[]) {
+async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtures?: any[]) {
   try {
     const apiKey = Deno.env.get('API_FOOTBALL_KEY');
     if (!apiKey) throw new Error('API_FOOTBALL_KEY not configured');
 
-    console.log('[Monitor] Starting live games monitoring cycle...');
+    console.log(`[Monitor] Starting live games monitoring cycle... (${providedFixtures?.length || 'no'} fixtures provided)`);
 
     // 1. Fetch all games that are Live or Pending (starting within 30 min)
     const now = new Date();
@@ -105,12 +105,12 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, fixtures: any[
       .in('status', ['Live', 'Pending']);
 
     if (gamesErr) {
-      console.error('[Monitor] Error fetching games:', gamesErr);
+      console.error('[Monitor] Error fetching games from DB:', gamesErr);
       throw gamesErr;
     }
 
     if (!games || games.length === 0) {
-      console.log('[Monitor] No live or pending games to monitor.');
+      console.log('[Monitor] No live or pending games to monitor in DB.');
       return new Response(JSON.stringify({ message: 'No games to monitor', monitored: 0 }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -133,12 +133,20 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, fixtures: any[
       });
     }
 
-    console.log(`[Monitor] Found ${activeGames.length} games to monitor`);
+    console.log(`[Monitor] Found ${activeGames.length} games to monitor in DB`);
 
-    // 2. Fetch live fixtures from API-Football (1 API call)
-    const liveData = await fetchLiveFixtures(apiKey);
-    const liveFixtures = liveData.response || [];
-    console.log(`[Monitor] API returned ${liveFixtures.length} live fixtures`);
+    // 2. Determine live fixtures (Use provided or fetch)
+    let liveFixtures: any[] = [];
+    if (providedFixtures && providedFixtures.length > 0) {
+      liveFixtures = providedFixtures;
+      console.log(`[Monitor] Using ${liveFixtures.length} provided fixtures (skipping API fetch)`);
+    } else {
+      console.log('[Monitor] No fixtures provided, fetching from API-Football...');
+      const liveData = await fetchLiveFixtures(apiKey);
+      liveFixtures = liveData.response || [];
+      console.log(`[Monitor] API returned ${liveFixtures.length} live fixtures`);
+    }
+
 
     // Build lookup by fixture ID
     const fixtureMap = new Map<string, any>();
@@ -257,6 +265,75 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, fixtures: any[
             const statusLabel = isFinished ? 'FIM DE JOGO' : 'INTERVALO';
             const msg = `🏁 <b>${statusLabel}</b>\n⚽ ${game.home_team} ${currentHome} - ${currentAway} ${game.away_team}\n🏟 ${game.league}`;
             sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg);
+
+            // Proactively resolve alerts for this fixture to avoid delay
+            try {
+              const { data: alerts } = await sb.from('live_alerts')
+                .select('id, goal_ht_result, over15_result, variation_name, league_name')
+                .eq('fixture_id', fixtureId)
+                .or('goal_ht_result.eq.pending,over15_result.eq.pending');
+
+              if (alerts && alerts.length > 0) {
+                for (const alert of alerts) {
+                  const updates: any = { updated_at: new Date().toISOString() };
+                  let notifySuccess = true; // Default true if no notify needed
+                  let resolveNeeded = false;
+
+                  if (isHalfTime && alert.goal_ht_result === 'pending') {
+                    const res = (currentHome + currentAway > 0) ? 'green' : 'red';
+
+                    const marketLabel = 'Gol no 1T';
+                    const scoreLabel = `${currentHome}x${currentAway} (HT)`;
+                    const emoji = res === 'green' ? '✅' : '❌';
+                    const resultLabel = res === 'green' ? 'GREEN!' : 'RED!';
+                    const msg = `${emoji} <b>ROBÔ: ${resultLabel}</b>\n\n⚽ <b>${game.home_team} vs ${game.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${alert.variation_name}\n🏁 Placar: <b>${scoreLabel}</b>`;
+
+                    const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, {
+                      message: msg,
+                      title: 'Atenção',
+                      type: 'alert'
+                    });
+                    if (sent) {
+                      updates.goal_ht_result = res;
+                      resolveNeeded = true;
+                    } else {
+                      notifySuccess = false;
+                      console.error(`[Monitor] HT Alert Notification failed for ${fixtureId}, will retry in next cycle.`);
+                    }
+                  }
+
+                  if (isFinished && alert.over15_result === 'pending') {
+                    const res = (currentHome + currentAway >= 2) ? 'green' : 'red';
+
+                    const marketLabel = 'Over 1.5';
+                    const scoreLabel = `${currentHome}x${currentAway} (FT)`;
+                    const emoji = res === 'green' ? '✅' : '❌';
+                    const resultLabel = res === 'green' ? 'GREEN!' : 'RED!';
+                    const msg = `${emoji} <b>ROBÔ: ${resultLabel}</b>\n\n⚽ <b>${game.home_team} vs ${game.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${alert.variation_name}\n🏁 Placar: <b>${scoreLabel}</b>`;
+
+                    const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, {
+                      message: msg,
+                      title: 'Atenção',
+                      type: 'alert'
+                    });
+                    if (sent) {
+                      updates.over15_result = res;
+                      resolveNeeded = true;
+                    } else {
+                      notifySuccess = false;
+                      console.error(`[Monitor] FT Alert Notification failed for ${fixtureId}, will retry in next cycle.`);
+                    }
+                  }
+
+                  if (resolveNeeded && notifySuccess) {
+                    await sb.from('live_alerts').update(updates).eq('id', alert.id);
+                    notificationsSent++;
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('[Monitor] Proactive resolution error:', err);
+            }
           }
         }
       }
@@ -446,16 +523,8 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, fixtures: any[
   }
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
-      status: 401,
-      headers: corsHeaders
-    });
-  }
 
   try {
     const { fixtures } = await req.json();
