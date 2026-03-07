@@ -60,31 +60,45 @@ async function fetchFixtureEvents(apiKey: string, fixtureId: string): Promise<an
   }
 }
 
-async function sendTelegram(botToken: string, chatId: string, payload: string | { message: string, title?: string, type?: string }) {
-  try {
-    const body = typeof payload === 'string' ? { message: payload, type: 'notification' } : payload;
-    const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-telegram-notification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-      },
-      body: JSON.stringify({
-        botToken,
-        chatId,
-        ...body
-      }),
-    });
+async function sendTelegram(botToken: string, chatId: string, payload: string | { message: string, title?: string, type?: string }, userId?: string) {
+  const maxRetries = 2;
+  const body = typeof payload === 'string' ? { message: payload, type: 'notification' } : payload;
 
-    if (!response.ok) {
-      console.error('[Monitor] Telegram function errored:', await response.text());
-      return false;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 500;
+        console.log(`[Monitor] Telegram retry ${attempt}/${maxRetries} after ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+
+      const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-telegram-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({
+          botToken,
+          chatId,
+          userId,
+          ...body
+        }),
+      });
+
+      if (response.ok) return true;
+
+      const errorText = await response.text();
+      console.error(`[Monitor] Telegram attempt ${attempt} failed:`, errorText);
+
+      // If unauthorized, don't retry
+      if (response.status === 401) return false;
+
+    } catch (err) {
+      console.error(`[Monitor] Telegram attempt ${attempt} catch error:`, err);
     }
-    return true;
-  } catch (err) {
-    console.error('[Monitor] Telegram send error:', err);
-    return false;
   }
+  return false;
 }
 
 async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtures?: any[]) {
@@ -233,9 +247,15 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
                   if (!sentThisCycle.has(dedupeKey)) {
                     const scoringTeam = currentHome > prevHome ? game.home_team : game.away_team;
                     const msg = `⚽ <b>GOL! (Aba Planejamento)</b>\n\n🎯 <b>${scoringTeam}</b> marca!\n🏟 ${game.home_team} ${currentHome} - ${currentAway} ${game.away_team}\n🏆 ${game.league} | ⏱ ${minute}'`;
-                    if (await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg)) {
+
+                    const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg, game.owner_id);
+                    if (sent) {
                       notificationsSent++;
                       sentThisCycle.add(dedupeKey);
+                    } else {
+                      console.error(`[Monitor] CRITICAL: Failed to deliver goal notification for ${game.home_team} vs ${game.away_team}. Rolling back DB entry.`);
+                      // Rollback so next run can try again
+                      await sb.from('sent_notifications').delete().match({ owner_id: game.owner_id, fixture_id: fId, event_key: goalKey });
                     }
                   }
                 }
@@ -260,9 +280,14 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
                   if (!sentThisCycle.has(dedupeKey)) {
                     const rcTeamName = rc.team?.name || (rc.team?.id === fixture.teams.home.id ? game.home_team : game.away_team);
                     const msg = `🟥 <b>CARTÃO VERMELHO! (Aba Planejamento)</b>\n\n👤 Jogador: ${rc.player?.name || 'Não identificado'}\n🛡 Time: <b>${rcTeamName}</b>\n⚽ Placar: ${game.home_team} ${currentHome} - ${currentAway} ${game.away_team}\n🏆 ${game.league} | ⏱ ${rc.time?.elapsed}'`;
-                    if (await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg)) {
+
+                    const sent = await sendTelegram(telegramSettings.telegram_bot_token, telegramSettings.telegram_chat_id, msg, game.owner_id);
+                    if (sent) {
                       notificationsSent++;
                       sentThisCycle.add(dedupeKey);
+                    } else {
+                      console.error(`[Monitor] CRITICAL: Failed to deliver red card notification for ${game.home_team} vs ${game.away_team}. Rolling back DB entry.`);
+                      await sb.from('sent_notifications').delete().match({ owner_id: game.owner_id, fixture_id: fId, event_key: rcKey });
                     }
                   }
                 }
@@ -320,7 +345,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
 
               if (tSettings && sendTelegramEnabled) {
                 const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Gol no 1T</b>\n🎯 Filtro: ${alert.variation_name}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
-                const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' });
+                const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
                 if (sent) {
                   updates.goal_ht_result = res;
                   resolveNeeded = true;
@@ -343,7 +368,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
 
               if (tSettings && sendTelegramEnabled) {
                 const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Over 1.5</b>\n🎯 Filtro: ${alert.variation_name}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
-                const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' });
+                const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
                 if (sent) {
                   updates.over15_result = res;
                   resolveNeeded = true;

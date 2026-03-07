@@ -2,16 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Check, X, Loader2 } from "lucide-react";
+import { Plus, Check, X, Loader2, Edit3, Power, Send, Hash, MousePointer2, LayoutPanelLeft, Rocket, FlaskConical, Target, Clock, Activity, Zap, Info } from "lucide-react";
 import { toast } from "sonner";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
     Dialog,
     DialogContent,
@@ -23,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Variation {
     id: string;
@@ -84,7 +79,7 @@ export default function RoboVariations() {
 
             if (error) throw error;
             setVariations(variations.map(v => v.id === id ? { ...v, active: !currentStatus } : v));
-            toast.success(`Variação ${!currentStatus ? 'ativada' : 'desativada'} com sucesso.`);
+            toast.success(`Estratégia ${!currentStatus ? 'ativada' : 'desativada'} com sucesso.`);
         } catch (error: any) {
             toast.error('Erro ao alterar status', { description: error?.message || 'Erro desconhecido' });
         }
@@ -99,7 +94,7 @@ export default function RoboVariations() {
 
             if (error) throw error;
             setVariations(variations.map(v => v.id === id ? { ...v, send_telegram: !currentStatus } : v));
-            toast.success(`Notificação Telegram ${!currentStatus ? 'ativada' : 'desativada'} com sucesso.`);
+            toast.success(`Notificação Telegram ${!currentStatus ? 'ativada' : 'desativada'} para esta variação.`);
         } catch (error: any) {
             toast.error('Erro ao alterar notificação', { description: error?.message || 'Erro desconhecido' });
         }
@@ -149,12 +144,12 @@ export default function RoboVariations() {
 
                 if (error) throw error;
                 setVariations(variations.map(v => v.id === editingVariation.id ? data : v));
-                toast.success('Variação atualizada com sucesso!');
+                toast.success('Configurações salvas!');
             } else {
                 const { data, error } = await supabase.from('robot_variations').insert([formData]).select().single();
                 if (error) throw error;
                 setVariations([...variations, data]);
-                toast.success('Variação criada com sucesso!');
+                toast.success('Nova estratégia criada!');
             }
 
             setIsModalOpen(false);
@@ -165,11 +160,28 @@ export default function RoboVariations() {
     };
 
     return (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h3 className="text-xl font-medium text-white">Variações de Análise</h3>
-                    <p className="text-sm text-muted-foreground">Regras e gatilhos que o robô utiliza para encontrar padrões de pressão.</p>
+        <div className="space-y-6">
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center justify-between p-6 rounded-2xl bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/50 shadow-2xl relative overflow-hidden"
+            >
+                {/* Decorative gradients */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -mr-32 -mt-32" />
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -ml-32 -mb-32" />
+
+                <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-1">
+                        <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+                            <Rocket className="w-5 h-5 text-primary animate-pulse" />
+                        </div>
+                        <h3 className="text-2xl font-black text-white tracking-tight uppercase">
+                            Arquitetura de Estratégias
+                        </h3>
+                    </div>
+                    <p className="text-zinc-400 text-sm max-w-md">
+                        Configure os algoritmos de detecção e gatilhos de precisão para o seu robô.
+                    </p>
                 </div>
 
                 <Dialog open={isModalOpen} onOpenChange={(open) => {
@@ -177,157 +189,313 @@ export default function RoboVariations() {
                     if (!open) setEditingVariation(null);
                 }}>
                     <DialogTrigger asChild>
-                        <Button onClick={handleOpenCreate} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
+                        <Button
+                            onClick={handleOpenCreate}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-6 rounded-full shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 uppercase text-xs"
+                        >
                             <Plus className="w-4 h-4 mr-2" /> Nova Variação
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="bg-[#1a1f2d] border-[#2a3142] text-white sm:max-w-[600px] h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>{editingVariation ? 'Editar Variação' : 'Criar Nova Variação'}</DialogTitle>
+
+                    <DialogContent className="bg-[#0f1117] border-zinc-800 text-white sm:max-w-[700px] h-[90vh] overflow-y-auto rounded-3xl backdrop-blur-3xl shadow-2xl">
+                        <DialogHeader className="mb-6">
+                            <DialogTitle className="text-2xl font-black text-white flex items-center gap-3 uppercase tracking-tighter">
+                                <FlaskConical className="w-6 h-6 text-primary" />
+                                {editingVariation ? 'Editar Algoritmo' : 'Projetar Novo Algoritmo'}
+                            </DialogTitle>
                         </DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                            <div className="grid gap-4">
-                                <div className="space-y-2">
-                                    <Label>Nome</Label>
-                                    <Input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="bg-[#1e2333] border-[#2a3142]" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Descrição</Label>
-                                    <Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="bg-[#1e2333] border-[#2a3142]" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2"><Label>Minuto Inicial</Label><Input type="number" required min={0} max={90} value={formData.min_minute} onChange={e => setFormData({ ...formData, min_minute: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                    <div className="space-y-2"><Label>Minuto Final</Label><Input type="number" required min={0} max={90} value={formData.max_minute} onChange={e => setFormData({ ...formData, max_minute: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                </div>
-                                <div className="flex items-center justify-between p-3 border border-[#2a3142] rounded-md bg-[#1e2333]">
-                                    <div className="space-y-0.5">
-                                        <Label htmlFor="require-zero" className="cursor-pointer">Exigir Placar 0x0</Label>
-                                        <p className="text-[10px] text-zinc-500">Ignorar jogos que já tiveram gols</p>
+                        <form onSubmit={handleSubmit} className="space-y-8 mt-2 pb-8">
+                            <div className="grid gap-8">
+                                {/* Basic Info */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-3">
+                                        <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Identificação</Label>
+                                        <Input
+                                            placeholder="Ex: OVER 1.5 HT AGRESSIVO"
+                                            required
+                                            value={formData.name}
+                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                            className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-white focus:ring-primary/20"
+                                        />
                                     </div>
-                                    <Switch id="require-zero" checked={formData.require_score_zero} onCheckedChange={(c) => setFormData({ ...formData, require_score_zero: c })} />
-                                </div>
-                                <div className="flex items-center justify-between p-3 border border-[#2a3142] rounded-md bg-[#1e2333]">
-                                    <div className="space-y-0.5">
-                                        <Label htmlFor="send-telegram" className="cursor-pointer">Notificação Telegram</Label>
-                                        <p className="text-[10px] text-zinc-500">Enviar alertas desta variação para o Telegram</p>
+                                    <div className="space-y-3">
+                                        <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Janela de Tempo (Minutos)</Label>
+                                        <div className="flex items-center gap-3">
+                                            <Input
+                                                type="number"
+                                                required
+                                                min={0}
+                                                max={90}
+                                                value={formData.min_minute}
+                                                onChange={e => setFormData({ ...formData, min_minute: parseInt(e.target.value) })}
+                                                className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-center"
+                                            />
+                                            <span className="text-zinc-700">até</span>
+                                            <Input
+                                                type="number"
+                                                required
+                                                min={0}
+                                                max={90}
+                                                value={formData.max_minute}
+                                                onChange={e => setFormData({ ...formData, max_minute: parseInt(e.target.value) })}
+                                                className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-center"
+                                            />
+                                        </div>
                                     </div>
-                                    <Switch id="send-telegram" checked={formData.send_telegram} onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })} />
-                                </div>
-                                <h4 className="text-sm font-medium text-emerald-400 mt-4 mb-2">Estatísticas Ofensivas da Equipe que Pressiona</h4>
-                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <div className="space-y-2"><Label>Posse Ofensiva (xG)</Label><Input type="number" step="0.1" required min={0} value={formData.min_expected_goals} onChange={e => setFormData({ ...formData, min_expected_goals: parseFloat(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                    <div className="space-y-2"><Label>Escanteios</Label><Input type="number" required min={0} value={formData.min_corners} onChange={e => setFormData({ ...formData, min_corners: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                    <div className="space-y-2"><Label>Chutes Dentro da Área</Label><Input type="number" required min={0} value={formData.min_shots_insidebox} onChange={e => setFormData({ ...formData, min_shots_insidebox: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                    <div className="space-y-2"><Label>Chutes Totais</Label><Input type="number" required min={0} value={formData.min_shots} onChange={e => setFormData({ ...formData, min_shots: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                    <div className="space-y-2"><Label>Chutes no Alvo</Label><Input type="number" required min={0} value={formData.min_shots_on_target} onChange={e => setFormData({ ...formData, min_shots_on_target: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
-                                    <div className="space-y-2"><Label>Posse %</Label><Input type="number" required min={0} max={100} value={formData.min_possession} onChange={e => setFormData({ ...formData, min_possession: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
                                 </div>
 
-                                <h4 className="text-sm font-medium text-blue-400 mt-4 mb-2">Estatísticas do Jogo (Soma das Duas Equipes)</h4>
-                                <div className="grid grid-cols-1 gap-4">
-                                    <div className="space-y-2"><Label>Mínimo de Chutes Somados no Jogo</Label><Input type="number" required min={0} value={formData.min_combined_shots} onChange={e => setFormData({ ...formData, min_combined_shots: parseInt(e.target.value) })} className="bg-[#1e2333] border-[#2a3142]" /></div>
+                                <div className="space-y-3">
+                                    <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Resumo Operacional</Label>
+                                    <Textarea
+                                        placeholder="Descreva a lógica por trás desta estratégia..."
+                                        value={formData.description}
+                                        onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                        className="bg-zinc-950/50 border-zinc-800 rounded-xl min-h-[80px]"
+                                    />
+                                </div>
+
+                                {/* Toggles */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-lg bg-blue-500/10">
+                                                <Target className="w-4 h-4 text-blue-400" />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <Label htmlFor="require-zero" className="cursor-pointer text-sm font-bold">Apenas 0x0</Label>
+                                                <p className="text-[10px] text-zinc-500">Filtrar apenas jogos sem gols</p>
+                                            </div>
+                                        </div>
+                                        <Switch
+                                            id="require-zero"
+                                            checked={formData.require_score_zero}
+                                            onCheckedChange={(c) => setFormData({ ...formData, require_score_zero: c })}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-lg bg-emerald-500/10">
+                                                <Send className="w-4 h-4 text-emerald-400" />
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                <Label htmlFor="send-telegram-form" className="cursor-pointer text-sm font-bold">Telegram</Label>
+                                                <p className="text-[10px] text-zinc-500">Notificar canais ativos</p>
+                                            </div>
+                                        </div>
+                                        <Switch
+                                            id="send-telegram-form"
+                                            checked={formData.send_telegram}
+                                            onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Technical Specs */}
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-2">
+                                        <Activity className="w-4 h-4 text-primary" />
+                                        <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Métricas de Pressão (Gatilhos)</h4>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <StatField label="Min xG Pressionante" value={formData.min_expected_goals} icon={<Zap className="w-3 h-3" />}
+                                            onChange={v => setFormData({ ...formData, min_expected_goals: parseFloat(v) })} />
+
+                                        <StatField label="Escanteios" value={formData.min_corners} icon={<LayoutPanelLeft className="w-3 h-3" />}
+                                            onChange={v => setFormData({ ...formData, min_corners: parseInt(v) })} />
+
+                                        <StatField label="Chutes na Área" value={formData.min_shots_insidebox} icon={<Target className="w-3 h-3" />}
+                                            onChange={v => setFormData({ ...formData, min_shots_insidebox: parseInt(v) })} />
+
+                                        <StatField label="Chutes Totais" value={formData.min_shots} icon={<Activity className="w-3 h-3" />}
+                                            onChange={v => setFormData({ ...formData, min_shots: parseInt(v) })} />
+
+                                        <StatField label="No Alvo" value={formData.min_shots_on_target} icon={<MousePointer2 className="w-3 h-3" />}
+                                            onChange={v => setFormData({ ...formData, min_shots_on_target: parseInt(v) })} />
+
+                                        <StatField label="Posse Mínima %" value={formData.min_possession} icon={<Hash className="w-3 h-3" />}
+                                            onChange={v => setFormData({ ...formData, min_possession: parseInt(v) })} />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2">
+                                        <Activity className="w-4 h-4 text-blue-400" />
+                                        <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Dinâmica Global do Jogo</h4>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800">
+                                        <StatField label="Volume de Chutes Somados (Equipe A + Equipe B)" value={formData.min_combined_shots} wide
+                                            onChange={v => setFormData({ ...formData, min_combined_shots: parseInt(v) })} />
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex justify-end pt-4">
-                                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">
-                                    {editingVariation ? 'Atualizar Variação' : 'Salvar Variação'}
+
+                            <div className="flex gap-3 justify-end pt-6">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="rounded-full px-8 text-zinc-500 hover:text-white"
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-10 rounded-full shadow-xl shadow-primary/10"
+                                >
+                                    {editingVariation ? 'Salvar Configurações' : 'Iniciar Estratégia'}
                                 </Button>
                             </div>
                         </form>
                     </DialogContent>
                 </Dialog>
-            </div>
+            </motion.div>
 
-            <div className="rounded-md border border-[#2a3142] overflow-hidden">
-                <Table>
-                    <TableHeader className="bg-[#1e2333]/50">
-                        <TableRow className="border-[#2a3142] hover:bg-transparent">
-                            <TableHead className="text-[#a1a1aa] font-medium">Nome</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium">Minuto</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center">Placar 0x0</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center">Chutes</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center whitespace-nowrap">xG (Ofensivo)</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center whitespace-nowrap">Chutes na Área</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center">Escanteios</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center">Posse</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center">Telegram</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium text-center">Status</TableHead>
-                            <TableHead className="text-right text-[#a1a1aa] font-medium">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody className="bg-[#1a1f2d]">
-                        {loading ? (
-                            <TableRow className="border-[#2a3142]">
-                                <TableCell colSpan={11} className="h-24 text-center">
-                                    <div className="flex items-center justify-center text-muted-foreground">
-                                        <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                                        Carregando variações...
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ) : variations.length === 0 ? (
-                            <TableRow className="border-[#2a3142]">
-                                <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
-                                    Nenhuma variação encontrada.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            variations.map((v) => (
-                                <TableRow key={v.id} className="border-[#2a3142] hover:bg-[#1e2333]/50 transition-colors group">
-                                    <TableCell className="font-medium text-white">
-                                        {v.name}
-                                        <div className="text-xs text-muted-foreground font-normal max-w-xs truncate" title={v.description}>
-                                            {v.description}
+            {loading ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                    <Loader2 className="w-12 h-12 animate-spin text-primary opacity-50" />
+                    <p className="mt-4 text-zinc-600 font-bold uppercase tracking-widest text-[10px]">Carregando Arquivos...</p>
+                </div>
+            ) : variations.length === 0 ? (
+                <div className="py-20 flex flex-col items-center justify-center border-2 border-dashed border-zinc-800 rounded-3xl">
+                    <FlaskConical className="w-12 h-12 text-zinc-800 mb-4" />
+                    <p className="text-zinc-600 font-bold uppercase tracking-[0.2em] text-xs">Nenhum protocolo ativo</p>
+                    <Button onClick={handleOpenCreate} variant="link" className="text-primary mt-2">Clique para projetar seu primeiro alerta</Button>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <AnimatePresence mode="popLayout">
+                        {variations.map((v, idx) => (
+                            <motion.div
+                                key={v.id}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: idx * 0.05 }}
+                                className="relative group"
+                            >
+                                <Card className={cn(
+                                    "relative bg-zinc-900/40 backdrop-blur-xl border-zinc-800/80 transition-all duration-500 overflow-hidden flex flex-col h-full",
+                                    "hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/5",
+                                    !v.active && "opacity-40 grayscale pointer-events-none"
+                                )}>
+                                    {/* Glass reflection */}
+                                    <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+                                    <div className="p-5 flex justify-between items-start border-b border-zinc-800/50">
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2">
+                                                <div className={cn(
+                                                    "w-2 h-2 rounded-full animate-pulse",
+                                                    v.active ? "bg-emerald-500" : "bg-zinc-700"
+                                                )} />
+                                                <h4 className="font-black text-white uppercase tracking-tighter text-xl leading-none">
+                                                    {v.name}
+                                                </h4>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-1 text-[10px] text-zinc-500 font-mono uppercase bg-zinc-950/50 px-2 py-0.5 rounded-full border border-zinc-800">
+                                                    <Clock className="w-3 h-3 text-primary" />
+                                                    {v.min_minute}-{v.max_minute}min
+                                                </div>
+                                                {v.require_score_zero && (
+                                                    <div className="text-[10px] text-blue-400 font-black uppercase bg-blue-500/5 px-2 py-0.5 rounded-full border border-blue-500/20">
+                                                        SCORE 0x0
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </TableCell>
-                                    <TableCell className="text-zinc-300">{v.min_minute}' - {v.max_minute}'</TableCell>
-                                    <TableCell className="text-center">
-                                        {v.require_score_zero ? (
-                                            <Check className="w-4 h-4 mx-auto text-emerald-500" />
-                                        ) : (
-                                            <X className="w-4 h-4 mx-auto text-zinc-500" />
+                                        <div className="flex items-center">
+                                            <Switch
+                                                checked={v.active}
+                                                onCheckedChange={() => toggleActive(v.id, v.active)}
+                                                className="scale-90 data-[state=checked]:bg-emerald-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="p-5 flex-1 space-y-6">
+                                        {v.description && (
+                                            <div className="text-[11px] text-zinc-500 leading-relaxed italic bg-zinc-950/20 p-3 rounded-xl border border-zinc-800/30">
+                                                "{v.description}"
+                                            </div>
                                         )}
-                                    </TableCell>
-                                    <TableCell className="text-center text-emerald-400 font-bold">{v.min_shots}</TableCell>
-                                    <TableCell className="text-center text-zinc-300">{v.min_expected_goals}</TableCell>
-                                    <TableCell className="text-center text-zinc-300">{v.min_shots_insidebox}</TableCell>
-                                    <TableCell className="text-center text-zinc-300">{v.min_corners}</TableCell>
-                                    <TableCell className="text-center text-zinc-300">{v.min_possession}%</TableCell>
-                                    <TableCell className="text-center">
-                                        <Switch
-                                            checked={v.send_telegram ?? true}
-                                            onCheckedChange={() => toggleTelegram(v.id, v.send_telegram ?? true)}
-                                        />
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        <Badge variant="outline" className={v.active ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-red-500/10 text-red-500 border-red-500/20"}>
-                                            {v.active ? 'Ativa' : 'Inativa'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right flex justify-end gap-2">
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <MetricItem label="Min xG" value={v.min_expected_goals} color="text-emerald-500" />
+                                            <MetricItem label="Chutes" value={v.min_shots} color="text-white" />
+                                            <MetricItem label="Cantos" value={v.min_corners} color="text-blue-400" />
+                                            <MetricItem label="Posse" value={`${v.min_possession}%`} color="text-zinc-300" />
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-zinc-950/40 border-t border-zinc-800/50 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 group/tip" title="Notificações via Telegram">
+                                                <Send className={cn("w-3.5 h-3.5 transition-colors", v.send_telegram ? "text-blue-400" : "text-zinc-800")} />
+                                                <Switch
+                                                    checked={v.send_telegram ?? true}
+                                                    onCheckedChange={() => toggleTelegram(v.id, v.send_telegram ?? true)}
+                                                    className="h-3.5 scale-75 data-[state=checked]:bg-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+
                                         <Button
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => handleOpenEdit(v)}
-                                            className="text-zinc-400 hover:text-white hover:bg-white/10"
+                                            className="h-8 px-4 rounded-full text-[10px] font-black text-zinc-400 hover:text-white hover:bg-white/5 uppercase tracking-widest flex items-center gap-2"
                                         >
-                                            Editar
+                                            <Edit3 className="w-3 h-3" /> Configurar
                                         </Button>
+                                    </div>
+                                </Card>
+
+                                {!v.active && (
+                                    <div className="absolute inset-x-0 bottom-4 flex justify-center z-20">
                                         <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => toggleActive(v.id, v.active)}
-                                            className={v.active ? "text-red-400 hover:text-red-300 hover:bg-red-500/10" : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"}
+                                            variant="secondary"
+                                            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 border border-emerald-500/20 font-black rounded-full"
+                                            onClick={() => toggleActive(v.id, false)}
                                         >
-                                            {v.active ? 'Desativar' : 'Ativar'}
+                                            REATIVAR SISTEMA
                                         </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+                                    </div>
+                                )}
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+                </div>
+            )}
         </div>
     );
+}
+
+function MetricItem({ label, value, color }: { label: string, value: string | number, color: string }) {
+    return (
+        <div className="bg-zinc-950/40 p-3 rounded-2xl border border-zinc-800/30 flex flex-col items-center justify-center transition-all hover:bg-zinc-900/50">
+            <span className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-1">{label}</span>
+            <span className={cn("text-base font-black font-mono tracking-tighter", color)}>{value}</span>
+        </div>
+    )
+}
+
+function StatField({ label, value, icon, onChange, wide = false }: { label: string, value: number, icon?: React.ReactNode, onChange: (v: string) => void, wide?: boolean }) {
+    return (
+        <div className={cn("space-y-2", wide && "w-full")}>
+            <div className="flex items-center gap-2 text-zinc-500">
+                {icon}
+                <Label className="text-[9px] font-black uppercase tracking-widest">{label}</Label>
+            </div>
+            <Input
+                type="number"
+                step={label.includes('xG') ? "0.1" : "1"}
+                required
+                min={0}
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                className="bg-zinc-950/50 border-zinc-800 rounded-xl py-5 focus:ring-primary/20 text-white font-mono"
+            />
+        </div>
+    )
 }

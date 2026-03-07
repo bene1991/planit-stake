@@ -31,7 +31,11 @@ import {
     History,
     Settings2,
     Trash2,
-    Edit2
+    Edit2,
+    Zap,
+    Filter,
+    LayoutGrid,
+    Table as TableIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +64,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { motion, AnimatePresence } from "framer-motion";
+import { Input } from "@/components/ui/input";
 
 interface LeagueStat {
     league_name: string;
@@ -77,10 +83,12 @@ interface PerformanceRow {
     variation_id: string;
     variation_name: string;
     total_alerts: number;
+    ht_total_stakes: number;
     ht_greens: number;
     ht_reds: number;
     ht_profit: number;
     ht_roi: number;
+    o15_total_stakes: number;
     o15_greens: number;
     o15_reds: number;
     o15_profit: number;
@@ -111,6 +119,7 @@ export default function RoboPerformance() {
     const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [editingAlertId, setEditingAlertId] = useState<string | null>(null);
+    const [editingAlert, setEditingAlert] = useState<any>(null);
     const [editHtOdd, setEditHtOdd] = useState<string>("");
     const [editO15Odd, setEditO15Odd] = useState<string>("");
     const [showDiscarded, setShowDiscarded] = useState(false);
@@ -123,12 +132,15 @@ export default function RoboPerformance() {
     const [hideEmpty, setHideEmpty] = useState(false);
     const [sortField, setSortField] = useState<keyof PerformanceRow | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+    const [isByMatch, setIsByMatch] = useState(false);
+    const [onlyActive, setOnlyActive] = useState(false);
+    const [matchStats, setMatchStats] = useState<any[]>([]);
     const [aiVariationId, setAiVariationId] = useState<string | null>(null);
     const { report: aiReport, loading: aiLoading, error: aiError, generateReport, clearReport } = useAIDiagnosticReport();
 
     useEffect(() => {
         fetchPerformance();
-    }, []);
+    }, [onlyActive]);
 
     const fetchPerformance = async () => {
         try {
@@ -156,10 +168,12 @@ export default function RoboPerformance() {
                         variation_name: v.name,
                         active: v.active ?? true,
                         total_alerts: 0,
+                        ht_total_stakes: 0,
                         ht_greens: 0,
                         ht_reds: 0,
                         ht_profit: 0,
                         ht_roi: 0,
+                        o15_total_stakes: 0,
                         o15_greens: 0,
                         o15_reds: 0,
                         o15_profit: 0,
@@ -167,6 +181,8 @@ export default function RoboPerformance() {
                         total_profit: 0,
                         games: [],
                         leagues: {},
+                        min_minute: v.min_minute,
+                        max_minute: v.max_minute,
                         min_expected_goals: v.min_expected_goals,
                         min_corners: v.min_corners,
                         min_shots_insidebox: v.min_shots_insidebox,
@@ -183,7 +199,6 @@ export default function RoboPerformance() {
                     if (grouped[variationId]) {
                         const row = grouped[variationId];
 
-                        // Calculate individual profit for the game card display
                         let htProfit = 0;
                         let o15Profit = 0;
 
@@ -200,13 +215,12 @@ export default function RoboPerformance() {
                             totalProfit: (alert.is_ht_discarded ? 0 : htProfit) + (alert.is_o15_discarded ? 0 : o15Profit)
                         });
 
-                        // Only include non-discarded alerts in the main performance stats
                         if (!alert.is_discarded) {
-
-                            // HT calculation
                             if (!alert.is_ht_discarded) {
+                                row.ht_total_stakes++;
+
                                 if (alert.goal_ht_result === 'green' || alert.goal_ht_result === 'red') {
-                                    row.total_alerts++; // Increment total alerts if at least one method is active
+                                    row.total_alerts++;
                                 }
 
                                 if (alert.goal_ht_result === 'green') {
@@ -218,11 +232,10 @@ export default function RoboPerformance() {
                                 }
                             }
 
-                            // O1.5 calculation
                             if (!alert.is_o15_discarded) {
-                                if (!alert.is_ht_discarded && (alert.over15_result === 'green' || alert.over15_result === 'red')) {
-                                    // already incremented? no, total_alerts should count the alert if ANY method is active
-                                } else if (alert.is_ht_discarded && (alert.over15_result === 'green' || alert.over15_result === 'red')) {
+                                row.o15_total_stakes++;
+
+                                if (alert.is_ht_discarded && (alert.over15_result === 'green' || alert.over15_result === 'red')) {
                                     row.total_alerts++;
                                 }
 
@@ -270,6 +283,76 @@ export default function RoboPerformance() {
                     }
                 });
 
+                const groupedByMatch: Record<string, any> = {};
+
+                alertsData.forEach((alert: any) => {
+                    const fixtureId = alert.api_fixture_id || alert.id;
+                    const variation = variationsData?.find(v => v.id === alert.variation_id);
+
+                    // Filter by active robots if enabled
+                    if (onlyActive && variation && !variation.active) return;
+                    if (!variation) return; // Ignore alerts from deleted variations
+
+                    if (!groupedByMatch[fixtureId]) {
+                        groupedByMatch[fixtureId] = {
+                            fixture_id: fixtureId,
+                            home_team: alert.home_team,
+                            away_team: alert.away_team,
+                            league_name: alert.league_name,
+                            league_id: alert.league_id,
+                            created_at: alert.created_at,
+                            final_score: alert.final_score,
+                            minute: alert.minute,
+                            total_profit: 0,
+                            alerts: [],
+                            result_summary: {
+                                ht_greens: 0,
+                                ht_reds: 0,
+                                o15_greens: 0,
+                                o15_reds: 0
+                            }
+                        };
+                    }
+
+                    const match = groupedByMatch[fixtureId];
+                    let htProfit = 0;
+                    let o15Profit = 0;
+
+                    if (alert.goal_ht_result === 'green') htProfit += ((alert.custom_odd_ht || DEFAULT_ODD_HT) - 1) * STAKE;
+                    else if (alert.goal_ht_result === 'red') htProfit -= STAKE;
+
+                    if (alert.over15_result === 'green') o15Profit += ((alert.custom_odd_o15 || DEFAULT_ODD_O15) - 1) * STAKE;
+                    else if (alert.over15_result === 'red') o15Profit -= STAKE;
+
+                    const totalAlertProfit = (alert.is_ht_discarded ? 0 : htProfit) + (alert.is_o15_discarded ? 0 : o15Profit);
+
+                    match.alerts.push({
+                        ...alert,
+                        variation_name: variation.name,
+                        htProfit,
+                        o15Profit,
+                        totalProfit: totalAlertProfit
+                    });
+
+                    if (!alert.is_discarded) {
+                        match.total_profit += totalAlertProfit;
+                        if (!alert.is_ht_discarded) {
+                            if (alert.goal_ht_result === 'green') match.result_summary.ht_greens++;
+                            if (alert.goal_ht_result === 'red') match.result_summary.ht_reds++;
+                        }
+                        if (!alert.is_o15_discarded) {
+                            if (alert.over15_result === 'green') match.result_summary.o15_greens++;
+                            if (alert.over15_result === 'red') match.result_summary.o15_reds++;
+                        }
+                    }
+                });
+
+                const finalMatchStats = Object.values(groupedByMatch).sort((a, b) =>
+                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
+
+                setMatchStats(finalMatchStats);
+
                 const finalStats = Object.values(grouped).map(row => {
                     const htInvested = (row.ht_greens + row.ht_reds) * STAKE;
                     const o15Invested = (row.o15_greens + row.o15_reds) * STAKE;
@@ -281,11 +364,7 @@ export default function RoboPerformance() {
                 });
 
                 setStats(finalStats.sort((a, b) => {
-                    // Always put inactive variations at the end
-                    if (a.active !== b.active) {
-                        return a.active ? -1 : 1;
-                    }
-                    // For same active status, sort by profit
+                    if (a.active !== b.active) return a.active ? -1 : 1;
                     return b.total_profit - a.total_profit;
                 }));
             }
@@ -298,7 +377,6 @@ export default function RoboPerformance() {
 
     const handleDiscard = async (alertId: string) => {
         try {
-            // First get the fixture_id to sync across all variations
             const { data: alertData } = await supabase
                 .from('live_alerts')
                 .select('fixture_id')
@@ -330,7 +408,6 @@ export default function RoboPerformance() {
                 return;
             }
 
-            // Get fixture_id to sync odds across all variations
             const { data: alertData } = await supabase
                 .from('live_alerts')
                 .select('fixture_id')
@@ -358,13 +435,13 @@ export default function RoboPerformance() {
 
     const startEditing = (alert: any) => {
         setEditingAlertId(alert.id);
+        setEditingAlert(alert);
         setEditHtOdd((alert.custom_odd_ht || DEFAULT_ODD_HT).toString());
         setEditO15Odd((alert.custom_odd_o15 || DEFAULT_ODD_O15).toString());
     };
 
     const handleRestore = async (alertId: string) => {
         try {
-            // Get fixture_id to sync restore across all variations
             const { data: alertData } = await supabase
                 .from('live_alerts')
                 .select('fixture_id')
@@ -392,7 +469,6 @@ export default function RoboPerformance() {
 
     const handleToggleMethodDiscard = async (alertId: string, method: 'ht' | 'o15', currentState: boolean) => {
         try {
-            // Get fixture_id to sync method toggle across all variations
             const { data: alertData } = await supabase
                 .from('live_alerts')
                 .select('fixture_id')
@@ -474,11 +550,6 @@ export default function RoboPerformance() {
         return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
     };
 
-    const formatGameMinute = (minute: number | undefined) => {
-        if (minute === undefined || minute === null) return '';
-        return ` • ${minute}'`;
-    };
-
     const handleSort = (field: keyof PerformanceRow) => {
         if (sortField === field) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -493,38 +564,78 @@ export default function RoboPerformance() {
         return <ArrowUpDown className={cn("w-3 h-3 ml-1 inline-block", sortField === field ? "text-primary opacity-100" : "opacity-20")} />;
     };
 
+    const filteredStats = stats
+        .filter(row => {
+            if (hideInactive && !row.active) return false;
+            if (hideEmpty && row.total_alerts === 0) return false;
+            return true;
+        })
+        .sort((a, b) => {
+            if (!sortField) return (a.active === b.active) ? (b.total_profit - a.total_profit) : (a.active ? -1 : 1);
+            const aValue = a[sortField];
+            const bValue = b[sortField];
+
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+                return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+            }
+
+            const valA = (aValue as number) || 0;
+            const valB = (bValue as number) || 0;
+            return sortDirection === 'asc' ? valA - valB : valB - valA;
+        });
+
     return (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center text-white">
-                <div>
-                    <h3 className="text-xl font-medium flex items-center">
-                        <BarChart3 className="w-5 h-5 mr-2 text-primary" />
-                        Desempenho por Método
-                    </h3>
-                    <p className="text-sm text-zinc-500">Lucros e ROI calculados separadamente por HT (@2.0) e Over 1.5 (@1.60).</p>
-                </div>
+        <div className="space-y-6 pb-20">
+            {/* HUD Header - Glassmorphism & Neon */}
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/40 backdrop-blur-xl p-6 md:p-8"
+            >
+                {/* Background Glows */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-violet-600/10 blur-[100px] -z-10" />
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-600/10 blur-[100px] -z-10" />
 
-                <div className="flex gap-4 items-center bg-[#1e2333] px-4 py-2 rounded-lg border border-[#2a3142]">
-                    <div className="flex items-center space-x-2">
-                        <Switch
-                            id="hide-inactive"
-                            checked={hideInactive}
-                            onCheckedChange={setHideInactive}
-                        />
-                        <Label htmlFor="hide-inactive" className="text-xs font-bold text-zinc-400 cursor-pointer">OCULTAR INATIVOS</Label>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-3 rounded-2xl bg-primary/20 border border-primary/30 shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]">
+                                <BarChart3 className="w-6 h-6 text-primary animate-pulse" />
+                            </div>
+                            <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-white via-white/90 to-white/70 tracking-tight">
+                                PERFORMANCE <span className="text-primary italic">PRO MAX</span>
+                            </h1>
+                        </div>
+                        <p className="text-zinc-400 font-medium max-w-lg leading-relaxed">
+                            Métricas avançadas de inteligência artificial aplicadas às estratégias do robô em tempo real.
+                        </p>
                     </div>
-                    <div className="flex items-center space-x-2 border-l border-zinc-700 pl-4">
-                        <Switch
-                            id="hide-empty"
-                            checked={hideEmpty}
-                            onCheckedChange={setHideEmpty}
-                        />
-                        <Label htmlFor="hide-empty" className="text-xs font-bold text-zinc-400 cursor-pointer">OCULTAR SEM JOGOS</Label>
+
+                    <div className="flex flex-wrap items-center gap-4 bg-white/5 backdrop-blur-md rounded-2xl p-2 border border-white/10 shadow-inner">
+                        <div className="flex items-center space-x-3 px-3">
+                            <Switch
+                                id="hide-inactive"
+                                checked={hideInactive}
+                                onCheckedChange={setHideInactive}
+                                className="data-[state=checked]:bg-primary"
+                            />
+                            <Label htmlFor="hide-inactive" className="text-[10px] font-black text-zinc-400 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Ocultar Inativos</Label>
+                        </div>
+                        <div className="w-px h-6 bg-white/10" />
+                        <div className="flex items-center space-x-3 px-3">
+                            <Switch
+                                id="hide-empty"
+                                checked={hideEmpty}
+                                onCheckedChange={setHideEmpty}
+                                className="data-[state=checked]:bg-primary"
+                            />
+                            <Label htmlFor="hide-empty" className="text-[10px] font-black text-zinc-400 uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Ocultar sem Jogos</Label>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
-            {/* AI Diagnostic Report Section */}
+            {/* AI Diagnostic Report - Global */}
             <AIDiagnosticReport
                 report={aiReport}
                 loading={aiLoading}
@@ -532,7 +643,6 @@ export default function RoboPerformance() {
                 onClear={() => { clearReport(); setAiVariationId(null); }}
                 tabLabel="Robô Ao Vivo"
                 onGenerate={() => {
-                    // Use first active variation with data, or aggregate all
                     const targetVariation = aiVariationId
                         ? stats.find(s => s.variation_id === aiVariationId)
                         : stats.find(s => s.total_alerts > 0 && s.active);
@@ -549,15 +659,12 @@ export default function RoboPerformance() {
                     const totalReds = targetVariation.ht_reds + targetVariation.o15_reds;
                     const totalOps = totalGreens + totalReds;
 
-                    // Red games
                     const redGames = allGames.filter((g: any) =>
                         g.goal_ht_result === 'red' || g.over15_result === 'red'
                     );
 
-                    // League breakdown
                     const leagueEntries = Object.values(targetVariation.leagues) as LeagueStat[];
 
-                    // Recent trend by day
                     const dayMap: Record<string, { greens: number; reds: number; profit: number }> = {};
                     allGames.forEach((g: any) => {
                         const d = g.created_at ? format(parseISO(g.created_at), 'yyyy-MM-dd') : '';
@@ -641,736 +748,588 @@ export default function RoboPerformance() {
                 }}
             />
 
-            <div className="rounded-md border border-[#2a3142] overflow-hidden">
+            {/* Main Content Area */}
+            <div className="relative overflow-hidden rounded-[2.5rem] border border-white/5 bg-[#0a0a0c]/80 backdrop-blur-3xl shadow-2xl">
                 <Table>
-                    <TableHeader className="bg-[#1e2333]/50">
-                        <TableRow className="border-[#2a3142] hover:bg-transparent">
-                            <TableHead className="w-[40px]"></TableHead>
+                    <TableHeader className="bg-white/5">
+                        <TableRow className="border-white/5 hover:bg-transparent">
+                            <TableHead className="w-[60px]"></TableHead>
                             <TableHead
-                                className="text-[#a1a1aa] font-black text-[10px] uppercase cursor-pointer hover:text-white"
+                                className="text-zinc-400 font-black text-[10px] uppercase tracking-widest cursor-pointer hover:text-white transition-colors"
                                 onClick={() => handleSort('variation_name')}
                             >
-                                Variação / Método <SortIcon field="variation_name" />
+                                <div className="flex items-center gap-1">ESTRATÉGIA <SortIcon field="variation_name" /></div>
                             </TableHead>
-                            <TableHead
-                                className="text-[#a1a1aa] font-black text-[10px] uppercase text-center cursor-pointer hover:text-white"
-                                onClick={() => handleSort('ht_roi')}
-                            >
-                                Retorno (ROI) HT <SortIcon field="ht_roi" />
+
+                            <TableHead className="text-center">
+                                <span className="text-zinc-500 font-black text-[10px] uppercase tracking-tighter">Métrica HT</span>
                             </TableHead>
-                            <TableHead
-                                className="text-[#a1a1aa] font-black text-[10px] uppercase text-center cursor-pointer hover:text-white"
-                                onClick={() => handleSort('ht_profit')}
-                            >
-                                Lucro HT <SortIcon field="ht_profit" />
+
+                            <TableHead className="text-center">
+                                <span className="text-zinc-500 font-black text-[10px] uppercase tracking-tighter">Métrica OVER 1.5</span>
                             </TableHead>
-                            <TableHead
-                                className="text-[#a1a1aa] font-black text-[10px] uppercase text-center cursor-pointer hover:text-white"
-                                onClick={() => handleSort('o15_roi')}
-                            >
-                                Retorno (ROI) Over 1.5 <SortIcon field="o15_roi" />
-                            </TableHead>
-                            <TableHead
-                                className="text-[#a1a1aa] font-black text-[10px] uppercase text-center cursor-pointer hover:text-white"
-                                onClick={() => handleSort('o15_profit')}
-                            >
-                                Lucro O1.5 <SortIcon field="o15_profit" />
-                            </TableHead>
+
                             {!isMobile && (
                                 <TableHead
-                                    className="text-[#a1a1aa] font-black text-[10px] uppercase text-center cursor-pointer hover:text-white"
+                                    className="text-center cursor-pointer hover:text-white transition-colors"
                                     onClick={() => handleSort('total_profit')}
                                 >
-                                    Lucro Total <SortIcon field="total_profit" />
+                                    <div className="flex items-center justify-center gap-1 text-zinc-400 font-black text-[10px] uppercase tracking-widest">
+                                        LUCRO TOTAL <SortIcon field="total_profit" />
+                                    </div>
                                 </TableHead>
                             )}
-                            <TableHead className="text-[#a1a1aa] font-black text-[10px] uppercase text-center">Ações</TableHead>
+
+                            <TableHead className="text-center text-zinc-400 font-black text-[10px] uppercase tracking-widest">Ações</TableHead>
                         </TableRow>
                     </TableHeader>
-                    <TableBody className="bg-[#1a1f2d]">
+
+                    <TableBody>
                         {loading ? (
-                            <TableRow className="border-[#2a3142]">
-                                <TableCell colSpan={7} className="h-24 text-center">
-                                    <div className="flex items-center justify-center text-muted-foreground font-bold italic">
-                                        <Loader2 className="w-6 h-6 animate-spin mr-2 text-primary" />
-                                        Calculando métricas de performance...
+                            <TableRow className="border-white/5">
+                                <TableCell colSpan={6} className="h-64 text-center">
+                                    <div className="flex flex-col items-center justify-center gap-4 text-zinc-500 font-black uppercase italic animate-pulse">
+                                        <div className="relative">
+                                            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                                            <div className="absolute inset-0 blur-xl bg-primary/20 rounded-full animate-pulse" />
+                                        </div>
+                                        Sincronizando Banco de Dados...
                                     </div>
                                 </TableCell>
                             </TableRow>
-                        ) : stats.length === 0 ? (
-                            <TableRow className="border-[#2a3142]">
-                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground font-black uppercase italic tracking-tighter opacity-50">
-                                    Nenhum alerta encontrado no histórico.
+                        ) : filteredStats.length === 0 ? (
+                            <TableRow className="border-white/5">
+                                <TableCell colSpan={6} className="h-40 text-center">
+                                    <div className="flex flex-col items-center justify-center gap-2 opacity-30 grayscale">
+                                        <Zap className="w-12 h-12 mb-2" />
+                                        <p className="text-sm font-black uppercase italic tracking-widest">Nenhum rastro de operação detectado</p>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            stats
-                                .filter(row => {
-                                    if (hideInactive && !row.active) return false;
-                                    if (hideEmpty && row.total_alerts === 0) return false;
-                                    return true;
-                                })
-                                .sort((a, b) => {
-                                    if (!sortField) return 0;
-                                    const aValue = a[sortField];
-                                    const bValue = b[sortField];
+                            filteredStats.map((row) => {
+                                const isExpanded = expandedRows[row.variation_id];
+                                const ht = getRates(row.ht_greens, row.ht_reds);
+                                const o15 = getRates(row.o15_greens, row.o15_reds);
 
-                                    if (typeof aValue === 'string' && typeof bValue === 'string') {
-                                        return sortDirection === 'asc'
-                                            ? aValue.localeCompare(bValue)
-                                            : bValue.localeCompare(aValue);
-                                    }
+                                return (
+                                    <React.Fragment key={row.variation_id}>
+                                        <TableRow
+                                            className={cn(
+                                                "border-white/5 group transition-all duration-500 ease-out h-20",
+                                                isExpanded ? "bg-white/[0.03]" : "hover:bg-white/[0.02]",
+                                                !row.active && "opacity-50"
+                                            )}
+                                            onClick={() => toggleRow(row.variation_id)}
+                                        >
+                                            <TableCell className="text-center">
+                                                <motion.div
+                                                    animate={{ rotate: isExpanded ? 90 : 0 }}
+                                                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                >
+                                                    <ChevronRight className={cn("w-5 h-5 transition-colors", isExpanded ? "text-primary shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]" : "text-zinc-600")} />
+                                                </motion.div>
+                                            </TableCell>
 
-                                    const valA = (aValue as number) || 0;
-                                    const valB = (bValue as number) || 0;
-
-                                    return sortDirection === 'asc'
-                                        ? valA - valB
-                                        : valB - valA;
-                                })
-                                .map((row) => {
-                                    const ht = getRates(row.ht_greens, row.ht_reds);
-                                    const o15 = getRates(row.o15_greens, row.o15_reds);
-                                    const isExpanded = expandedRows[row.variation_id];
-
-                                    return (
-                                        <React.Fragment key={row.variation_id}>
-                                            <TableRow
-                                                className="border-[#2a3142] cursor-pointer hover:bg-[#1e2333]/50 transition-colors h-14"
-                                                onClick={() => toggleRow(row.variation_id)}
-                                            >
-                                                <TableCell>
-                                                    {isExpanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronRight className="w-4 h-4 text-zinc-500" />}
-                                                </TableCell>
-                                                <TableCell className="font-bold text-white">
-                                                    <div className="flex items-center">
-                                                        <Target className="w-4 h-4 mr-2 text-zinc-500" />
-                                                        {row.variation_name}
+                                            <TableCell>
+                                                <div className="flex items-center gap-4">
+                                                    <div className={cn(
+                                                        "w-1.5 h-10 rounded-full shadow-lg",
+                                                        row.total_profit >= 0 ? "bg-emerald-500 shadow-emerald-500/20" : "bg-red-500 shadow-red-500/20",
+                                                        !row.active && "bg-zinc-700"
+                                                    )} />
+                                                    <div>
+                                                        <h3 className="font-black text-white text-lg tracking-tighter uppercase leading-none mb-1 group-hover:text-primary transition-colors">
+                                                            {row.variation_name}
+                                                        </h3>
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge variant="outline" className={cn(
+                                                                "text-[8px] font-black tracking-widest uppercase py-0 px-1.5 h-4 border-white/10",
+                                                                row.active ? "text-emerald-400 bg-emerald-400/5" : "text-zinc-500 bg-zinc-500/5"
+                                                            )}>
+                                                                {row.active ? 'Ativo' : 'Inativo'}
+                                                            </Badge>
+                                                            <span className="text-[10px] font-bold text-zinc-500 tracking-tighter">
+                                                                {row.total_alerts} OPERAÇÕES
+                                                            </span>
+                                                        </div>
                                                     </div>
-                                                </TableCell>
+                                                </div>
+                                            </TableCell>
 
-                                                {/* HT ROI */}
-                                                <TableCell className="text-center font-mono">
-                                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", row.ht_roi >= 0 ? "text-emerald-400 bg-emerald-400/10" : "text-red-400 bg-red-400/10")}>
-                                                        {row.ht_roi.toFixed(1)}%
-                                                    </span>
-                                                    <div className="text-[9px] text-zinc-500 mt-0.5">{row.ht_greens}/{ht.total}</div>
-                                                </TableCell>
+                                            {/* HT METRICS */}
+                                            <TableCell className="text-center">
+                                                <div className="inline-flex flex-col items-center">
+                                                    <div className={cn(
+                                                        "text-xs font-black px-3 py-1 rounded-full mb-1 border",
+                                                        row.ht_profit >= 0
+                                                            ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.05)]"
+                                                            : "text-red-400 bg-red-500/5 border-red-500/10"
+                                                    )}>
+                                                        <span className="opacity-70 text-[9px] mr-1">{row.ht_greens + row.ht_reds} STAKES |</span>
+                                                        {row.ht_roi.toFixed(1)}% ROI
+                                                    </div>
+                                                    <div className="text-[10px] font-black text-zinc-600 tracking-widest uppercase">
+                                                        {row.ht_greens}W / {row.ht_reds}L
+                                                    </div>
+                                                </div>
+                                            </TableCell>
 
-                                                {/* HT Profit */}
+                                            {/* O1.5 METRICS */}
+                                            <TableCell className="text-center">
+                                                <div className="inline-flex flex-col items-center">
+                                                    <div className={cn(
+                                                        "text-xs font-black px-3 py-1 rounded-full mb-1 border",
+                                                        row.o15_profit >= 0
+                                                            ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.05)]"
+                                                            : "text-red-400 bg-red-500/5 border-red-500/10"
+                                                    )}>
+                                                        <span className="opacity-70 text-[9px] mr-1">{row.o15_greens + row.o15_reds} STAKES |</span>
+                                                        {row.o15_roi.toFixed(1)}% ROI
+                                                    </div>
+                                                    <div className="text-[10px] font-black text-zinc-600 tracking-widest uppercase">
+                                                        {row.o15_greens}W / {row.o15_reds}L
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+
+                                            {!isMobile && (
                                                 <TableCell className="text-center">
-                                                    <span className={cn("font-mono font-black", row.ht_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                        {row.ht_profit >= 0 ? '+' : ''}{(row.ht_profit / STAKE).toFixed(2)}u
-                                                    </span>
-                                                </TableCell>
-
-                                                {/* O1.5 ROI */}
-                                                <TableCell className="text-center font-mono">
-                                                    <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", row.o15_roi >= 0 ? "text-emerald-400 bg-emerald-400/10" : "text-red-400 bg-red-400/10")}>
-                                                        {row.o15_roi.toFixed(1)}%
-                                                    </span>
-                                                    <div className="text-[9px] text-zinc-500 mt-0.5">{row.o15_greens}/{o15.total}</div>
-                                                </TableCell>
-
-                                                {/* O1.5 Profit */}
-                                                <TableCell className="text-center">
-                                                    <span className={cn("font-mono font-black", row.o15_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                        {row.o15_profit >= 0 ? '+' : ''}{(row.o15_profit / STAKE).toFixed(2)}u
-                                                    </span>
-                                                </TableCell>
-
-                                                {!isMobile && (
-                                                    <TableCell className="text-center">
-                                                        <span className={cn("font-mono font-bold text-xs opacity-60", row.total_profit >= 0 ? "text-emerald-500" : "text-red-500")}>
-                                                            {(row.total_profit / STAKE).toFixed(2)}u
+                                                    <div className="flex flex-col items-center">
+                                                        <span className={cn(
+                                                            "text-xl font-black italic tracking-tighter",
+                                                            row.total_profit >= 0 ? "text-emerald-400" : "text-red-400"
+                                                        )}>
+                                                            {row.total_profit >= 0 ? '+' : ''}{(row.total_profit / STAKE).toFixed(2)}<span className="text-[10px] ml-0.5">UNITS</span>
                                                         </span>
-                                                    </TableCell>
-                                                )}
-                                                <TableCell>
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-violet-400 hover:text-violet-300 hover:bg-violet-400/10"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setAiVariationId(row.variation_id);
-
-                                                                // Trigger generation immediately for this variation
-                                                                const allGames = row.games.filter((g: any) => !g.is_discarded);
-                                                                const totalGreens = row.ht_greens + row.o15_greens;
-                                                                const totalReds = row.ht_reds + row.o15_reds;
-                                                                const totalOps = totalGreens + totalReds;
-
-                                                                const redGames = allGames.filter((g: any) =>
-                                                                    g.goal_ht_result === 'red' || g.over15_result === 'red'
-                                                                );
-
-                                                                const leagueEntries = Object.values(row.leagues) as LeagueStat[];
-
-                                                                const dayMap: Record<string, { greens: number; reds: number; profit: number }> = {};
-                                                                allGames.forEach((g: any) => {
-                                                                    const d = g.created_at ? format(parseISO(g.created_at), 'yyyy-MM-dd') : '';
-                                                                    if (!d) return;
-                                                                    if (!dayMap[d]) dayMap[d] = { greens: 0, reds: 0, profit: 0 };
-                                                                    if (!g.is_ht_discarded && g.goal_ht_result === 'green') dayMap[d].greens++;
-                                                                    if (!g.is_ht_discarded && g.goal_ht_result === 'red') dayMap[d].reds++;
-                                                                    if (!g.is_o15_discarded && g.over15_result === 'green') dayMap[d].greens++;
-                                                                    if (!g.is_o15_discarded && g.over15_result === 'red') dayMap[d].reds++;
-                                                                    dayMap[d].profit += (g.totalProfit || 0) / STAKE;
-                                                                });
-
-                                                                const input: DiagnosticInput = {
-                                                                    tab: 'robo',
-                                                                    variationName: row.variation_name,
-                                                                    metrics: {
-                                                                        total: totalOps,
-                                                                        greens: totalGreens,
-                                                                        reds: totalReds,
-                                                                        winRate: totalOps > 0 ? (totalGreens / totalOps) * 100 : 0,
-                                                                        profit: row.total_profit / STAKE,
-                                                                        avgOdd: 0,
-                                                                    },
-                                                                    methodBreakdown: {
-                                                                        ht: {
-                                                                            greens: row.ht_greens,
-                                                                            reds: row.ht_reds,
-                                                                            profit: row.ht_profit / STAKE,
-                                                                            roi: row.ht_roi,
-                                                                        },
-                                                                        o15: {
-                                                                            greens: row.o15_greens,
-                                                                            reds: row.o15_reds,
-                                                                            profit: row.o15_profit / STAKE,
-                                                                            roi: row.o15_roi,
-                                                                        },
-                                                                    },
-                                                                    redAnalysis: redGames.slice(0, 15).map((g: any) => ({
-                                                                        game: `${g.home_team || '?'} vs ${g.away_team || '?'}`,
-                                                                        league: g.league_name || 'Desconhecida',
-                                                                        score: `HT:${g.goal_ht_result || '-'} O15:${g.over15_result || '-'}`,
-                                                                        criteria: {
-                                                                            ht_result: g.goal_ht_result,
-                                                                            o15_result: g.over15_result,
-                                                                            minute: g.minute_entered,
-                                                                            pressure_score: g.pressure_score,
-                                                                        },
-                                                                        date: g.created_at ? format(parseISO(g.created_at), 'yyyy-MM-dd') : '',
-                                                                    })),
-                                                                    leagueBreakdown: leagueEntries.map(l => ({
-                                                                        name: l.league_name,
-                                                                        total: l.total,
-                                                                        greens: l.ht_greens + l.o15_greens,
-                                                                        reds: l.ht_reds + l.o15_reds,
-                                                                        winRate: (() => {
-                                                                            const t = (l.ht_greens + l.o15_greens + l.ht_reds + l.o15_reds);
-                                                                            return t > 0 ? ((l.ht_greens + l.o15_greens) / t) * 100 : 0;
-                                                                        })(),
-                                                                        profit: l.ht_profit + l.o15_profit,
-                                                                    })),
-                                                                    paramSnapshot: {
-                                                                        min_minute: row.min_minute,
-                                                                        max_minute: row.max_minute,
-                                                                        min_expected_goals: row.min_expected_goals,
-                                                                        min_corners: row.min_corners,
-                                                                        min_shots_insidebox: row.min_shots_insidebox,
-                                                                        min_shots_on_target: row.min_shots_on_target,
-                                                                        min_combined_shots: row.min_combined_shots,
-                                                                        min_possession: row.min_possession,
-                                                                        min_lambda_total: row.min_lambda_total,
-                                                                        min_over15_pre: row.min_over15_pre,
-                                                                    },
-                                                                    oddRangeStats: [],
-                                                                    recentTrend: Object.entries(dayMap)
-                                                                        .sort(([a], [b]) => b.localeCompare(a))
-                                                                        .slice(0, 10)
-                                                                        .map(([date, d]) => ({ date, ...d })),
-                                                                };
-
-                                                                generateReport(input);
-                                                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                            }}
-                                                            title="Gerar Diagnóstico AI"
-                                                        >
-                                                            <Brain className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedVariationForChart(row);
-                                                                setIsChartModalOpen(true);
-                                                            }}
-                                                            title="Ver Gráfico de Evolução"
-                                                        >
-                                                            <TrendingUp className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedVariationForRanking(row);
-                                                                setIsRankingModalOpen(true);
-                                                            }}
-                                                            title="Ver Ranking de Ligas"
-                                                        >
-                                                            <Trophy className="h-4 w-4" />
-                                                        </Button>
+                                                        <div className="w-16 h-1 rounded-full bg-white/5 mt-1 overflow-hidden">
+                                                            <div
+                                                                className={cn("h-full transition-all duration-1000", row.total_profit >= 0 ? "bg-emerald-500" : "bg-red-500")}
+                                                                style={{ width: `${Math.min(Math.abs(row.total_profit / 500), 1) * 100}%` }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </TableCell>
-                                            </TableRow>
+                                            )}
 
+                                            <TableCell>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setAiVariationId(row.variation_id);
+                                                            // Triggering AI report is handled via AIDiagnosticReport's onGenerate
+                                                            // We'll just scroll to top where the report is located
+                                                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                        }}
+                                                        className="h-10 w-10 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 hover:text-white transition-all duration-300"
+                                                    >
+                                                        <Brain className="w-5 h-5" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedVariationForChart(row);
+                                                            setIsChartModalOpen(true);
+                                                        }}
+                                                        className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-white transition-all duration-300"
+                                                    >
+                                                        <TrendingUp className="w-5 h-5" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedVariationForRanking(row);
+                                                            setIsRankingModalOpen(true);
+                                                        }}
+                                                        className="h-10 w-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 hover:text-white transition-all duration-300"
+                                                    >
+                                                        <Trophy className="w-5 h-5" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+
+                                        {/* Expanded Row - Game History Cards */}
+                                        <AnimatePresence>
                                             {isExpanded && (
-                                                <TableRow className="border-[#2a3142] bg-[#141824]/50">
-                                                    <TableCell colSpan={7} className="p-6">
-                                                        <div className="space-y-8">
-                                                            {/* ROI Cards Separated by Method */}
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                                {/* HT Panel */}
-                                                                <div className="bg-[#1e2333] border border-[#2a3142]/80 p-5 rounded-xl space-y-4">
-                                                                    <div className="flex items-center justify-between border-b border-[#2a3142] pb-3">
-                                                                        <div className="text-xs uppercase font-black text-emerald-400 tracking-tighter">MÉTODO: GOL HT</div>
-                                                                        <Badge variant="outline" className="text-[10px] font-mono border-emerald-500/30 text-emerald-500 bg-emerald-500/5">ODD 2.00</Badge>
-                                                                    </div>
-                                                                    <div className="grid grid-cols-2 gap-4">
-                                                                        <div>
-                                                                            <div className="text-[9px] uppercase text-zinc-500 font-bold mb-1">Lucro HT</div>
-                                                                            <div className={cn("text-2xl font-black font-mono", row.ht_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                                                {row.ht_profit >= 0 ? '+' : ''}{(row.ht_profit / STAKE).toFixed(2)}u
-                                                                            </div>
+                                                <TableRow className="border-white/5 bg-black/40 hover:bg-black/40">
+                                                    <TableCell colSpan={6} className="p-0 border-none">
+                                                        <motion.div
+                                                            initial={{ opacity: 0, height: 0 }}
+                                                            animate={{ opacity: 1, height: "auto" }}
+                                                            exit={{ opacity: 0, height: 0 }}
+                                                            transition={{ duration: 0.5, ease: [0.04, 0.62, 0.23, 0.98] }}
+                                                            className="overflow-hidden"
+                                                        >
+                                                            <div className="p-8 space-y-8">
+                                                                {groupGamesByDate(row.games).map(([date, dateGames]) => (
+                                                                    <div key={date} className="relative">
+                                                                        <div className="flex items-center gap-4 mb-4">
+                                                                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                                                            <Badge variant="outline" className="text-[10px] font-black bg-white/5 border-white/10 text-zinc-400 uppercase tracking-[0.2em] px-3 py-1">
+                                                                                <Calendar className="w-3 h-3 mr-2" />
+                                                                                {format(parseISO(date), "dd 'DE' MMMM", { locale: ptBR })}
+                                                                            </Badge>
+                                                                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                                                         </div>
-                                                                        <div>
-                                                                            <div className="text-[9px] uppercase text-zinc-500 font-bold mb-1">Retorno (ROI) HT</div>
-                                                                            <div className={cn("text-2xl font-black font-mono", row.ht_roi >= 0 ? "text-blue-400" : "text-red-400")}>
-                                                                                {row.ht_roi.toFixed(1)}%
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="text-[10px] text-zinc-500 flex justify-between">
-                                                                        <span>Volume: {ht.total} entradas</span>
-                                                                        <span className="font-bold text-zinc-300">WR: {ht.rate}%</span>
-                                                                    </div>
-                                                                </div>
 
-                                                                {/* O1.5 Panel */}
-                                                                <div className="bg-[#1e2333] border border-[#2a3142]/80 p-5 rounded-xl space-y-4">
-                                                                    <div className="flex items-center justify-between border-b border-[#2a3142] pb-3">
-                                                                        <div className="text-xs uppercase font-black text-blue-400 tracking-tighter">MÉTODO: OVER 1.5</div>
-                                                                        <Badge variant="outline" className="text-[10px] font-mono border-blue-500/30 text-blue-500 bg-blue-500/5">ODD 1.60</Badge>
-                                                                    </div>
-                                                                    <div className="grid grid-cols-2 gap-4">
-                                                                        <div>
-                                                                            <div className="text-[9px] uppercase text-zinc-500 font-bold mb-1">Lucro O1.5</div>
-                                                                            <div className={cn("text-2xl font-black font-mono", row.o15_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                                                {row.o15_profit >= 0 ? '+' : ''}{(row.o15_profit / STAKE).toFixed(2)}u
-                                                                            </div>
-                                                                        </div>
-                                                                        <div>
-                                                                            <div className="text-[9px] uppercase text-zinc-500 font-bold mb-1">Retorno (ROI) Over 1.5</div>
-                                                                            <div className={cn("text-2xl font-black font-mono", row.o15_roi >= 0 ? "text-blue-400" : "text-red-400")}>
-                                                                                {row.o15_roi.toFixed(1)}%
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="text-[10px] text-zinc-500 flex justify-between">
-                                                                        <span>Volume: {o15.total} entradas</span>
-                                                                        <span className="font-bold text-zinc-300">WR: {o15.rate}%</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Leagues summary with separation */}
-                                                            <div className="space-y-4">
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                                                                        <Globe className="w-4 h-4 mr-2" /> Top Ligas por Método
-                                                                    </div>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setSelectedVariationForRanking(row);
-                                                                            setIsRankingModalOpen(true);
-                                                                        }}
-                                                                        className="text-[10px] font-black text-primary hover:text-primary/80 transition-colors uppercase tracking-tighter"
-                                                                    >
-                                                                        Ver Todas
-                                                                    </button>
-                                                                </div>
-                                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                                                    {/* Best HT Leagues */}
-                                                                    <div className="rounded border border-[#2a3142] overflow-hidden">
-                                                                        <div className="bg-[#1e2333] px-3 py-1.5 text-[9px] font-black text-emerald-400 border-b border-[#2a3142]">TOP LIGAS - HT</div>
-                                                                        <div className="p-2 space-y-1">
-                                                                            {Object.values(row.leagues).sort((a, b) => b.ht_profit - a.ht_profit).slice(0, 3).map(l => (
-                                                                                <div key={l.league_name} className="flex justify-between items-center text-[10px] h-6 px-1 hover:bg-white/5 rounded">
-                                                                                    <span className="text-zinc-400 truncate max-w-[150px]">{l.league_name}</span>
-                                                                                    <span className={cn("font-mono font-bold", l.ht_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                                                        {l.ht_profit >= 0 ? '+' : ''}{(l.ht_profit / STAKE).toFixed(1)}u
-                                                                                    </span>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                    {/* Best O1.5 Leagues */}
-                                                                    <div className="rounded border border-[#2a3142] overflow-hidden">
-                                                                        <div className="bg-[#1e2333] px-3 py-1.5 text-[9px] font-black text-blue-400 border-b border-[#2a3142]">TOP LIGAS - OVER 1.5</div>
-                                                                        <div className="p-2 space-y-1">
-                                                                            {Object.values(row.leagues).sort((a, b) => b.o15_profit - a.o15_profit).slice(0, 3).map(l => (
-                                                                                <div key={l.league_name} className="flex justify-between items-center text-[10px] h-6 px-1 hover:bg-white/5 rounded">
-                                                                                    <span className="text-zinc-400 truncate max-w-[150px]">{l.league_name}</span>
-                                                                                    <span className={cn("font-mono font-bold", l.o15_profit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                                                        {l.o15_profit >= 0 ? '+' : ''}{(l.o15_profit / STAKE).toFixed(1)}u
-                                                                                    </span>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Full History */}
-                                                            <div className="space-y-4">
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center text-xs font-bold text-zinc-500 uppercase tracking-widest">
-                                                                        <Clock className="w-4 h-4 mr-2" /> Histórico de Entradas
-                                                                    </div>
-                                                                    <button
-                                                                        onClick={() => setShowDiscarded(!showDiscarded)}
-                                                                        className={cn(
-                                                                            "flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-bold transition-colors border",
-                                                                            showDiscarded
-                                                                                ? "bg-zinc-100 text-zinc-900 border-zinc-200"
-                                                                                : "bg-[#1e2333] text-zinc-500 border-[#2a3142] hover:text-zinc-300"
-                                                                        )}
-                                                                    >
-                                                                        {showDiscarded ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                                                                        {showDiscarded ? "OCULTAR DESCARTADOS" : "VER DESCARTADOS"}
-                                                                    </button>
-                                                                </div>
-                                                                {groupGamesByDate(row.games.filter(g => showDiscarded || !g.is_discarded)).map(([date, games]) => (
-                                                                    <div key={date} className="space-y-2">
-                                                                        <div className="flex items-center text-[10px] font-bold text-zinc-400 uppercase border-l-2 border-primary pl-2">
-                                                                            {format(parseISO(date), "EEEE, d 'de' MMMM", { locale: ptBR })}
-                                                                        </div>
-                                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                                                            {games.map(g => (
-                                                                                <div key={g.id} className={cn(
-                                                                                    "bg-[#1e2333]/40 border rounded-lg p-3 flex flex-col gap-2 relative group hover:border-[#3b82f6]/30 transition-all",
-                                                                                    g.is_discarded ? "opacity-50 grayscale border-dashed border-red-500/30" : "border-[#2a3142]"
-                                                                                )}>
-                                                                                    <div className="flex justify-between items-start">
-                                                                                        <span className="text-[9px] text-zinc-500 font-bold">
-                                                                                            {format(parseISO(g.created_at), 'HH:mm')}
-                                                                                            {formatGameMinute(g.minute_at_alert)}
-                                                                                            {g.is_discarded && " (DESCARTADO)"}
-                                                                                        </span>
-                                                                                        <div className="flex gap-2 items-center">
-                                                                                            {!g.is_discarded && (
-                                                                                                <button
-                                                                                                    onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        if (editingAlertId === g.id) {
-                                                                                                            setEditingAlertId(null);
-                                                                                                        } else {
-                                                                                                            startEditing(g);
-                                                                                                        }
-                                                                                                    }}
-                                                                                                    className={cn(
-                                                                                                        "opacity-0 group-hover:opacity-100 transition-all p-1",
-                                                                                                        editingAlertId === g.id ? "text-primary" : "text-zinc-600 hover:text-white"
-                                                                                                    )}
-                                                                                                    title="Editar odds deste alerta"
-                                                                                                >
-                                                                                                    {editingAlertId === g.id ? <X className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
-                                                                                                </button>
-                                                                                            )}
-
-                                                                                            {g.is_discarded ? (
-                                                                                                <button
-                                                                                                    onClick={(e) => { e.stopPropagation(); handleRestore(g.id); }}
-                                                                                                    className="text-emerald-500 hover:text-emerald-400 transition-all p-1"
-                                                                                                    title="Restaurar este alerta"
-                                                                                                >
-                                                                                                    <RotateCcw className="w-3 h-3" />
-                                                                                                </button>
-                                                                                            ) : (
-                                                                                                <button
-                                                                                                    onClick={(e) => { e.stopPropagation(); handleDiscard(g.id); }}
-                                                                                                    className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all p-1"
-                                                                                                    title="Descartar este alerta"
-                                                                                                >
-                                                                                                    <Ban className="w-3 h-3" />
-                                                                                                </button>
-                                                                                            )}
-                                                                                            <div className="flex gap-1">
-                                                                                                {g.goal_ht_result === 'green' && <Badge className="bg-emerald-500 text-[8px] h-3 px-1 rounded-sm">HT</Badge>}
-                                                                                                {g.over15_result === 'green' && <Badge className="bg-blue-500 text-[8px] h-3 px-1 rounded-sm">O1.5</Badge>}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div className="text-xs font-black text-white truncate uppercase tracking-tight">{g.home_team} x {g.away_team}</div>
-
-                                                                                    {editingAlertId === g.id ? (
-                                                                                        <div className="flex flex-col gap-2 bg-[#141824] p-2 rounded border border-[#3b82f6]/30 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                                                            <div className="grid grid-cols-2 gap-2">
-                                                                                                <div>
-                                                                                                    <label className="text-[7px] text-zinc-500 uppercase font-bold block mb-1">Odd HT</label>
-                                                                                                    <input
-                                                                                                        type="number"
-                                                                                                        step="0.01"
-                                                                                                        value={editHtOdd}
-                                                                                                        onChange={(e) => setEditHtOdd(e.target.value)}
-                                                                                                        className="w-full bg-[#1e2333] border border-[#2a3142] rounded px-1.5 py-1 text-[10px] text-white focus:outline-none focus:border-primary/50"
-                                                                                                        onClick={(e) => e.stopPropagation()}
-                                                                                                    />
-                                                                                                </div>
-                                                                                                <div>
-                                                                                                    <label className="text-[7px] text-zinc-500 uppercase font-bold block mb-1">Odd O1.5</label>
-                                                                                                    <input
-                                                                                                        type="number"
-                                                                                                        step="0.01"
-                                                                                                        value={editO15Odd}
-                                                                                                        onChange={(e) => setEditO15Odd(e.target.value)}
-                                                                                                        className="w-full bg-[#1e2333] border border-[#2a3142] rounded px-1.5 py-1 text-[10px] text-white focus:outline-none focus:border-primary/50"
-                                                                                                        onClick={(e) => e.stopPropagation()}
-                                                                                                    />
-                                                                                                </div>
-                                                                                            </div>
-                                                                                            <button
-                                                                                                onClick={(e) => { e.stopPropagation(); handleUpdateOdds(g.id); }}
-                                                                                                className="w-full bg-primary hover:bg-primary/90 text-[9px] font-black py-1 rounded flex items-center justify-center gap-1 transition-colors"
-                                                                                            >
-                                                                                                <Save className="w-3 h-3" /> SALVAR ODDS
-                                                                                            </button>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className="flex gap-2 mt-1">
-                                                                                            <div className={cn("flex flex-col relative", g.is_ht_discarded && "opacity-30")}>
-                                                                                                <div className="flex items-center gap-1">
-                                                                                                    <span className="text-[7px] text-zinc-500 uppercase font-bold">HT</span>
-                                                                                                    <button
-                                                                                                        onClick={(e) => { e.stopPropagation(); handleToggleMethodDiscard(g.id, 'ht', !!g.is_ht_discarded); }}
-                                                                                                        className="text-zinc-600 hover:text-zinc-400 p-0.5"
-                                                                                                        title={g.is_ht_discarded ? "Ativar HT" : "Desativar HT"}
-                                                                                                    >
-                                                                                                        {g.is_ht_discarded ? <Eye className="w-2 h-2" /> : <EyeOff className="w-2 h-2" />}
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                                <span className={cn("text-[10px] font-mono font-bold", g.is_ht_discarded ? "text-zinc-500 line-through" : "text-emerald-400")}>
-                                                                                                    @{(g.custom_odd_ht || DEFAULT_ODD_HT).toFixed(2)}
-                                                                                                </span>
-                                                                                            </div>
-                                                                                            <div className={cn("flex flex-col border-l border-[#2a3142] pl-2", g.is_o15_discarded && "opacity-30")}>
-                                                                                                <div className="flex items-center gap-1">
-                                                                                                    <span className="text-[7px] text-zinc-500 uppercase font-bold">O1.5</span>
-                                                                                                    <button
-                                                                                                        onClick={(e) => { e.stopPropagation(); handleToggleMethodDiscard(g.id, 'o15', !!g.is_o15_discarded); }}
-                                                                                                        className="text-zinc-600 hover:text-zinc-400 p-0.5"
-                                                                                                        title={g.is_o15_discarded ? "Ativar O1.5" : "Desativar O1.5"}
-                                                                                                    >
-                                                                                                        {g.is_o15_discarded ? <Eye className="w-2 h-2" /> : <EyeOff className="w-2 h-2" />}
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                                <span className={cn("text-[10px] font-mono font-bold", g.is_o15_discarded ? "text-zinc-500 line-through" : "text-blue-400")}>
-                                                                                                    @{(g.custom_odd_o15 || DEFAULT_ODD_O15).toFixed(2)}
-                                                                                                </span>
-                                                                                            </div>
-                                                                                        </div>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                            {dateGames.map((game: any) => (
+                                                                                <motion.div
+                                                                                    key={game.id}
+                                                                                    whileHover={{ scale: 1.02, y: -5 }}
+                                                                                    className={cn(
+                                                                                        "relative group overflow-hidden rounded-2xl border transition-all duration-300",
+                                                                                        game.is_discarded
+                                                                                            ? "bg-zinc-900/40 border-white/5 opacity-50 grayscale"
+                                                                                            : "bg-[#141416] border-white/10 hover:border-white/20",
+                                                                                        !game.is_discarded && (
+                                                                                            game.totalProfit > 0
+                                                                                                ? "shadow-[0_0_30px_rgba(16,185,129,0.05)]"
+                                                                                                : game.totalProfit < 0
+                                                                                                    ? "shadow-[0_0_30px_rgba(239,68,68,0.05)]"
+                                                                                                    : ""
+                                                                                        )
+                                                                                    )}
+                                                                                >
+                                                                                    {/* Condition Overlay Gradient */}
+                                                                                    {!game.is_discarded && (
+                                                                                        <div className={cn(
+                                                                                            "absolute inset-0 opacity-[0.03] transition-opacity group-hover:opacity-[0.08] pointer-events-none",
+                                                                                            game.totalProfit > 0 ? "bg-emerald-500" : game.totalProfit < 0 ? "bg-red-500" : "bg-zinc-500"
+                                                                                        )} />
                                                                                     )}
 
-                                                                                    <div className="flex justify-between items-center mt-1 border-t border-[#2a3142] pt-2">
-                                                                                        <div className="flex flex-col">
-                                                                                            <span className="text-[8px] text-zinc-500 truncate max-w-[80px] uppercase font-bold">{g.league_name}</span>
-                                                                                            <span className="text-[9px] font-mono text-zinc-400 font-black">{g.final_score || '0x0'}</span>
-                                                                                        </div>
-                                                                                        <div className="text-right">
-                                                                                            <div className={cn("text-[10px] font-mono font-black", g.totalProfit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                                                                                {g.totalProfit >= 0 ? '+' : ''}{(g.totalProfit / STAKE).toFixed(2)}u
+                                                                                    <div className="p-5 h-full flex flex-col justify-between z-10 relative">
+                                                                                        <div>
+                                                                                            {/* Card Header: League & Time */}
+                                                                                            <div className="flex justify-between items-start mb-4">
+                                                                                                <div className="flex items-center gap-1.5 max-w-[70%]">
+                                                                                                    <Globe className="w-3 h-3 text-zinc-600 shrink-0" />
+                                                                                                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter truncate">
+                                                                                                        {game.league_name}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <div className="text-[9px] font-bold text-zinc-600 flex items-center gap-1">
+                                                                                                    <Clock className="w-3 h-3" />
+                                                                                                    {format(parseISO(game.created_at), 'HH:mm')}
+                                                                                                </div>
                                                                                             </div>
-                                                                                            <div className="text-[8px] text-zinc-600">Lucro {g.is_ht_discarded || g.is_o15_discarded ? 'Ajustado' : 'Total'}</div>
+
+                                                                                            {/* Teams & Score */}
+                                                                                            <div className="space-y-1 mb-4 text-center">
+                                                                                                <div className="text-xs font-black text-white/90 truncate uppercase tracking-tighter">
+                                                                                                    {game.home_team}
+                                                                                                </div>
+                                                                                                <div className="flex items-center justify-center gap-2">
+                                                                                                    <div className="h-px w-8 bg-white/5" />
+                                                                                                    <div className="text-xl font-black text-primary px-3 py-1 rounded-lg bg-white/5 border border-white/5 shadow-inner leading-none italic">
+                                                                                                        {game.score_entered || '0-0'}
+                                                                                                    </div>
+                                                                                                    <div className="h-px w-8 bg-white/5" />
+                                                                                                </div>
+                                                                                                <div className="text-xs font-black text-white/90 truncate uppercase tracking-tighter">
+                                                                                                    {game.away_team}
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* Results / Methods */}
+                                                                                            <div className="grid grid-cols-2 gap-2 mb-4">
+                                                                                                <div className={cn(
+                                                                                                    "p-2 rounded-xl border flex flex-col items-center justify-center transition-all",
+                                                                                                    game.is_ht_discarded
+                                                                                                        ? "bg-black/20 border-white/5 opacity-40"
+                                                                                                        : "bg-white/[0.03] border-white/10"
+                                                                                                )}>
+                                                                                                    <span className="text-[8px] font-black text-zinc-600 uppercase mb-1 tracking-widest">HT @{game.custom_odd_ht || 1.7}</span>
+                                                                                                    <div className="flex items-center gap-1.5">
+                                                                                                        {game.goal_ht_result === 'green' ? <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" /> : game.goal_ht_result === 'red' ? <div className="w-2 h-2 rounded-full bg-red-500" /> : <div className="w-2 h-2 rounded-full bg-zinc-700" />}
+                                                                                                        <span className={cn(
+                                                                                                            "text-[10px] font-black uppercase tracking-tighter",
+                                                                                                            game.goal_ht_result === 'green' ? "text-emerald-400" : game.goal_ht_result === 'red' ? "text-red-400" : "text-zinc-600"
+                                                                                                        )}>
+                                                                                                            {game.goal_ht_result || 'Pendente'}
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div className={cn(
+                                                                                                    "p-2 rounded-xl border flex flex-col items-center justify-center transition-all",
+                                                                                                    game.is_o15_discarded
+                                                                                                        ? "bg-black/20 border-white/5 opacity-40"
+                                                                                                        : "bg-white/[0.03] border-white/10"
+                                                                                                )}>
+                                                                                                    <span className="text-[8px] font-black text-zinc-600 uppercase mb-1 tracking-widest">O15 @{game.custom_odd_o15 || 1.6}</span>
+                                                                                                    <div className="flex items-center gap-1.5">
+                                                                                                        {game.over15_result === 'green' ? <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" /> : game.over15_result === 'red' ? <div className="w-2 h-2 rounded-full bg-red-500" /> : <div className="w-2 h-2 rounded-full bg-zinc-700" />}
+                                                                                                        <span className={cn(
+                                                                                                            "text-[10px] font-black uppercase tracking-tighter",
+                                                                                                            game.over15_result === 'green' ? "text-emerald-400" : game.over15_result === 'red' ? "text-red-400" : "text-zinc-600"
+                                                                                                        )}>
+                                                                                                            {game.over15_result || 'Pendente'}
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
                                                                                         </div>
+
+                                                                                        {/* Card Footer: Actions */}
+                                                                                        <div className="flex items-center justify-between gap-2 pt-4 border-t border-white/5">
+                                                                                            <div className="flex gap-1.5">
+                                                                                                <Button
+                                                                                                    variant="ghost"
+                                                                                                    size="icon"
+                                                                                                    onClick={() => startEditing(game)}
+                                                                                                    className="h-8 w-8 rounded-lg text-zinc-500 hover:text-white hover:bg-white/5 transition-all"
+                                                                                                >
+                                                                                                    <Pencil className="w-3.5 h-3.5" />
+                                                                                                </Button>
+                                                                                                <Button
+                                                                                                    variant="ghost"
+                                                                                                    size="icon"
+                                                                                                    onClick={() => handleBlockLeague(game.league_id, game.league_name)}
+                                                                                                    disabled={isBlocking === game.league_id}
+                                                                                                    className="h-8 w-8 rounded-lg text-red-500/50 hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                                                                                >
+                                                                                                    {isBlocking === game.league_id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldX className="w-3.5 h-3.5" />}
+                                                                                                </Button>
+                                                                                            </div>
+
+                                                                                            <div className="flex gap-1.5">
+                                                                                                <Button
+                                                                                                    variant="ghost"
+                                                                                                    className={cn(
+                                                                                                        "text-[10px] font-black h-8 px-3 rounded-lg flex items-center gap-1.5 transition-all",
+                                                                                                        game.is_discarded
+                                                                                                            ? "text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10"
+                                                                                                            : "text-red-500 bg-red-500/5 hover:bg-red-500/10"
+                                                                                                    )}
+                                                                                                    onClick={() => game.is_discarded ? handleRestore(game.id) : handleDiscard(game.id)}
+                                                                                                >
+                                                                                                    {game.is_discarded ? <><RotateCcw className="w-3 h-3" /> RESTAURAR</> : <><Trash2 className="w-3 h-3" /> DESCARTAR</>}
+                                                                                                </Button>
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        {/* Profit Indicator */}
+                                                                                        {!game.is_discarded && (
+                                                                                            <div className={cn(
+                                                                                                "absolute top-0 right-0 px-2 py-0.5 rounded-bl-xl text-[8px] font-black tracking-tighter",
+                                                                                                game.totalProfit > 0 ? "bg-emerald-500/20 text-emerald-400" : game.totalProfit < 0 ? "bg-red-500/20 text-red-400" : "bg-zinc-800 text-zinc-500"
+                                                                                            )}>
+                                                                                                {game.totalProfit >= 0 ? '+' : ''}{(game.totalProfit / STAKE).toFixed(2)}U
+                                                                                            </div>
+                                                                                        )}
                                                                                     </div>
-                                                                                </div>
+                                                                                </motion.div>
                                                                             ))}
                                                                         </div>
                                                                     </div>
                                                                 ))}
                                                             </div>
-                                                        </div>
+                                                        </motion.div>
                                                     </TableCell>
                                                 </TableRow>
                                             )}
-                                        </React.Fragment>
-                                    )
-                                })
+                                        </AnimatePresence>
+                                    </React.Fragment>
+                                );
+                            })
                         )}
                     </TableBody>
                 </Table>
             </div>
 
-            {/* Equity Curve Chart Modal */}
-            <Dialog open={isChartModalOpen} onOpenChange={setIsChartModalOpen}>
-                <DialogContent className="bg-[#141824] border-[#2a3142] text-white max-w-4xl h-[80vh] flex flex-col p-0">
-                    <DialogHeader className="p-6 pb-2">
-                        <DialogTitle className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
-                            <TrendingUp className="w-5 h-5 text-blue-400" />
-                            Curva de Patrimônio - {selectedVariationForChart?.variation_name}
+            {/* MODALS - Design Upgrade */}
+            {/* Ranking Modal */}
+            <Dialog open={isRankingModalOpen} onOpenChange={setIsRankingModalOpen}>
+                <DialogContent className="max-w-4xl bg-[#0a0a0c]/90 backdrop-blur-3xl border-white/10 rounded-[2rem] p-8">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl font-black italic tracking-tighter text-white flex items-center gap-2">
+                            <Trophy className="w-6 h-6 text-amber-500" />
+                            TOP LIGAS: <span className="text-primary">{selectedVariationForRanking?.variation_name}</span>
                         </DialogTitle>
-                        <DialogDescription className="text-zinc-500 text-xs">
-                            Evolução do lucro acumulado (unidades) ao longo do tempo para esta variação.
+                        <DialogDescription className="text-zinc-500">
+                            Desempenho analítico detalhado por liga para identificar padrões de lucro.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex-1 p-6 pt-2 overflow-y-auto custom-scrollbar">
-                        {selectedVariationForChart && (
-                            <div className="space-y-6">
-                                {/* HT Chart */}
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                                        Método HT (Half Time)
-                                    </h4>
-                                    <div className="h-[250px] w-full bg-[#1e2333]/50 rounded-xl border border-[#2a3142] p-4">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart
-                                                data={(() => {
-                                                    let currentHtProfit = 0;
-                                                    const sortedGames = [...selectedVariationForChart.games]
-                                                        .filter(g => !g.is_discarded && !g.is_ht_discarded)
-                                                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-                                                    return [
-                                                        { date: 'Início', profit: 0 },
-                                                        ...sortedGames.map(g => {
-                                                            currentHtProfit += (g.htProfit || 0) / STAKE;
-                                                            return {
-                                                                date: format(parseISO(g.created_at), 'dd/MM HH:mm'),
-                                                                profit: Number(currentHtProfit.toFixed(2))
-                                                            };
-                                                        })
-                                                    ];
-                                                })()}
-                                                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                            >
-                                                <defs>
-                                                    <linearGradient id="colorHt" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                                    </linearGradient>
-                                                </defs>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
-                                                <XAxis
-                                                    dataKey="date"
-                                                    stroke="#71717a"
-                                                    fontSize={10}
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    minTickGap={30}
-                                                />
-                                                <YAxis
-                                                    stroke="#71717a"
-                                                    fontSize={10}
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}u`}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{ backgroundColor: '#1e2333', borderColor: '#2a3142', fontSize: '12px' }}
-                                                    itemStyle={{ color: '#10b981' }}
-                                                    formatter={(value: number) => [`${value > 0 ? '+' : ''}${value} units`, 'Lucro Acumulado HT']}
-                                                />
-                                                <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} />
-                                                <Area
-                                                    type="monotone"
-                                                    dataKey="profit"
-                                                    stroke="#10b981"
-                                                    strokeWidth={3}
-                                                    fillOpacity={1}
-                                                    fill="url(#colorHt)"
-                                                    animationDuration={1000}
-                                                />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-
-                                {/* O1.5 Chart */}
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-blue-400" />
-                                        Método Over 1.5
-                                    </h4>
-                                    <div className="h-[250px] w-full bg-[#1e2333]/50 rounded-xl border border-[#2a3142] p-4">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart
-                                                data={(() => {
-                                                    let currentO15Profit = 0;
-                                                    const sortedGames = [...selectedVariationForChart.games]
-                                                        .filter(g => !g.is_discarded && !g.is_o15_discarded)
-                                                        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-                                                    return [
-                                                        { date: 'Início', profit: 0 },
-                                                        ...sortedGames.map(g => {
-                                                            currentO15Profit += (g.o15Profit || 0) / STAKE;
-                                                            return {
-                                                                date: format(parseISO(g.created_at), 'dd/MM HH:mm'),
-                                                                profit: Number(currentO15Profit.toFixed(2))
-                                                            };
-                                                        })
-                                                    ];
-                                                })()}
-                                                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                            >
-                                                <defs>
-                                                    <linearGradient id="colorO15" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                                    </linearGradient>
-                                                </defs>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
-                                                <XAxis
-                                                    dataKey="date"
-                                                    stroke="#71717a"
-                                                    fontSize={10}
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    minTickGap={30}
-                                                />
-                                                <YAxis
-                                                    stroke="#71717a"
-                                                    fontSize={10}
-                                                    tickLine={false}
-                                                    axisLine={false}
-                                                    tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}u`}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{ backgroundColor: '#1e2333', borderColor: '#2a3142', fontSize: '12px' }}
-                                                    itemStyle={{ color: '#3b82f6' }}
-                                                    formatter={(value: number) => [`${value > 0 ? '+' : ''}${value} units`, 'Lucro Acumulado O1.5']}
-                                                />
-                                                <ReferenceLine y={0} stroke="#4b5563" strokeWidth={1} />
-                                                <Area
-                                                    type="monotone"
-                                                    dataKey="profit"
-                                                    stroke="#3b82f6"
-                                                    strokeWidth={3}
-                                                    fillOpacity={1}
-                                                    fill="url(#colorO15)"
-                                                    animationDuration={1000}
-                                                />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                    <div className="mt-6 rounded-2xl border border-white/5 overflow-hidden">
+                        <Table>
+                            <TableHeader className="bg-white/5">
+                                <TableRow className="border-white/5 hover:bg-transparent text-[9px] font-black uppercase tracking-widest text-zinc-500">
+                                    <TableHead>LIGA</TableHead>
+                                    <TableHead className="text-center">JOGOS</TableHead>
+                                    <TableHead className="text-center">HT RESULTS</TableHead>
+                                    <TableHead className="text-center">O15 RESULTS</TableHead>
+                                    <TableHead className="text-right">LUCRO TOTAL</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {selectedVariationForRanking && Object.values(selectedVariationForRanking.leagues)
+                                    .sort((a, b) => (b.ht_profit + b.o15_profit) - (a.ht_profit + a.o15_profit))
+                                    .map((l, i) => {
+                                        const profit = l.ht_profit + l.o15_profit;
+                                        return (
+                                            <TableRow key={l.league_id + i} className="border-white/5 hover:bg-white/[0.02] transition-colors">
+                                                <TableCell className="font-bold text-white text-xs">{l.league_name}</TableCell>
+                                                <TableCell className="text-center text-xs font-mono text-zinc-500">{l.total}</TableCell>
+                                                <TableCell className="text-center">
+                                                    <span className="text-[10px] font-black text-emerald-500/80 mr-1">{l.ht_greens}W</span>
+                                                    <span className="text-[10px] font-black text-red-500/80">{l.ht_reds}L</span>
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <span className="text-[10px] font-black text-emerald-500/80 mr-1">{l.o15_greens}W</span>
+                                                    <span className="text-[10px] font-black text-red-500/80">{l.o15_reds}L</span>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <span className={cn("font-mono font-black", profit >= 0 ? "text-emerald-400" : "text-red-400")}>
+                                                        {profit >= 0 ? '+' : ''}{(profit / STAKE).toFixed(2)}u
+                                                    </span>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
+                                }
+                            </TableBody>
+                        </Table>
                     </div>
                 </DialogContent>
             </Dialog>
-        </div>
+
+            {/* Chart Modal */}
+            <Dialog open={isChartModalOpen} onOpenChange={setIsChartModalOpen}>
+                <DialogContent className="max-w-5xl h-[80vh] bg-[#0a0a0c]/90 backdrop-blur-3xl border-white/10 rounded-[2rem] p-8">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl font-black italic tracking-tighter text-white flex items-center gap-2">
+                            <TrendingUp className="w-6 h-6 text-emerald-500" />
+                            CURVA DE EQUIDADE: <span className="text-primary">{selectedVariationForChart?.variation_name}</span>
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="flex-1 mt-8">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={(() => {
+                                if (!selectedVariationForChart) return [];
+                                let currentProfit = 0;
+                                return [...selectedVariationForChart.games]
+                                    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                                    .map((g, i) => {
+                                        currentProfit += (g.totalProfit || 0) / STAKE;
+                                        return {
+                                            index: i + 1,
+                                            profit: parseFloat(currentProfit.toFixed(2)),
+                                            game: `${g.home_team} vs ${g.away_team}`
+                                        };
+                                    });
+                            })()}>
+                                <defs>
+                                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                <XAxis
+                                    dataKey="index"
+                                    stroke="#ffffff20"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                />
+                                <YAxis
+                                    stroke="#ffffff20"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickFormatter={(val) => `${val}u`}
+                                />
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: '#0a0a0c',
+                                        borderColor: '#ffffff10',
+                                        borderRadius: '16px',
+                                        fontSize: '12px',
+                                        fontWeight: '900',
+                                        color: '#fff'
+                                    }}
+                                    itemStyle={{ color: '#10b981' }}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="profit"
+                                    stroke="#10b981"
+                                    strokeWidth={3}
+                                    fillOpacity={1}
+                                    fill="url(#colorProfit)"
+                                    animationDuration={2000}
+                                />
+                                <ReferenceLine y={0} stroke="#ffffff10" strokeWidth={1} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Odds Modal */}
+            <Dialog open={!!editingAlertId} onOpenChange={(open) => !open && setEditingAlertId(null)}>
+                <DialogContent className="max-w-md bg-[#0a0a0c]/90 backdrop-blur-3xl border-white/10 rounded-[2rem] p-8">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-black italic tracking-tighter text-white flex items-center gap-2">
+                            <Edit2 className="w-5 h-5 text-primary" />
+                            AJUSTAR ODDS REAIS
+                        </DialogTitle>
+                        <DialogDescription className="text-zinc-500">
+                            {editingAlert?.home_team} vs {editingAlert?.away_team}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid grid-cols-2 gap-4 mt-6">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Odd HT Real</Label>
+                            <Input
+                                type="number"
+                                step="0.1"
+                                value={editHtOdd}
+                                onChange={(e) => setEditHtOdd(e.target.value)}
+                                className="bg-white/5 border-white/10 rounded-xl focus:ring-primary focus:border-primary text-white font-mono"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Odd O1.5 Real</Label>
+                            <Input
+                                type="number"
+                                step="0.1"
+                                value={editO15Odd}
+                                onChange={(e) => setEditO15Odd(e.target.value)}
+                                className="bg-white/5 border-white/10 rounded-xl focus:ring-primary focus:border-primary text-white font-mono"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 mt-8">
+                        <Button
+                            variant="ghost"
+                            className="flex-1 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 text-white font-black"
+                            onClick={() => setEditingAlertId(null)}
+                        >
+                            CANCELAR
+                        </Button>
+                        <Button
+                            className="flex-1 rounded-xl bg-primary hover:bg-primary/90 text-black font-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
+                            onClick={() => editingAlertId && handleUpdateOdds(editingAlertId)}
+                        >
+                            SALVAR ODDS
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </div >
     );
 }

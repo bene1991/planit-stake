@@ -41,47 +41,63 @@ async function sendTelegramResult(
   resultType: 'green' | 'red',
   market: string,
   finalScore: string,
+  userId?: string
 ): Promise<boolean> {
-  try {
-    // Get first user with telegram configured
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('telegram_bot_token, telegram_chat_id')
-      .not('telegram_bot_token', 'is', null)
-      .not('telegram_chat_id', 'is', null)
-      .limit(1)
-      .single();
+  const maxRetries = 2;
+  const emoji = resultType === 'green' ? '✅' : '❌';
+  const label = resultType === 'green' ? 'GREEN' : 'RED';
+  const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
 
-    if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) return true; // Pretend success if not configured yet
+  const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
 
-    const emoji = resultType === 'green' ? '✅' : '❌';
-    const label = resultType === 'green' ? 'GREEN' : 'RED';
-    const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 500;
+        console.log(`[Resolver] Telegram retry ${attempt}/${maxRetries} after ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
 
-    const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
+      // Get user settings for this specific owner
+      const { data: settings } = await supabase
+        .from('settings')
+        .select('telegram_bot_token, telegram_chat_id')
+        .eq('owner_id', userId)
+        .not('telegram_bot_token', 'is', null)
+        .not('telegram_chat_id', 'is', null)
+        .single();
 
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      },
-      body: JSON.stringify({
-        message: msg,
-        title: 'Atenção',
-        type: 'alert'
-      }),
-    });
+      if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) {
+        console.log(`[Resolver] Skipping Telegram for owner ${userId} (Not configured)`);
+        return true;
+      }
 
-    if (!response.ok) {
-      console.error('[Resolver] Telegram target function failed:', await response.text());
-      return false;
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({
+          userId,
+          message: msg,
+          title: 'Resultado',
+          type: 'alert'
+        }),
+      });
+
+      if (response.ok) return true;
+
+      const errorText = await response.text();
+      console.error(`[Resolver] Telegram attempt ${attempt} failed:`, errorText);
+
+      if (response.status === 401) return false;
+
+    } catch (err) {
+      console.error(`[Resolver] Telegram attempt ${attempt} catch error:`, err);
     }
-    return true;
-  } catch (err) {
-    console.error('[Resolver] Telegram error:', err);
-    return false;
   }
+  return false;
 }
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -162,12 +178,17 @@ serve(async (req: Request) => {
 
             // Send Telegram result (Fire and forget, don't block DB update)
             if (alert.robot_variations?.send_telegram !== false) {
-              sendTelegramResult(
+              const sent = await sendTelegramResult(
                 supabase,
                 alert.home_team, alert.away_team,
                 alert.league_name || '', alert.variation_name || 'Padrão',
                 result as 'green' | 'red', 'goal_ht', htScore,
-              ).catch(err => console.error(`[Resolver] Telegram Goal HT failed for alert ${alert.id}:`, err));
+                alert.owner_id
+              );
+              if (!sent) {
+                console.error(`[Resolver] Failed to deliver Goal HT Telegram for alert ${alert.id}. Will NOT update DB to allow retry.`);
+                continue; // Skip DB update so it remains 'pending' and retries next time
+              }
             } else {
               console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
             }
@@ -183,12 +204,17 @@ serve(async (req: Request) => {
 
             // Send Telegram result (Fire and forget, don't block DB update)
             if (alert.robot_variations?.send_telegram !== false) {
-              sendTelegramResult(
+              const sent = await sendTelegramResult(
                 supabase,
                 alert.home_team, alert.away_team,
                 alert.league_name || '', alert.variation_name || 'Padrão',
                 result as 'green' | 'red', 'over15', fs,
-              ).catch(err => console.error(`[Resolver] Telegram Over 1.5 failed for alert ${alert.id}:`, err));
+                alert.owner_id
+              );
+              if (!sent) {
+                console.error(`[Resolver] Failed to deliver Over 1.5 Telegram for alert ${alert.id}. Will NOT update DB to allow retry.`);
+                continue; // Skip DB update
+              }
             } else {
               console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
             }

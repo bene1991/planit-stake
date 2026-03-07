@@ -23,6 +23,39 @@ function escapeHtml(text: string): string {
         .replace(/'/g, "&#039;");
 }
 
+async function sendTelegram(payload: { message: string, userId?: string, type?: string }) {
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            if (attempt > 0) {
+                const delay = Math.pow(2, attempt) * 500;
+                console.log(`[Cron] Telegram retry ${attempt}/${maxRetries} after ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'apikey': SUPABASE_SERVICE_ROLE_KEY
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (response.ok) return true;
+
+            const errorText = await response.text();
+            console.error(`[Cron] Telegram attempt ${attempt} failed:`, errorText);
+
+            if (response.status === 401) return false;
+        } catch (err) {
+            console.error(`[Cron] Telegram attempt ${attempt} catch error:`, err);
+        }
+    }
+    return false;
+}
+
 async function callApiFootball(endpoint: string, token: string, params: Record<string, unknown> = {}) {
     // Add artificial delay to avoid Supabase Edge Function rate limits (bursts)
     await new Promise(r => setTimeout(r, 50));
@@ -307,28 +340,31 @@ async function runRobot() {
 
                 // Send ONE combined Telegram notification for all NEW transformations (if notification enabled)
                 if (processedNamesForTelegram.length > 0) {
-                    try {
-                        const combinedNames = processedNamesForTelegram.join(', ');
-                        const escapedHome = escapeHtml(hTeam);
-                        const escapedAway = escapeHtml(aTeam);
-                        const escapedLeague = escapeHtml(lName);
-                        const escapedFilters = escapeHtml(combinedNames);
+                    const combinedNames = processedNamesForTelegram.join(', ');
+                    const escapedHome = escapeHtml(hTeam);
+                    const escapedAway = escapeHtml(aTeam);
+                    const escapedLeague = escapeHtml(lName);
+                    const escapedFilters = escapeHtml(combinedNames);
 
+                    const message = `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`;
 
-                        await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                                'apikey': SUPABASE_SERVICE_ROLE_KEY
-                            },
-                            body: JSON.stringify({
-                                userId: defaultUserId,
-                                message: `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`,
-                                type: 'alert'
-                            }),
-                        });
-                    } catch (telErr) { console.error('Telegram error:', telErr); }
+                    const success = await sendTelegram({
+                        userId: defaultUserId,
+                        message,
+                        type: 'alert'
+                    });
+
+                    if (!success) {
+                        console.error(`[Cron] CRITICAL: Failed to deliver Signal for ${teams}. Rolling back DB entries.`);
+                        // Rollback: Delete newly created alerts for this fixture so they can trigger again next time
+                        const { error: delErr } = await supabase
+                            .from('live_alerts')
+                            .delete()
+                            .eq('fixture_id', fId)
+                            .in('variation_name', processedNames);
+
+                        if (delErr) console.error('[Cron] Rollback failed:', delErr);
+                    }
                 }
             }
         }

@@ -33,47 +33,64 @@ async function sendTelegramResult(
   resultType: 'green' | 'red',
   market: string,
   finalScore: string,
+  userId?: string
 ): Promise<boolean> {
-  try {
-    // Get first user with telegram configured
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('telegram_bot_token, telegram_chat_id')
-      .not('telegram_bot_token', 'is', null)
-      .not('telegram_chat_id', 'is', null)
-      .limit(1)
-      .single();
+  const maxRetries = 2;
+  const emoji = resultType === 'green' ? '✅' : '❌';
+  const label = resultType === 'green' ? 'GREEN' : 'RED';
+  const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
 
-    if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) return true; // Pretend success if not configured yet
+  const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
 
-    const emoji = resultType === 'green' ? '✅' : '❌';
-    const label = resultType === 'green' ? 'GREEN' : 'RED';
-    const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 500;
+        console.log(`[Resolver] Telegram retry ${attempt}/${maxRetries} after ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
 
-    const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
+      // Get user settings for this specific owner
+      const { data: settings } = await supabase
+        .from('settings')
+        .select('telegram_bot_token, telegram_chat_id')
+        .eq('owner_id', userId)
+        .not('telegram_bot_token', 'is', null)
+        .not('telegram_chat_id', 'is', null)
+        .single();
 
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      },
-      body: JSON.stringify({
-        message: msg,
-        title: 'Atenção',
-        type: 'alert'
-      }),
-    });
+      if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) {
+        console.log(`[Resolver] Skipping Telegram for owner ${userId} (Not configured)`);
+        return true;
+      }
 
-    if (!response.ok) {
-      console.error('[Resolver] Telegram target function failed:', await response.text());
-      return false;
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY
+        },
+        body: JSON.stringify({
+          userId,
+          message: msg,
+          title: 'Resultado',
+          type: 'alert'
+        }),
+      });
+
+      if (response.ok) return true;
+
+      const errorText = await response.text();
+      console.error(`[Resolver] Telegram attempt ${attempt} failed:`, errorText);
+
+      if (response.status === 401) return false;
+
+    } catch (err) {
+      console.error(`[Resolver] Telegram attempt ${attempt} catch error:`, err);
     }
-    return true;
-  } catch (err) {
-    console.error('[Resolver] Telegram error:', err);
-    return false;
   }
+  return false;
 }
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -141,68 +158,84 @@ serve(async (req: Request) => {
           let hasUpdate = false;
 
           // Resolve Goal HT
-          if (alert.goal_ht_result === 'pending' && isHtFinished) {
-            const result = htGoals > 0 ? 'green' : 'red';
-            const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
+          if (alert.goal_ht_result === 'pending') {
+            const hasHtGoal = htGoals > 0;
+            // It's a green if there's an HT goal, regardless of status (if we have live score).
+            // It's a red ONLY if the HT is definitely finished and there are 0 goals.
+            const shouldResolveHt = hasHtGoal || isHtFinished;
 
-            const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
+            if (shouldResolveHt) {
+              const result = hasHtGoal ? 'green' : 'red';
+              const htScore = `${fixtureObj.score.halftime.home ?? 0}x${fixtureObj.score.halftime.away ?? 0} (HT)`;
 
-            if (sendTelegramEnabled) {
-              const sent = await sendTelegramResult(
-                supabase,
-                alert.home_team, alert.away_team,
-                alert.league_name || '', alert.variation_name || 'Padrão',
-                result as 'green' | 'red', 'goal_ht', htScore,
-              );
+              const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
 
-              if (sent) {
+              if (sendTelegramEnabled) {
+                const sent = await sendTelegramResult(
+                  supabase,
+                  alert.home_team, alert.away_team,
+                  alert.league_name || '', alert.variation_name || 'Padrão',
+                  result as 'green' | 'red', 'goal_ht', htScore,
+                  alert.owner_id
+                );
+
+                if (sent) {
+                  updates.goal_ht_result = result;
+                  hasUpdate = true;
+                } else {
+                  console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
+                }
+              } else {
+                // Resolved in DB without telegram
                 updates.goal_ht_result = result;
                 hasUpdate = true;
-              } else {
-                console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
+                console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
               }
-            } else {
-              // Resolved in DB without telegram
-              updates.goal_ht_result = result;
-              hasUpdate = true;
-              console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
             }
           }
 
           // Resolve Over 1.5
-          if (alert.over15_result === 'pending' && isMatchFinished) {
-            const result = totalGoals >= 2 ? 'green' : 'red';
-            const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
+          if (alert.over15_result === 'pending') {
+            const hasTwoGoals = totalGoals >= 2;
+            // It's a green as soon as total goals >= 2, regardless of match status.
+            // It's a red ONLY if the match is completely finished and total goals < 2.
+            const shouldResolveO15 = hasTwoGoals || isMatchFinished;
 
-            const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
+            if (shouldResolveO15) {
+              const result = hasTwoGoals ? 'green' : 'red';
+              const fs = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
 
-            if (sendTelegramEnabled) {
-              const sent = await sendTelegramResult(
-                supabase,
-                alert.home_team, alert.away_team,
-                alert.league_name || '', alert.variation_name || 'Padrão',
-                result as 'green' | 'red', 'over15', fs,
-              );
+              const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
 
-              if (sent) {
+              if (sendTelegramEnabled) {
+                const sent = await sendTelegramResult(
+                  supabase,
+                  alert.home_team, alert.away_team,
+                  alert.league_name || '', alert.variation_name || 'Padrão',
+                  result as 'green' | 'red', 'over15', fs,
+                  alert.owner_id
+                );
+
+                if (sent) {
+                  updates.over15_result = result;
+                  updates.final_score = fs;
+                  hasUpdate = true;
+                } else {
+                  console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+                }
+              } else {
+                // Resolved in DB without telegram
                 updates.over15_result = result;
                 updates.final_score = fs;
                 hasUpdate = true;
-              } else {
-                console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+                console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
               }
-            } else {
-              // Resolved in DB without telegram
-              updates.over15_result = result;
-              updates.final_score = fs;
-              hasUpdate = true;
-              console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
             }
           }
 
           // Sync Goal Events if match finished and missing (independent of notifications)
           if (isMatchFinished && (!alert.final_score || !alert.goal_events || (Array.isArray(alert.goal_events) && alert.goal_events.length === 0))) {
-            const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
+            const fs = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
             if (!updates.final_score) updates.final_score = fs;
 
             if (totalGoals > 0 && fixtureObj.events) {
