@@ -134,7 +134,7 @@ export function GameListItem({
   }, [apiElapsed, isLive, localElapsed]);
 
   useEffect(() => {
-    if (!isLive || !localElapsed || isHalfTime) return;
+    if (!isLive || isHalfTime) return;
 
     const interval = setInterval(() => {
       setLocalElapsed(prev => {
@@ -150,7 +150,7 @@ export function GameListItem({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isLive, localElapsed, isHalfTime]);
+  }, [isLive, isHalfTime]);
 
   const getMethodName = (methodId: string) => {
     const method = methods.find(m => m.id === methodId);

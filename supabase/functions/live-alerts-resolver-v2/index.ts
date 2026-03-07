@@ -83,11 +83,14 @@ serve(async (req: Request) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   const authHeader = req.headers.get('Authorization');
-  const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
+  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY);
+  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY);
+  const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
+  const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
 
-  if (!isServiceRole && !isAnon) {
+  if (!isServiceRole && !isAnon && !hasLegacyAnon) {
     console.error('[Auth] Unauthorized request to live-alerts-resolver');
+    console.error(`Received auth format: ${authHeader ? 'present' : 'missing'}`);
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
