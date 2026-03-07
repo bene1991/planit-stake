@@ -266,7 +266,10 @@ export function useLiveScores(
 
         if (isMonitoredLocally || monitorAllLive) {
           // Find the game for this fixture (may be null if not in planning)
-          const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
+          // Use numeric comparison to be safe against string/number type mismatches
+          const game = gamesRef.current.find(g =>
+            g.api_fixture_id && String(g.api_fixture_id).trim() === String(fixtureId).trim()
+          );
 
           // GOAL DETECTION: Compare with previous snapshot BEFORE updating
           // Save old snapshot for goalDetectedAt comparison later
