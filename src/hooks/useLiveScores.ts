@@ -63,11 +63,11 @@ export interface RedCardEvent {
 export type OnRedCardDetected = (event: RedCardEvent) => void;
 
 // Default intervals (used as fallback)
-const DEFAULT_ACTIVE_INTERVAL = 30 * 1000;
+const DEFAULT_ACTIVE_INTERVAL = 15 * 1000;
 const REFRESH_INTERVAL_IDLE = 120 * 1000;
 
 // Minimum interval between calls (throttle protection)
-const MIN_CALL_INTERVAL = 10 * 1000;
+const MIN_CALL_INTERVAL = 5 * 1000;
 
 // === MODULE-LEVEL goal dedup (survives StrictMode remounts) ===
 const notifiedGoalsModule = new Map<string, number>(); // key -> timestamp
