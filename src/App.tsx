@@ -71,8 +71,6 @@ const AppContent = () => {
     const hTeam = game?.homeTeam || apiHome || 'Home';
     const aTeam = game?.awayTeam || apiAway || 'Away';
     const league = game?.league || apiLeague || 'League';
-    const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
-    if (!isPending) return;
     if (game.id) setHighlightedGameId(game.id);
     if (notifPrefs.enabled) {
       const scoringTeamName = team === 'home' ? hTeam : aTeam;
