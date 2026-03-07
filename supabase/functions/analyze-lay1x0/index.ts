@@ -243,14 +243,37 @@ serve(async (req) => {
 
     try {
         const authHeader = req.headers.get('Authorization');
-        if (!authHeader?.startsWith('Bearer ')) {
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+        // Manual Auth Validation
+        const isServiceKey = authHeader === `Bearer ${serviceKey}`;
+        const isAnonKey = authHeader === `Bearer ${anonKey}` || req.headers.get('apikey') === anonKey;
+
+        if (!authHeader?.startsWith('Bearer ') && !req.headers.get('apikey')) {
             return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
         }
 
-        const supabase = getSupabaseClient(authHeader);
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+        const supabase = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+            { global: { headers: { Authorization: authHeader! } } }
+        );
+
+        let user;
+        // If it's a service key call, we bypass getUser (internal loop)
+        if (isServiceKey) {
+            console.log('[analyze-lay1x0] Authorized via Service Key');
+            // Mock a "system" user if needed, or handle null user carefully below
+            // For this function, user.id is used for blocked leagues.
+            // If service key is used (e.g. by a cron), we might need a default user ID or skip the check.
+        } else {
+            const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+            if (userError || !authUser) {
+                console.error('[analyze-lay1x0] User Auth Error:', userError);
+                return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+            }
+            user = authUser;
         }
 
         const body = await req.json();

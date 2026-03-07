@@ -82,10 +82,12 @@ function setL1(key: string, data: unknown, ttl: number): void {
 }
 
 // L2: Database cache helpers
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+
 function getSupabaseClient() {
   const url = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  return createClient(url, serviceKey);
+  return createClient(url, SUPABASE_SERVICE_ROLE_KEY);
 }
 
 async function getFromL2(key: string): Promise<unknown | null> {
@@ -123,14 +125,20 @@ async function setL2(key: string, data: unknown, ttlMs: number): Promise<void> {
   }
 }
 
-interface ApiFootballRequest {
-  endpoint: string;
-  params?: Record<string, unknown>;
-}
-
 serve(async (req) => {
-  console.log('[API-Football] Request received', { method: req.method });
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  const authHeader = req.headers.get('Authorization');
+  const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+  const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
+
+  if (!isServiceRole && !isAnon) {
+    console.error('[Auth] Unauthorized request to api-football');
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 
   try {
     const body = await req.json();

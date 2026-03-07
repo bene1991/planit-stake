@@ -14,13 +14,13 @@ import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { Layout } from "./components/Layout";
 import { toast } from "sonner";
 import { LiveScoresProvider } from "@/contexts/LiveScoresContext";
+import { Lay1x0Provider } from "@/contexts/Lay1x0Context";
 import { sendTelegramNotification } from "@/utils/telegramNotification";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { GoalDetectedCallback, RedCardEvent } from "@/hooks/useLiveScores";
 import { playGoalSound, playNotificationSound, playRedCardVoice } from "./utils/soundManager";
-import { useLiveScoresContext } from "@/contexts/LiveScoresContext";
 
 // Helper to retry lazy loading if it fails (common for stale chunks after deploy)
 const lazyWithRetry = (componentImport: () => Promise<any>) =>
@@ -40,7 +40,7 @@ const lazyWithRetry = (componentImport: () => Promise<any>) =>
     }
   });
 
-// Lazy-loaded pages — only loaded when the route is visited
+// Lazy-loaded pages
 const BankrollManagement = lazyWithRetry(() => import("./pages/BankrollManagement"));
 const DailyPlanning = lazyWithRetry(() => import("./pages/DailyPlanning"));
 const Performance = lazyWithRetry(() => import("./pages/Performance"));
@@ -67,47 +67,25 @@ const AppContent = () => {
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
   const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game, playerName, minute, apiHome, apiAway, apiLeague) => {
-    // Strictly only for planned games
     if (!game) return;
-
     const hTeam = game?.homeTeam || apiHome || 'Home';
     const aTeam = game?.awayTeam || apiAway || 'Away';
     const league = game?.league || apiLeague || 'League';
-
     const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
     if (!isPending) return;
-
-    // 1. UI Highlight (Always)
-    if (game.id) {
-      setHighlightedGameId(game.id);
-    }
-
-    // 2. UI Toast and Sound (Foreground only)
+    if (game.id) setHighlightedGameId(game.id);
     if (notifPrefs.enabled) {
       const scoringTeamName = team === 'home' ? hTeam : aTeam;
       const message = `⚽ GOL! ${scoringTeamName} (${minute}')\n${hTeam} ${homeScore} - ${awayScore} ${aTeam}`;
-
-      console.log(`[App] ${message}`);
       toast.success(message, { duration: 8000 });
-
-      if (notifPrefs.soundEnabled) {
-        playGoalSound();
-      }
+      if (notifPrefs.soundEnabled) playGoalSound();
     }
-
-    // 1. Telegram
     if (notifPrefs.telegramEnabled) {
-      // If we have a local game, check if it's already finished/signaled
-      const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
-      if (!isPending) return;
-
       const scoringTeamName = team === 'home' ? hTeam : aTeam;
       const playerLine = playerName ? `\n⚽ Jogador: ${playerName} (${scoringTeamName})` : '';
       const msg = `⚽ <b>GOL!</b> ${scoringTeamName}${playerLine}\n${hTeam} ${homeScore} - ${awayScore} ${aTeam}\n🏟 ${league} | ⏱ ${minute || '??'}'`;
       sendTelegramNotification(msg).catch(err => console.error('[App] Telegram goal error:', err));
     }
-
-    // 2. Push Notification (Background only)
     if (user && document.hidden) {
       const scoringTeamName = team === 'home' ? hTeam : aTeam;
       supabase.functions.invoke('send-push-notification', {
@@ -127,28 +105,18 @@ const AppContent = () => {
 
   const handleRedCardDetected = useCallback((event: RedCardEvent) => {
     if (!notifPrefs.redCardAlerts || !notifPrefs.enabled) return;
-
     const game = games.find(g => g.api_fixture_id === event.fixtureId.toString());
     if (!game) return;
-
     const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
     if (!isPending) return;
-
     const hTeam = game.homeTeam;
     const aTeam = game.awayTeam;
-    const league = game.league;
-
     const scoringTeamName = event.team === 'home' ? hTeam : aTeam;
     const playerName = event.player || 'Jogador';
     const message = `🟥 Cartão Vermelho! ${playerName} - ${scoringTeamName} (${event.minute}')`;
-
-    console.log(`[App] ${message}`);
     toast.error(message, { duration: 8000 });
-
     if (notifPrefs.soundEnabled) playNotificationSound('error', true);
     if (notifPrefs.voiceAlerts) playRedCardVoice();
-
-    // Push (background only) - Only for planned games
     if (game && user && document.hidden) {
       supabase.functions.invoke('send-push-notification', {
         body: {
@@ -163,10 +131,8 @@ const AppContent = () => {
         }
       }).catch(err => console.error('[App] Push red card error:', err));
     }
-
-    // Telegram
     if (notifPrefs.telegramEnabled) {
-      const msg = `🟥 <b>CARTÃO VERMELHO!</b>\nJogador: ${playerName} (${scoringTeamName})\n${hTeam} vs ${aTeam}\n🏟 ${league} | ⏱ ${event.minute}'`;
+      const msg = `🟥 <b>CARTÃO VERMELHO!</b>\nJogador: ${playerName} (${scoringTeamName})\n${hTeam} vs ${aTeam}\n🏟 ${game.league} | ⏱ ${event.minute}'`;
       sendTelegramNotification(msg).catch(err => console.error('[App] Telegram red card error:', err));
     }
   }, [user, notifPrefs, games]);
@@ -183,88 +149,17 @@ const AppContent = () => {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/auth" element={<Auth />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Layout><DailyPlanning /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            {/* Redirect old path to canonical route */}
+            <Route path="/" element={<ProtectedRoute><Layout><DailyPlanning /></Layout></ProtectedRoute>} />
             <Route path="/daily-planning" element={<Navigate to="/" replace />} />
-            <Route
-              path="/bankroll"
-              element={
-                <ProtectedRoute>
-                  <Layout><BankrollManagement /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/robo"
-              element={
-                <ProtectedRoute>
-                  <Layout><RoboAoVivo /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/performance"
-              element={
-                <ProtectedRoute>
-                  <Layout><Performance /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/monthly-report"
-              element={
-                <ProtectedRoute>
-                  <Layout><MonthlyReport /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/method-analysis"
-              element={
-                <ProtectedRoute>
-                  <Layout><MethodAnalysis /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/account"
-              element={
-                <ProtectedRoute>
-                  <Layout><Account /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/matchbook"
-              element={
-                <ProtectedRoute>
-                  <Layout><MatchbookOdds /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/lay-0x1"
-              element={
-                <ProtectedRoute>
-                  <Layout><Lay0x1 /></Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/lay-1x0"
-              element={
-                <ProtectedRoute>
-                  <Layout><Lay1x0 /></Layout>
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/bankroll" element={<ProtectedRoute><Layout><BankrollManagement /></Layout></ProtectedRoute>} />
+            <Route path="/robo" element={<ProtectedRoute><Layout><RoboAoVivo /></Layout></ProtectedRoute>} />
+            <Route path="/performance" element={<ProtectedRoute><Layout><Performance /></Layout></ProtectedRoute>} />
+            <Route path="/monthly-report" element={<ProtectedRoute><Layout><MonthlyReport /></Layout></ProtectedRoute>} />
+            <Route path="/method-analysis" element={<ProtectedRoute><Layout><MethodAnalysis /></Layout></ProtectedRoute>} />
+            <Route path="/account" element={<ProtectedRoute><Layout><Account /></Layout></ProtectedRoute>} />
+            <Route path="/matchbook" element={<ProtectedRoute><Layout><MatchbookOdds /></Layout></ProtectedRoute>} />
+            <Route path="/lay-0x1" element={<ProtectedRoute><Layout><Lay0x1 /></Layout></ProtectedRoute>} />
+            <Route path="/lay-1x0" element={<ProtectedRoute><Layout><Lay1x0 /></Layout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -276,18 +171,8 @@ const AppContent = () => {
 const App = () => {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
-      queries: {
-        staleTime: 1000 * 60 * 5, // 5 minutes
-        refetchOnWindowFocus: false,
-        retry: 2,
-        gcTime: 1000 * 60 * 30, // 30 minutes
-      },
-      mutations: {
-        onError: (error) => {
-          console.error('[Mutation Error]', error);
-          toast.error('Erro ao salvar dados. Tente novamente.');
-        },
-      },
+      queries: { staleTime: 1000 * 60 * 5, refetchOnWindowFocus: false, retry: 2, gcTime: 1000 * 60 * 30 },
+      mutations: { onError: (error) => { console.error('[Mutation Error]', error); toast.error('Erro ao salvar dados. Tente novamente.'); } },
     },
   }));
 
@@ -300,9 +185,11 @@ const App = () => {
             <Sonner />
             <BrowserRouter>
               <AuthProvider>
-                <LogoProvider>
-                  <AppContent />
-                </LogoProvider>
+                <Lay1x0Provider>
+                  <LogoProvider>
+                    <AppContent />
+                  </LogoProvider>
+                </Lay1x0Provider>
               </AuthProvider>
             </BrowserRouter>
           </ErrorBoundary>

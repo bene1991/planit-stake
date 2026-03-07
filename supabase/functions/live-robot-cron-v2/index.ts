@@ -12,6 +12,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+
 function escapeHtml(text: string): string {
     return text
         .replace(/&/g, "&amp;")
@@ -277,7 +279,8 @@ async function runRobot() {
                         minute_at_alert: tElapsed,
                         variation_id: v.id,
                         variation_name: v.name,
-                        stats_snapshot: stats
+                        stats_snapshot: stats,
+                        owner_id: defaultUserId
                     };
 
                     const { error: alertErr } = await supabase.from('live_alerts').insert(alertData);
@@ -298,35 +301,6 @@ async function runRobot() {
                     }
                 }
 
-                // NEW: Ensure game is in 'games' table for live monitoring
-                if (processedNames.length > 0 && defaultUserId) {
-                    try {
-                        const { error: gameUpsertErr } = await supabase
-                            .from('games')
-                            .upsert({
-                                owner_id: defaultUserId,
-                                api_fixture_id: fId,
-                                date: new Date().toISOString().split('T')[0],
-                                time: String(tElapsed),
-                                league: lName,
-                                home_team: hTeam,
-                                away_team: aTeam,
-                                home_team_logo: f.teams.home.logo,
-                                away_team_logo: f.teams.away.logo,
-                                final_score_home: stats.h.goals,
-                                final_score_away: stats.a.goals,
-                                status: 'Live'
-                            }, { onConflict: 'owner_id,api_fixture_id' });
-
-                        if (gameUpsertErr) {
-                            console.error(`[Cron] Error upserting game ${fId}:`, gameUpsertErr);
-                        } else {
-                            console.log(`[Cron] Game ${fId} upserted/updated in games table for monitoring`);
-                        }
-                    } catch (upsertCatch) {
-                        console.error(`[Cron] Upsert exception for ${fId}:`, upsertCatch);
-                    }
-                }
 
                 // Send ONE combined Telegram notification for all NEW transformations (if notification enabled)
                 if (processedNamesForTelegram.length > 0) {
@@ -408,6 +382,18 @@ async function runRobot() {
 
 serve(async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+    const authHeader = req.headers.get('Authorization');
+    const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+    const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
+
+    if (!isServiceRole && !isAnon) {
+        console.error('[Auth] Unauthorized request to live-robot-cron-v2');
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
 
     await runRobot();
     return new Response(JSON.stringify({ status: 'ok' }), { headers: corsHeaders });
