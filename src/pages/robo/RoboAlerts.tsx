@@ -201,8 +201,8 @@ export default function RoboAlerts() {
             };
         }
 
-        const htProfit = alert.goal_ht_result === 'green' ? (alert.custom_odd_ht || 1.7) - 1 : (alert.goal_ht_result === 'red' ? -1 : 0);
-        const o15Profit = alert.over15_result === 'green' ? (alert.custom_odd_o15 || 1.6) - 1 : (alert.over15_result === 'red' ? -1 : 0);
+        const htProfit = alert.goal_ht_result === 'green' ? 0.7 : (alert.goal_ht_result === 'red' ? -1 : 0);
+        const o15Profit = alert.over15_result === 'green' ? 0.6 : (alert.over15_result === 'red' ? -1 : 0);
         const totalAlertProfit = htProfit + o15Profit;
 
         const trigger = {

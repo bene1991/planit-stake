@@ -80,7 +80,7 @@ export default function RoboAoVivo() {
                         gameUsedAtLeastOnce = true;
                         if (a.goal_ht_result === 'green') {
                             greens++;
-                            profit += (a.custom_odd_ht || 1.7) - 1;
+                            profit += 0.7;
                         } else {
                             profit -= 1;
                         }
@@ -92,7 +92,7 @@ export default function RoboAoVivo() {
                         gameUsedAtLeastOnce = true;
                         if (a.over15_result === 'green') {
                             greens++;
-                            profit += (a.custom_odd_o15 || 1.6) - 1;
+                            profit += 0.6;
                         } else {
                             profit -= 1;
                         }

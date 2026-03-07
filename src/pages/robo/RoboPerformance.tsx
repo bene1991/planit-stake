@@ -202,10 +202,10 @@ export default function RoboPerformance() {
                         let htProfit = 0;
                         let o15Profit = 0;
 
-                        if (alert.goal_ht_result === 'green') htProfit += ((alert.custom_odd_ht || DEFAULT_ODD_HT) - 1) * STAKE;
+                        if (alert.goal_ht_result === 'green') htProfit += 0.7 * STAKE;
                         else if (alert.goal_ht_result === 'red') htProfit -= STAKE;
 
-                        if (alert.over15_result === 'green') o15Profit += ((alert.custom_odd_o15 || DEFAULT_ODD_O15) - 1) * STAKE;
+                        if (alert.over15_result === 'green') o15Profit += 0.6 * STAKE;
                         else if (alert.over15_result === 'red') o15Profit -= STAKE;
 
                         row.games.push({
@@ -225,7 +225,7 @@ export default function RoboPerformance() {
 
                                 if (alert.goal_ht_result === 'green') {
                                     row.ht_greens++;
-                                    row.ht_profit += ((alert.custom_odd_ht || DEFAULT_ODD_HT) - 1) * STAKE;
+                                    row.ht_profit += 0.7 * STAKE;
                                 } else if (alert.goal_ht_result === 'red') {
                                     row.ht_reds++;
                                     row.ht_profit -= STAKE;
@@ -241,7 +241,7 @@ export default function RoboPerformance() {
 
                                 if (alert.over15_result === 'green') {
                                     row.o15_greens++;
-                                    row.o15_profit += ((alert.custom_odd_o15 || DEFAULT_ODD_O15) - 1) * STAKE;
+                                    row.o15_profit += 0.6 * STAKE;
                                 } else if (alert.over15_result === 'red') {
                                     row.o15_reds++;
                                     row.o15_profit -= STAKE;
@@ -318,10 +318,10 @@ export default function RoboPerformance() {
                     let htProfit = 0;
                     let o15Profit = 0;
 
-                    if (alert.goal_ht_result === 'green') htProfit += ((alert.custom_odd_ht || DEFAULT_ODD_HT) - 1) * STAKE;
+                    if (alert.goal_ht_result === 'green') htProfit += 0.7 * STAKE;
                     else if (alert.goal_ht_result === 'red') htProfit -= STAKE;
 
-                    if (alert.over15_result === 'green') o15Profit += ((alert.custom_odd_o15 || DEFAULT_ODD_O15) - 1) * STAKE;
+                    if (alert.over15_result === 'green') o15Profit += 0.6 * STAKE;
                     else if (alert.over15_result === 'red') o15Profit -= STAKE;
 
                     const totalAlertProfit = (alert.is_ht_discarded ? 0 : htProfit) + (alert.is_o15_discarded ? 0 : o15Profit);
@@ -354,8 +354,8 @@ export default function RoboPerformance() {
                 setMatchStats(finalMatchStats);
 
                 const finalStats = Object.values(grouped).map(row => {
-                    const htInvested = (row.ht_greens + row.ht_reds) * STAKE;
-                    const o15Invested = (row.o15_greens + row.o15_reds) * STAKE;
+                    const htInvested = row.ht_total_stakes * STAKE;
+                    const o15Invested = row.o15_total_stakes * STAKE;
 
                     row.ht_roi = htInvested > 0 ? (row.ht_profit / htInvested) * 100 : 0;
                     row.o15_roi = o15Invested > 0 ? (row.o15_profit / o15Invested) * 100 : 0;
@@ -761,12 +761,26 @@ export default function RoboPerformance() {
                                 <div className="flex items-center gap-1">ESTRATÉGIA <SortIcon field="variation_name" /></div>
                             </TableHead>
 
-                            <TableHead className="text-center">
-                                <span className="text-zinc-500 font-black text-[10px] uppercase tracking-tighter">Métrica HT</span>
+                            <TableHead
+                                className="text-center cursor-pointer hover:text-white transition-colors"
+                                onClick={() => handleSort('ht_profit')}
+                            >
+                                <div className="flex items-center justify-center gap-1 text-zinc-500 font-black text-[10px] uppercase tracking-tighter">
+                                    Métrica HT <SortIcon field="ht_profit" />
+                                </div>
+                            </TableHead>
+
+                            <TableHead
+                                className="text-center cursor-pointer hover:text-white transition-colors"
+                                onClick={() => handleSort('o15_profit')}
+                            >
+                                <div className="flex items-center justify-center gap-1 text-zinc-500 font-black text-[10px] uppercase tracking-tighter">
+                                    Métrica OVER 1.5 <SortIcon field="o15_profit" />
+                                </div>
                             </TableHead>
 
                             <TableHead className="text-center">
-                                <span className="text-zinc-500 font-black text-[10px] uppercase tracking-tighter">Métrica OVER 1.5</span>
+                                <span className="text-zinc-500 font-black text-[10px] uppercase tracking-tighter">STAKES (LUCRO / TOTAL)</span>
                             </TableHead>
 
                             {!isMobile && (
@@ -787,7 +801,7 @@ export default function RoboPerformance() {
                     <TableBody>
                         {loading ? (
                             <TableRow className="border-white/5">
-                                <TableCell colSpan={6} className="h-64 text-center">
+                                <TableCell colSpan={7} className="h-64 text-center">
                                     <div className="flex flex-col items-center justify-center gap-4 text-zinc-500 font-black uppercase italic animate-pulse">
                                         <div className="relative">
                                             <Loader2 className="w-12 h-12 text-primary animate-spin" />
@@ -799,7 +813,7 @@ export default function RoboPerformance() {
                             </TableRow>
                         ) : filteredStats.length === 0 ? (
                             <TableRow className="border-white/5">
-                                <TableCell colSpan={6} className="h-40 text-center">
+                                <TableCell colSpan={7} className="h-40 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 opacity-30 grayscale">
                                         <Zap className="w-12 h-12 mb-2" />
                                         <p className="text-sm font-black uppercase italic tracking-widest">Nenhum rastro de operação detectado</p>
@@ -866,8 +880,8 @@ export default function RoboPerformance() {
                                                             ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.05)]"
                                                             : "text-red-400 bg-red-500/5 border-red-500/10"
                                                     )}>
-                                                        <span className="opacity-70 text-[9px] mr-1">{row.ht_greens + row.ht_reds} STAKES |</span>
-                                                        {row.ht_roi.toFixed(1)}% ROI
+                                                        <span className="mr-1">{(row.ht_profit / STAKE).toFixed(2)} STK |</span>
+                                                        <span className="opacity-70 text-[9px]">{row.ht_roi.toFixed(1)}% ROI</span>
                                                     </div>
                                                     <div className="text-[10px] font-black text-zinc-600 tracking-widest uppercase">
                                                         {row.ht_greens}W / {row.ht_reds}L
@@ -884,11 +898,26 @@ export default function RoboPerformance() {
                                                             ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.05)]"
                                                             : "text-red-400 bg-red-500/5 border-red-500/10"
                                                     )}>
-                                                        <span className="opacity-70 text-[9px] mr-1">{row.o15_greens + row.o15_reds} STAKES |</span>
-                                                        {row.o15_roi.toFixed(1)}% ROI
+                                                        <span className="mr-1">{(row.o15_profit / STAKE).toFixed(2)} STK |</span>
+                                                        <span className="opacity-70 text-[9px]">{row.o15_roi.toFixed(1)}% ROI</span>
                                                     </div>
                                                     <div className="text-[10px] font-black text-zinc-600 tracking-widest uppercase">
                                                         {row.o15_greens}W / {row.o15_reds}L
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+
+                                            {/* GENERAL STAKES METRICS */}
+                                            <TableCell className="text-center">
+                                                <div className="inline-flex flex-col items-center">
+                                                    <div className={cn(
+                                                        "text-xs font-black px-3 py-1 rounded-full mb-1 border",
+                                                        row.total_profit >= 0
+                                                            ? "text-emerald-400 bg-emerald-500/5 border-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.05)]"
+                                                            : "text-red-400 bg-red-500/5 border-red-500/10"
+                                                    )}>
+                                                        <span className="mr-1">{(row.total_profit / STAKE).toFixed(2)} STK |</span>
+                                                        <span className="opacity-70 text-[9px]">{row.ht_total_stakes + row.o15_total_stakes} ENTRADAS</span>
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -960,7 +989,7 @@ export default function RoboPerformance() {
                                         <AnimatePresence>
                                             {isExpanded && (
                                                 <TableRow className="border-white/5 bg-black/40 hover:bg-black/40">
-                                                    <TableCell colSpan={6} className="p-0 border-none">
+                                                    <TableCell colSpan={7} className="p-0 border-none">
                                                         <motion.div
                                                             initial={{ opacity: 0, height: 0 }}
                                                             animate={{ opacity: 1, height: "auto" }}
