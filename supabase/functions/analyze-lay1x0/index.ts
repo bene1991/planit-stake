@@ -26,6 +26,13 @@ async function callApiFootball(endpoint: string, params: Record<string, unknown>
         },
         body: JSON.stringify({ endpoint, params }),
     });
+
+    if (!res.ok) {
+        const error = await res.text();
+        console.error(`[API-Football Call Error] ${endpoint}:`, error);
+        throw new Error(`API error: ${res.status}`);
+    }
+
     return res.json();
 }
 
@@ -501,7 +508,7 @@ serve(async (req) => {
                 if (!criteriaMet.home_odd) reasons.push(`Odd casa: ${homeOdd.toFixed(2)} (máx: 5.00)`);
                 if (!criteriaMet.over15_combined) reasons.push(`Over 1.5 combinado: ${over15Combined.toFixed(0)}% (mín: 65%)`);
                 if (!criteriaMet.offensive_diff) reasons.push(`Diferença ofensiva não favorece visitante`);
-                if (!criteriaMet.h2h_1x0) reasons.push(`H2H tem ${h2h1x0Count} resultado(s) 1x0 nos últimos 5 jogos`);
+                if (!criteriaMet.h2h_no_1x0) reasons.push(`H2H tem ${h2h1x0Count} resultado(s) 1x0 nos últimos 5 jogos`);
 
                 // ─── Score calculation ───
                 const offensiveScore = normalize(awayGoalsAvg, 0.5, 3.0) * 0.25;
@@ -549,12 +556,16 @@ serve(async (req) => {
             }
         }
 
-        // Process in sequential batches
+        // Process in parallel batches of 5 to avoid timeouts and maximize throughput
         const results: AnalysisResult[] = [];
-        for (let i = 0; i < fixtureIdsToAnalyze.length; i++) {
-            const r = await analyzeFixture(fixtureIdsToAnalyze[i]);
-            if (r) results.push(r);
-            if ((i + 1) % 5 === 0) console.log(`[LAY1x0] Progress: ${i + 1}/${fixtureIdsToAnalyze.length}`);
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < fixtureIdsToAnalyze.length; i += BATCH_SIZE) {
+            const batch = fixtureIdsToAnalyze.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(fId => analyzeFixture(fId)));
+            for (const r of batchResults) {
+                if (r) results.push(r);
+            }
+            console.log(`[LAY1x0] Progress: ${Math.min(i + BATCH_SIZE, fixtureIdsToAnalyze.length)}/${fixtureIdsToAnalyze.length}`);
         }
 
         console.log(`[LAY1x0] Analysis complete: ${results.length} results (${results.filter(r => r.approved).length} approved)`);

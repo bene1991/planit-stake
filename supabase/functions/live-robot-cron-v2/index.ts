@@ -307,7 +307,7 @@ async function runRobot() {
                                 owner_id: defaultUserId,
                                 api_fixture_id: fId,
                                 date: new Date().toISOString().split('T')[0],
-                                time: tElapsed + "'",
+                                time: String(tElapsed),
                                 league: lName,
                                 home_team: hTeam,
                                 away_team: aTeam,
