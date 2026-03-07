@@ -92,13 +92,21 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   const apiKeyHeader = req.headers.get('apikey');
 
-  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY) || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
-  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY) || apiKeyHeader === SUPABASE_ANON_KEY;
-  const hasLegacyAnon = authHeader?.includes(legacyAnonKey) || apiKeyHeader === legacyAnonKey;
+  const cleanHeader = (h: string | null) => h?.replace('Bearer ', '').trim();
+  const authKey = cleanHeader(authHeader);
+
+  const isServiceRole = authKey === SUPABASE_SERVICE_ROLE_KEY || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
+  const isAnon = authKey === SUPABASE_ANON_KEY || apiKeyHeader === SUPABASE_ANON_KEY;
+  const hasLegacyAnon = authKey === legacyAnonKey || apiKeyHeader === legacyAnonKey;
 
   if (!isServiceRole && !isAnon && !hasLegacyAnon) {
     console.error('[Auth] Unauthorized request to send-telegram-notification');
-    return new Response(JSON.stringify({ error: 'Unauthorized', details: 'Invalid token' }), {
+    console.error(`[Auth] Header present: ${!!authHeader}, API Key Header: ${!!apiKeyHeader}`);
+    return new Response(JSON.stringify({
+      error: 'Unauthorized',
+      details: 'Invalid token',
+      info: 'Check logic for Bearer prefix or apikey header'
+    }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

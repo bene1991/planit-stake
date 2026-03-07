@@ -52,16 +52,23 @@ export default function RoboAlerts() {
 
         // Polling for stats is fine, but alerts should be real-time
         const interval = setInterval(() => {
-            if (alerts.length > 0) {
-                const uniqueIds = [...new Set(alerts.map(a => String(a.fixture_id)))];
-                updateLiveStats(uniqueIds);
-            }
+            setAlerts(currentAlerts => {
+                if (currentAlerts.length > 0) {
+                    const uniqueIds = [...new Set(currentAlerts.map(a => String(a.fixture_id)))];
+                    updateLiveStats(uniqueIds);
+                }
+                return currentAlerts;
+            });
         }, 30000);
 
-        // Real-time subscription for alerts
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        // Real-time subscription for alerts (One-time setup)
         console.log('[RoboAlerts] Starting real-time subscription');
         const channel = supabase
-            .channel('public:live_alerts')
+            .channel('public:live_alerts_changes')
             .on(
                 'postgres_changes',
                 {
@@ -74,9 +81,16 @@ export default function RoboAlerts() {
 
                     if (payload.eventType === 'INSERT') {
                         const newAlert = payload.new as LiveAlert;
-                        setAlerts(prev => [newAlert, ...prev].slice(0, 100));
+                        setAlerts(prev => {
+                            // Deduplicate if already present (e.g. from polling and realtime racing)
+                            if (prev.some(a => a.id === newAlert.id)) return prev;
+                            return [newAlert, ...prev].slice(0, 100);
+                        });
                         playAlertSound();
-                        toast.info(`Novo Alerta: ${newAlert.home_team} vs ${newAlert.away_team}`);
+                        toast.info(`Novo Alerta: ${newAlert.home_team} vs ${newAlert.away_team}`, {
+                            description: `Filtro: ${newAlert.variation_name || 'Variação'}`,
+                            icon: '🚨'
+                        });
                     } else if (payload.eventType === 'UPDATE') {
                         const updated = payload.new as LiveAlert;
                         const old = payload.old as LiveAlert;
@@ -89,20 +103,25 @@ export default function RoboAlerts() {
                             (updated.over15_result === 'green' && old?.over15_result !== 'green')
                         ) {
                             playGoalSound();
-                            toast.success(`GOL! ${updated.home_team} vs ${updated.away_team}`);
+                            toast.success(`GOL NO ROBÔ! ${updated.home_team} vs ${updated.away_team}`, {
+                                description: 'Resultado GREEN detectado!',
+                                icon: '✅'
+                            });
                         }
                     } else if (payload.eventType === 'DELETE') {
                         setAlerts(prev => prev.filter(a => a.id !== payload.old.id));
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                console.log('[RoboAlerts] Subscription status:', status);
+            });
 
         return () => {
-            clearInterval(interval);
+            console.log('[RoboAlerts] Removing channel');
             supabase.removeChannel(channel);
         };
-    }, [alerts]); // Re-bind interval when alert count changes to keep IDs fresh
+    }, []);
 
 
     const updateLiveStats = async (fixtureIds: string[]) => {
