@@ -101,7 +101,7 @@ interface PerformanceRow {
     min_over15_pre?: number | null;
 }
 
-const DEFAULT_ODD_HT = 2.0;
+const DEFAULT_ODD_HT = 1.7;
 const DEFAULT_ODD_O15 = 1.6;
 const STAKE = 100;
 
