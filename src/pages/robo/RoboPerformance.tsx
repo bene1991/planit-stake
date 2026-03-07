@@ -1060,7 +1060,7 @@ export default function RoboPerformance() {
                                                                                                 <div className="flex items-center justify-center gap-2">
                                                                                                     <div className="h-px w-8 bg-white/5" />
                                                                                                     <div className="text-xl font-black text-primary px-3 py-1 rounded-lg bg-white/5 border border-white/5 shadow-inner leading-none italic">
-                                                                                                        {game.score_entered || '0-0'}
+                                                                                                        {game.final_score || '—'}
                                                                                                     </div>
                                                                                                     <div className="h-px w-8 bg-white/5" />
                                                                                                 </div>

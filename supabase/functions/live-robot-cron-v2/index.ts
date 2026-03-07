@@ -388,9 +388,7 @@ async function runRobot() {
             console.error('[Cron] Failed to trigger monitor:', monErr);
         }
 
-        // Monitor handles alerts resolution as well since our last update.
-        // Skipping direct resolver call to avoid redundancy and potential deployment conflicts.
-        /*
+        // Trigger the resolver to sync results and scores for pending alerts
         try {
             console.log('[Cron] Triggering live-alerts-resolver...');
             const resolverRes = await fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver`, {
@@ -405,7 +403,6 @@ async function runRobot() {
         } catch (resolverErr) {
             console.error('[Cron] Failed to trigger resolver:', resolverErr);
         }
-        */
     } catch (e) {
         console.error('Robot error:', e);
         try {

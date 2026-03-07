@@ -117,8 +117,8 @@ serve(async (req: Request) => {
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
       .select('*, robot_variations(send_telegram)')
-      .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.is.null')
-      .limit(50);
+      .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.is.null,goal_events.is.null')
+      .limit(100);
 
     if (fetchErr) throw fetchErr;
     if (!pendingAlerts || pendingAlerts.length === 0) {
@@ -233,11 +233,15 @@ serve(async (req: Request) => {
             }
           }
 
-          // Sync Goal Events if match finished and missing (independent of notifications)
-          if (isMatchFinished && (!alert.final_score || !alert.goal_events || (Array.isArray(alert.goal_events) && alert.goal_events.length === 0))) {
-            const fs = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
-            if (!updates.final_score) updates.final_score = fs;
+          // Always sync current score so the UI reflects live/final score
+          const currentScore = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
+          if (alert.final_score !== currentScore) {
+            updates.final_score = currentScore;
+            hasUpdate = true;
+          }
 
+          // Sync Goal Events when match is finished
+          if (isMatchFinished && (!alert.goal_events || (Array.isArray(alert.goal_events) && alert.goal_events.length === 0))) {
             if (totalGoals > 0 && fixtureObj.events) {
               const goalEvents = fixtureObj.events
                 .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
