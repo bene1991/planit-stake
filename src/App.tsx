@@ -67,11 +67,10 @@ const AppContent = () => {
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
   const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game, playerName, minute, apiHome, apiAway, apiLeague) => {
-    if (!game) return;
     const hTeam = game?.homeTeam || apiHome || 'Home';
     const aTeam = game?.awayTeam || apiAway || 'Away';
     const league = game?.league || apiLeague || 'League';
-    if (game.id) setHighlightedGameId(game.id);
+    if (game?.id) setHighlightedGameId(game.id);
     if (notifPrefs.enabled) {
       const scoringTeamName = team === 'home' ? hTeam : aTeam;
       const message = `⚽ GOL! ${scoringTeamName} (${minute}')\n${hTeam} ${homeScore} - ${awayScore} ${aTeam}`;
@@ -104,11 +103,12 @@ const AppContent = () => {
   const handleRedCardDetected = useCallback((event: RedCardEvent) => {
     if (!notifPrefs.redCardAlerts || !notifPrefs.enabled) return;
     const game = games.find(g => g.api_fixture_id === event.fixtureId.toString());
-    if (!game) return;
-    const isPending = game.methodOperations.length === 0 || game.methodOperations.some(op => !op.result);
-    if (!isPending) return;
-    const hTeam = game.homeTeam;
-    const aTeam = game.awayTeam;
+
+    // Fallback info from event if game not found in local db
+    const hTeam = game?.homeTeam || event.homeTeam || 'Home';
+    const aTeam = game?.awayTeam || event.awayTeam || 'Away';
+    const league = game?.league || event.leagueName || 'League';
+
     const scoringTeamName = event.team === 'home' ? hTeam : aTeam;
     const playerName = event.player || 'Jogador';
     const message = `🟥 Cartão Vermelho! ${playerName} - ${scoringTeamName} (${event.minute}')`;
