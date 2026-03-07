@@ -234,7 +234,9 @@ export function useLiveScores(
       console.log(`[useLiveScores] Got ${fixtures.length} live fixtures`);
 
       // Create a map of fixture ID -> live score data
-      const newScores = new Map<string, LiveScore>();
+      // IMPORTANTE: Começar com o estado atual e atualizar apenas o que veio de novo
+      // Isso evita que o tempo suma se o jogo sumir temporariamente de 'live=all' devido ao cache
+      const newScores = new Map<string, LiveScore>(scores);
 
       // Collect fixture IDs that need events fetched
       const fixturesWithGoals: { id: string; homeTeamId: number; awayTeamId: number }[] = [];
@@ -249,7 +251,7 @@ export function useLiveScores(
         goalKey: string,
         homeTeam: string,
         awayTeam: string,
-        leagueName: string
+        league: string
       }[] = [];
 
       for (const fixture of fixtures) {
@@ -305,7 +307,7 @@ export function useLiveScores(
                     goalKey,
                     homeTeam,
                     awayTeam,
-                    leagueName
+                    league: leagueName
                   });
                 }
               }
@@ -324,7 +326,7 @@ export function useLiveScores(
                     goalKey,
                     homeTeam,
                     awayTeam,
-                    leagueName
+                    league: leagueName
                   });
                 }
               }
@@ -496,7 +498,7 @@ export function useLiveScores(
           minute,
           goal.homeTeam,
           goal.awayTeam,
-          goal.leagueName
+          goal.league
         );
       }
 

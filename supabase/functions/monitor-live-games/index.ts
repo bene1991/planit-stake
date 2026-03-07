@@ -325,14 +325,16 @@ serve(async (req: Request) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+    const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
 
     // Manual Auth Validation
     const isServiceKey = authHeader === `Bearer ${serviceKey}`;
     const isAnonKey = authHeader === `Bearer ${anonKey}` || req.headers.get('apikey') === anonKey;
+    const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
 
-    if (!isServiceKey && !isAnonKey) {
+    if (!isServiceKey && !isAnonKey && !hasLegacyAnon) {
       console.error('[Monitor] Unauthorized request Attempt');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }

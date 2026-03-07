@@ -21,9 +21,9 @@ let lastRateLimit: { limit: number; remaining: number; used: number } | null = n
 const CACHE_TTL: Record<string, number> = {
   live: 5 * 1000,
   fixtures_date: 10 * 60 * 1000,
-  fixtures_id: 30 * 1000,
+  fixtures_id: 10 * 1000,
   statistics: 15 * 1000,
-  events: 30 * 1000,
+  events: 15 * 1000,
   leagues: 24 * 60 * 60 * 1000,
   teams: 24 * 60 * 60 * 1000,
   standings: 60 * 60 * 1000,
@@ -131,10 +131,12 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
   const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
+  const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
+  const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
 
-  if (!isServiceRole && !isAnon) {
+  if (!isServiceRole && !isAnon && !hasLegacyAnon) {
     console.error('[Auth] Unauthorized request to api-football');
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    return new Response(JSON.stringify({ error: 'Unauthorized', details: 'Invalid token' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

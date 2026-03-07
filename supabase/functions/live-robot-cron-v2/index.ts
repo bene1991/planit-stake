@@ -24,6 +24,9 @@ function escapeHtml(text: string): string {
 }
 
 async function callApiFootball(endpoint: string, token: string, params: Record<string, unknown> = {}) {
+    // Add artificial delay to avoid Supabase Edge Function rate limits (bursts)
+    await new Promise(r => setTimeout(r, 50));
+
     const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
         method: 'POST',
         headers: {

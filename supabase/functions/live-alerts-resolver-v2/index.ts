@@ -11,18 +11,26 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
 
 
-async function callApiFootball(endpoint: string) {
+async function callApiFootball(endpoint: string, token: string, params: Record<string, unknown> = {}) {
+  // Add artificial delay to avoid Supabase Edge Function rate limits (bursts)
+  await new Promise(r => setTimeout(r, 50));
+
   const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Authorization': token.startsWith('Bearer ') ? token : `Bearer ${token}`,
     },
-    body: JSON.stringify({ endpoint }),
+    body: JSON.stringify({ endpoint, ...params }),
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => 'No body');
+    console.error(`[Resolver] API call failed: ${res.status} ${res.statusText}`, errorText);
+    throw new Error(`API error: ${res.status} - ${errorText.substring(0, 100)}`);
+  }
   return res.json();
 }
+
 
 async function sendTelegramResult(
   supabase: any,
@@ -102,9 +110,10 @@ serve(async (req: Request) => {
 
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
-      .select('id, fixture_id, home_team, away_team, league_name, variation_name, goal_ht_result, over15_result, final_score, goal_events')
+      .select('id, fixture_id, home_team, away_team, league_name, variation_name, goal_ht_result, over15_result, final_score, goal_events, created_at')
       .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.is.null')
-      .limit(50); // limit to avoid timeout
+      .order('created_at', { ascending: true })
+      .limit(100); // Increased limit and added ordering
 
     if (fetchErr) throw fetchErr;
     if (!pendingAlerts || pendingAlerts.length === 0) {
@@ -119,7 +128,8 @@ serve(async (req: Request) => {
 
     for (const fixtureId of uniqueFixtureIds) {
       try {
-        const data = await callApiFootball(`fixtures?id=${fixtureId}`);
+        console.log(`[Resolver] Fetching data for Fixture ${fixtureId}...`);
+        const data = await callApiFootball(`fixtures?id=${fixtureId}`, SUPABASE_SERVICE_ROLE_KEY);
         const fixtureObj = data?.response?.[0];
 
         if (!fixtureObj) {
@@ -148,19 +158,16 @@ serve(async (req: Request) => {
             const result = htGoals > 0 ? 'green' : 'red';
             const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
 
-            const sent = await sendTelegramResult(
+            // Send Telegram result (Fire and forget, don't block DB update)
+            sendTelegramResult(
               supabase,
               alert.home_team, alert.away_team,
               alert.league_name || '', alert.variation_name || 'Padrão',
               result as 'green' | 'red', 'goal_ht', htScore,
-            );
+            ).catch(err => console.error(`[Resolver] Telegram Goal HT failed for alert ${alert.id}:`, err));
 
-            if (sent) {
-              updates.goal_ht_result = result;
-              hasUpdate = true;
-            } else {
-              console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
-            }
+            updates.goal_ht_result = result;
+            hasUpdate = true;
           }
 
           // Resolve Over 1.5
@@ -168,41 +175,49 @@ serve(async (req: Request) => {
             const result = totalGoals >= 2 ? 'green' : 'red';
             const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
 
-            const sent = await sendTelegramResult(
+            // Send Telegram result (Fire and forget, don't block DB update)
+            sendTelegramResult(
               supabase,
               alert.home_team, alert.away_team,
               alert.league_name || '', alert.variation_name || 'Padrão',
               result as 'green' | 'red', 'over15', fs,
-            );
+            ).catch(err => console.error(`[Resolver] Telegram Over 1.5 failed for alert ${alert.id}:`, err));
 
-            if (sent) {
-              updates.over15_result = result;
-              updates.final_score = fs;
-              hasUpdate = true;
-            } else {
-              console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+            updates.over15_result = result;
+            updates.final_score = fs;
+            hasUpdate = true;
+          }
+
+          // Incremental Goal Events and Real-time Telegram Notifications
+          const currentEvents = Array.isArray(alert.goal_events) ? alert.goal_events : [];
+          if (totalGoals > currentEvents.length && fixtureObj.events) {
+            const apiGoalEvents = fixtureObj.events
+              .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
+              .map((e: any) => ({
+                minute: e.time.elapsed,
+                extra: e.time.extra,
+                team: e.team?.name,
+                player: e.player?.name,
+                detail: e.detail
+              }));
+
+            if (apiGoalEvents.length > currentEvents.length) {
+              // Find new events by comparing minute and player
+              const newEvents = apiGoalEvents.filter((ae: any) =>
+                !currentEvents.some((ce: any) => ce.minute === ae.minute && ce.player === ae.player)
+              );
+
+              if (newEvents.length > 0) {
+                updates.goal_events = apiGoalEvents;
+                updates.final_score = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
+                hasUpdate = true;
+              }
             }
           }
 
-          // Sync Goal Events if match finished and missing (independent of notifications)
-          if (isMatchFinished && (!alert.final_score || !alert.goal_events || (Array.isArray(alert.goal_events) && alert.goal_events.length === 0))) {
-            const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
-            if (!updates.final_score) updates.final_score = fs;
-
-            if (totalGoals > 0 && fixtureObj.events) {
-              const goalEvents = fixtureObj.events
-                .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
-                .map((e: any) => ({
-                  minute: e.time.elapsed,
-                  extra: e.time.extra,
-                  team: e.team?.name,
-                  player: e.player?.name,
-                  detail: e.detail
-                }));
-              updates.goal_events = goalEvents;
-            } else if (totalGoals === 0) {
-              updates.goal_events = [];
-            }
+          // Sync Final Score on match end if not already set
+          if (isMatchFinished && !alert.final_score) {
+            updates.final_score = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
             hasUpdate = true;
           }
 
