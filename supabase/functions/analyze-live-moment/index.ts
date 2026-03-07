@@ -6,8 +6,23 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+  const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
+
+  const authHeader = req.headers.get('Authorization');
+  const apiKeyHeader = req.headers.get('apikey');
+
+  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY) || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
+  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY) || apiKeyHeader === SUPABASE_ANON_KEY;
+  const hasLegacyAnon = authHeader?.includes(legacyAnonKey) || apiKeyHeader === legacyAnonKey;
+
+  if (!isServiceRole && !isAnon && !hasLegacyAnon) {
+    console.error('[Auth] Unauthorized request to analyze-live-moment');
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 
   try {

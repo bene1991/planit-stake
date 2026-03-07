@@ -90,9 +90,11 @@ serve(async (req) => {
   const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
 
   const authHeader = req.headers.get('Authorization');
-  const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
-  const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
+  const apiKeyHeader = req.headers.get('apikey');
+
+  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY) || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
+  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY) || apiKeyHeader === SUPABASE_ANON_KEY;
+  const hasLegacyAnon = authHeader?.includes(legacyAnonKey) || apiKeyHeader === legacyAnonKey;
 
   if (!isServiceRole && !isAnon && !hasLegacyAnon) {
     console.error('[Auth] Unauthorized request to send-telegram-notification');
@@ -167,7 +169,37 @@ serve(async (req) => {
 
     console.log(`[Telegram] Sending ${messageType} message via ${action || 'send'}`);
 
-    const response = await fetch(
+    // Helper for fetch with retry logic (especially for 429 Rate Limits)
+    const fetchWithRetry = async (url: string, options: any, maxRetries = 3) => {
+      let lastError;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          if (attempt > 0) {
+            const delay = Math.pow(2, attempt) * 1000;
+            console.log(`[Telegram] Retry attempt ${attempt}/${maxRetries} after ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+
+          const response = await fetch(url, options);
+          const data = await response.json();
+
+          if (response.status === 429) {
+            const retryAfter = data.parameters?.retry_after || 5;
+            console.warn(`[Telegram] Rate limited (429). Retry after ${retryAfter}s...`);
+            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+            continue; // Force another attempt if we have retries left
+          }
+
+          return { response, data };
+        } catch (err) {
+          lastError = err;
+          console.error(`[Telegram] Fetch error on attempt ${attempt}:`, err);
+        }
+      }
+      throw lastError || new Error('Max retries exceeded');
+    };
+
+    const { response, data } = await fetchWithRetry(
       `https://api.telegram.org/bot${botToken}/sendMessage`,
       {
         method: 'POST',
@@ -180,12 +212,11 @@ serve(async (req) => {
       }
     );
 
-    const data = await response.json();
     let status: 'sent' | 'failed' = 'sent';
     let errorMessage: string | undefined;
 
     if (!data.ok) {
-      console.error('[Telegram] API error:', data);
+      console.error('[Telegram] API final error:', data);
       status = 'failed';
       errorMessage = data.description;
     }

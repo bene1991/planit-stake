@@ -351,7 +351,9 @@ async function runRobot() {
             console.error('[Cron] Failed to trigger monitor:', monErr);
         }
 
-        // Trigger the alerts resolver to resolve pending HT/FT results and send Telegram notifications
+        // Monitor handles alerts resolution as well since our last update.
+        // Skipping direct resolver call to avoid redundancy and potential deployment conflicts.
+        /*
         try {
             console.log('[Cron] Triggering live-alerts-resolver...');
             const resolverRes = await fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver`, {
@@ -366,6 +368,7 @@ async function runRobot() {
         } catch (resolverErr) {
             console.error('[Cron] Failed to trigger resolver:', resolverErr);
         }
+        */
     } catch (e) {
         console.error('Robot error:', e);
         try {

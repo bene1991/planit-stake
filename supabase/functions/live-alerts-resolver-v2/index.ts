@@ -91,14 +91,16 @@ serve(async (req: Request) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   const authHeader = req.headers.get('Authorization');
-  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY);
-  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY);
+  const apiKeyHeader = req.headers.get('apikey');
+
+  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY) || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
+  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY) || apiKeyHeader === SUPABASE_ANON_KEY;
   const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
-  const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
+  const hasLegacyAnon = authHeader?.includes(legacyAnonKey) || apiKeyHeader === legacyAnonKey;
 
   if (!isServiceRole && !isAnon && !hasLegacyAnon) {
     console.error('[Auth] Unauthorized request to live-alerts-resolver');
-    console.error(`Received auth format: ${authHeader ? 'present' : 'missing'}`);
+    console.log('Headers:', JSON.stringify(Object.fromEntries(req.headers.entries())));
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -110,10 +112,10 @@ serve(async (req: Request) => {
 
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
-      .select('id, fixture_id, home_team, away_team, league_name, variation_name, goal_ht_result, over15_result, final_score, goal_events, created_at')
+      .select('*, robot_variations(send_telegram)')
       .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.is.null')
       .order('created_at', { ascending: true })
-      .limit(100); // Increased limit and added ordering
+      .limit(100);
 
     if (fetchErr) throw fetchErr;
     if (!pendingAlerts || pendingAlerts.length === 0) {
@@ -159,12 +161,16 @@ serve(async (req: Request) => {
             const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
 
             // Send Telegram result (Fire and forget, don't block DB update)
-            sendTelegramResult(
-              supabase,
-              alert.home_team, alert.away_team,
-              alert.league_name || '', alert.variation_name || 'Padrão',
-              result as 'green' | 'red', 'goal_ht', htScore,
-            ).catch(err => console.error(`[Resolver] Telegram Goal HT failed for alert ${alert.id}:`, err));
+            if (alert.robot_variations?.send_telegram !== false) {
+              sendTelegramResult(
+                supabase,
+                alert.home_team, alert.away_team,
+                alert.league_name || '', alert.variation_name || 'Padrão',
+                result as 'green' | 'red', 'goal_ht', htScore,
+              ).catch(err => console.error(`[Resolver] Telegram Goal HT failed for alert ${alert.id}:`, err));
+            } else {
+              console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
+            }
 
             updates.goal_ht_result = result;
             hasUpdate = true;
@@ -176,12 +182,16 @@ serve(async (req: Request) => {
             const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
 
             // Send Telegram result (Fire and forget, don't block DB update)
-            sendTelegramResult(
-              supabase,
-              alert.home_team, alert.away_team,
-              alert.league_name || '', alert.variation_name || 'Padrão',
-              result as 'green' | 'red', 'over15', fs,
-            ).catch(err => console.error(`[Resolver] Telegram Over 1.5 failed for alert ${alert.id}:`, err));
+            if (alert.robot_variations?.send_telegram !== false) {
+              sendTelegramResult(
+                supabase,
+                alert.home_team, alert.away_team,
+                alert.league_name || '', alert.variation_name || 'Padrão',
+                result as 'green' | 'red', 'over15', fs,
+              ).catch(err => console.error(`[Resolver] Telegram Over 1.5 failed for alert ${alert.id}:`, err));
+            } else {
+              console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
+            }
 
             updates.over15_result = result;
             updates.final_score = fs;

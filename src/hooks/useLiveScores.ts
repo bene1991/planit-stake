@@ -146,7 +146,7 @@ export function useLiveScores(
           try {
             const gameTime = new Date(`${g.date}T${g.time}`);
             const diffMs = gameTime.getTime() - now.getTime();
-            return diffMs <= 30 * 60 * 1000 && diffMs > -60 * 60 * 1000;
+            return diffMs <= 60 * 60 * 1000 && diffMs > -60 * 60 * 1000;
           } catch {
             return false;
           }
@@ -264,182 +264,147 @@ export function useLiveScores(
 
         if (!fixtureId) continue;
 
-        const isMonitoredLocally = fixtureIds.includes(fixtureId);
+        const fixtureIdClean = fixtureId.trim();
+        const oldSnapshot = previousScoresRef.current.get(fixtureIdClean);
 
-        if (isMonitoredLocally || monitorAllLive) {
-          // Find the game for this fixture (may be null if not in planning)
-          // Use numeric comparison to be safe against string/number type mismatches
-          const game = gamesRef.current.find(g =>
-            g.api_fixture_id && String(g.api_fixture_id).trim() === String(fixtureId).trim()
-          );
+        // ALWAYS establish baseline for EVERY game to ensure future goals are detected correctly
+        const hadPreviousBaseline = !!oldSnapshot;
+        const oldHomeScore = oldSnapshot?.homeScore ?? 0;
+        const oldAwayScore = oldSnapshot?.awayScore ?? 0;
 
-          // GOAL DETECTION: Compare with previous snapshot BEFORE updating
-          // Save old snapshot for goalDetectedAt comparison later
-          const oldSnapshot = previousScoresRef.current.get(fixtureId);
-          const hadPreviousBaseline = !!oldSnapshot;
-          const oldHomeScore = oldSnapshot?.homeScore ?? 0;
-          const oldAwayScore = oldSnapshot?.awayScore ?? 0;
+        // Find the game in manual planning
+        const legitGame = gamesRef.current.find(g =>
+          g.api_fixture_id && String(g.api_fixture_id).trim() === fixtureIdClean
+        );
 
-          if (onGoalDetectedRef.current || onRedCardDetectedRef.current) {
-            const homeTeam = fixture.teams?.home?.name || 'Home';
-            const awayTeam = fixture.teams?.away?.name || 'Away';
-            const leagueName = fixture.league?.name || 'League';
+        const isLegit = !!legitGame;
 
-            if (oldSnapshot) {
-              // Periodic cleanup
-              cleanupNotifiedEntries();
+        if (onGoalDetectedRef.current || onRedCardDetectedRef.current) {
+          const homeTeam = fixture.teams?.home?.name || 'Home';
+          const awayTeam = fixture.teams?.away?.name || 'Away';
+          const leagueName = fixture.league?.name || 'League';
 
-              // Detect home goal - with MODULE-LEVEL dedup
-              // SKIP if game is finished to avoid late notifications for already concluded matches
-              const isFinished = FINISHED_STATUSES.includes(status);
+          // Periodic cleanup
+          cleanupNotifiedEntries();
 
-              if (!isFinished && homeGoals > oldSnapshot.homeScore) {
-                const goalKey = `${fixtureId}-home-${homeGoals}`;
-                if (!notifiedGoalsModule.has(goalKey)) {
-                  notifiedGoalsModule.set(goalKey, Date.now());
-                  console.log(`[useLiveScores] 🎉 HOME GOAL DETECTED! ${homeTeam} scores! ${homeGoals}-${awayGoals}`);
+          // Detect home goal
+          if (hadPreviousBaseline) {
+            const isFinished = FINISHED_STATUSES.includes(status);
+
+            if (!isFinished && homeGoals > oldHomeScore) {
+              const goalKey = `${fixtureIdClean}-home-${homeGoals}`;
+              if (!notifiedGoalsModule.has(goalKey)) {
+                notifiedGoalsModule.set(goalKey, Date.now());
+
+                // ONLY add to notifications if it's a legit planning game OR monitorAllLive is true
+                if (isLegit || monitorAllLive) {
+                  console.log(`[useLiveScores] 🎉 LEGIT HOME GOAL! ${homeTeam} scores! ${homeGoals}-${awayGoals}`);
                   newlyDetectedGoals.push({
-                    game,
-                    fixtureId,
-                    team: 'home',
-                    homeScore: homeGoals,
-                    awayScore: awayGoals,
-                    goalKey,
-                    homeTeam,
-                    awayTeam,
-                    league: leagueName
+                    game: legitGame, fixtureId: fixtureIdClean, team: 'home', homeScore: homeGoals, awayScore: awayGoals,
+                    goalKey, homeTeam, awayTeam, league: leagueName
                   });
-                }
-              }
-              // Detect away goal
-              if (!isFinished && awayGoals > oldSnapshot.awayScore) {
-                const goalKey = `${fixtureId}-away-${awayGoals}`;
-                if (!notifiedGoalsModule.has(goalKey)) {
-                  notifiedGoalsModule.set(goalKey, Date.now());
-                  console.log(`[useLiveScores] 🎉 AWAY GOAL DETECTED! ${awayTeam} scores! ${homeGoals}-${awayGoals}`);
-                  newlyDetectedGoals.push({
-                    game,
-                    fixtureId,
-                    team: 'away',
-                    homeScore: homeGoals,
-                    awayScore: awayGoals,
-                    goalKey,
-                    homeTeam,
-                    awayTeam,
-                    league: leagueName
-                  });
+                } else {
+                  console.log(`[useLiveScores] 🤫 Muted goal for robot/unknown game: ${homeTeam}`);
                 }
               }
             }
+            // Detect away goal
+            if (!isFinished && awayGoals > oldAwayScore) {
+              const goalKey = `${fixtureIdClean}-away-${awayGoals}`;
+              if (!notifiedGoalsModule.has(goalKey)) {
+                notifiedGoalsModule.set(goalKey, Date.now());
 
-            // RED CARD DETECTION: Check events in response
-            if (fixture.events?.length && onRedCardDetectedRef.current) {
-              const redCards = fixture.events.filter((e: any) => e.type?.toLowerCase() === 'red card');
-              for (const rc of redCards) {
-                const rcKey = `${fixtureId}-${rc.time?.elapsed}-${rc.player?.name || 'unknown'}`;
-                if (!notifiedRedCardsModule.has(rcKey)) {
-                  notifiedRedCardsModule.set(rcKey, Date.now());
-                  console.log(`[useLiveScores] 🟥 RED CARD DETECTED! ${rc.player?.name} (${rc.team?.name})`);
+                if (isLegit || monitorAllLive) {
+                  console.log(`[useLiveScores] 🎉 LEGIT AWAY GOAL! ${awayTeam} scores! ${homeGoals}-${awayGoals}`);
+                  newlyDetectedGoals.push({
+                    game: legitGame, fixtureId: fixtureIdClean, team: 'away', homeScore: homeGoals, awayScore: awayGoals,
+                    goalKey, homeTeam, awayTeam, league: leagueName
+                  });
+                } else {
+                  console.log(`[useLiveScores] 🤫 Muted goal for robot/unknown game: ${awayTeam}`);
+                }
+              }
+            }
+          }
+
+          // RED CARD DETECTION: Check events in response
+          if (fixture.events?.length && onRedCardDetectedRef.current) {
+            const redCards = fixture.events.filter((e: any) => e.type?.toLowerCase() === 'red card');
+            for (const rc of redCards) {
+              const rcKey = `${fixtureIdClean}-${rc.time?.elapsed}-${rc.player?.name || 'unknown'}`;
+              if (!notifiedRedCardsModule.has(rcKey)) {
+                notifiedRedCardsModule.set(rcKey, Date.now());
+
+                // ONLY fire for planning games or if explicit monitor-all
+                if (isLegit || monitorAllLive) {
                   onRedCardDetectedRef.current({
-                    fixtureId: parseInt(fixtureId),
+                    fixtureId: parseInt(fixtureIdClean),
                     minute: rc.time?.elapsed,
                     team: rc.team?.id === homeTeamId ? 'home' : 'away',
                     player: rc.player?.name,
-                    // Additional info for global notifications
-                    homeTeam,
-                    awayTeam,
-                    leagueName
+                    homeTeam, awayTeam, leagueName
                   } as any);
                 }
               }
             }
-
-            // Update previous snapshot for next comparison (AFTER reading old values)
-            previousScoresRef.current.set(fixtureId, { homeScore: homeGoals, awayScore: awayGoals });
           }
 
-          // Detect if a goal just happened using the OLD snapshot (before it was updated above)
-          const goalJustHappened = hadPreviousBaseline && (
-            homeGoals > oldHomeScore || awayGoals > oldAwayScore
-          );
-
-          newScores.set(fixtureId, {
-            fixtureId: parseInt(fixtureId),
-            homeScore: homeGoals,
-            awayScore: awayGoals,
-            elapsed: fixture.fixture?.status?.elapsed ?? null,
-            status: status,
-            statusLong: fixture.fixture?.status?.long ?? 'Not Started',
-            homeTeamId,
-            awayTeamId,
-            goalDetectedAt: goalJustHappened ? Date.now() : undefined,
-            events: fixture.events?.length > 0 ? fixture.events.map((e: any) => ({
-              minute: e.time?.elapsed,
-              team: e.team?.id === homeTeamId ? 'home' : 'away',
-              type: e.type?.toLowerCase(),
-              player: e.player?.name,
-              detail: e.detail
-            })) : undefined,
-          });
-
-          // Track fixtures with goals for event fetching
+          // ALWAYS update baseline for next cycle
+          previousScoresRef.current.set(fixtureIdClean, { homeScore: homeGoals, awayScore: awayGoals });
           if ((homeGoals > 0 || awayGoals > 0) && homeTeamId && awayTeamId) {
             fixturesWithGoals.push({ id: fixtureId, homeTeamId, awayTeamId });
           }
 
           // LIVE STATUS PERSISTENCE: Update DB when game starts
-          if (game && LIVE_STATUSES.includes(status) && !livePersistedRef.current.has(game.id)) {
-            const dbStatus = game.status;
+          if (legitGame && LIVE_STATUSES.includes(status) && !livePersistedRef.current.has(legitGame.id)) {
+            const dbStatus = legitGame.status;
             if (dbStatus === 'Pending' || dbStatus === 'Not Started' || !dbStatus) {
-              livePersistedRef.current.add(game.id);
-              console.log(`[useLiveScores] 🟢 GAME STARTED! ${game.homeTeam} vs ${game.awayTeam} - persisting status: Live`);
+              livePersistedRef.current.add(legitGame.id);
+              console.log(`[useLiveScores] 🟢 GAME STARTED! ${legitGame.homeTeam} vs ${legitGame.awayTeam} - persisting status: Live`);
 
               supabase
                 .from('games')
                 .update({ status: 'Live' })
-                .eq('id', game.id)
+                .eq('id', legitGame.id)
                 .then(({ error }) => {
                   if (error) {
                     console.error('[useLiveScores] Failed to persist Live status:', error);
-                    livePersistedRef.current.delete(game.id);
+                    livePersistedRef.current.delete(legitGame.id);
                   } else {
-                    console.log(`[useLiveScores] ✅ Live status persisted for ${game.id}`);
-                    onScorePersistedRef.current?.(game.id, homeGoals, awayGoals);
+                    console.log(`[useLiveScores] ✅ Live status persisted for ${legitGame.id}`);
+                    onScorePersistedRef.current?.(legitGame.id, homeGoals, awayGoals);
                   }
                 });
             }
           }
 
           // Check if game just finished - persist final score
-          if (FINISHED_STATUSES.includes(status)) {
-            const game = gamesRef.current.find(g => g.api_fixture_id === fixtureId);
-            if (game && !persistedScoresRef.current.has(game.id)) {
-              // Mark as persisted immediately to avoid duplicates
-              persistedScoresRef.current.add(game.id);
+          if (legitGame && FINISHED_STATUSES.includes(status) && !persistedScoresRef.current.has(legitGame.id)) {
+            // Mark as persisted immediately to avoid duplicates
+            persistedScoresRef.current.add(legitGame.id);
 
-              console.log(`[useLiveScores] Persisting final score for ${game.homeTeam} vs ${game.awayTeam}: ${homeGoals}-${awayGoals}`);
+            console.log(`[useLiveScores] Persisting final score for ${legitGame.homeTeam} vs ${legitGame.awayTeam}: ${homeGoals}-${awayGoals}`);
 
-              // Persist to database (fire and forget)
-              supabase
-                .from('games')
-                .update({
-                  final_score_home: homeGoals,
-                  final_score_away: awayGoals,
-                  status: 'Finished'
-                })
-                .eq('id', game.id)
-                .then(({ error }) => {
-                  if (error) {
-                    console.error('[useLiveScores] Failed to persist score:', error);
-                    // Remove from set to allow retry
-                    persistedScoresRef.current.delete(game.id);
-                  } else {
-                    console.log(`[useLiveScores] Score persisted for game ${game.id}`);
-                    // Notify parent to update local state
-                    onScorePersistedRef.current?.(game.id, homeGoals, awayGoals);
-                  }
-                });
-            }
+            // Persist to database (fire and forget)
+            supabase
+              .from('games')
+              .update({
+                final_score_home: homeGoals,
+                final_score_away: awayGoals,
+                status: 'Finished'
+              })
+              .eq('id', legitGame.id)
+              .then(({ error }) => {
+                if (error) {
+                  console.error('[useLiveScores] Failed to persist score:', error);
+                  // Remove from set to allow retry
+                  persistedScoresRef.current.delete(legitGame.id);
+                } else {
+                  console.log(`[useLiveScores] Score persisted for game ${legitGame.id}`);
+                  // Notify parent to update local state
+                  onScorePersistedRef.current?.(legitGame.id, homeGoals, awayGoals);
+                }
+              });
           }
         }
       }

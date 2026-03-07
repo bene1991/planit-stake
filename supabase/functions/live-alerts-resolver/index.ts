@@ -99,9 +99,9 @@ serve(async (req: Request) => {
 
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
-      .select('id, fixture_id, home_team, away_team, league_name, variation_name, goal_ht_result, over15_result, final_score, goal_events')
+      .select('*, robot_variations(send_telegram)')
       .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.is.null')
-      .limit(50); // limit to avoid timeout
+      .limit(50);
 
     if (fetchErr) throw fetchErr;
     if (!pendingAlerts || pendingAlerts.length === 0) {
@@ -145,18 +145,27 @@ serve(async (req: Request) => {
             const result = htGoals > 0 ? 'green' : 'red';
             const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
 
-            const sent = await sendTelegramResult(
-              supabase,
-              alert.home_team, alert.away_team,
-              alert.league_name || '', alert.variation_name || 'Padrão',
-              result as 'green' | 'red', 'goal_ht', htScore,
-            );
+            const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
 
-            if (sent) {
+            if (sendTelegramEnabled) {
+              const sent = await sendTelegramResult(
+                supabase,
+                alert.home_team, alert.away_team,
+                alert.league_name || '', alert.variation_name || 'Padrão',
+                result as 'green' | 'red', 'goal_ht', htScore,
+              );
+
+              if (sent) {
+                updates.goal_ht_result = result;
+                hasUpdate = true;
+              } else {
+                console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
+              }
+            } else {
+              // Resolved in DB without telegram
               updates.goal_ht_result = result;
               hasUpdate = true;
-            } else {
-              console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
+              console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
             }
           }
 
@@ -165,19 +174,29 @@ serve(async (req: Request) => {
             const result = totalGoals >= 2 ? 'green' : 'red';
             const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
 
-            const sent = await sendTelegramResult(
-              supabase,
-              alert.home_team, alert.away_team,
-              alert.league_name || '', alert.variation_name || 'Padrão',
-              result as 'green' | 'red', 'over15', fs,
-            );
+            const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
 
-            if (sent) {
+            if (sendTelegramEnabled) {
+              const sent = await sendTelegramResult(
+                supabase,
+                alert.home_team, alert.away_team,
+                alert.league_name || '', alert.variation_name || 'Padrão',
+                result as 'green' | 'red', 'over15', fs,
+              );
+
+              if (sent) {
+                updates.over15_result = result;
+                updates.final_score = fs;
+                hasUpdate = true;
+              } else {
+                console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+              }
+            } else {
+              // Resolved in DB without telegram
               updates.over15_result = result;
               updates.final_score = fs;
               hasUpdate = true;
-            } else {
-              console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+              console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
             }
           }
 

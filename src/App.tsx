@@ -67,80 +67,44 @@ const AppContent = () => {
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
   const handleGoalDetected = useCallback<GoalDetectedCallback>((gameId, team, homeScore, awayScore, game, playerName, minute, apiHome, apiAway, apiLeague) => {
-    const hTeam = game?.homeTeam || apiHome || 'Home';
-    const aTeam = game?.awayTeam || apiAway || 'Away';
-    const league = game?.league || apiLeague || 'League';
-    if (game?.id) setHighlightedGameId(game.id);
+    // RIGOROUS FILTER: Only notify if game is explicitly in manual planning
+    // Fixture-only matches (robot) won't have a game object here when monitorAllLive=false
+    if (!game?.id) return;
+
+    if (game.id) setHighlightedGameId(game.id);
+
+    // --- NOTIFICAÇÕES TÁTEIS (Toast & Som) ---
+    // Mantemos apenas para feedback visual interno
     if (notifPrefs.enabled) {
-      const scoringTeamName = team === 'home' ? hTeam : aTeam;
-      const message = `⚽ GOL! ${scoringTeamName} (${minute}')\n${hTeam} ${homeScore} - ${awayScore} ${aTeam}`;
+      const scoringTeamName = team === 'home' ? game.homeTeam : game.awayTeam;
+      const message = `⚽ GOL! ${scoringTeamName} (${minute}')\n${game.homeTeam} ${homeScore} - ${awayScore} ${game.awayTeam}`;
       toast.success(message, { duration: 8000 });
       if (notifPrefs.soundEnabled) playGoalSound();
     }
-    if (notifPrefs.telegramEnabled) {
-      const scoringTeamName = team === 'home' ? hTeam : aTeam;
-      const playerLine = playerName ? `\n⚽ Jogador: ${playerName} (${scoringTeamName})` : '';
-      const msg = `⚽ <b>GOL!</b> ${scoringTeamName}${playerLine}\n${hTeam} ${homeScore} - ${awayScore} ${aTeam}\n🏟 ${league} | ⏱ ${minute || '??'}'`;
-      sendTelegramNotification(msg).catch(err => console.error('[App] Telegram goal error:', err));
-    }
-    if (user && document.hidden) {
-      const scoringTeamName = team === 'home' ? hTeam : aTeam;
-      supabase.functions.invoke('send-push-notification', {
-        body: {
-          userId: user.id,
-          payload: {
-            title: '⚽ GOL!',
-            body: `${scoringTeamName}${playerName ? ` (${playerName})` : ''} marca! ${hTeam} ${homeScore} x ${awayScore} ${aTeam}`,
-            icon: '/pwa-192x192.png',
-            badge: '/pwa-192x192.png',
-            data: { type: 'goal', homeTeam: hTeam, awayTeam: aTeam, homeScore, awayScore }
-          }
-        }
-      }).catch(err => console.error('[App] Push goal error:', err));
-    }
-  }, [user, notifPrefs, setHighlightedGameId]);
+  }, [notifPrefs, setHighlightedGameId]);
 
   const handleRedCardDetected = useCallback((event: RedCardEvent) => {
     if (!notifPrefs.redCardAlerts || !notifPrefs.enabled) return;
+
+    // Only process if it's a planning game
     const game = games.find(g => g.api_fixture_id === event.fixtureId.toString());
+    if (!game?.id) return;
 
-    // Fallback info from event if game not found in local db
-    const hTeam = game?.homeTeam || event.homeTeam || 'Home';
-    const aTeam = game?.awayTeam || event.awayTeam || 'Away';
-    const league = game?.league || event.leagueName || 'League';
-
-    const scoringTeamName = event.team === 'home' ? hTeam : aTeam;
+    const scoringTeamName = event.team === 'home' ? game.homeTeam : game.awayTeam;
     const playerName = event.player || 'Jogador';
     const message = `🟥 Cartão Vermelho! ${playerName} - ${scoringTeamName} (${event.minute}')`;
+
     toast.error(message, { duration: 8000 });
     if (notifPrefs.soundEnabled) playNotificationSound('error', true);
     if (notifPrefs.voiceAlerts) playRedCardVoice();
-    if (game && user && document.hidden) {
-      supabase.functions.invoke('send-push-notification', {
-        body: {
-          userId: user.id,
-          payload: {
-            title: '🟥 Cartão Vermelho!',
-            body: `Jogador: ${playerName} (${scoringTeamName})\n${game.homeTeam} vs ${game.awayTeam} | ⏱ ${event.minute}'`,
-            icon: '/pwa-192x192.png',
-            badge: '/pwa-192x192.png',
-            data: { type: 'red_card', fixtureId: event.fixtureId }
-          }
-        }
-      }).catch(err => console.error('[App] Push red card error:', err));
-    }
-    if (notifPrefs.telegramEnabled) {
-      const msg = `🟥 <b>CARTÃO VERMELHO!</b>\nJogador: ${playerName} (${scoringTeamName})\n${hTeam} vs ${aTeam}\n🏟 ${game.league} | ⏱ ${event.minute}'`;
-      sendTelegramNotification(msg).catch(err => console.error('[App] Telegram red card error:', err));
-    }
-  }, [user, notifPrefs, games]);
+  }, [notifPrefs, games]);
 
   return (
     <NotificationCenter games={games}>
       <LiveScoresProvider
         onGoalDetected={handleGoalDetected}
         onRedCardDetected={handleRedCardDetected}
-        monitorAllLive={true}
+        monitorAllLive={false}
         highlightedGameId={highlightedGameId}
         setHighlightedGameId={setHighlightedGameId}
       >
