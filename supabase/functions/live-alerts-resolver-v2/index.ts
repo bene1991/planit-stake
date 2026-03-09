@@ -76,7 +76,8 @@ async function sendTelegramResult(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY.trim()}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY.trim()
         },
         body: JSON.stringify({
           userId,
@@ -89,9 +90,10 @@ async function sendTelegramResult(
       if (response.ok) return true;
 
       const errorText = await response.text();
-      console.error(`[Resolver] Telegram attempt ${attempt} failed:`, errorText);
+      console.error(`[Resolver] Telegram attempt ${attempt} failed (Status ${response.status}):`, errorText);
 
-      if (response.status === 401) return false;
+      // If it's a persistent error like 401/400, don't just loop endlessly if retries won't help
+      if (response.status === 401 || response.status === 400) return false;
 
     } catch (err) {
       console.error(`[Resolver] Telegram attempt ${attempt} catch error:`, err);
@@ -186,8 +188,8 @@ serve(async (req: Request) => {
                 alert.owner_id
               );
               if (!sent) {
-                console.error(`[Resolver] Failed to deliver Goal HT Telegram for alert ${alert.id}. Will NOT update DB to allow retry.`);
-                continue; // Skip DB update so it remains 'pending' and retries next time
+                console.error(`[Resolver] Failed to deliver Goal HT Telegram for alert ${alert.id}. Proceeding with DB update to avoid blocking.`);
+                // NO CONTINUE: We want to update the DB even if Telegram fails
               }
             } else {
               console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
@@ -212,8 +214,8 @@ serve(async (req: Request) => {
                 alert.owner_id
               );
               if (!sent) {
-                console.error(`[Resolver] Failed to deliver Over 1.5 Telegram for alert ${alert.id}. Will NOT update DB to allow retry.`);
-                continue; // Skip DB update
+                console.error(`[Resolver] Failed to deliver Over 1.5 Telegram for alert ${alert.id}. Proceeding with DB update.`);
+                // NO CONTINUE
               }
             } else {
               console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);

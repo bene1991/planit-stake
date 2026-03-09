@@ -57,6 +57,7 @@ export interface Game {
   sofascoreCropTop?: number;
   sofascoreCropHeight?: number;
   radarUrl?: string;
+  dateTime?: string;
 }
 
 export interface Estrategia {

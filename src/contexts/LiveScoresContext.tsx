@@ -76,10 +76,15 @@ export const LiveScoresProvider: React.FC<{
         const activeHighlightedGameId = externalHighlightedGameId !== undefined ? externalHighlightedGameId : localHighlightedGameId;
         const activeSetHighlightedGameId = externalSetHighlightedGameId !== undefined ? externalSetHighlightedGameId : localSetHighlightedGameId;
 
+        const { refreshGames } = useSupabaseGames();
+
         // The hook that does the heavy lifting
         const liveScoresResult = useLiveScores(
             games,
-            undefined, // onScorePersisted is handled internally by the hook for DB updates
+            () => {
+                console.log('[LiveScoresContext] Score persisted, refreshing games list...');
+                refreshGames();
+            },
             handleGoalDetected,
             handleRedCardDetected,
             intervalMs,

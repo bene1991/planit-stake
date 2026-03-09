@@ -31,31 +31,35 @@ function createSupabaseClient() {
   );
 }
 
-async function fetchLiveFixtures(apiKey: string): Promise<any> {
-  const response = await fetch(
-    'https://v3.football.api-sports.io/fixtures?live=all',
-    { headers: { 'x-apisports-key': apiKey } }
-  );
-  const text = await response.text();
+async function fetchLiveFixtures(sb: any): Promise<any> {
+  console.log('[Monitor] Fetching live=all via proxy...');
   try {
-    return JSON.parse(text);
-  } catch {
-    console.error('[Monitor] Non-JSON response from API:', text.substring(0, 200));
+    const { data, error } = await sb.functions.invoke('api-football', {
+      body: {
+        endpoint: 'fixtures',
+        params: { live: 'all' }
+      }
+    });
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('[Monitor] Failed to fetch live fixtures via proxy:', err);
     return { response: [] };
   }
 }
 
-async function fetchFixtureEvents(apiKey: string, fixtureId: string): Promise<any[]> {
-  const response = await fetch(
-    `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`,
-    { headers: { 'x-apisports-key': apiKey } }
-  );
-  const text = await response.text();
+async function fetchFixtureEvents(sb: any, fixtureId: string): Promise<any[]> {
   try {
-    const data = JSON.parse(text);
+    const { data, error } = await sb.functions.invoke('api-football', {
+      body: {
+        endpoint: 'fixtures/events',
+        params: { fixture: fixtureId }
+      }
+    });
+    if (error) throw error;
     return data.response || [];
-  } catch {
-    console.error('[Monitor] Non-JSON events response:', text.substring(0, 200));
+  } catch (err) {
+    console.error('[Monitor] Failed to fetch events via proxy:', err);
     return [];
   }
 }
@@ -77,6 +81,7 @@ async function sendTelegram(botToken: string, chatId: string, payload: string | 
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
         },
         body: JSON.stringify({
           botToken,
@@ -148,15 +153,14 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
     console.log(`[Monitor] Total unique fixtures to check: ${monitoredFixtureIds.size} (${dbGames?.length || 0} manual games, ${dbAlerts?.length || 0} robot alerts)`);
 
     // 3. Determine live fixtures (Use provided or fetch)
-    // ... rest of step 3 ...
     let liveFixtures: any[] = [];
     if (providedFixtures && providedFixtures.length > 0) {
       liveFixtures = providedFixtures;
       console.log(`[Monitor] Using ${liveFixtures.length} provided fixtures`);
     } else {
-      console.log('[Monitor] Fetching from API-Football...');
-      const liveData = await fetchLiveFixtures(apiKey);
-      liveFixtures = liveData.response || [];
+      console.log('[Monitor] Fetching from API-Football via proxy...');
+      const liveData = await fetchLiveFixtures(sb);
+      liveFixtures = liveData?.response || [];
     }
 
     const fixtureMap = new Map<string, any>();
@@ -214,14 +218,14 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
       const currentAway = fixture.goals.away ?? 0;
       const minute = fixture.fixture.status.elapsed ?? 0;
       const currentShortStatus = fixture.fixture.status.short;
-      const isFinished = ['FT', 'AET', 'PEN'].includes(currentShortStatus);
+      const isFinished = ['FT', 'AET', 'PEN', 'PST', 'CANC', 'ABD', 'AWD', 'WO'].includes(currentShortStatus);
       const isHalfTime = currentShortStatus === 'HT';
 
       // --- Part A: Update Manual Games (Planejamento) ---
       const relatedGames = dbGames?.filter(g => String(g.api_fixture_id) === fId) || [];
       if (relatedGames.length > 0) {
         // Fetch events for detailed goal info and red cards
-        const events = await fetchFixtureEvents(apiKey, fId);
+        const events = await fetchFixtureEvents(sb, fId);
 
         for (const game of relatedGames) {
           const state = stateMap.get(game.id);
@@ -241,7 +245,6 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
               });
 
               if (isNewGoal) {
-                notifiedEvents.push(goalKey);
                 if (telegramSettings) {
                   const dedupeKey = `${telegramSettings.telegram_chat_id}:${fId}:${goalKey}`;
                   if (!sentThisCycle.has(dedupeKey)) {
@@ -252,12 +255,21 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
                     if (sent) {
                       notificationsSent++;
                       sentThisCycle.add(dedupeKey);
+                      // ONLY add to notifiedEvents if successfully sent
+                      notifiedEvents.push(goalKey);
                     } else {
                       console.error(`[Monitor] CRITICAL: Failed to deliver goal notification for ${game.home_team} vs ${game.away_team}. Rolling back DB entry.`);
                       // Rollback so next run can try again
                       await sb.from('sent_notifications').delete().match({ owner_id: game.owner_id, fixture_id: fId, event_key: goalKey });
+                      // NOT adding to notifiedEvents here so the upsert below doesn't block next run
                     }
+                  } else {
+                    // Already sent this cycle (multiple games for same fixture)
+                    notifiedEvents.push(goalKey);
                   }
+                } else {
+                  // No telegram settings, still mark as notified so we don't spam attempts
+                  notifiedEvents.push(goalKey);
                 }
               }
             }
@@ -274,7 +286,6 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
               });
 
               if (isNewRC) {
-                notifiedEvents.push(rcKey);
                 if (telegramSettings) {
                   const dedupeKey = `${telegramSettings.telegram_chat_id}:${fId}:${rcKey}`;
                   if (!sentThisCycle.has(dedupeKey)) {
@@ -285,11 +296,16 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
                     if (sent) {
                       notificationsSent++;
                       sentThisCycle.add(dedupeKey);
+                      notifiedEvents.push(rcKey);
                     } else {
                       console.error(`[Monitor] CRITICAL: Failed to deliver red card notification for ${game.home_team} vs ${game.away_team}. Rolling back DB entry.`);
                       await sb.from('sent_notifications').delete().match({ owner_id: game.owner_id, fixture_id: fId, event_key: rcKey });
                     }
+                  } else {
+                    notifiedEvents.push(rcKey);
                   }
+                } else {
+                  notifiedEvents.push(rcKey);
                 }
               }
             }
@@ -306,7 +322,10 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
             }, { onConflict: 'game_id' });
 
             await sb.from('games').update({
-              final_score_home: currentHome, final_score_away: currentAway,
+              final_score_home: currentHome,
+              final_score_away: currentAway,
+              current_minute: minute,
+              last_sync_at: new Date().toISOString(),
               status: isFinished ? 'Finished' : 'Live'
             }).eq('id', game.id);
             itemsUpdated++;
@@ -317,13 +336,17 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
       // --- Part B: Update Robot Alerts ---
       const relatedAlerts = dbAlerts?.filter(a => String(a.fixture_id) === fId) || [];
       if (relatedAlerts.length > 0) {
-        const events = await fetchFixtureEvents(apiKey, fId);
+        const events = await fetchFixtureEvents(sb, fId);
         const goalEvents = events
           .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
           .map((e: any) => ({
             minute: e.time.elapsed, extra: e.time.extra,
             team: e.team?.name, player: e.player?.name, detail: e.detail
           }));
+
+        // Group results by market+result to avoid double notifications for different variations
+        const groupKey = (market: string, res: string) => `${market}_${res}`;
+        const notifiedGroups = new Set<string>();
 
         for (const alert of relatedAlerts) {
           const tSettings = settingsMap.get(alert.owner_id);
@@ -334,7 +357,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
           };
           let resolveNeeded = false;
 
-          // 1. Goal HT resolution (if minute 45+ or goal happened in 1T)
+          // 1. Goal HT resolution
           if (alert.goal_ht_result === 'pending') {
             const hasGoal1T = (currentHome + currentAway > 0) && (minute <= 45 || isHalfTime);
             const isLate1T = isHalfTime || minute > 45;
@@ -342,17 +365,36 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
             if (hasGoal1T || isLate1T) {
               const res = (currentHome + currentAway > 0) ? 'green' : 'red';
               const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
+              const gKey = groupKey('gt_ht', res);
 
-              if (tSettings && sendTelegramEnabled) {
-                const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Gol no 1T</b>\n🎯 Filtro: ${alert.variation_name}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
-                const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
-                if (sent) {
-                  updates.goal_ht_result = res;
-                  resolveNeeded = true;
-                  await new Promise(r => setTimeout(r, 200));
+              if (tSettings && sendTelegramEnabled && !notifiedGroups.has(gKey)) {
+                // ATOMIC LOCK
+                const alertKey = `alert_ht_${alert.id}_${res}`;
+                const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
+                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: fId, p_owner_id: alert.owner_id
+                });
+
+                if (isNewAlert) {
+                  // Find all other pending alerts for this game with same result to include their names
+                  const sameResultAlerts = relatedAlerts.filter(a =>
+                    a.id !== alert.id &&
+                    a.goal_ht_result === 'pending' &&
+                    a.robot_variations?.send_telegram !== false
+                  );
+                  const names = [alert.variation_name, ...sameResultAlerts.map(a => a.variation_name)].join(', ');
+
+                  const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Gol no 1T</b>\n🎯 Filtros: ${names}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
+                  const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
+                  if (sent) {
+                    updates.goal_ht_result = res;
+                    resolveNeeded = true;
+                    notifiedGroups.add(gKey);
+                    await new Promise(r => setTimeout(r, 200));
+                  } else {
+                    await sb.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: fId, event_key: alertKey });
+                  }
                 }
               } else {
-                // If telegram disabled, still resolve in DB
                 updates.goal_ht_result = res;
                 resolveNeeded = true;
               }
@@ -365,17 +407,35 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
             if (hasOver15 || isFinished) {
               const res = hasOver15 ? 'green' : 'red';
               const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
+              const gKey = groupKey('o15', res);
 
-              if (tSettings && sendTelegramEnabled) {
-                const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Over 1.5</b>\n🎯 Filtro: ${alert.variation_name}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
-                const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
-                if (sent) {
-                  updates.over15_result = res;
-                  resolveNeeded = true;
-                  await new Promise(r => setTimeout(r, 200));
+              if (tSettings && sendTelegramEnabled && !notifiedGroups.has(gKey)) {
+                // ATOMIC LOCK
+                const alertKey = `alert_o15_${alert.id}_${res}`;
+                const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
+                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: fId, p_owner_id: alert.owner_id
+                });
+
+                if (isNewAlert) {
+                  const sameResultAlerts = relatedAlerts.filter(a =>
+                    a.id !== alert.id &&
+                    a.over15_result === 'pending' &&
+                    a.robot_variations?.send_telegram !== false
+                  );
+                  const names = [alert.variation_name, ...sameResultAlerts.map(a => a.variation_name)].join(', ');
+
+                  const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Over 1.5</b>\n🎯 Filtros: ${names}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
+                  const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
+                  if (sent) {
+                    updates.over15_result = res;
+                    resolveNeeded = true;
+                    notifiedGroups.add(gKey);
+                    await new Promise(r => setTimeout(r, 200));
+                  } else {
+                    await sb.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: fId, event_key: alertKey });
+                  }
                 }
               } else {
-                // If telegram disabled, still resolve in DB
                 updates.over15_result = res;
                 resolveNeeded = true;
               }
@@ -384,6 +444,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
 
           if (resolveNeeded || isFinished) {
             await sb.from('live_alerts').update(updates).eq('id', alert.id);
+            // ... (rest of the logic remains same)
 
             // Proactively update lay1x0_analyses if it relates to this fixture
             const resVal = (currentHome === 1 && currentAway === 0) ? 'Red' : 'Green';
@@ -426,24 +487,29 @@ serve(async (req: Request) => {
     const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
 
     // Manual Auth Validation
-    const isServiceKey = authHeader?.includes(serviceKey) || apiKeyHeader === serviceKey;
-    const isAnonKey = authHeader?.includes(anonKey) || apiKeyHeader === anonKey;
+    const isServiceRole = authHeader === `Bearer ${serviceKey}` || authHeader?.includes(serviceKey) || apiKeyHeader === serviceKey;
+    const isAnon = authHeader === `Bearer ${anonKey}` || authHeader?.includes(anonKey) || apiKeyHeader === anonKey;
     const hasLegacyAnon = authHeader?.includes(legacyAnonKey) || apiKeyHeader === legacyAnonKey;
 
-    if (!isServiceKey && !isAnonKey && !hasLegacyAnon) {
-      console.error('[Monitor] Unauthorized request Attempt');
-      console.log('Headers:', JSON.stringify(Object.fromEntries(req.headers.entries())));
-      console.log('Keys logic:', { isServiceKey, isAnonKey, hasLegacyAnon });
-      return new Response(JSON.stringify({
-        error: 'Unauthorized',
-        details: 'No valid key found',
-        debug: {
-          authHeader: authHeader?.substring(0, 20) + '...',
-          apiKeyHeader: apiKeyHeader?.substring(0, 20) + '...',
-          serviceKeyDefined: !!serviceKey,
-          anonKeyDefined: !!anonKey
-        }
-      }), { status: 401, headers: corsHeaders });
+    if (!isServiceRole && !isAnon && !hasLegacyAnon) {
+      console.warn('[Monitor] Non-standard auth detected, checking if headers contain keys...');
+      // Double check specifically for internal calls
+      const srInAuth = authHeader?.includes(serviceKey);
+
+      if (!srInAuth) {
+        console.error('[Monitor] Unauthorized request Attempt');
+        console.log('Headers:', JSON.stringify(Object.fromEntries(req.headers.entries())));
+        return new Response(JSON.stringify({
+          error: 'Unauthorized',
+          details: 'No valid key found',
+          debug: {
+            authHeader: authHeader?.substring(0, 15) + '...',
+            apiKeyHeader: apiKeyHeader?.substring(0, 15) + '...',
+            serviceKeyDefined: !!serviceKey,
+            anonKeyDefined: !!anonKey
+          }
+        }), { status: 401, headers: corsHeaders });
+      }
     }
 
     const { fixtures } = await req.json();

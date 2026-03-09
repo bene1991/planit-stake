@@ -51,6 +51,9 @@ export interface Game {
   sofascoreCropHeight?: number;
   radarUrl?: string;
   matchbook_event_id?: string;
+  current_minute?: number;
+  last_sync_at?: string;
+  dateTime?: string;
 }
 
 const GAMES_QUERY_KEY = ['games'] as const;
@@ -137,6 +140,9 @@ const fetchGamesWithOperations = async (userId: string): Promise<Game[]> => {
       sofascoreCropHeight: (game as any).sofascore_crop_height ?? undefined,
       radarUrl: (game as any).radar_url || undefined,
       matchbook_event_id: (game as any).matchbook_event_id || undefined,
+      current_minute: game.current_minute ?? undefined,
+      last_sync_at: game.last_sync_at || undefined,
+      dateTime: game.date_time || undefined,
     };
   });
 };

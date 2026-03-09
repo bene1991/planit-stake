@@ -56,17 +56,20 @@ export default function RoboAlerts() {
         }
     };
 
+    const alertsRef = React.useRef(alerts);
+    useEffect(() => {
+        alertsRef.current = alerts;
+    }, [alerts]);
+
     useEffect(() => {
         fetchAlerts();
 
         const interval = setInterval(() => {
-            setAlerts(currentAlerts => {
-                if (currentAlerts.length > 0) {
-                    const uniqueIds = [...new Set(currentAlerts.map(a => String(a.fixture_id)))];
-                    updateLiveStats(uniqueIds);
-                }
-                return currentAlerts;
-            });
+            const currentAlerts = alertsRef.current;
+            if (currentAlerts.length > 0) {
+                const uniqueIds = [...new Set(currentAlerts.map(a => String(a.fixture_id)))];
+                updateLiveStats(uniqueIds, currentAlerts);
+            }
         }, 30000);
 
         return () => clearInterval(interval);
@@ -98,7 +101,14 @@ export default function RoboAlerts() {
                         const updated = payload.new as LiveAlert;
                         const old = payload.old as LiveAlert;
 
-                        setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a));
+                        setAlerts(prev => {
+                            // If the update resolves the alert, remove it from the list
+                            if (updated.is_discarded || (updated.goal_ht_result !== 'pending' && updated.over15_result !== 'pending')) {
+                                return prev.filter(a => a.id !== updated.id);
+                            }
+                            // Otherwise update it in the list
+                            return prev.map(a => a.id === updated.id ? updated : a);
+                        });
 
                         if (
                             (updated.goal_ht_result === 'green' && old?.goal_ht_result !== 'green') ||
@@ -122,30 +132,54 @@ export default function RoboAlerts() {
         };
     }, []);
 
-    const updateLiveStats = async (fixtureIds: string[]) => {
+    const updateLiveStats = async (fixtureIds: string[], currentAlerts: LiveAlert[]) => {
+        if (fixtureIds.length === 0) return;
         try {
-            const { data, error } = await supabase.functions.invoke('api-football', {
-                body: { endpoint: 'fixtures', params: { live: 'all' } }
-            });
-
-            if (error) throw error;
-
-            const liveFixtures = data?.response || [];
             const statsMap: Record<string, any> = {};
 
-            liveFixtures.forEach((f: any) => {
-                const fId = String(f.fixture.id);
-                if (fixtureIds.includes(fId)) {
-                    statsMap[fId] = {
-                        goalsHome: f.goals.home,
-                        goalsAway: f.goals.away,
-                        minute: f.fixture.status.elapsed,
-                        status: f.fixture.status.short
-                    };
-                }
-            });
+            // API Football often has limits on how many IDs can be queried at once
+            // We'll chunk them in groups of 20
+            const chunks = [];
+            for (let i = 0; i < fixtureIds.length; i += 20) {
+                chunks.push(fixtureIds.slice(i, i + 20));
+            }
 
-            setLiveStats(statsMap);
+            for (const chunk of chunks) {
+                const idsParam = chunk.join('-');
+                const { data, error } = await supabase.functions.invoke('api-football', {
+                    body: { endpoint: `fixtures?id=${idsParam}` }
+                });
+
+                if (!error && data?.response) {
+                    data.response.forEach((f: any) => {
+                        const fId = String(f.fixture.id);
+                        statsMap[fId] = {
+                            goalsHome: f.goals.home ?? 0,
+                            goalsAway: f.goals.away ?? 0,
+                            minute: f.fixture.status.elapsed ?? 0,
+                            status: f.fixture.status.short || 'NS'
+                        };
+                    });
+                }
+            }
+
+            // For fixtures not returned by API or if API failed, check DB final_score
+            for (const fId of fixtureIds) {
+                if (!statsMap[fId]) {
+                    const alert = currentAlerts.find(a => String(a.fixture_id) === fId);
+                    if (alert?.final_score) {
+                        const parts = alert.final_score.split('x');
+                        statsMap[fId] = {
+                            goalsHome: parseInt(parts[0]) || 0,
+                            goalsAway: parseInt(parts[1]) || 0,
+                            minute: 90,
+                            status: 'FT'
+                        };
+                    }
+                }
+            }
+
+            setLiveStats(prev => ({ ...prev, ...statsMap }));
         } catch (err) {
             console.error('Error fetching live stats:', err);
         }
@@ -172,7 +206,7 @@ export default function RoboAlerts() {
 
             if (activeAlerts.length > 0) {
                 const uniqueIds = [...new Set(activeAlerts.map(a => String(a.fixture_id)))] as string[];
-                updateLiveStats(uniqueIds);
+                updateLiveStats(uniqueIds, activeAlerts);
             }
         } catch (error: any) {
             toast.error('Erro ao buscar alertas', { description: error.message });
@@ -275,8 +309,13 @@ export default function RoboAlerts() {
                         {sortedGroups.map((group: GroupedAlert) => {
                             const current = liveStats[group.fixture_id];
                             const snap = group.stats_snapshot;
-                            const hGoals = current ? current.goalsHome : (group.final_score ? group.final_score.split('x')[0] : snap?.h?.goals || 0);
-                            const aGoals = current ? current.goalsAway : (group.final_score ? group.final_score.split('x')[1] : snap?.a?.goals || 0);
+                            // Priority: live API data > DB final_score > stats_snapshot
+                            const hGoals = current?.goalsHome ?? (group.final_score ? parseInt(group.final_score.split('x')[0]) : snap?.h?.goals ?? 0);
+                            const aGoals = current?.goalsAway ?? (group.final_score ? parseInt(group.final_score.split('x')[1]) : snap?.a?.goals ?? 0);
+                            // Determine match status from live data or from resolved results
+                            const allResolved = group.triggers.every(t => t.result_ht !== 'pending' && t.result_o15 !== 'pending');
+                            const matchStatus = current?.status || (allResolved ? 'FT' : 'NS');
+                            const matchMinute = current?.minute || (matchStatus === 'FT' ? 90 : 0);
 
                             return (
                                 <LiveRadarCard
@@ -285,10 +324,10 @@ export default function RoboAlerts() {
                                     leagueName={group.league_name}
                                     homeTeam={group.home_team}
                                     awayTeam={group.away_team}
-                                    scoreHome={parseInt(String(hGoals))}
-                                    scoreAway={parseInt(String(aGoals))}
-                                    currentMinute={current?.minute || 0}
-                                    status={current?.status || 'NS'}
+                                    scoreHome={parseInt(String(hGoals)) || 0}
+                                    scoreAway={parseInt(String(aGoals)) || 0}
+                                    currentMinute={matchMinute}
+                                    status={matchStatus}
                                     triggers={group.triggers}
                                     totalGreens={group.totalGreens}
                                     totalReds={group.totalReds}

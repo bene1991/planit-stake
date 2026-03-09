@@ -104,11 +104,22 @@ serve(async (req: Request) => {
   const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
 
   if (!isServiceRole && !isAnon) {
-    console.error('[Auth] Unauthorized request to live-alerts-resolver');
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    const hasServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY);
+    const hasAnon = authHeader?.includes(SUPABASE_ANON_KEY);
+    // Also allow the legacy JWT anon key token that was hardcoded in pg_cron 
+    const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
+    const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
+
+    if (!hasServiceRole && !hasAnon && !hasLegacyAnon) {
+      console.error('[Auth] Unauthorized request to live-alerts-resolver');
+      return new Response(JSON.stringify({
+        error: 'Unauthorized',
+        authReceived: authHeader ? 'present' : 'missing'
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
   }
 
   try {
@@ -117,8 +128,13 @@ serve(async (req: Request) => {
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
       .select('*, robot_variations(send_telegram)')
-      .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.is.null,goal_events.is.null')
-      .limit(100);
+      .or([
+        'goal_ht_result.eq.pending',
+        'over15_result.eq.pending',
+        'final_score.is.null',
+        'goal_events.is.null'
+      ].join(','))
+      .limit(200);
 
     if (fetchErr) throw fetchErr;
     if (!pendingAlerts || pendingAlerts.length === 0) {
@@ -149,9 +165,11 @@ serve(async (req: Request) => {
         const totalGoals = (fixtureObj.goals.home || 0) + (fixtureObj.goals.away || 0);
 
         const isHtFinished = ['HT', '2H', 'FT', 'AET', 'PEN'].includes(statusStr) || timeElapsed > 45;
-        const isMatchFinished = ['FT', 'AET', 'PEN'].includes(statusStr);
+        const isMatchFinished = ['FT', 'AET', 'PEN', 'PST', 'CANC', 'ABD', 'AWD', 'WO'].includes(statusStr);
 
         const alertsToUpdate = pendingAlerts.filter((a: any) => a.fixture_id === fixtureId);
+        const notifiedGroups = new Set<string>();
+        const groupKey = (market: string, res: string) => `${market}_${res}`;
 
         for (const alert of alertsToUpdate) {
           const updates: any = { updated_at: new Date().toISOString() };
@@ -160,36 +178,49 @@ serve(async (req: Request) => {
           // Resolve Goal HT
           if (alert.goal_ht_result === 'pending') {
             const hasHtGoal = htGoals > 0;
-            // It's a green if there's an HT goal, regardless of status (if we have live score).
-            // It's a red ONLY if the HT is definitely finished and there are 0 goals.
             const shouldResolveHt = hasHtGoal || isHtFinished;
 
             if (shouldResolveHt) {
               const result = hasHtGoal ? 'green' : 'red';
               const htScore = `${fixtureObj.score.halftime.home ?? 0}x${fixtureObj.score.halftime.away ?? 0} (HT)`;
-
               const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
+              const gKey = groupKey('ht', result);
 
-              if (sendTelegramEnabled) {
-                const sent = await sendTelegramResult(
-                  supabase,
-                  alert.home_team, alert.away_team,
-                  alert.league_name || '', alert.variation_name || 'Padrão',
-                  result as 'green' | 'red', 'goal_ht', htScore,
-                  alert.owner_id
-                );
+              if (sendTelegramEnabled && !notifiedGroups.has(gKey)) {
+                // ATOMIC LOCK
+                const alertKey = `alert_ht_${alert.id}_${result}`;
+                const { data: isNewAlert } = await supabase.rpc('mark_alert_resolved_atomically', {
+                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: String(fixtureId), p_owner_id: alert.owner_id
+                });
 
-                if (sent) {
-                  updates.goal_ht_result = result;
-                  hasUpdate = true;
-                } else {
-                  console.log(`[Resolver] Retrying Goal HT result for alert ${alert.id} in next cycle due to notification failure`);
+                if (isNewAlert) {
+                  // Find other alerts for same fixture/result to group names
+                  const sameResultAlerts = alertsToUpdate.filter(a =>
+                    a.id !== alert.id &&
+                    a.goal_ht_result === 'pending' &&
+                    a.robot_variations?.send_telegram !== false
+                  );
+                  const names = [alert.variation_name || 'Padrão', ...sameResultAlerts.map(a => a.variation_name || 'Padrão')].join(', ');
+
+                  const sent = await sendTelegramResult(
+                    supabase,
+                    alert.home_team, alert.away_team,
+                    alert.league_name || '', names,
+                    result as 'green' | 'red', 'goal_ht', htScore,
+                    alert.owner_id
+                  );
+
+                  if (!sent) {
+                    await supabase.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: String(fixtureId), event_key: alertKey });
+                  } else {
+                    updates.goal_ht_result = result;
+                    hasUpdate = true;
+                    notifiedGroups.add(gKey);
+                  }
                 }
               } else {
-                // Resolved in DB without telegram
                 updates.goal_ht_result = result;
                 hasUpdate = true;
-                console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
               }
             }
           }
@@ -197,38 +228,50 @@ serve(async (req: Request) => {
           // Resolve Over 1.5
           if (alert.over15_result === 'pending') {
             const hasTwoGoals = totalGoals >= 2;
-            // It's a green as soon as total goals >= 2, regardless of match status.
-            // It's a red ONLY if the match is completely finished and total goals < 2.
             const shouldResolveO15 = hasTwoGoals || isMatchFinished;
 
             if (shouldResolveO15) {
               const result = hasTwoGoals ? 'green' : 'red';
               const fs = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
-
               const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
+              const gKey = groupKey('o15', result);
 
-              if (sendTelegramEnabled) {
-                const sent = await sendTelegramResult(
-                  supabase,
-                  alert.home_team, alert.away_team,
-                  alert.league_name || '', alert.variation_name || 'Padrão',
-                  result as 'green' | 'red', 'over15', fs,
-                  alert.owner_id
-                );
+              if (sendTelegramEnabled && !notifiedGroups.has(gKey)) {
+                // ATOMIC LOCK
+                const alertKey = `alert_o15_${alert.id}_${result}`;
+                const { data: isNewAlert } = await supabase.rpc('mark_alert_resolved_atomically', {
+                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: String(fixtureId), p_owner_id: alert.owner_id
+                });
 
-                if (sent) {
-                  updates.over15_result = result;
-                  updates.final_score = fs;
-                  hasUpdate = true;
-                } else {
-                  console.log(`[Resolver] Retrying Over 1.5 result for alert ${alert.id} in next cycle due to notification failure`);
+                if (isNewAlert) {
+                  const sameResultAlerts = alertsToUpdate.filter(a =>
+                    a.id !== alert.id &&
+                    a.over15_result === 'pending' &&
+                    a.robot_variations?.send_telegram !== false
+                  );
+                  const names = [alert.variation_name || 'Padrão', ...sameResultAlerts.map(a => a.variation_name || 'Padrão')].join(', ');
+
+                  const sent = await sendTelegramResult(
+                    supabase,
+                    alert.home_team, alert.away_team,
+                    alert.league_name || '', names,
+                    result as 'green' | 'red', 'over15', fs,
+                    alert.owner_id
+                  );
+
+                  if (!sent) {
+                    await supabase.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: String(fixtureId), event_key: alertKey });
+                  } else {
+                    updates.over15_result = result;
+                    updates.final_score = fs;
+                    hasUpdate = true;
+                    notifiedGroups.add(gKey);
+                  }
                 }
               } else {
-                // Resolved in DB without telegram
                 updates.over15_result = result;
                 updates.final_score = fs;
                 hasUpdate = true;
-                console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
               }
             }
           }
@@ -257,6 +300,15 @@ serve(async (req: Request) => {
               updates.goal_events = [];
             }
             hasUpdate = true;
+          }
+
+          // Auto-discard if everything is resolved to keep the radar clean
+          const finalHt = updates.goal_ht_result || alert.goal_ht_result;
+          const finalO15 = updates.over15_result || alert.over15_result;
+          if (finalHt !== 'pending' && finalO15 !== 'pending' && !alert.is_discarded) {
+            updates.is_discarded = true;
+            hasUpdate = true;
+            console.log(`[Resolver] Auto-discarding resolved alert ${alert.id}`);
           }
 
           if (hasUpdate) {

@@ -70,8 +70,6 @@ export default function RoboAoVivo() {
                 let profit = 0;
 
                 data.forEach(a => {
-                    if (a.is_discarded) return;
-
                     let gameUsedAtLeastOnce = false;
 
                     // HT Metric
@@ -260,23 +258,31 @@ export default function RoboAoVivo() {
                                     <RoboVariations />
                                 </section>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 pt-10 border-t border-zinc-800/50">
-                                    <section className="bg-zinc-900/20 p-6 rounded-3xl border border-zinc-800/40">
-                                        <div className="flex items-center gap-3 mb-8">
-                                            <div className="p-2 bg-rose-500/10 rounded-lg">
-                                                <ShieldX className="w-5 h-5 text-rose-500" />
+                                <div className="space-y-12 pt-10 border-t border-zinc-800/50">
+                                    <section className="bg-zinc-900/20 p-8 rounded-[2rem] border border-zinc-800/40 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 blur-3xl pointer-events-none" />
+                                        <div className="flex items-center gap-4 mb-8">
+                                            <div className="p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                                                <ShieldX className="w-6 h-6 text-rose-500" />
                                             </div>
-                                            <h3 className="text-lg font-black text-white tracking-tighter uppercase">Filtro de Ligas Block</h3>
+                                            <div>
+                                                <h3 className="text-xl font-black text-white tracking-tighter uppercase">Filtro de Ligas Block (Global)</h3>
+                                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">Gestão central de ligas ignoradas por todos os robôs</p>
+                                            </div>
                                         </div>
                                         <RoboBlockedLeagues />
                                     </section>
 
-                                    <section className="bg-zinc-900/20 p-6 rounded-3xl border border-zinc-800/40">
-                                        <div className="flex items-center gap-3 mb-8">
-                                            <div className="p-2 bg-blue-500/10 rounded-lg">
-                                                <ListFilter className="w-5 h-5 text-blue-500" />
+                                    <section className="bg-zinc-900/20 p-8 rounded-[2rem] border border-zinc-800/40 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl pointer-events-none" />
+                                        <div className="flex items-center gap-4 mb-8 text-left">
+                                            <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.1)] text-left">
+                                                <ListFilter className="w-6 h-6 text-blue-500" />
                                             </div>
-                                            <h3 className="text-lg font-black text-white tracking-tighter uppercase">Logs de Execução</h3>
+                                            <div className="text-left">
+                                                <h3 className="text-xl font-black text-white tracking-tighter uppercase">Logs de Execução (Engine)</h3>
+                                                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-0.5">Diagnóstico técnico das avaliações em tempo real</p>
+                                            </div>
                                         </div>
                                         <RoboLogs />
                                     </section>

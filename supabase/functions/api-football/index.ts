@@ -35,28 +35,58 @@ const CACHE_TTL: Record<string, number> = {
 
 function getCacheKey(endpoint: string, params: Record<string, unknown>): string {
   // Normalize endpoint: remove leading '/' and trailing '?'
-  const cleanEndpoint = endpoint.replace(/^\/+/, '').replace(/\?$/, '');
-  const sortedParams = Object.keys(params)
-    .sort()
-    .map(key => `${key}=${params[key]}`)
+  let cleanEndpoint = endpoint.replace(/^\/+/, '').replace(/\?$/, '');
+
+  // Extract existing query params from endpoint if any
+  const urlParts = cleanEndpoint.split('?');
+  const baseEndpoint = urlParts[0];
+  const urlParams = new URLSearchParams(urlParts[1] || '');
+
+  // Merge body params into urlParams
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && key !== 'ignoreCache') {
+      urlParams.set(key, String(value));
+    }
+  });
+
+  const sortedKeys = Array.from(urlParams.keys()).sort();
+  const sortedParams = sortedKeys
+    .map(key => `${key}=${urlParams.get(key)}`)
     .join('&');
-  return sortedParams ? `${cleanEndpoint}?${sortedParams}` : cleanEndpoint;
+
+  return sortedParams ? `${baseEndpoint}?${sortedParams}` : baseEndpoint;
 }
 
 function getTTL(endpoint: string, params: Record<string, unknown>): number {
-  // Normalize endpoint: remove leading '/' and trailing '?'
   const cleanEndpoint = endpoint.replace(/^\/+/, '').replace(/\?$/, '');
-  if (params.live === 'all') return CACHE_TTL.live;
-  if (cleanEndpoint === 'fixtures' && params.id) return CACHE_TTL.fixtures_id;
-  if (cleanEndpoint === 'fixtures' && params.date) return CACHE_TTL.fixtures_date;
-  if (cleanEndpoint === 'fixtures/statistics') return CACHE_TTL.statistics;
-  if (cleanEndpoint === 'fixtures/events') return CACHE_TTL.events;
-  if (cleanEndpoint === 'leagues') return CACHE_TTL.leagues;
-  if (cleanEndpoint === 'teams') return CACHE_TTL.teams;
-  if (cleanEndpoint === 'standings') return CACHE_TTL.standings;
-  if (cleanEndpoint === 'odds') return CACHE_TTL.odds;
-  if (cleanEndpoint === 'odds/live') return CACHE_TTL.odds_live;
-  if (cleanEndpoint === 'bookmakers') return CACHE_TTL.bookmakers;
+  const urlParts = cleanEndpoint.split('?');
+  const baseEndpoint = urlParts[0];
+  const urlParams = new URLSearchParams(urlParts[1] || '');
+
+  // Check both source of params
+  const isLiveAll = params.live === 'all' || urlParams.get('live') === 'all';
+  const fixtureId = params.id || urlParams.get('id');
+  const fixtureDate = params.date || urlParams.get('date');
+
+  if (isLiveAll) {
+    console.log(`[TTL] Live data detected: 5s`);
+    return CACHE_TTL.live;
+  }
+
+  if (baseEndpoint === 'fixtures') {
+    if (fixtureId) return CACHE_TTL.fixtures_id;
+    if (fixtureDate) return CACHE_TTL.fixtures_date;
+  }
+
+  if (baseEndpoint === 'fixtures/statistics') return CACHE_TTL.statistics;
+  if (baseEndpoint === 'fixtures/events') return CACHE_TTL.events;
+  if (baseEndpoint === 'leagues') return CACHE_TTL.leagues;
+  if (baseEndpoint === 'teams') return CACHE_TTL.teams;
+  if (baseEndpoint === 'standings') return CACHE_TTL.standings;
+  if (baseEndpoint === 'odds') return CACHE_TTL.odds;
+  if (baseEndpoint === 'odds/live') return CACHE_TTL.odds_live;
+  if (baseEndpoint === 'bookmakers') return CACHE_TTL.bookmakers;
+
   return CACHE_TTL.default;
 }
 

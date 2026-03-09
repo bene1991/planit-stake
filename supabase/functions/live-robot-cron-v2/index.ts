@@ -9,10 +9,9 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
 
 function escapeHtml(text: string): string {
     return text
@@ -25,6 +24,8 @@ function escapeHtml(text: string): string {
 
 async function sendTelegram(payload: { message: string, userId?: string, type?: string }) {
     const maxRetries = 2;
+    let lastErrorMessage = '';
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             if (attempt > 0) {
@@ -37,28 +38,30 @@ async function sendTelegram(payload: { message: string, userId?: string, type?: 
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                    'apikey': SUPABASE_SERVICE_ROLE_KEY
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY.trim()}`,
+                    'apikey': SUPABASE_SERVICE_ROLE_KEY.trim()
                 },
                 body: JSON.stringify(payload),
             });
 
-            if (response.ok) return true;
+            if (response.ok) return { success: true };
 
             const errorText = await response.text();
-            console.error(`[Cron] Telegram attempt ${attempt} failed:`, errorText);
+            lastErrorMessage = `Status ${response.status}: ${errorText}`;
+            console.error(`[Cron] Telegram attempt ${attempt} failed:`, lastErrorMessage);
 
-            if (response.status === 401) return false;
+            if (response.status === 401 || response.status === 400) return { success: false, error: lastErrorMessage };
         } catch (err) {
-            console.error(`[Cron] Telegram attempt ${attempt} catch error:`, err);
+            lastErrorMessage = err instanceof Error ? err.message : String(err);
+            console.error(`[Cron] Telegram attempt ${attempt} catch error:`, lastErrorMessage);
         }
     }
-    return false;
+    return { success: false, error: lastErrorMessage };
 }
 
 async function callApiFootball(endpoint: string, token: string, params: Record<string, unknown> = {}) {
-    // Add artificial delay to avoid Supabase Edge Function rate limits (bursts)
-    await new Promise(r => setTimeout(r, 50));
+    // Increased delay to avoid Supabase Edge Function rate limits (bursts)
+    await new Promise(r => setTimeout(r, 400));
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
         method: 'POST',
@@ -76,11 +79,10 @@ async function callApiFootball(endpoint: string, token: string, params: Record<s
     return res.json();
 }
 
-
 async function runRobot() {
     const logsBuffer: any[] = [];
     try {
-        // Get default user ID for notifications (first user with telegram configured)
+        // Get default user ID for notifications
         const { data: defaultUserSettings } = await supabase
             .from('settings')
             .select('owner_id')
@@ -94,13 +96,16 @@ async function runRobot() {
         const blockedSet = new Set(blockedLeagues?.map((l: any) => String(l.league_id)) || []);
 
         const { data: variations } = await supabase.from('robot_variations').select('*').eq('active', true);
-        if (!variations || variations.length === 0) return;
+        if (!variations || variations.length === 0) {
+            console.log('[Cron] No active variations found.');
+            return;
+        }
 
         const apiData = await callApiFootball('fixtures?live=all', SUPABASE_SERVICE_ROLE_KEY);
         const fixtures = apiData?.response || [];
 
-        // Heartbeat log to show cron is alive
-        const { error: heartbeatErr } = await supabase.from('robot_execution_logs').insert([{
+        // Heartbeat log
+        await supabase.from('robot_execution_logs').insert([{
             fixture_id: '0',
             league_id: '0',
             variation_id: null,
@@ -109,271 +114,8 @@ async function runRobot() {
             details: { fixture_count: fixtures.length }
         }]);
 
-        if (heartbeatErr) {
-            console.error('[Cron] Failed to insert heartbeat log:', heartbeatErr);
-            throw new Error(`DB error: ${heartbeatErr.message}`);
-        }
-
-        for (const f of fixtures) {
-            const fId = String(f.fixture.id), lId = String(f.league.id), lName = f.league.name;
-            const tElapsed = f.fixture.status.elapsed, status = f.fixture.status.long;
-            const hTeam = f.teams.home.name, aTeam = f.teams.away.name;
-            const teams = `${hTeam} vs ${aTeam}`;
-            const details = { league: lName, teams, minute: tElapsed };
-            const gameRef = `[${lName}] ${teams} (${tElapsed}')`;
-
-            if (blockedSet.has(lId)) {
-                logsBuffer.push({
-                    fixture_id: fId,
-                    league_id: lId,
-                    variation_id: null,
-                    stage: 'DISCARDED_PRE_FILTER',
-                    reason: `Liga Bloqueada: ${lName}`,
-                    details
-                });
-                continue;
-            }
-
-            // Allow First Half, Halftime, or Second Half
-            if (!['First Half', 'Halftime', 'Second Half', '2nd Half', '2H'].some(s => status.includes(s))) {
-                logsBuffer.push({
-                    fixture_id: fId,
-                    league_id: lId,
-                    variation_id: null,
-                    stage: 'DISCARDED_PRE_FILTER',
-                    reason: `Status: ${status} (Não está no Tempo Regulamentar)`,
-                    details
-                });
-                continue;
-            }
-
-            const eligibleVariations = variations.filter((v: any) => tElapsed >= v.min_minute && tElapsed <= v.max_minute);
-            if (eligibleVariations.length === 0) {
-                logsBuffer.push({
-                    fixture_id: fId,
-                    league_id: lId,
-                    variation_id: null,
-                    stage: 'DISCARDED_PRE_FILTER',
-                    reason: 'Fora da faixa de minutos de qualquer filtro ativo',
-                    details
-                });
-                continue;
-            }
-
-            const apiStatsData = await callApiFootball('fixtures/statistics', SUPABASE_SERVICE_ROLE_KEY, { fixture: fId });
-            const rawStats = apiStatsData?.response || [];
-            if (rawStats.length < 2) {
-                logsBuffer.push({
-                    fixture_id: fId,
-                    league_id: lId,
-                    variation_id: null,
-                    stage: 'DISCARDED_PRE_FILTER',
-                    reason: 'Stats indisponíveis',
-                    details
-                });
-                continue;
-            }
-
-            const hStats = rawStats[0].statistics, aStats = rawStats[1].statistics;
-            const extractNum = (s: any[], t: string) => parseInt((s.find(x => x.type === t)?.value || '0').toString().replace('%', ''));
-            const extractFloat = (s: any[], t: string) => parseFloat((s.find(x => x.type === t)?.value || '0').toString());
-
-            const stats = {
-                h: {
-                    xg: extractFloat(hStats, 'expected_goals'),
-                    corners: extractNum(hStats, 'Corner Kicks'),
-                    shotsInBox: extractNum(hStats, 'Shots insidebox'),
-                    shots: extractNum(hStats, 'Total Shots'),
-                    shotsOn: extractNum(hStats, 'Shots on Goal'),
-                    goals: f.goals.home || 0,
-                    possession: extractNum(hStats, 'Ball Possession')
-                },
-                a: {
-                    xg: extractFloat(aStats, 'expected_goals'),
-                    corners: extractNum(aStats, 'Corner Kicks'),
-                    shotsInBox: extractNum(aStats, 'Shots insidebox'),
-                    shots: extractNum(aStats, 'Total Shots'),
-                    shotsOn: extractNum(aStats, 'Shots on Goal'),
-                    goals: f.goals.away || 0,
-                    possession: extractNum(aStats, 'Ball Possession')
-                }
-            };
-
-            const matchedResults = [];
-
-            for (const v of eligibleVariations) {
-                if (v.require_score_zero && (stats.h.goals > 0 || stats.a.goals > 0)) continue;
-
-                const combinedShots = (stats.h.shots + stats.a.shots);
-
-                const homePressure =
-                    stats.h.xg >= (v.min_expected_goals || 0) &&
-                    stats.h.corners >= (v.min_corners || 0) &&
-                    stats.h.shotsInBox >= (v.min_shots_insidebox || 0) &&
-                    stats.h.shots >= (v.min_shots || 0) &&
-                    stats.h.possession >= (v.min_possession || 0);
-
-                const awayPressure =
-                    stats.a.xg >= (v.min_expected_goals || 0) &&
-                    stats.a.corners >= (v.min_corners || 0) &&
-                    stats.a.shotsInBox >= (v.min_shots_insidebox || 0) &&
-                    stats.a.shots >= (v.min_shots || 0) &&
-                    stats.a.possession >= (v.min_possession || 0);
-
-                const shotsOnOk = (stats.h.shotsOn + stats.a.shotsOn) >= (v.min_shots_on_target || 0);
-                const combinedShotsOk = combinedShots >= (v.min_combined_shots || 0);
-
-                const pressureMet = (homePressure || awayPressure) && shotsOnOk && combinedShotsOk;
-
-                if (!pressureMet) {
-                    let failReason = 'Não atingiu critérios';
-                    if (v.require_score_zero && (stats.h.goals > 0 || stats.a.goals > 0)) {
-                        failReason = 'Jogo com gols (Exige 0x0)';
-                    } else if (!combinedShotsOk) {
-                        failReason = `Chutes insuficientes (${combinedShots}/${v.min_combined_shots})`;
-                    } else if (!shotsOnOk) {
-                        failReason = `Alvo insuficiente (${stats.h.shotsOn + stats.a.shotsOn}/${v.min_shots_on_target})`;
-                    }
-
-                    logsBuffer.push({
-                        fixture_id: fId,
-                        league_id: lId,
-                        variation_id: v.id,
-                        stage: 'DISCARDED_FILTER',
-                        reason: `Variação ${v.name}: ${failReason}`,
-                        details: { ...details, stats }
-                    });
-                    continue;
-                }
-
-                // Check if this specific variation has already triggered for this fixture
-                const { data: existing } = await supabase
-                    .from('live_alerts')
-                    .select('id')
-                    .eq('fixture_id', fId)
-                    .eq('variation_id', v.id)
-                    .limit(1);
-
-                if (existing && existing.length > 0) continue;
-
-                matchedResults.push(v);
-            }
-
-            if (matchedResults.length > 0) {
-                // Secondary check: If any variation requires 0-0, verify the absolute latest score bypassing cache
-                const needsZeroScore = matchedResults.some(v => v.require_score_zero);
-                if (needsZeroScore) {
-                    try {
-                        const freshData = await callApiFootball('fixtures', SUPABASE_SERVICE_ROLE_KEY, { id: fId, ignoreCache: true });
-                        const freshFixture = freshData?.response?.[0];
-                        if (freshFixture) {
-                            const freshHomeGoals = freshFixture.goals.home || 0;
-                            const freshAwayGoals = freshFixture.goals.away || 0;
-
-                            if (freshHomeGoals > 0 || freshAwayGoals > 0) {
-                                // Filter out variations that require 0-0 but now have goals
-                                const beforeCount = matchedResults.length;
-                                const filteredResults = matchedResults.filter(v => !v.require_score_zero);
-
-                                if (filteredResults.length === 0) {
-                                    console.log(`[Cron] Alert cancelled for ${gameRef}: Score changed to ${freshHomeGoals}-${freshAwayGoals} (confirmed via bypass)`);
-                                    continue;
-                                }
-
-                                if (filteredResults.length < beforeCount) {
-                                    console.log(`[Cron] Some variations filtered out for ${gameRef} due to score change to ${freshHomeGoals}-${freshAwayGoals}`);
-                                    // Update matchedResults for the rest of the flow
-                                    matchedResults.splice(0, matchedResults.length, ...filteredResults);
-                                }
-                            }
-                        }
-                    } catch (err) {
-                        console.error(`[Cron] Error during score verification for ${fId}:`, err);
-                        // We proceed with existing data if verification fails to avoid missing alerts, 
-                        // though normally this would be a cache hit/miss issue.
-                    }
-                }
-
-                // Double check with minute-lock to prevent concurrent execution duplicates
-                const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', {
-                    p_fixture_id: fId,
-                    p_minute: tElapsed
-                });
-                if (isDuplicate) continue;
-
-                const processedNames = [];
-                const processedNamesForTelegram = [];
-
-                // Insert EACH matched variation separately so deduplication works in the future
-                for (const v of matchedResults) {
-                    const alertData = {
-                        fixture_id: fId,
-                        league_id: lId,
-                        league_name: lName,
-                        home_team: hTeam,
-                        away_team: aTeam,
-                        minute_at_alert: tElapsed,
-                        variation_id: v.id,
-                        variation_name: v.name,
-                        stats_snapshot: stats,
-                        owner_id: defaultUserId
-                    };
-
-                    const { error: alertErr } = await supabase.from('live_alerts').insert(alertData);
-                    if (!alertErr) {
-                        processedNames.push(v.name);
-                        if (v.send_telegram !== false) {
-                            processedNamesForTelegram.push(v.name);
-                        }
-
-                        logsBuffer.push({
-                            fixture_id: fId,
-                            league_id: lId,
-                            variation_id: v.id,
-                            stage: 'ALERT_SENT',
-                            reason: `🚨 ${gameRef} - ALERTA GERADO! (${v.name})${v.send_telegram === false ? ' (Telegram desativado)' : ''}`,
-                            details: { ...details, stats }
-                        });
-                    }
-                }
-
-
-                // Send ONE combined Telegram notification for all NEW transformations (if notification enabled)
-                if (processedNamesForTelegram.length > 0) {
-                    const combinedNames = processedNamesForTelegram.join(', ');
-                    const escapedHome = escapeHtml(hTeam);
-                    const escapedAway = escapeHtml(aTeam);
-                    const escapedLeague = escapeHtml(lName);
-                    const escapedFilters = escapeHtml(combinedNames);
-
-                    const message = `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapedFilters}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`;
-
-                    const success = await sendTelegram({
-                        userId: defaultUserId,
-                        message,
-                        type: 'alert'
-                    });
-
-                    if (!success) {
-                        console.error(`[Cron] CRITICAL: Failed to deliver Signal for ${teams}. Rolling back DB entries.`);
-                        // Rollback: Delete newly created alerts for this fixture so they can trigger again next time
-                        const { error: delErr } = await supabase
-                            .from('live_alerts')
-                            .delete()
-                            .eq('fixture_id', fId)
-                            .in('variation_name', processedNames);
-
-                        if (delErr) console.error('[Cron] Rollback failed:', delErr);
-                    }
-                }
-            }
-        }
-
-        if (logsBuffer.length > 0) {
-            await supabase.from('robot_execution_logs').insert(logsBuffer);
-        }
-
-        // Trigger the background monitor to check for Goals and Red Cards
+        // --- CRITICAL PRIORITIZATION ---
+        // Trigger monitoring tasks FIRST so manual planning games are updated immediately
         try {
             console.log('[Cron] Triggering monitor-live-games...');
             await fetch(`${SUPABASE_URL}/functions/v1/monitor-live-games`, {
@@ -381,6 +123,7 @@ async function runRobot() {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'apikey': SUPABASE_SERVICE_ROLE_KEY,
                 },
                 body: JSON.stringify({ fixtures }),
             });
@@ -388,35 +131,192 @@ async function runRobot() {
             console.error('[Cron] Failed to trigger monitor:', monErr);
         }
 
-        // Trigger the resolver to sync results and scores for pending alerts
         try {
             console.log('[Cron] Triggering live-alerts-resolver...');
-            const resolverRes = await fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver`, {
+            fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'apikey': SUPABASE_SERVICE_ROLE_KEY
                 },
-            });
-            const resolverData = await resolverRes.json();
-            console.log('[Cron] Resolver result:', JSON.stringify(resolverData));
+            }).catch(e => console.error('[Cron] Async Resolver trigger error:', e));
         } catch (resolverErr) {
             console.error('[Cron] Failed to trigger resolver:', resolverErr);
         }
+
+        console.log(`[Cron] Starting fixture loop for ${fixtures.length} games...`);
+
+        // FIXTURE LOOP
+        for (const f of fixtures) {
+            try {
+                const fId = String(f.fixture.id), lId = String(f.league.id), lName = f.league.name;
+                const tElapsed = f.fixture.status.elapsed, status = f.fixture.status.long;
+                const hTeam = f.teams.home.name, aTeam = f.teams.away.name;
+                const teams = `${hTeam} vs ${aTeam}`;
+                const details = { league: lName, teams, minute: tElapsed };
+                const gameRef = `[${lName}] ${teams} (${tElapsed}')`;
+
+                if (blockedSet.has(lId)) {
+                    logsBuffer.push({
+                        fixture_id: fId, league_id: lId, variation_id: null,
+                        stage: 'DISCARDED_PRE_FILTER', reason: `Liga Bloqueada: ${lName}`, details
+                    });
+                    continue;
+                }
+
+                if (!['First Half', 'Halftime', 'Second Half', '2nd Half', '2H'].some(s => status.includes(s))) {
+                    logsBuffer.push({
+                        fixture_id: fId, league_id: lId, variation_id: null,
+                        stage: 'DISCARDED_PRE_FILTER', reason: `Status: ${status}`, details
+                    });
+                    continue;
+                }
+
+                const eligibleVariations = variations.filter((v: any) => tElapsed >= v.min_minute && tElapsed <= v.max_minute);
+                if (eligibleVariations.length === 0) {
+                    logsBuffer.push({
+                        fixture_id: fId, league_id: lId, variation_id: null,
+                        stage: 'DISCARDED_PRE_FILTER', reason: 'Fora da faixa de minutos', details
+                    });
+                    continue;
+                }
+
+                const apiStatsData = await callApiFootball('fixtures/statistics', SUPABASE_SERVICE_ROLE_KEY, { fixture: fId });
+                const rawStats = apiStatsData?.response || [];
+                if (rawStats.length < 2) {
+                    logsBuffer.push({
+                        fixture_id: fId, league_id: lId, variation_id: null,
+                        stage: 'DISCARDED_PRE_FILTER', reason: 'Stats indisponíveis', details
+                    });
+                    continue;
+                }
+
+                const hStats = rawStats[0].statistics, aStats = rawStats[1].statistics;
+                const extractNum = (s: any[], t: string) => parseInt((s.find(x => x.type === t)?.value || '0').toString().replace('%', ''));
+                const extractFloat = (s: any[], t: string) => parseFloat((s.find(x => x.type === t)?.value || '0').toString());
+
+                const stats = {
+                    h: {
+                        xg: extractFloat(hStats, 'expected_goals'),
+                        corners: extractNum(hStats, 'Corner Kicks'),
+                        shotsInBox: extractNum(hStats, 'Shots insidebox'),
+                        shots: extractNum(hStats, 'Total Shots'),
+                        shotsOn: extractNum(hStats, 'Shots on Goal'),
+                        goals: f.goals.home || 0,
+                        possession: extractNum(hStats, 'Ball Possession')
+                    },
+                    a: {
+                        xg: extractFloat(aStats, 'expected_goals'),
+                        corners: extractNum(aStats, 'Corner Kicks'),
+                        shotsInBox: extractNum(aStats, 'Shots insidebox'),
+                        shots: extractNum(aStats, 'Total Shots'),
+                        shotsOn: extractNum(aStats, 'Shots on Goal'),
+                        goals: f.goals.away || 0,
+                        possession: extractNum(aStats, 'Ball Possession')
+                    }
+                };
+
+                const matchedResults = [];
+
+                for (const v of eligibleVariations) {
+                    if (v.blocked_leagues && v.blocked_leagues.includes(lId)) continue;
+                    if (v.require_score_zero && (stats.h.goals > 0 || stats.a.goals > 0)) continue;
+
+                    const combinedShots = (stats.h.shots + stats.a.shots);
+                    const homePressure =
+                        stats.h.xg >= (v.min_expected_goals || 0) &&
+                        stats.h.corners >= (v.min_corners || 0) &&
+                        stats.h.shotsInBox >= (v.min_shots_insidebox || 0) &&
+                        stats.h.shots >= (v.min_shots || 0) &&
+                        stats.h.possession >= (v.min_possession || 0);
+
+                    const awayPressure =
+                        stats.a.xg >= (v.min_expected_goals || 0) &&
+                        stats.a.corners >= (v.min_corners || 0) &&
+                        stats.a.shotsInBox >= (v.min_shots_insidebox || 0) &&
+                        stats.a.shots >= (v.min_shots || 0) &&
+                        stats.a.possession >= (v.min_possession || 0);
+
+                    const shotsOnOk = (stats.h.shotsOn + stats.a.shotsOn) >= (v.min_shots_on_target || 0);
+                    const combinedShotsOk = combinedShots >= (v.min_combined_shots || 0);
+                    const pressureMet = (homePressure || awayPressure) && shotsOnOk && combinedShotsOk;
+
+                    if (!pressureMet) {
+                        logsBuffer.push({
+                            fixture_id: fId, league_id: lId, variation_id: v.id,
+                            stage: 'DISCARDED_FILTER', reason: `Filtro ${v.name} não atingido`, details: { ...details, stats }
+                        });
+                        continue;
+                    }
+
+                    const { data: existing } = await supabase.from('live_alerts').select('id').eq('fixture_id', fId).eq('variation_id', v.id).limit(1);
+                    if (existing && existing.length > 0) continue;
+                    matchedResults.push(v);
+                }
+
+                if (matchedResults.length > 0) {
+                    const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
+                    if (isDuplicate) continue;
+
+                    const processedNames = [];
+                    const processedNamesForTelegram = [];
+
+                    for (const v of matchedResults) {
+                        const alertData = {
+                            fixture_id: fId, league_id: lId, league_name: lName, home_team: hTeam, away_team: aTeam,
+                            minute_at_alert: tElapsed, variation_id: v.id, variation_name: v.name, stats_snapshot: stats, owner_id: defaultUserId
+                        };
+
+                        const { error: alertErr } = await supabase.from('live_alerts').insert(alertData);
+                        if (!alertErr) {
+                            processedNames.push(v.name);
+                            if (v.send_telegram !== false) processedNamesForTelegram.push(v.name);
+                            logsBuffer.push({
+                                fixture_id: fId, league_id: lId, variation_id: v.id,
+                                stage: 'ALERT_SENT', reason: `🚨 ${gameRef} - ALERTA GERADO! (${v.name})`, details: { ...details, stats }
+                            });
+                        }
+                    }
+
+                    if (processedNamesForTelegram.length > 0) {
+                        const combinedNames = processedNamesForTelegram.join(', ');
+                        const escapedHome = escapeHtml(hTeam);
+                        const escapedAway = escapeHtml(aTeam);
+                        const escapedLeague = escapeHtml(lName);
+                        const message = `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapeHtml(combinedNames)}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`;
+
+                        const result = await sendTelegram({ userId: defaultUserId, message, type: 'alert' });
+                        if (!result.success) {
+                            logsBuffer.push({
+                                fixture_id: fId, league_id: lId, variation_id: null, stage: 'TELEGRAM_ERROR',
+                                reason: `Falha Telegram: ${teams}`, details: { ...details, api_error: result.error }
+                            });
+                        }
+                    }
+                }
+            } catch (fixtureErr) {
+                console.error(`[Cron] Error fixture ${f.fixture.id}:`, fixtureErr);
+                logsBuffer.push({
+                    fixture_id: String(f.fixture.id), stage: 'CRON_ERROR',
+                    reason: `Erro no jogo: ${fixtureErr instanceof Error ? fixtureErr.message : String(fixtureErr)}`,
+                    details: { teams: `${f.teams.home.name} vs ${f.teams.away.name}` }
+                });
+            }
+        }
+
+        if (logsBuffer.length > 0) {
+            await supabase.from('robot_execution_logs').insert(logsBuffer);
+        }
     } catch (e) {
-        console.error('Robot error:', e);
+        console.error('Global Cron error:', e);
         try {
             await supabase.from('robot_execution_logs').insert([{
-                fixture_id: '0',
-                league_id: '0',
-                variation_id: null,
-                stage: 'CRON_ERROR',
-                reason: `Erro crítico no Robô: ${e instanceof Error ? e.message : String(e)}`,
+                fixture_id: '0', stage: 'CRON_ERROR',
+                reason: `Erro crítico: ${e instanceof Error ? e.message : String(e)}`,
                 details: { stack: e instanceof Error ? e.stack : null }
             }]);
-        } catch (logErr) {
-            console.error('Failed to log robot error to DB:', logErr);
-        }
+        } catch { }
     }
 }
 
@@ -428,23 +328,14 @@ serve(async (req: Request) => {
     const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}`;
 
     if (!isServiceRole && !isAnon) {
-        // Fallback: check if the header at least contains the keys (handles potential formatting issues from pg_cron)
         const hasServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY);
         const hasAnon = authHeader?.includes(SUPABASE_ANON_KEY);
-        // Also allow the legacy JWT anon key token that was hardcoded in pg_cron 
         const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
         const hasLegacyAnon = authHeader?.includes(legacyAnonKey);
 
         if (!hasServiceRole && !hasAnon && !hasLegacyAnon) {
             console.error('[Auth] Unauthorized request to live-robot-cron-v2');
-            console.error(`Received auth format: ${authHeader ? 'present' : 'missing'}`);
-            return new Response(JSON.stringify({
-                error: 'Unauthorized',
-                receivedHeaders: Object.fromEntries(req.headers.entries()),
-                authHeaderGiven: authHeader,
-                anonKeyInfo: SUPABASE_ANON_KEY.substring(0, 10),
-                srKeyInfo: SUPABASE_SERVICE_ROLE_KEY.substring(0, 10)
-            }), {
+            return new Response(JSON.stringify({ error: 'Unauthorized' }), {
                 status: 401,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
-import { Clock, Zap, DollarSign, Globe } from "lucide-react";
+import { Clock, Zap, DollarSign, Globe, Activity } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -64,11 +64,19 @@ export const LiveRadarCard: React.FC<LiveRadarCardProps> = ({
                             {leagueName}
                         </span>
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 border border-white/10 shadow-inner">
-                        <Clock className="w-3.5 h-3.5 text-primary/80" />
-                        <span className="text-[11px] font-bold text-zinc-300 font-mono">
-                            {format(parseISO(createdAt), 'HH:mm')}
-                        </span>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 shadow-inner">
+                            <Activity className="w-3.5 h-3.5 text-primary" />
+                            <span className="text-[11px] font-black text-primary font-mono uppercase">
+                                {status === 'FT' ? 'Fim' : status === 'HT' ? 'Intervalo' : `${currentMinute}'`}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 border border-white/10 shadow-inner">
+                            <Clock className="w-3.5 h-3.5 text-primary/80" />
+                            <span className="text-[11px] font-bold text-zinc-300 font-mono">
+                                {format(parseISO(createdAt), 'HH:mm')}
+                            </span>
+                        </div>
                     </div>
                 </div>
 

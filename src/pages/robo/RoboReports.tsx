@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from '@tanstack/react-query';
@@ -7,14 +7,20 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     AreaChart, Area, ReferenceArea, ReferenceLine, ReferenceDot, Cell
 } from 'recharts';
-import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap } from "lucide-react";
+import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap, Save, FileSpreadsheet, Check, ChevronDown, Filter } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { format, parseISO } from 'date-fns';
 import GoalHazardChart from './components/GoalHazardChart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useStrategySimulations, StrategySimulation } from "@/hooks/useStrategySimulations";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 // Tooltip customizado para o gráfico de probabilidade acumulada
 const CustomProbabilityTooltip = ({ active, payload }: any) => {
@@ -126,17 +132,24 @@ const CustomLeagueTooltip = ({ active, payload, label }: any) => {
 
 export default function RoboReports() {
     const [selectedLeague, setSelectedLeague] = useState<string>("all");
-    const [selectedVariation, setSelectedVariation] = useState<string>("all");
+    const [selectedVariations, setSelectedVariations] = useState<string[]>(() => {
+        const saved = localStorage.getItem('robo_reports_selected_variations');
+        return saved ? JSON.parse(saved) : [];
+    });
     const [dateFilter, setDateFilter] = useState<string>("all");
 
     // Simulation states
-    const [entryMin, setEntryMin] = useState<number>(20);
-    const [exitMin, setExitMin] = useState<number>(45);
+    const [entryMin, setEntryMin] = useState<number>(30);
+    const [exitMin, setExitMin] = useState<number>(70);
     const [greenStake, setGreenStake] = useState<number>(1.0);
-    const [redStake, setRedStake] = useState<number>(1.5);
+    const [redStake, setRedStake] = useState<number>(2.0);
     const [simName, setSimName] = useState<string>("");
 
     const { simulations, saveSimulation, deleteSimulation } = useStrategySimulations();
+
+    useEffect(() => {
+        localStorage.setItem('robo_reports_selected_variations', JSON.stringify(selectedVariations));
+    }, [selectedVariations]);
 
     // Fetch all historic alerts, active variations and game statuses
     const { data, isLoading } = useQuery({
@@ -166,14 +179,25 @@ export default function RoboReports() {
         if (!data) return [];
         const { alerts, activeVariations } = data;
 
-        let filtered = alerts.filter(a => a.is_discarded !== true && activeVariations.includes(a.variation_name));
+        // Filtramos por variações ativas, mas incluímos variações que tiveram alertas históricos 
+        // mesmo que não estejam mais no array de 'activeVariations' se o modo for "all"
+        let filtered = alerts;
+
+        // Se quisermos apenas variações que POSSUEM alertas
+        // filtered = alerts.filter(a => activeVariations.includes(a.variation_name));
 
         if (selectedLeague !== "all") {
             filtered = filtered.filter(a => a.league_name === selectedLeague);
         }
 
-        if (selectedVariation !== "all") {
-            filtered = filtered.filter(a => a.variation_name === selectedVariation);
+        if (selectedVariations.length > 0) {
+            filtered = filtered.filter(a => {
+                if (!a.variation_name) return false;
+                // Se o nome no banco é "Estratégia A, Estratégia B", 
+                // e o usuário selecionou "Estratégia A", este alerta deve ser incluído.
+                const alertVars = a.variation_name.split(',').map((v: string) => v.trim());
+                return alertVars.some((v: string) => selectedVariations.includes(v));
+            });
         }
 
         if (dateFilter === "today") {
@@ -190,13 +214,30 @@ export default function RoboReports() {
         }
 
         return filtered;
-    }, [data, selectedLeague, selectedVariation, dateFilter]);
+    }, [data, selectedLeague, selectedVariations, dateFilter]);
 
     // Unique leagues and variations for filters
-    const leagues = useMemo(() => [...new Set(data?.alerts?.filter(a => !a.is_discarded).map(a => a.league_name).filter(Boolean))], [data?.alerts]);
-    const variations = useMemo(() => [...new Set(data?.alerts?.filter(a => !a.is_discarded && data.activeVariations.includes(a.variation_name)).map(a => a.variation_name).filter(Boolean))], [data]);
+    const leagues = useMemo(() => [...new Set(data?.alerts?.map(a => a.league_name).filter(Boolean))], [data?.alerts]);
+    const variations = useMemo(() => {
+        if (!data) return [];
+        const fromAlerts: string[] = [];
+        data.alerts?.forEach(a => {
+            if (a.variation_name) {
+                // Se o nome contiver vírgula (ex: "Var A, Var B"), separamos
+                if (a.variation_name.includes(',')) {
+                    a.variation_name.split(',').forEach((v: string) => fromAlerts.push(v.trim()));
+                } else {
+                    fromAlerts.push(a.variation_name);
+                }
+            }
+        });
+        const fromActive = data.activeVariations || [];
+        return [...new Set([...fromAlerts, ...fromActive])].sort((a, b) => a.localeCompare(b));
+    }, [data]);
 
     // Deduplicate fixtures: keep only the alert with the lowest minute_at_alert for each fixture
+    // 1. Deduplicação por JOGO (para análise de distribuição de gols e hazard rate)
+    // Se um jogo teve 3 alertas, ele conta como 1 jogo para saber quando sai o primeiro gol no geral.
     const processedFixtures = useMemo(() => {
         const fixtureMap = new Map();
 
@@ -208,15 +249,40 @@ export default function RoboReports() {
             }
         });
 
-        const deduplicated = Array.from(fixtureMap.values());
-
-        return deduplicated.map(alert => {
-            const alertMinute = alert.minute_at_alert || 0;
+        return Array.from(fixtureMap.values()).map(alert => {
             const allGoalEvents: any[] = typeof alert.goal_events === 'string' ? JSON.parse(alert.goal_events) : (alert.goal_events || []);
-            // Garantir que fixture_id seja string para busca no Map
             const fixtureStatus = data?.gamesMap.get(String(alert.fixture_id));
+            const alertMinute = alert.minute_at_alert || 0;
 
-            // Only consider goals strictly after the alert
+            const validGoals = allGoalEvents.filter(e => (e.minute + (e.extra || 0)) > alertMinute);
+            const firstGoal = validGoals.sort((a, b) => (a.minute + (a.extra || 0)) - (b.minute + (b.extra || 0)))[0] || null;
+            const timeToFirstGoal = firstGoal ? ((firstGoal.minute + (firstGoal.extra || 0)) - alertMinute) : null;
+
+            return { ...alert, allGoalEvents, fixtureStatus, timeToFirstGoal };
+        });
+    }, [validRawAlerts, data?.gamesMap]);
+
+    // 2. Deduplicação por VARIAÇÃO + JOGO (para Backtest/Simulação Real)
+    // Se a Variação A deu 2 alertas no jogo 1, a simulação deve considerar apenas a primeira entrada.
+    // Mas se a Variação B também deu alerta no jogo 1, ela deve ter sua própria entrada na simulação.
+    const simulationBase = useMemo(() => {
+        const varFixtureMap = new Map();
+
+        validRawAlerts.forEach(alert => {
+            const key = `${alert.variation_name}-${alert.fixture_id}`;
+            const alertMinute = alert.minute_at_alert || 0;
+            const existing = varFixtureMap.get(key);
+
+            if (!existing || alertMinute < existing.minute_at_alert) {
+                varFixtureMap.set(key, alert);
+            }
+        });
+
+        return Array.from(varFixtureMap.values()).map(alert => {
+            const allGoalEvents: any[] = typeof alert.goal_events === 'string' ? JSON.parse(alert.goal_events) : (alert.goal_events || []);
+            const fixtureStatus = data?.gamesMap.get(String(alert.fixture_id));
+            const alertMinute = alert.minute_at_alert || 0;
+
             const validGoals = allGoalEvents.filter(e => {
                 const realMin = e.minute + (e.extra || 0);
                 return realMin > alertMinute;
@@ -225,13 +291,6 @@ export default function RoboReports() {
             const firstGoal = validGoals[0] || null;
             const secondGoal = validGoals[1] || null;
 
-            const timeToFirstGoal = firstGoal ? ((firstGoal.minute + (firstGoal.extra || 0)) - alertMinute) : null;
-            const timeToSecondGoal = secondGoal ? ((secondGoal.minute + (secondGoal.extra || 0)) - alertMinute) : null;
-
-            // Definition of Green/HT Green per the request
-            const htGreen = alert.goal_ht_result === 'green' || (firstGoal && (firstGoal.minute + (firstGoal.extra || 0)) <= 45);
-            const over15Green = alert.over15_result === 'green' || allGoalEvents.length >= 2;
-
             return {
                 ...alert,
                 allGoalEvents,
@@ -239,30 +298,32 @@ export default function RoboReports() {
                 fixtureStatus,
                 firstGoalMinute: firstGoal ? (firstGoal.minute + (firstGoal.extra || 0)) : undefined,
                 secondGoalMinute: secondGoal ? (secondGoal.minute + (secondGoal.extra || 0)) : undefined,
-                timeToFirstGoal,
-                timeToSecondGoal,
-                htGreen,
-                over15Green
+                timeToFirstGoal: firstGoal ? ((firstGoal.minute + (firstGoal.extra || 0)) - alertMinute) : null,
+                timeToSecondGoal: secondGoal ? ((secondGoal.minute + (secondGoal.extra || 0)) - alertMinute) : null,
+                htGreen: alert.goal_ht_result === 'green' || (firstGoal && (firstGoal.minute + (firstGoal.extra || 0)) <= 45),
+                over15Green: alert.over15_result === 'green' || allGoalEvents.length >= 2
             };
         });
     }, [validRawAlerts, data?.gamesMap]);
 
     // Lógica da Simulação de Estratégia
     const simulationResult = useMemo(() => {
-        if (!processedFixtures.length) return null;
+        if (!simulationBase.length) return null;
 
-        const datasetSize = processedFixtures.length;
+        const datasetSize = simulationBase.length;
         // Jogos que atingiram o exit_minute ou são FT/Finished
-        // Jogos que atingiram o exit_minute ou são FT/Finished
-        const analyzableGames = processedFixtures.filter(f => {
+        const analyzableGames = simulationBase.filter(f => {
             const finishedStatuses = ['Finished', 'FT', 'AET', 'PEN'];
             const isFinishedInMap = finishedStatuses.includes(f.fixtureStatus);
 
-            // Fallback: se não estiver no gamesMap, mas tiver final_score no alerta ou for antigo
-            const hasFinalScore = f.final_score && f.final_score !== 'pending';
-            const isOldAlert = f.created_at ? (new Date().getTime() - new Date(f.created_at).getTime() > 3 * 60 * 60 * 1000) : false;
+            // Fallback: se não estiver no gamesMap, mas tiver final_score no alerta
+            // Ou se o jogo for "antigo" (assumimos que acabou após o tempo de saída escolhido)
+            const hasFinalScore = f.final_score && f.final_score !== 'pending' && f.final_score !== null;
 
-            return isFinishedInMap || hasFinalScore || isOldAlert;
+            // Se o jogo é antigo o suficiente (> 4 horas), assumimos que está encerrado
+            const isOld = f.created_at ? (new Date().getTime() - new Date(f.created_at).getTime() > 4 * 60 * 60 * 1000) : false;
+
+            return isFinishedInMap || hasFinalScore || isOld;
         });
 
         const actuallyAnalyzed = analyzableGames.length;
@@ -320,9 +381,11 @@ export default function RoboReports() {
                 });
                 return {
                     fixture_id: game.fixture_id,
+                    date: game.created_at,
                     home_team: game.home_team,
                     away_team: game.away_team,
                     league: game.league_name,
+                    variation: game.variation_name,
                     minute_at_alert: game.minute_at_alert,
                     result: goalsInWindow.length > 0 ? 'green' : 'red',
                     goals: goalsInWindow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
@@ -331,6 +394,46 @@ export default function RoboReports() {
             })
         };
     }, [processedFixtures, entryMin, exitMin, greenStake, redStake]);
+
+    // Cálculo da performance por variação dentro da simulação
+    const simulationByVariation = useMemo(() => {
+        if (!simulationResult) return [];
+
+        const stats: Record<string, { total: number, greens: number, reds: number, profit: number }> = {};
+
+        simulationResult.analyzedGames.forEach(game => {
+            const varNames = game.variation ? game.variation.split(',').map((v: string) => v.trim()) : ['Desconhecida'];
+
+            varNames.forEach((name: string) => {
+                // Se o usuário selecionou variações específicas, só contamos as selecionadas
+                if (selectedVariations.length > 0 && !selectedVariations.includes(name)) return;
+
+                if (!stats[name]) stats[name] = { total: 0, greens: 0, reds: 0, profit: 0 };
+
+                stats[name].total++;
+                if (game.result === 'green') {
+                    stats[name].greens++;
+                    stats[name].profit += greenStake;
+                } else {
+                    stats[name].reds++;
+                    stats[name].profit -= redStake;
+                }
+            });
+        });
+
+        return Object.entries(stats)
+            .map(([name, data]) => ({
+                name: name.length > 15 ? name.substring(0, 13) + '...' : name,
+                fullName: name,
+                total: data.total,
+                greens: data.greens,
+                reds: data.reds,
+                profit: parseFloat(data.profit.toFixed(2)),
+                winRate: Math.round((data.greens / data.total) * 100),
+                roi: parseFloat(((data.profit / data.total) * 100).toFixed(1))
+            }))
+            .sort((a, b) => b.profit - a.profit);
+    }, [simulationResult, greenStake, redStake, selectedVariations]);
 
     const handleSaveSim = () => {
         if (!simName) {
@@ -357,7 +460,7 @@ export default function RoboReports() {
             roi: simulationResult.roi,
             filters_snapshot: {
                 league: selectedLeague,
-                variation: selectedVariation,
+                variation: selectedVariations.join(','),
                 date: dateFilter
             },
             simulation_version: 'v2'
@@ -568,6 +671,46 @@ export default function RoboReports() {
         };
     }, [processedFixtures]);
 
+    const exportToExcel = () => {
+        if (!simulationResult || !simulationResult.analyzedGames.length) {
+            toast.error("Nenhuma simulação para exportar");
+            return;
+        }
+
+        const worksheetData = simulationResult.analyzedGames.map((game, idx) => {
+            const profit = game.result === 'green' ? greenStake : -redStake;
+            return {
+                "Data": game.date ? format(parseISO(game.date), 'dd/MM/yy HH:mm') : '-',
+                "Partida": `${game.home_team} vs ${game.away_team}`,
+                "Liga": game.league,
+                "Método": game.variation,
+                "Min. Alerta": game.minute_at_alert,
+                "Gols no Intervalo": game.goals || '-',
+                "Placar Final": game.final_score,
+                "Resultado": game.result.toUpperCase(),
+                "Profit/Loss (Units)": profit,
+                "Cumulative Profit": simulationResult.equityCurveData[idx]?.profit || 0
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(worksheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Simulação");
+
+        // Auto-sizing
+        const maxWidths = worksheetData.reduce((acc, row: any) => {
+            Object.keys(row).forEach((key, i) => {
+                const val = String(row[key]);
+                acc[i] = Math.max(acc[i] || 0, val.length, key.length);
+            });
+            return acc;
+        }, [] as number[]);
+        ws["!cols"] = maxWidths.map(w => ({ wch: w + 2 }));
+
+        XLSX.writeFile(wb, `Simulacao_Estrategia_${format(new Date(), 'dd_MM_yy_HHmm')}.xlsx`);
+        toast.success("Simulação exportada com sucesso!");
+    };
+
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center p-12">
@@ -601,15 +744,14 @@ export default function RoboReports() {
                             </SelectContent>
                         </Select>
 
-                        <Select value={selectedVariation} onValueChange={setSelectedVariation}>
-                            <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
-                                <SelectValue placeholder="Todas as Variações" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todas as Variações</SelectItem>
-                                {variations.map(v => v && <SelectItem key={v} value={v}>{v}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-[#2a3142] border border-[#3b4256] rounded-md">
+                            <Filter className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="text-xs text-gray-300 font-medium whitespace-nowrap">
+                                {selectedVariations.length === 0 ? "Todas as Variações" :
+                                    selectedVariations.length === 1 ? selectedVariations[0] :
+                                        `${selectedVariations.length} Variações selecionadas`}
+                            </span>
+                        </div>
 
                         <Select value={dateFilter} onValueChange={setDateFilter}>
                             <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
@@ -882,6 +1024,43 @@ export default function RoboReports() {
                                     />
                                 </div>
                             </div>
+
+                            <div className="space-y-2 pt-2">
+                                <Label className="text-gray-400 flex justify-between">
+                                    <span>Variações para Simular</span>
+                                    <Button
+                                        variant="link"
+                                        className="h-auto p-0 text-[10px] text-blue-400 hover:text-blue-300"
+                                        onClick={() => setSelectedVariations([])}
+                                    >
+                                        Limpar Todos
+                                    </Button>
+                                </Label>
+                                <div className="bg-[#2a3142] border border-[#3b4256] rounded-md p-2 space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
+                                    <div
+                                        className="flex items-center space-x-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors"
+                                        onClick={() => setSelectedVariations([])}
+                                    >
+                                        <Checkbox checked={selectedVariations.length === 0} id="var-all" />
+                                        <label htmlFor="var-all" className="text-[11px] font-medium text-white cursor-pointer">Todas as Variações</label>
+                                    </div>
+                                    <div className="h-px bg-[#3b4256] my-1" />
+                                    {variations.map(v => (
+                                        <div
+                                            key={v}
+                                            className="flex items-center space-x-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors"
+                                            onClick={() => {
+                                                setSelectedVariations(prev =>
+                                                    prev.includes(v) ? prev.filter(i => i !== v) : [...prev, v]
+                                                );
+                                            }}
+                                        >
+                                            <Checkbox checked={selectedVariations.includes(v)} id={`var-${v}`} />
+                                            <label htmlFor={`var-${v}`} className="text-[11px] text-gray-300 cursor-pointer truncate">{v}</label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                             <div className="pt-4 border-t border-[#2a3142] space-y-4">
                                 <Label className="text-gray-400">Salvar Simulação</Label>
                                 <Input
@@ -892,6 +1071,13 @@ export default function RoboReports() {
                                 />
                                 <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveSim}>
                                     <Plus className="w-4 h-4 mr-2" /> Salvar Resultados
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className="w-full border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                    onClick={exportToExcel}
+                                >
+                                    <FileSpreadsheet className="w-4 h-4 mr-2" /> Baixar Planilha (.xlsx)
                                 </Button>
                             </div>
 
@@ -1019,6 +1205,68 @@ export default function RoboReports() {
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+
+                        {/* Performance por Variação dentro da Simulação */}
+                        <Card className="bg-[#1e2333] border-[#2a3142]">
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center">
+                                    <Zap className="w-4 h-4 mr-2 text-purple-400" /> Resultado por Variação
+                                </CardTitle>
+                                <CardDescription className="text-xs">Lucro líquido (stakes) acumulado por cada estratégia configurada.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="h-[250px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={simulationByVariation} margin={{ top: 10, right: 10, left: -25, bottom: 20 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} opacity={0.4} />
+                                            <XAxis dataKey="name" stroke="#8b949e" tick={{ fontSize: 9 }} angle={-25} textAnchor="end" height={50} />
+                                            <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: '#1a1f2d', border: '1px solid #2a3142', color: '#fff' }}
+                                                formatter={(value: number) => [`${value} u`, 'Lucro']}
+                                            />
+                                            <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+                                                {simulationByVariation.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? '#10b981' : '#f43f5e'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                    {simulationByVariation.map((stat) => (
+                                        <div key={stat.fullName} className="p-3 bg-[#2a3142]/40 rounded-lg border border-[#3b4256] flex flex-col justify-between">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="font-bold text-sm text-gray-200 truncate pr-2" title={stat.fullName}>{stat.fullName}</span>
+                                                <Badge variant="outline" className={cn(
+                                                    "text-[9px] uppercase",
+                                                    stat.profit >= 0 ? "text-emerald-400 border-emerald-500/30" : "text-rose-400 border-rose-500/30"
+                                                )}>
+                                                    {stat.profit > 0 ? '+' : ''}{stat.profit}u
+                                                </Badge>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-1">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[8px] text-gray-500 uppercase">Amostra</span>
+                                                    <span className="text-xs font-mono text-gray-300">{stat.total}</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[8px] text-gray-500 uppercase">Winrate</span>
+                                                    <span className="text-xs font-mono text-gray-300">{stat.winRate}%</span>
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[8px] text-gray-500 uppercase">ROI</span>
+                                                    <span className={cn("text-xs font-mono", stat.roi >= 0 ? "text-emerald-500" : "text-rose-500")}>
+                                                        {stat.roi}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </CardContent>
                         </Card>
                     </div>

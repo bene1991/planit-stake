@@ -11,7 +11,7 @@ verify_jwt = false
 
 [functions.live-robot-cron]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/live-robot-cron/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -22,7 +22,7 @@ entrypoint = "./functions/live-robot-cron/index.ts"
 
 [functions.live-alerts-resolver]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 import_map = "./functions/live-alerts-resolver/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
@@ -30,3 +30,12 @@ entrypoint = "./functions/live-alerts-resolver/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/live-alerts-resolver/*.html" ]
+
+[functions.send-telegram-notification]
+verify_jwt = false
+
+[functions.live-robot-cron-v2]
+verify_jwt = false
+
+[functions.analyze-live-moment]
+verify_jwt = false

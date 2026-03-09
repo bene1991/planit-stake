@@ -8,11 +8,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { GameNotesEditor } from "@/components/GameNotesEditor";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useFixtureCache, OnRedCardDetected } from "@/hooks/useFixtureCache";
-import { useDominanceAnalysis } from "@/hooks/useDominanceAnalysis";
-import { LiveDominanceDisplay } from "@/components/LiveDominanceDisplay";
-import { useLdiHistory } from "@/hooks/useLdiHistory";
-import { useLiveMomentAI } from "@/hooks/useLiveMomentAI";
-import { LiveMatchGraphics } from "@/components/LiveMatchGraphics";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,53 +80,59 @@ export function GameListItem({
 
   const isLiveForFetch = (game.status === 'Live' || game.status === 'Pending');
   const { data: fixtureCache } = useFixtureCache(game.api_fixture_id, isLiveForFetch, globalPaused, liveScore?.goalDetectedAt, onRedCardDetected);
-  const dominance = useDominanceAnalysis(fixtureCache);
-  const ldiHistory = useLdiHistory(
-    game.api_fixture_id ? Number(game.api_fixture_id) : undefined,
-    fixtureCache?.minute_now,
-    dominance.dominanceIndex
-  );
 
-  const { text: aiMomentText, loading: aiLoading } = useLiveMomentAI(
-    isLiveForFetch && game.status === 'Live',
-    game.homeTeam,
-    game.awayTeam,
-    liveScore?.homeScore ?? game.finalScoreHome ?? null,
-    liveScore?.awayScore ?? game.finalScoreAway ?? null,
-    dominance,
-    fixtureCache,
-    ldiHistory
-  );
   const homeTeamLogo = game.homeTeamLogo || homeLogo;
   const awayTeamLogo = game.awayTeamLogo || awayLogo;
 
-  const fixtureStatus = liveScore?.status;
-  const isGameLive = fixtureStatus
-    ? ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE'].includes(fixtureStatus)
-    : (game.status === 'Live' || game.status === 'Pending');
+  const currentShortStatus = fixtureCache?.status || liveScore?.status;
+
+  // FIXED: Improved live detection. 
+  // If the API explicitly says NS, but the DB says Live, we trust the DB (which likely came from our time-based check)
+  const isGameLive = (currentShortStatus && ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'INT', 'LIVE', 'SUSP'].includes(currentShortStatus))
+    || (game.status === 'Live' || game.status === 'Pending');
 
   const isLive = isGameLive;
-  const isHalfTime = fixtureStatus === 'HT';
-  const isExtraTime = fixtureStatus === 'ET';
-  const isPenalty = fixtureStatus === 'P';
-  const isFinished = fixtureStatus ? ['FT', 'AET', 'PEN'].includes(fixtureStatus) : game.status === 'Finished';
+  const isHalfTime = currentShortStatus === 'HT' || currentShortStatus === 'INT';
+  const isExtraTime = currentShortStatus === 'ET';
+  const isPenalty = currentShortStatus === 'P';
+  const isFinished = currentShortStatus ? ['FT', 'AET', 'PEN', 'ABD', 'CANC'].includes(currentShortStatus) : game.status === 'Finished';
 
-  const apiElapsed = liveScore?.elapsed;
+  const apiElapsed = fixtureCache?.minute_now ?? liveScore?.elapsed;
+
+  // FIXED: Added time-based estimation for localElapsed if API hasn't started reporting minutes yet
+  const estimatedElapsed = useMemo(() => {
+    if (!isLive || !game.dateTime || isHalfTime || isFinished) return null;
+
+    try {
+      const now = new Date();
+      // Brasilia time adjustment if needed, but game.dateTime is likely ISO
+      const startTime = new Date(game.dateTime);
+      const diffMs = now.getTime() - startTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 0) return null;
+      if (diffMins > 130) return null; // Game should be finished
+
+      // Simple logic: if < 45, it's 1H. If > 45, it could be HT or 2H.
+      // But we use this only as fallback, so we'll just return the raw minutes.
+      return diffMins;
+    } catch (e) {
+      return null;
+    }
+  }, [isLive, game.dateTime, isHalfTime, isFinished]);
 
   useEffect(() => {
-    if (apiElapsed && isLive && lastGlobalRefresh) {
-      if (lastGlobalRefresh > lastSyncRef.current) {
+    // Priority: API Elapsed > Estimated > Previous State
+    if (apiElapsed !== undefined && apiElapsed !== null && isLive) {
+      const isHTNow = currentShortStatus === 'HT' || currentShortStatus === 'INT';
+      if (lastGlobalRefresh > lastSyncRef.current || isHTNow || !localElapsed) {
         setLocalElapsed({ minutes: apiElapsed, seconds: 0 });
         lastSyncRef.current = lastGlobalRefresh;
       }
+    } else if (estimatedElapsed !== null && isLive && !localElapsed) {
+      setLocalElapsed({ minutes: estimatedElapsed, seconds: 0 });
     }
-  }, [apiElapsed, isLive, lastGlobalRefresh]);
-
-  useEffect(() => {
-    if (apiElapsed && isLive && !localElapsed) {
-      setLocalElapsed({ minutes: apiElapsed, seconds: 0 });
-    }
-  }, [apiElapsed, isLive, localElapsed]);
+  }, [apiElapsed, estimatedElapsed, isLive, lastGlobalRefresh, currentShortStatus, localElapsed]);
 
   useEffect(() => {
     if (!isLive || isHalfTime) return;
@@ -230,9 +231,12 @@ export function GameListItem({
     if (isHalfTime) return { text: 'INT', subText: '45\'', color: 'text-amber-500' };
     if (isExtraTime) return { text: 'PRR', subText: localElapsed ? `${localElapsed.minutes}'` : '', color: 'text-orange-500' };
     if (isPenalty) return { text: 'PEN', subText: '', color: 'text-purple-500' };
-    if (isLive && localElapsed) {
-      const period = localElapsed.minutes <= 45 ? '1T' : '2T';
-      return { text: period, subText: `${localElapsed.minutes}'`, color: 'text-primary' };
+    if (isLive) {
+      if (localElapsed) {
+        const period = localElapsed.minutes <= 45 ? '1T' : '2T';
+        return { text: period, subText: `${localElapsed.minutes}'`, color: 'text-primary' };
+      }
+      return { text: 'LIVE', subText: '-', color: 'text-primary animate-pulse' };
     }
     if (isFinished) return { text: 'FIM', subText: '', color: 'text-muted-foreground' };
     return { text: game.time, subText: '', color: 'text-muted-foreground' };
@@ -374,20 +378,7 @@ export function GameListItem({
                     </div>
                   </div>
 
-                  {isLive && (
-                    <div className="w-full mt-3 pb-1">
-                      <LiveMatchGraphics
-                        dominance={dominance}
-                        ldiHistory={ldiHistory}
-                        momentumSeries={fixtureCache?.momentum_series}
-                        stats={fixtureCache?.normalized_stats}
-                        homeTeam={game.homeTeam}
-                        awayTeam={game.awayTeam}
-                        homeRedCards={homeRedCards.length}
-                        awayRedCards={awayRedCards.length}
-                      />
-                    </div>
-                  )}
+                  {/* Statistics graphics removed by user request */}
                 </div>
               </div>
             </CollapsibleTrigger>
@@ -447,11 +438,7 @@ export function GameListItem({
             </Collapsible>
           </div>
 
-          {/* AI Moment */}
-          <div className={cn("mt-2 mb-1 flex items-center gap-1.5 text-[10px] text-gray-400 italic", (compact || isMobile) ? "ml-0" : "ml-16")}>
-            <Sparkles className="h-3 w-3 text-emerald-500/60" />
-            {aiMomentText}
-          </div>
+
         </div>
       </div>
 

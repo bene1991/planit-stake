@@ -72,87 +72,87 @@ export default function RoboLogs() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h3 className="text-xl font-medium text-white flex items-center">
-                        <Cpu className="w-5 h-5 mr-2 text-blue-400" />
-                        Logs de Execução (Edge Function)
-                    </h3>
-                    <p className="text-sm text-muted-foreground">Histórico técnico das últimas avaliações do robô.</p>
+            <div className="rounded-2xl border border-white/5 bg-[#141416]/50 backdrop-blur-sm overflow-hidden">
+                <div className="overflow-x-auto custom-scrollbar">
+                    <Table>
+                        <TableHeader className="bg-white/10">
+                            <TableRow className="border-white/10 hover:bg-transparent">
+                                <TableHead className="text-zinc-500 font-black uppercase text-[10px] tracking-widest min-w-[120px]">Data/Hora</TableHead>
+                                <TableHead className="text-zinc-500 font-black uppercase text-[10px] tracking-widest min-w-[150px]">Liga</TableHead>
+                                <TableHead className="text-zinc-500 font-black uppercase text-[10px] tracking-widest min-w-[200px]">Partida</TableHead>
+                                <TableHead className="text-zinc-500 font-black uppercase text-[10px] tracking-widest min-w-[130px]">Estágio / Min</TableHead>
+                                <TableHead className="text-zinc-500 font-black uppercase text-[10px] tracking-widest min-w-[200px]">Diagnóstico</TableHead>
+                                <TableHead className="text-zinc-500 font-black uppercase text-[10px] tracking-widest w-[80px] text-right">Ações</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="bg-[#1a1f2d]">
+                            {loading ? (
+                                <TableRow className="border-white/5">
+                                    <TableCell colSpan={6} className="h-40 text-center">
+                                        <div className="flex flex-col items-center gap-3 justify-center text-zinc-600">
+                                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                                            <span className="font-black text-[10px] uppercase tracking-widest">Sincronizando logs do servidor...</span>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ) : logs.length === 0 ? (
+                                <TableRow className="border-white/5">
+                                    <TableCell colSpan={6} className="h-40 text-center text-zinc-600">
+                                        <div className="font-black text-[10px] uppercase tracking-widest italic opacity-50">
+                                            Nenhum evento registrado pelo robô nas últimas 24h
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                logs.map((log) => {
+                                    const details = log.details as any;
+                                    const league = details?.league || '-';
+                                    const teams = details?.teams || '-';
+                                    const minute = details?.minute !== undefined ? `${details.minute}'` : '';
+
+                                    return (
+                                        <TableRow key={log.id} className="border-white/5 hover:bg-white/[0.02] transition-colors group">
+                                            <TableCell className="text-zinc-500 text-xs font-mono py-4">
+                                                {format(new Date(log.created_at || ''), 'dd/MM HH:mm:ss')}
+                                            </TableCell>
+                                            <TableCell className="py-4">
+                                                <div className="text-zinc-300 text-[11px] font-bold uppercase tracking-tight" title={league}>
+                                                    {league}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="py-4">
+                                                <div className="text-white text-[11px] font-black uppercase tracking-tight" title={teams}>
+                                                    {teams}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="py-4 whitespace-nowrap">
+                                                <div className="flex items-center gap-2">
+                                                    {getStageBadge(log.stage)}
+                                                    {minute && <Badge variant="outline" className="text-blue-400 border-blue-400/20 bg-blue-400/5 text-[9px] font-black px-1.5 h-4">{minute}</Badge>}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="py-4">
+                                                <div className="text-[11px] font-bold text-zinc-400 leading-relaxed">
+                                                    {log.reason.includes(' - ') ? log.reason.split(' - ').slice(1).join(' - ') : log.reason}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right py-4">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-3 text-[9px] font-black uppercase tracking-widest text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                                    onClick={() => blockLeague(log.league_id, league)}
+                                                >
+                                                    BLOQUEAR
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
+                            )}
+                        </TableBody>
+                    </Table>
                 </div>
-            </div>
-
-            <div className="rounded-md border border-[#2a3142] overflow-hidden">
-                <Table>
-                    <TableHeader className="bg-[#1e2333]/50">
-                        <TableRow className="border-[#2a3142] hover:bg-transparent">
-                            <TableHead className="text-[#a1a1aa] font-medium w-[150px]">Data/Hora</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium w-[180px]">Liga</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium w-[200px]">Times</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium">Estágio / Minuto</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium">Motivo / Detalhe</TableHead>
-                            <TableHead className="text-[#a1a1aa] font-medium w-[100px]">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody className="bg-[#1a1f2d]">
-                        {loading ? (
-                            <TableRow className="border-[#2a3142]">
-                                <TableCell colSpan={5} className="h-24 text-center">
-                                    <div className="flex items-center justify-center text-muted-foreground">
-                                        <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                                        Carregando logs técnicos...
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ) : logs.length === 0 ? (
-                            <TableRow className="border-[#2a3142]">
-                                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                                    Nenhum log recente. O cron-job pode não estar rodando.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            logs.map((log) => {
-                                const details = log.details as any;
-                                const league = details?.league || '-';
-                                const teams = details?.teams || '-';
-                                const minute = details?.minute !== undefined ? `${details.minute}'` : '';
-
-                                return (
-                                    <TableRow key={log.id} className="border-[#2a3142] hover:bg-[#1e2333]/50 transition-colors">
-                                        <TableCell className="text-zinc-400 text-sm font-mono">
-                                            {format(new Date(log.created_at || ''), 'dd/MM HH:mm:ss')}
-                                        </TableCell>
-                                        <TableCell className="text-zinc-400 text-xs truncate max-w-[180px]" title={league}>
-                                            {league}
-                                        </TableCell>
-                                        <TableCell className="text-white text-sm font-medium truncate max-w-[200px]" title={teams}>
-                                            {teams}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-2">
-                                                {getStageBadge(log.stage)}
-                                                {minute && <Badge variant="outline" className="text-blue-400 border-blue-400/30">{minute}</Badge>}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-sm text-zinc-300">
-                                            {log.reason.includes(' - ') ? log.reason.split(' - ').slice(1).join(' - ') : log.reason}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                                                onClick={() => blockLeague(log.league_id, league)}
-                                            >
-                                                Bloquear
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })
-                        )}
-                    </TableBody>
-                </Table>
             </div>
         </div>
     );
