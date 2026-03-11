@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Check, X, Loader2, Edit3, Power, Send, Hash, MousePointer2, LayoutPanelLeft, Rocket, FlaskConical, Target, Clock, Activity, Zap, Info } from "lucide-react";
+import { Plus, Check, X, Loader2, Edit3, Power, Send, Hash, MousePointer2, LayoutPanelLeft, Rocket, FlaskConical, Target, Clock, Activity, Zap, Info, LayoutGrid, List } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,7 @@ interface Variation {
 export default function RoboVariations() {
     const [variations, setVariations] = useState<Variation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingVariation, setEditingVariation] = useState<Variation | null>(null);
     const [formData, setFormData] = useState({
@@ -184,171 +185,198 @@ export default function RoboVariations() {
                     </p>
                 </div>
 
-                <Dialog open={isModalOpen} onOpenChange={(open) => {
-                    setIsModalOpen(open);
-                    if (!open) setEditingVariation(null);
-                }}>
-                    <DialogTrigger asChild>
+                <div className="flex items-center gap-4 relative z-10">
+                    <div className="bg-zinc-950/50 p-1 rounded-xl border border-zinc-800 flex items-center">
                         <Button
-                            onClick={handleOpenCreate}
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-6 rounded-full shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 uppercase text-xs"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewMode('grid')}
+                            className={cn(
+                                "h-8 px-3 rounded-lg text-xs font-bold transition-all",
+                                viewMode === 'grid' ? "bg-primary text-primary-foreground shadow-lg" : "text-zinc-500 hover:text-zinc-300"
+                            )}
                         >
-                            <Plus className="w-4 h-4 mr-2" /> Nova Variação
+                            <LayoutGrid className="w-3.5 h-3.5 mr-2" /> Cards
                         </Button>
-                    </DialogTrigger>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewMode('list')}
+                            className={cn(
+                                "h-8 px-3 rounded-lg text-xs font-bold transition-all",
+                                viewMode === 'list' ? "bg-primary text-primary-foreground shadow-lg" : "text-zinc-500 hover:text-zinc-300"
+                            )}
+                        >
+                            <List className="w-3.5 h-3.5 mr-2" /> Lista
+                        </Button>
+                    </div>
 
-                    <DialogContent className="bg-[#0f1117] border-zinc-800 text-white sm:max-w-[700px] h-[90vh] overflow-y-auto rounded-3xl backdrop-blur-3xl shadow-2xl">
-                        <DialogHeader className="mb-6">
-                            <DialogTitle className="text-2xl font-black text-white flex items-center gap-3 uppercase tracking-tighter">
-                                <FlaskConical className="w-6 h-6 text-primary" />
-                                {editingVariation ? 'Editar Algoritmo' : 'Projetar Novo Algoritmo'}
-                            </DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-8 mt-2 pb-8">
-                            <div className="grid gap-8">
-                                {/* Basic Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Identificação</Label>
-                                        <Input
-                                            placeholder="Ex: OVER 1.5 HT AGRESSIVO"
-                                            required
-                                            value={formData.name}
-                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                            className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-white focus:ring-primary/20"
-                                        />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Janela de Tempo (Minutos)</Label>
-                                        <div className="flex items-center gap-3">
+                    <Dialog open={isModalOpen} onOpenChange={(open) => {
+                        setIsModalOpen(open);
+                        if (!open) setEditingVariation(null);
+                    }}>
+                        <DialogTrigger asChild>
+                            <Button
+                                onClick={handleOpenCreate}
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-6 rounded-full shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 uppercase text-xs"
+                            >
+                                <Plus className="w-4 h-4 mr-2" /> Nova Variação
+                            </Button>
+                        </DialogTrigger>
+
+                        <DialogContent className="bg-[#0f1117] border-zinc-800 text-white sm:max-w-[700px] h-[90vh] overflow-y-auto rounded-3xl backdrop-blur-3xl shadow-2xl">
+                            <DialogHeader className="mb-6">
+                                <DialogTitle className="text-2xl font-black text-white flex items-center gap-3 uppercase tracking-tighter">
+                                    <FlaskConical className="w-6 h-6 text-primary" />
+                                    {editingVariation ? 'Editar Algoritmo' : 'Projetar Novo Algoritmo'}
+                                </DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleSubmit} className="space-y-8 mt-2 pb-8">
+                                <div className="grid gap-8">
+                                    {/* Basic Info */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-3">
+                                            <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Identificação</Label>
                                             <Input
-                                                type="number"
+                                                placeholder="Ex: OVER 1.5 HT AGRESSIVO"
                                                 required
-                                                min={0}
-                                                max={90}
-                                                value={formData.min_minute}
-                                                onChange={e => setFormData({ ...formData, min_minute: parseInt(e.target.value) })}
-                                                className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-center"
-                                            />
-                                            <span className="text-zinc-700">até</span>
-                                            <Input
-                                                type="number"
-                                                required
-                                                min={0}
-                                                max={90}
-                                                value={formData.max_minute}
-                                                onChange={e => setFormData({ ...formData, max_minute: parseInt(e.target.value) })}
-                                                className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-center"
+                                                value={formData.name}
+                                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                                className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-white focus:ring-primary/20"
                                             />
                                         </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Resumo Operacional</Label>
-                                    <Textarea
-                                        placeholder="Descreva a lógica por trás desta estratégia..."
-                                        value={formData.description}
-                                        onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                        className="bg-zinc-950/50 border-zinc-800 rounded-xl min-h-[80px]"
-                                    />
-                                </div>
-
-                                {/* Toggles */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-lg bg-blue-500/10">
-                                                <Target className="w-4 h-4 text-blue-400" />
-                                            </div>
-                                            <div className="space-y-0.5">
-                                                <Label htmlFor="require-zero" className="cursor-pointer text-sm font-bold">Apenas 0x0</Label>
-                                                <p className="text-[10px] text-zinc-500">Filtrar apenas jogos sem gols</p>
-                                            </div>
-                                        </div>
-                                        <Switch
-                                            id="require-zero"
-                                            checked={formData.require_score_zero}
-                                            onCheckedChange={(c) => setFormData({ ...formData, require_score_zero: c })}
-                                        />
-                                    </div>
-                                    <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-lg bg-emerald-500/10">
-                                                <Send className="w-4 h-4 text-emerald-400" />
-                                            </div>
-                                            <div className="space-y-0.5">
-                                                <Label htmlFor="send-telegram-form" className="cursor-pointer text-sm font-bold">Telegram</Label>
-                                                <p className="text-[10px] text-zinc-500">Notificar canais ativos</p>
+                                        <div className="space-y-3">
+                                            <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Janela de Tempo (Minutos)</Label>
+                                            <div className="flex items-center gap-3">
+                                                <Input
+                                                    type="number"
+                                                    required
+                                                    min={0}
+                                                    max={90}
+                                                    value={formData.min_minute}
+                                                    onChange={e => setFormData({ ...formData, min_minute: parseInt(e.target.value) })}
+                                                    className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-center"
+                                                />
+                                                <span className="text-zinc-700">até</span>
+                                                <Input
+                                                    type="number"
+                                                    required
+                                                    min={0}
+                                                    max={90}
+                                                    value={formData.max_minute}
+                                                    onChange={e => setFormData({ ...formData, max_minute: parseInt(e.target.value) })}
+                                                    className="bg-zinc-950/50 border-zinc-800 rounded-xl py-6 text-center"
+                                                />
                                             </div>
                                         </div>
-                                        <Switch
-                                            id="send-telegram-form"
-                                            checked={formData.send_telegram}
-                                            onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <Label className="text-zinc-400 font-bold uppercase text-[10px] tracking-widest">Resumo Operacional</Label>
+                                        <Textarea
+                                            placeholder="Descreva a lógica por trás desta estratégia..."
+                                            value={formData.description}
+                                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                            className="bg-zinc-950/50 border-zinc-800 rounded-xl min-h-[80px]"
                                         />
                                     </div>
+
+                                    {/* Toggles */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-blue-500/10">
+                                                    <Target className="w-4 h-4 text-blue-400" />
+                                                </div>
+                                                <div className="space-y-0.5">
+                                                    <Label htmlFor="require-zero" className="cursor-pointer text-sm font-bold">Apenas 0x0</Label>
+                                                    <p className="text-[10px] text-zinc-500">Filtrar apenas jogos sem gols</p>
+                                                </div>
+                                            </div>
+                                            <Switch
+                                                id="require-zero"
+                                                checked={formData.require_score_zero}
+                                                onCheckedChange={(c) => setFormData({ ...formData, require_score_zero: c })}
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-emerald-500/10">
+                                                    <Send className="w-4 h-4 text-emerald-400" />
+                                                </div>
+                                                <div className="space-y-0.5">
+                                                    <Label htmlFor="send-telegram-form" className="cursor-pointer text-sm font-bold">Telegram</Label>
+                                                    <p className="text-[10px] text-zinc-500">Notificar canais ativos</p>
+                                                </div>
+                                            </div>
+                                            <Switch
+                                                id="send-telegram-form"
+                                                checked={formData.send_telegram}
+                                                onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Technical Specs */}
+                                    <div className="space-y-6">
+                                        <div className="flex items-center gap-2">
+                                            <Activity className="w-4 h-4 text-primary" />
+                                            <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Métricas de Pressão (Gatilhos)</h4>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+                                            <StatField label="Min xG Pressionante" value={formData.min_expected_goals} icon={<Zap className="w-3 h-3" />}
+                                                onChange={v => setFormData({ ...formData, min_expected_goals: parseFloat(v) })} />
+
+                                            <StatField label="Escanteios" value={formData.min_corners} icon={<LayoutPanelLeft className="w-3 h-3" />}
+                                                onChange={v => setFormData({ ...formData, min_corners: parseInt(v) })} />
+
+                                            <StatField label="Chutes na Área" value={formData.min_shots_insidebox} icon={<Target className="w-3 h-3" />}
+                                                onChange={v => setFormData({ ...formData, min_shots_insidebox: parseInt(v) })} />
+
+                                            <StatField label="Chutes Totais" value={formData.min_shots} icon={<Activity className="w-3 h-3" />}
+                                                onChange={v => setFormData({ ...formData, min_shots: parseInt(v) })} />
+
+                                            <StatField label="No Alvo" value={formData.min_shots_on_target} icon={<MousePointer2 className="w-3 h-3" />}
+                                                onChange={v => setFormData({ ...formData, min_shots_on_target: parseInt(v) })} />
+
+                                            <StatField label="Posse Mínima %" value={formData.min_possession} icon={<Hash className="w-3 h-3" />}
+                                                onChange={v => setFormData({ ...formData, min_possession: parseInt(v) })} />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2">
+                                            <Activity className="w-4 h-4 text-blue-400" />
+                                            <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Dinâmica Global do Jogo</h4>
+                                        </div>
+                                        <div className="p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800">
+                                            <StatField label="Volume de Chutes Somados (Equipe A + Equipe B)" value={formData.min_combined_shots} wide
+                                                onChange={v => setFormData({ ...formData, min_combined_shots: parseInt(v) })} />
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* Technical Specs */}
-                                <div className="space-y-6">
-                                    <div className="flex items-center gap-2">
-                                        <Activity className="w-4 h-4 text-primary" />
-                                        <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Métricas de Pressão (Gatilhos)</h4>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
-                                        <StatField label="Min xG Pressionante" value={formData.min_expected_goals} icon={<Zap className="w-3 h-3" />}
-                                            onChange={v => setFormData({ ...formData, min_expected_goals: parseFloat(v) })} />
-
-                                        <StatField label="Escanteios" value={formData.min_corners} icon={<LayoutPanelLeft className="w-3 h-3" />}
-                                            onChange={v => setFormData({ ...formData, min_corners: parseInt(v) })} />
-
-                                        <StatField label="Chutes na Área" value={formData.min_shots_insidebox} icon={<Target className="w-3 h-3" />}
-                                            onChange={v => setFormData({ ...formData, min_shots_insidebox: parseInt(v) })} />
-
-                                        <StatField label="Chutes Totais" value={formData.min_shots} icon={<Activity className="w-3 h-3" />}
-                                            onChange={v => setFormData({ ...formData, min_shots: parseInt(v) })} />
-
-                                        <StatField label="No Alvo" value={formData.min_shots_on_target} icon={<MousePointer2 className="w-3 h-3" />}
-                                            onChange={v => setFormData({ ...formData, min_shots_on_target: parseInt(v) })} />
-
-                                        <StatField label="Posse Mínima %" value={formData.min_possession} icon={<Hash className="w-3 h-3" />}
-                                            onChange={v => setFormData({ ...formData, min_possession: parseInt(v) })} />
-                                    </div>
+                                <div className="flex gap-3 justify-end pt-6">
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => setIsModalOpen(false)}
+                                        className="rounded-full px-8 text-zinc-500 hover:text-white"
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        type="submit"
+                                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-10 rounded-full shadow-xl shadow-primary/10"
+                                    >
+                                        {editingVariation ? 'Salvar Configurações' : 'Iniciar Estratégia'}
+                                    </Button>
                                 </div>
-
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-2">
-                                        <Activity className="w-4 h-4 text-blue-400" />
-                                        <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Dinâmica Global do Jogo</h4>
-                                    </div>
-                                    <div className="p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800">
-                                        <StatField label="Volume de Chutes Somados (Equipe A + Equipe B)" value={formData.min_combined_shots} wide
-                                            onChange={v => setFormData({ ...formData, min_combined_shots: parseInt(v) })} />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3 justify-end pt-6">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="rounded-full px-8 text-zinc-500 hover:text-white"
-                                >
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-10 rounded-full shadow-xl shadow-primary/10"
-                                >
-                                    {editingVariation ? 'Salvar Configurações' : 'Iniciar Estratégia'}
-                                </Button>
-                            </div>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </motion.div>
 
             {loading ? (
@@ -362,9 +390,10 @@ export default function RoboVariations() {
                     <p className="text-zinc-600 font-bold uppercase tracking-[0.2em] text-xs">Nenhum protocolo ativo</p>
                     <Button onClick={handleOpenCreate} variant="link" className="text-primary mt-2">Clique para projetar seu primeiro alerta</Button>
                 </div>
-            ) : (
+            ) : viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
+                        {/* existing card mapping */}
                         {variations.map((v, idx) => (
                             <motion.div
                                 key={v.id}
@@ -373,6 +402,7 @@ export default function RoboVariations() {
                                 transition={{ delay: idx * 0.05 }}
                                 className="relative group"
                             >
+                                {/* ... card content ... */}
                                 <Card className={cn(
                                     "relative bg-zinc-900/40 backdrop-blur-xl border-zinc-800/80 transition-all duration-500 overflow-hidden flex flex-col h-full",
                                     "hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/5",
@@ -465,6 +495,96 @@ export default function RoboVariations() {
                             </motion.div>
                         ))}
                     </AnimatePresence>
+                </div>
+            ) : (
+                <div className="rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-900/40 backdrop-blur-xl">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-zinc-950/50 border-b border-zinc-800">
+                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Estratégia</th>
+                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Janela</th>
+                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Gatilhos Principais</th>
+                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Telegram</th>
+                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <AnimatePresence mode="popLayout">
+                                {variations.map((v, idx) => (
+                                    <motion.tr
+                                        key={v.id}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: idx * 0.03 }}
+                                        className={cn(
+                                            "border-b border-zinc-800/50 hover:bg-white/5 transition-colors",
+                                            !v.active && "opacity-40 grayscale"
+                                        )}
+                                    >
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "w-1.5 h-1.5 rounded-full",
+                                                    v.active ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-zinc-700"
+                                                )} />
+                                                <span className="font-bold text-white text-sm uppercase tracking-tight">{v.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <Badge variant="outline" className="bg-zinc-950/50 border-zinc-800 text-zinc-400 font-mono text-[10px]">
+                                                {v.min_minute}-{v.max_minute}'
+                                            </Badge>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex flex-wrap gap-2">
+                                                <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500 text-[9px] font-black border-none">
+                                                    xG {v.min_expected_goals}
+                                                </Badge>
+                                                <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 text-[9px] font-black border-none">
+                                                    Chutes {v.min_shots}
+                                                </Badge>
+                                                <Badge variant="secondary" className="bg-zinc-800 text-zinc-400 text-[9px] font-black border-none">
+                                                    Posse {v.min_possession}%
+                                                </Badge>
+                                                {v.require_score_zero && (
+                                                    <Badge variant="outline" className="border-blue-500/30 text-blue-400 text-[9px] font-black">
+                                                        0x0
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex items-center justify-center">
+                                                <Switch
+                                                    checked={v.send_telegram ?? true}
+                                                    onCheckedChange={() => toggleTelegram(v.id, v.send_telegram ?? true)}
+                                                    disabled={!v.active}
+                                                    className="h-3.5 scale-75 data-[state=checked]:bg-blue-500"
+                                                />
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <Switch
+                                                    checked={v.active}
+                                                    onCheckedChange={() => toggleActive(v.id, v.active)}
+                                                    className="scale-75 data-[state=checked]:bg-emerald-500"
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleOpenEdit(v)}
+                                                    className="h-8 w-8 p-0 rounded-full text-zinc-500 hover:text-white"
+                                                >
+                                                    <Edit3 className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </motion.tr>
+                                ))}
+                            </AnimatePresence>
+                        </tbody>
+                    </table>
                 </div>
             )}
         </div>

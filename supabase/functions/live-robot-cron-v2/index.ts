@@ -259,6 +259,9 @@ async function runRobot() {
                     const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
                     if (isDuplicate) continue;
 
+                    const { data: previousAlerts } = await supabase.from('live_alerts').select('id').eq('fixture_id', fId).limit(1);
+                    const isFirstAlertForFixture = (!previousAlerts || previousAlerts.length === 0);
+
                     const processedNames = [];
                     const processedNamesForTelegram = [];
 
@@ -280,6 +283,30 @@ async function runRobot() {
                     }
 
                     if (processedNamesForTelegram.length > 0) {
+                        if (isFirstAlertForFixture) {
+                            try {
+                                const d = new Date();
+                                const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                                const webhookUrl = 'https://script.google.com/macros/s/AKfycbxx8v-ebefycSipV1YVIyR2RH7Rxpb7nvRP6swlp_R_Hvx234d8mxBnO46Am6FwuqFh/exec';
+
+                                await fetch(webhookUrl, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        action: 'NEW_ALERT',
+                                        date: dateStr,
+                                        match: teams,
+                                        league: lName,
+                                        method: processedNamesForTelegram.join(', '),
+                                        alertMinute: String(tElapsed),
+                                        fixtureId: fId
+                                    })
+                                });
+                            } catch (sheetErr) {
+                                console.error('[Cron] Google Sheets NEW_ALERT failed:', sheetErr);
+                            }
+                        }
+
                         const combinedNames = processedNamesForTelegram.join(', ');
                         const escapedHome = escapeHtml(hTeam);
                         const escapedAway = escapeHtml(aTeam);

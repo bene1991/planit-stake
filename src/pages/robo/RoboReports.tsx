@@ -133,8 +133,12 @@ const CustomLeagueTooltip = ({ active, payload, label }: any) => {
 export default function RoboReports() {
     const [selectedLeague, setSelectedLeague] = useState<string>("all");
     const [selectedVariations, setSelectedVariations] = useState<string[]>(() => {
-        const saved = localStorage.getItem('robo_reports_selected_variations');
-        return saved ? JSON.parse(saved) : [];
+        const saved = localStorage.getItem('robo_reports_selected_variation_ids');
+        if (saved) return JSON.parse(saved);
+
+        // Fallback for transition from names to IDs
+        const oldSaved = localStorage.getItem('robo_reports_selected_variations');
+        return []; // Better to start fresh to avoid name/ID confusion
     });
     const [dateFilter, setDateFilter] = useState<string>("all");
 
@@ -144,32 +148,59 @@ export default function RoboReports() {
     const [greenStake, setGreenStake] = useState<number>(1.0);
     const [redStake, setRedStake] = useState<number>(2.0);
     const [simName, setSimName] = useState<string>("");
+    const [uniqueGamesOnly, setUniqueGamesOnly] = useState<boolean>(false);
 
     const { simulations, saveSimulation, deleteSimulation } = useStrategySimulations();
 
     useEffect(() => {
-        localStorage.setItem('robo_reports_selected_variations', JSON.stringify(selectedVariations));
+        localStorage.setItem('robo_reports_selected_variation_ids', JSON.stringify(selectedVariations));
     }, [selectedVariations]);
 
     // Fetch all historic alerts, active variations and game statuses
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, refetch, isRefetching } = useQuery({
         queryKey: ['robo-reports-data'],
         queryFn: async () => {
-            const [alertsRes, variationsRes, gamesRes] = await Promise.all([
-                supabase.from('live_alerts').select('*'),
-                supabase.from('robot_variations').select('name').eq('active', true),
-                supabase.from('games').select('api_fixture_id, status')
+            const fetchAll = async (table: string, columns: string = '*') => {
+                let allData: any[] = [];
+                let from = 0;
+                let to = 999;
+                let hasMore = true;
+
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from(table)
+                        .select(columns)
+                        .range(from, to);
+
+                    if (error) throw error;
+                    if (data && data.length > 0) {
+                        allData = [...allData, ...data];
+                        if (data.length < 1000) {
+                            hasMore = false;
+                        } else {
+                            from += 1000;
+                            to += 1000;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
+                }
+                return allData;
+            };
+
+            const [alerts, activeVariationsRes, games] = await Promise.all([
+                fetchAll('live_alerts'),
+                supabase.from('robot_variations').select('id, name').eq('active', true),
+                fetchAll('games', 'api_fixture_id, status')
             ]);
 
-            if (alertsRes.error) throw alertsRes.error;
-            if (variationsRes.error) throw variationsRes.error;
-            if (gamesRes.error) throw gamesRes.error;
+            if (activeVariationsRes.error) throw activeVariationsRes.error;
 
-            const gamesMap = new Map(gamesRes.data?.map(g => [String(g.api_fixture_id), g.status]) || []);
+            const gamesMap = new Map(games.map(g => [String(g.api_fixture_id), g.status]));
 
             return {
-                alerts: alertsRes.data,
-                activeVariations: variationsRes.data.map(v => v.name),
+                alerts,
+                activeVariations: activeVariationsRes.data || [],
                 gamesMap
             };
         }
@@ -177,27 +208,18 @@ export default function RoboReports() {
 
     const validRawAlerts = useMemo(() => {
         if (!data) return [];
-        const { alerts, activeVariations } = data;
+        const { alerts } = data;
 
-        // Filtramos por variações ativas, mas incluímos variações que tiveram alertas históricos 
-        // mesmo que não estejam mais no array de 'activeVariations' se o modo for "all"
         let filtered = alerts;
-
-        // Se quisermos apenas variações que POSSUEM alertas
-        // filtered = alerts.filter(a => activeVariations.includes(a.variation_name));
 
         if (selectedLeague !== "all") {
             filtered = filtered.filter(a => a.league_name === selectedLeague);
         }
 
         if (selectedVariations.length > 0) {
-            filtered = filtered.filter(a => {
-                if (!a.variation_name) return false;
-                // Se o nome no banco é "Estratégia A, Estratégia B", 
-                // e o usuário selecionou "Estratégia A", este alerta deve ser incluído.
-                const alertVars = a.variation_name.split(',').map((v: string) => v.trim());
-                return alertVars.some((v: string) => selectedVariations.includes(v));
-            });
+            filtered = filtered.filter(a =>
+                a.variation_id && selectedVariations.includes(a.variation_id)
+            );
         }
 
         if (dateFilter === "today") {
@@ -220,19 +242,7 @@ export default function RoboReports() {
     const leagues = useMemo(() => [...new Set(data?.alerts?.map(a => a.league_name).filter(Boolean))], [data?.alerts]);
     const variations = useMemo(() => {
         if (!data) return [];
-        const fromAlerts: string[] = [];
-        data.alerts?.forEach(a => {
-            if (a.variation_name) {
-                // Se o nome contiver vírgula (ex: "Var A, Var B"), separamos
-                if (a.variation_name.includes(',')) {
-                    a.variation_name.split(',').forEach((v: string) => fromAlerts.push(v.trim()));
-                } else {
-                    fromAlerts.push(a.variation_name);
-                }
-            }
-        });
-        const fromActive = data.activeVariations || [];
-        return [...new Set([...fromAlerts, ...fromActive])].sort((a, b) => a.localeCompare(b));
+        return [...(data.activeVariations || [])].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     }, [data]);
 
     // Deduplicate fixtures: keep only the alert with the lowest minute_at_alert for each fixture
@@ -269,7 +279,9 @@ export default function RoboReports() {
         const varFixtureMap = new Map();
 
         validRawAlerts.forEach(alert => {
-            const key = `${alert.variation_name}-${alert.fixture_id}`;
+            // Se uniqueGamesOnly estiver ativo, a chave é apenas o fixture_id
+            // Caso contrário, é variation_id + fixture_id
+            const key = uniqueGamesOnly ? String(alert.fixture_id) : `${alert.variation_id}-${alert.fixture_id}`;
             const alertMinute = alert.minute_at_alert || 0;
             const existing = varFixtureMap.get(key);
 
@@ -304,7 +316,7 @@ export default function RoboReports() {
                 over15Green: alert.over15_result === 'green' || allGoalEvents.length >= 2
             };
         });
-    }, [validRawAlerts, data?.gamesMap]);
+    }, [validRawAlerts, data?.gamesMap, uniqueGamesOnly]);
 
     // Lógica da Simulação de Estratégia
     const simulationResult = useMemo(() => {
@@ -374,11 +386,18 @@ export default function RoboReports() {
             roi: parseFloat(roi.toFixed(1)),
             avgProfit: parseFloat(avgProfit.toFixed(3)),
             equityCurveData,
-            analyzedGames: analyzableGames.map(game => {
+            analyzedGames: simulationBase.map(game => {
                 const goalsInWindow = game.allGoalEvents.filter((g: any) => {
                     const realMin = g.minute + (g.extra || 0);
                     return realMin >= entryMin && realMin <= exitMin;
                 });
+
+                const finishedStatuses = ['Finished', 'FT', 'AET', 'PEN'];
+                const isFinishedInMap = finishedStatuses.includes(game.fixtureStatus);
+                const hasFinalScore = game.final_score && game.final_score !== 'pending' && game.final_score !== null;
+                const isOld = game.created_at ? (new Date().getTime() - new Date(game.created_at).getTime() > 4 * 60 * 60 * 1000) : false;
+                const isAnalyzable = isFinishedInMap || hasFinalScore || isOld;
+
                 return {
                     fixture_id: game.fixture_id,
                     date: game.created_at,
@@ -386,14 +405,15 @@ export default function RoboReports() {
                     away_team: game.away_team,
                     league: game.league_name,
                     variation: game.variation_name,
+                    variation_id: game.variation_id,
                     minute_at_alert: game.minute_at_alert,
-                    result: goalsInWindow.length > 0 ? 'green' : 'red',
+                    result: !isAnalyzable ? 'pending' : (goalsInWindow.length > 0 ? 'green' : 'red'),
                     goals: goalsInWindow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
                     final_score: game.final_score || 'N/A'
                 };
-            })
+            }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
         };
-    }, [processedFixtures, entryMin, exitMin, greenStake, redStake]);
+    }, [simulationBase, entryMin, exitMin, greenStake, redStake]);
 
     // Cálculo da performance por variação dentro da simulação
     const simulationByVariation = useMemo(() => {
@@ -402,23 +422,20 @@ export default function RoboReports() {
         const stats: Record<string, { total: number, greens: number, reds: number, profit: number }> = {};
 
         simulationResult.analyzedGames.forEach(game => {
-            const varNames = game.variation ? game.variation.split(',').map((v: string) => v.trim()) : ['Desconhecida'];
+            const vid = game.variation_id;
+            const activeVar = variations.find(v => v.id === vid);
+            const reportName = activeVar ? activeVar.name : (game.variation || 'Desconhecida');
 
-            varNames.forEach((name: string) => {
-                // Se o usuário selecionou variações específicas, só contamos as selecionadas
-                if (selectedVariations.length > 0 && !selectedVariations.includes(name)) return;
+            if (!stats[reportName]) stats[reportName] = { total: 0, greens: 0, reds: 0, profit: 0 };
 
-                if (!stats[name]) stats[name] = { total: 0, greens: 0, reds: 0, profit: 0 };
-
-                stats[name].total++;
-                if (game.result === 'green') {
-                    stats[name].greens++;
-                    stats[name].profit += greenStake;
-                } else {
-                    stats[name].reds++;
-                    stats[name].profit -= redStake;
-                }
-            });
+            stats[reportName].total++;
+            if (game.result === 'green') {
+                stats[reportName].greens++;
+                stats[reportName].profit += greenStake;
+            } else {
+                stats[reportName].reds++;
+                stats[reportName].profit -= redStake;
+            }
         });
 
         return Object.entries(stats)
@@ -548,7 +565,9 @@ export default function RoboReports() {
     const variationPerformanceData = useMemo(() => {
         const stats: Record<string, { total: number, greens: number, reds: number }> = {};
         validRawAlerts.forEach(a => {
-            const varName = a.variation_name || 'Desconhecida';
+            const activeVar = variations.find(v => v.id === a.variation_id);
+            const varName = activeVar ? activeVar.name : (a.variation_name || 'Desconhecida');
+
             if (!stats[varName]) stats[varName] = { total: 0, greens: 0, reds: 0 };
 
             const alertMinute = a.minute_at_alert || 0;
@@ -575,7 +594,7 @@ export default function RoboReports() {
                 reds: data.reds,
                 winRate: Math.round((data.greens / data.total) * 100)
             })).sort((a, b) => b.winRate - a.winRate);
-    }, [validRawAlerts]);
+    }, [validRawAlerts, variations]);
 
     // 5. Performance por Liga (Baseado em Fixtures)
     const leaguePerformanceData = useMemo(() => {
@@ -748,7 +767,7 @@ export default function RoboReports() {
                             <Filter className="w-3.5 h-3.5 text-gray-400" />
                             <span className="text-xs text-gray-300 font-medium whitespace-nowrap">
                                 {selectedVariations.length === 0 ? "Todas as Variações" :
-                                    selectedVariations.length === 1 ? selectedVariations[0] :
+                                    selectedVariations.length === 1 ? (variations.find(v => v.id === selectedVariations[0])?.name || "1 Variação") :
                                         `${selectedVariations.length} Variações selecionadas`}
                             </span>
                         </div>
@@ -764,6 +783,20 @@ export default function RoboReports() {
                                 <SelectItem value="this_month">Últimos 30 dias</SelectItem>
                             </SelectContent>
                         </Select>
+
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className={cn(
+                                "bg-[#1e2333] border-[#2a3142] text-gray-400 hover:text-white transition-all",
+                                isRefetching && "animate-spin brightness-125 text-emerald-400"
+                            )}
+                            onClick={() => refetch()}
+                            disabled={isRefetching}
+                            title="Atualizar dados"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                        </Button>
                     </div>
                 </div>
 
@@ -1047,20 +1080,36 @@ export default function RoboReports() {
                                     <div className="h-px bg-[#3b4256] my-1" />
                                     {variations.map(v => (
                                         <div
-                                            key={v}
+                                            key={v.id}
                                             className="flex items-center space-x-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors"
                                             onClick={() => {
                                                 setSelectedVariations(prev =>
-                                                    prev.includes(v) ? prev.filter(i => i !== v) : [...prev, v]
+                                                    prev.includes(v.id) ? prev.filter(i => i !== v.id) : [...prev, v.id]
                                                 );
                                             }}
                                         >
-                                            <Checkbox checked={selectedVariations.includes(v)} id={`var-${v}`} />
-                                            <label htmlFor={`var-${v}`} className="text-[11px] text-gray-300 cursor-pointer truncate">{v}</label>
+                                            <Checkbox checked={selectedVariations.includes(v.id)} id={`var-${v.id}`} />
+                                            <label htmlFor={`var-${v.id}`} className="text-[11px] text-gray-300 cursor-pointer">{v.name}</label>
                                         </div>
                                     ))}
                                 </div>
                             </div>
+
+                            <div className="flex items-center space-x-2 py-3 border-y border-[#2a3142]">
+                                <Checkbox
+                                    id="unique-games-toggle"
+                                    checked={uniqueGamesOnly}
+                                    onCheckedChange={(checked) => setUniqueGamesOnly(!!checked)}
+                                    className="border-[#3b4256] data-[state=checked]:bg-emerald-500"
+                                />
+                                <Label
+                                    htmlFor="unique-games-toggle"
+                                    className="text-xs font-medium text-gray-300 cursor-pointer select-none leading-tight"
+                                >
+                                    Simular apenas um alerta por jogo (Jogo Único)
+                                </Label>
+                            </div>
+
                             <div className="pt-4 border-t border-[#2a3142] space-y-4">
                                 <Label className="text-gray-400">Salvar Simulação</Label>
                                 <Input
@@ -1129,6 +1178,7 @@ export default function RoboReports() {
                                             <table className="w-full text-sm text-left">
                                                 <thead className="bg-[#2a3142]/50 text-gray-400 text-[10px] uppercase sticky top-0">
                                                     <tr>
+                                                        <th className="px-4 py-3 font-medium">Data</th>
                                                         <th className="px-4 py-3 font-medium">Partida</th>
                                                         <th className="px-4 py-3 font-medium">Liga</th>
                                                         <th className="px-4 py-3 font-medium">Alerta</th>
@@ -1140,6 +1190,9 @@ export default function RoboReports() {
                                                 <tbody className="divide-y divide-[#2a3142]">
                                                     {simulationResult.analyzedGames.map((game: any, idx: number) => (
                                                         <tr key={`${game.fixture_id}-${idx}`} className="hover:bg-white/5 transition-colors border-b border-[#2a3142]/50">
+                                                            <td className="px-4 py-3 text-gray-400 text-[10px] whitespace-nowrap">
+                                                                {game.date ? format(parseISO(game.date), 'dd/MM HH:mm') : '-'}
+                                                            </td>
                                                             <td className="px-4 py-3 font-medium text-gray-200">
                                                                 <div className="flex flex-col">
                                                                     <span className="truncate max-w-[150px] sm:max-w-none">{game.home_team} vs {game.away_team}</span>
@@ -1157,9 +1210,13 @@ export default function RoboReports() {
                                                             </td>
                                                             <td className="px-4 py-3 text-gray-400 text-right text-xs">{game.final_score}</td>
                                                             <td className="px-4 py-3 text-right">
-                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${game.result === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${game.result === 'green' ? 'bg-emerald-500/10 text-emerald-500' :
+                                                                    game.result === 'red' ? 'bg-rose-500/10 text-rose-500' :
+                                                                        'bg-amber-500/10 text-amber-500'
                                                                     }`}>
-                                                                    {game.result === 'green' ? `+${greenStake}` : `-${redStake}`}
+                                                                    {game.result === 'green' ? `+${greenStake}` :
+                                                                        game.result === 'red' ? `-${redStake}` :
+                                                                            'PENDENTE'}
                                                                 </span>
                                                             </td>
                                                         </tr>

@@ -27,12 +27,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
-        // Redirect on explicit login, not on initial session recovery or token refresh
-        if (event === 'SIGNED_IN' && hasInitialized.current) {
+
+        // Only redirect on explicit login if the user is on the login page.
+        // This prevents redirects when the session is silently refreshed while on other pages.
+        if (event === 'SIGNED_IN' && hasInitialized.current && window.location.pathname === '/auth') {
           navigate('/');
         }
-        
+
         // Mark as initialized after processing any event
         if (!hasInitialized.current) {
           hasInitialized.current = true;

@@ -16,10 +16,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { subDays, startOfMonth, startOfToday, isAfter, parseISO } from "date-fns";
 
 export default function RoboAoVivo() {
-    const [activeTab, setActiveTab] = useState("alerts");
+    const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('robo-active-tab') || "alerts");
     const [period, setPeriod] = useState("today");
     const [todayStats, setTodayStats] = useState({ total: 0, greens: 0, profit: 0 });
     const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+    useEffect(() => {
+        sessionStorage.setItem('robo-active-tab', activeTab);
+    }, [activeTab]);
 
     useEffect(() => {
         fetchTerminalStats();

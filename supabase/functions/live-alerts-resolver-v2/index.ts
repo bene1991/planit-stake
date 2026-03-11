@@ -189,10 +189,40 @@ serve(async (req: Request) => {
               );
               if (!sent) {
                 console.error(`[Resolver] Failed to deliver Goal HT Telegram for alert ${alert.id}. Proceeding with DB update to avoid blocking.`);
-                // NO CONTINUE: We want to update the DB even if Telegram fails
               }
-            } else {
-              console.log(`[Resolver] Skipping Telegram Goal HT for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
+            }
+
+            // --- GOOGLE SHEETS AUTOMATION ---
+            // Only update sheets if Telegram notification is enabled for this variation
+            if (alert.robot_variations?.send_telegram !== false) {
+              try {
+                const apiGoalEvents = fixtureObj.events
+                  ?.filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
+                  ?.map((e: any) => ({
+                    minute: e.time.elapsed,
+                    extra: e.time.extra
+                  })) || [];
+
+                const goalsStr = apiGoalEvents.map((e: any) => `${e.minute}${e.extra ? '+' + e.extra : ''}'`).join(', ');
+                const hasGoalInWindow = apiGoalEvents.some((e: any) => e.minute >= 30 && e.minute <= 70);
+
+                if (hasGoalInWindow) {
+                  const webhookUrl = 'https://script.google.com/macros/s/AKfycbxx8v-ebefycSipV1YVIyR2RH7Rxpb7nvRP6swlp_R_Hvx234d8mxBnO46Am6FwuqFh/exec';
+                  await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: 'UPDATE_ALERT',
+                      fixtureId: String(fixtureId),
+                      goalsInterval: goalsStr,
+                      finalScore: htScore,
+                      result: 'GREEN'
+                    })
+                  });
+                }
+              } catch (sheetErr) {
+                console.error('[Resolver] Google Sheets UPDATE_ALERT (HT) failed:', sheetErr);
+              }
             }
 
             updates.goal_ht_result = result;
@@ -215,10 +245,41 @@ serve(async (req: Request) => {
               );
               if (!sent) {
                 console.error(`[Resolver] Failed to deliver Over 1.5 Telegram for alert ${alert.id}. Proceeding with DB update.`);
-                // NO CONTINUE
               }
-            } else {
-              console.log(`[Resolver] Skipping Telegram Over 1.5 for ${alert.home_team} (Filter ${alert.variation_name} disabled)`);
+            }
+
+            // --- GOOGLE SHEETS AUTOMATION ---
+            // Only update sheets if Telegram notification is enabled for this variation
+            if (alert.robot_variations?.send_telegram !== false) {
+              try {
+                const apiGoalEvents = fixtureObj.events
+                  ?.filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
+                  ?.map((e: any) => ({
+                    minute: e.time.elapsed,
+                    extra: e.time.extra
+                  })) || [];
+
+                const goalsStr = apiGoalEvents.map((e: any) => `${e.minute}${e.extra ? '+' + e.extra : ''}'`).join(', ');
+
+                // Rule: GREEN if goal between 30 and 70 minutes
+                const hasGoalInWindow = apiGoalEvents.some((e: any) => e.minute >= 30 && e.minute <= 70);
+                const sheetResult = hasGoalInWindow ? 'GREEN' : 'RED';
+
+                const webhookUrl = 'https://script.google.com/macros/s/AKfycbxx8v-ebefycSipV1YVIyR2RH7Rxpb7nvRP6swlp_R_Hvx234d8mxBnO46Am6FwuqFh/exec';
+                await fetch(webhookUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    action: 'UPDATE_ALERT',
+                    fixtureId: String(fixtureId),
+                    goalsInterval: goalsStr,
+                    finalScore: fs,
+                    result: sheetResult
+                  })
+                });
+              } catch (sheetErr) {
+                console.error('[Resolver] Google Sheets UPDATE_ALERT (FT) failed:', sheetErr);
+              }
             }
 
             updates.over15_result = result;
