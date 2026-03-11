@@ -141,8 +141,8 @@ export function useLiveScores(
       .filter(g => {
         if (!g.api_fixture_id) return false;
         if (g.status === 'Live') return true;
-        if (g.status === 'Pending') {
-          // Only include Pending games starting within 30 minutes
+        if (g.status === 'Pending' || g.status === 'Not Started') {
+          // Only include Pending/Not Started games starting within 30 minutes
           try {
             const gameTime = new Date(`${g.date}T${g.time}`);
             const diffMs = gameTime.getTime() - now.getTime();

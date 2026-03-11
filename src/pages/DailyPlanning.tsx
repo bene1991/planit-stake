@@ -518,9 +518,9 @@ export default function DailyPlanning() {
   const winRate = decidedOperations > 0 ? ((greenOperations / decidedOperations) * 100).toFixed(1) : "0.0";
   const liveGames = games.filter(g => g.status === 'Live').length;
 
-  // Check if there are any live or pending games that need auto-refresh
+  // Check if there are any live, pending or not started games that need auto-refresh
   const hasActiveGames = useMemo(() => {
-    return games.some(g => g.status === 'Live' || g.status === 'Pending');
+    return games.some(g => g.status === 'Live' || g.status === 'Pending' || g.status === 'Not Started');
   }, [games]);
 
   // Auto-refresh based on user-configured interval when there are live/pending games (respects pause)
