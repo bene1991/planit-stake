@@ -256,11 +256,11 @@ async function runRobot() {
                 }
 
                 if (matchedResults.length > 0) {
-                    const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
-                    if (isDuplicate) continue;
-
                     const { data: previousAlerts } = await supabase.from('live_alerts').select('id').eq('fixture_id', fId).limit(1);
                     const isFirstAlertForFixture = (!previousAlerts || previousAlerts.length === 0);
+
+                    const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
+                    if (isDuplicate) continue;
 
                     const processedNames = [];
                     const processedNamesForTelegram = [];
