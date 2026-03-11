@@ -259,13 +259,13 @@ async function runRobot() {
                     const { data: previousAlerts } = await supabase.from('live_alerts').select('id').eq('fixture_id', fId).limit(1);
                     const isFirstAlertForFixture = (!previousAlerts || previousAlerts.length === 0);
 
-                    const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
-                    if (isDuplicate) continue;
-
                     const processedNames = [];
                     const processedNamesForTelegram = [];
 
                     for (const v of matchedResults) {
+                        const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
+                        if (isDuplicate) continue;
+
                         const alertData = {
                             fixture_id: fId, league_id: lId, league_name: lName, home_team: hTeam, away_team: aTeam,
                             minute_at_alert: tElapsed, variation_id: v.id, variation_name: v.name, stats_snapshot: stats, owner_id: defaultUserId
