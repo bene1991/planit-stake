@@ -263,22 +263,25 @@ async function runRobot() {
                     const processedNamesForTelegram = [];
 
                     for (const v of matchedResults) {
+                        // Não dá continue instantaneo pra podermos montar o webhook mesmo se já constar em BD de outro cron
                         const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', { p_fixture_id: fId, p_minute: tElapsed });
-                        if (isDuplicate) continue;
 
-                        const alertData = {
-                            fixture_id: fId, league_id: lId, league_name: lName, home_team: hTeam, away_team: aTeam,
-                            minute_at_alert: tElapsed, variation_id: v.id, variation_name: v.name, stats_snapshot: stats, owner_id: defaultUserId
-                        };
+                        processedNames.push(v.name);
+                        if (v.send_telegram !== false) processedNamesForTelegram.push(v.name);
 
-                        const { error: alertErr } = await supabase.from('live_alerts').insert(alertData);
-                        if (!alertErr) {
-                            processedNames.push(v.name);
-                            if (v.send_telegram !== false) processedNamesForTelegram.push(v.name);
-                            logsBuffer.push({
-                                fixture_id: fId, league_id: lId, variation_id: v.id,
-                                stage: 'ALERT_SENT', reason: `🚨 ${gameRef} - ALERTA GERADO! (${v.name})`, details: { ...details, stats }
-                            });
+                        if (!isDuplicate) {
+                            const alertData = {
+                                fixture_id: fId, league_id: lId, league_name: lName, home_team: hTeam, away_team: aTeam,
+                                minute_at_alert: tElapsed, variation_id: v.id, variation_name: v.name, stats_snapshot: stats, owner_id: defaultUserId
+                            };
+
+                            const { error: alertErr } = await supabase.from('live_alerts').insert(alertData);
+                            if (!alertErr) {
+                                logsBuffer.push({
+                                    fixture_id: fId, league_id: lId, variation_id: v.id,
+                                    stage: 'ALERT_SENT', reason: `🚨 ${gameRef} - ALERTA GERADO! (${v.name})`, details: { ...details, stats }
+                                });
+                            }
                         }
                     }
 
