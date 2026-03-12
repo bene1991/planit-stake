@@ -339,11 +339,29 @@ async function runRobot() {
                         }
 
                         const combinedNames = processedNamesForTelegram.join(', ');
+                        const isFreeFire = combinedNames.toLowerCase().includes('free fire');
                         const escapedHome = escapeHtml(hTeam);
                         const escapedAway = escapeHtml(aTeam);
                         const escapedLeague = escapeHtml(lName);
 
-                        const message = `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapeHtml(combinedNames)}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`;
+                        let message = `✨ <b>NOVO LAYOUT PREMIUM</b>\n`;
+                        if (isFreeFire) {
+                            message = `✨ <b>NOVO LAYOUT PREMIUM</b>\n🔥 <b>FREE FIRE: NOVO ALERTA</b>\n`;
+                        }
+                        message += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+                        message += `⚽ <b>${escapedHome} vs ${escapedAway}</b>\n`;
+                        message += `🏆 ${escapedLeague}\n`;
+                        message += `⏰ Minuto: <b>${tElapsed}'</b>\n`;
+                        message += `🎯 Filtro: <b>${escapeHtml(combinedNames)}</b>\n\n`;
+                        message += `📊 <b>ESTATÍSTICAS EM TEMPO REAL</b>\n`;
+                        message += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+                        message += `📉 xG: <b>${stats.h.xg} - ${stats.a.xg}</b>\n`;
+                        message += `⛳ Cantos: <b>${stats.h.corners} - ${stats.a.corners}</b>\n`;
+                        message += `🥊 Na Área: <b>${stats.h.shotsInBox} - ${stats.a.shotsInBox}</b>\n`;
+                        message += `🚀 Chutes: <b>${stats.h.shots} - ${stats.a.shots}</b>\n`;
+                        message += `🎯 No Alvo: <b>${stats.h.shotsOn} - ${stats.a.shotsOn}</b>\n`;
+                        message += `⌛ Posse: <b>${stats.h.possession}% - ${stats.a.possession}%</b>\n\n`;
+                        message += `💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`;
 
                         const result = await sendTelegram({ userId: defaultUserId, message, type: 'alert' });
                         if (!result.success) {

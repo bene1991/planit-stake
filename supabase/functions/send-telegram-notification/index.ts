@@ -45,21 +45,23 @@ const emojiMap: Record<MessageType | string, string> = {
 };
 
 function buildSignalMessage(payload: TelegramRequest['payload']): string {
-  const lines = ['⚽ <b>NOVO SINAL</b>', ''];
-  if (payload?.game) lines.push(`🎮 Jogo: <b>${payload.game}</b>`);
+  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', '⚽ <b>NOVO SINAL</b>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
+  if (payload?.game) lines.push(`⚽ Jogo: <b>${payload.game}</b>`);
   if (payload?.market) lines.push(`📋 Mercado: <b>${payload.market}</b>`);
   if (payload?.odds) lines.push(`💹 Odd: <b>${payload.odds}</b>`);
   if (payload?.stake) lines.push(`💰 Stake: <b>R$ ${payload.stake}</b>`);
   if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
   lines.push('');
-  lines.push(`🕐 ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+  lines.push(`💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`);
+  lines.push('');
+  lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
 }
 
 function buildResultMessage(payload: TelegramRequest['payload']): string {
   const resultEmoji = payload?.result === 'Green' ? '✅' : payload?.result === 'Red' ? '❌' : '↩️';
-  const lines = [`${resultEmoji} <b>RESULTADO: ${payload?.result?.toUpperCase() || 'VOID'}</b>`, ''];
-  if (payload?.game) lines.push(`🎮 Jogo: <b>${payload.game}</b>`);
+  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', `${resultEmoji} <b>RESULTADO: ${payload?.result?.toUpperCase() || 'VOID'}</b>`, '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
+  if (payload?.game) lines.push(`⚽ Jogo: <b>${payload.game}</b>`);
   if (payload?.market) lines.push(`📋 Mercado: <b>${payload.market}</b>`);
   if (payload?.profit !== undefined) {
     const profitSign = payload.profit >= 0 ? '+' : '';
@@ -67,16 +69,20 @@ function buildResultMessage(payload: TelegramRequest['payload']): string {
   }
   if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
   lines.push('');
-  lines.push(`🕐 ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+  lines.push(`💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`);
+  lines.push('');
+  lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
 }
 
 function buildAlertMessage(payload: TelegramRequest['payload'], title?: string, message?: string): string {
-  const lines = [`🚨 <b>ALERTA: ${title || 'Atenção'}</b>`, ''];
+  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', `🚨 <b>ALERTA: ${title || 'Atenção'}</b>`, '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
   if (message) lines.push(message);
   if (payload?.note) lines.push(`📝 ${payload.note}`);
   lines.push('');
-  lines.push(`🕐 ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+  lines.push(`💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`);
+  lines.push('');
+  lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
 }
 

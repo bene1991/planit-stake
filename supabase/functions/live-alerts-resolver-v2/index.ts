@@ -43,14 +43,17 @@ async function sendFreeFireTelegram(
   const emoji = payload.result === 'GREEN' ? '✅' : payload.result === 'RED' ? '❌' : '🟡';
   const title = payload.result === 'GREEN' ? 'FREE FIRE: GREEN!' : payload.result === 'RED' ? 'FREE FIRE: RED' : 'FREE FIRE: VOID (ANULADO)';
 
-  let msg = `${emoji} <b>${title}</b>\n\n`;
+  let msg = `${emoji} <b>${title}</b>\n`;
+  msg += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
   msg += `⚽ <b>${payload.home} vs ${payload.away}</b>\n`;
   msg += `🏆 ${payload.league}\n`;
   msg += `🎯 Filtro: <b>${payload.variation}</b>\n\n`;
   msg += `🏁 Placar: <b>${payload.score}</b>\n`;
 
-  if (payload.goals) msg += `⚽ Gols: ${payload.goals}\n`;
+  if (payload.goals) msg += `⚽ Gols: <b>${payload.goals}</b>\n`;
   if (payload.result === 'VOID') msg += `⚠️ <i>Motivo: Gol marcado antes dos 30 minutos.</i>\n`;
+
+  msg += `\n💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`;
 
   const { data: settings } = await supabase
     .from('settings')
