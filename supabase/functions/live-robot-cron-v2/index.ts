@@ -362,7 +362,7 @@ async function runRobot() {
                         message += `🥊 Na Área: <code>${stats.h.shotsInBox} - ${stats.a.shotsInBox}</code>\n`;
                         message += `🚀 Chutes: <code>${stats.h.shots} - ${stats.a.shots}</code>\n`;
                         message += `🎯 No Alvo: <code>${stats.h.shotsOn} - ${stats.a.shotsOn}</code>\n`;
-                        message += `⏳ Posse: <code>${stats.h.possession}% - ${stats.a.possession}%</code>\n\n`;
+                        message += `⌛ Posse: <code>${stats.h.possession}% - ${stats.a.possession}%</code>\n\n`;
                         message += `💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`;
 
                         const result = await sendTelegram({ userId: defaultUserId, message, type: 'alert' });

@@ -45,31 +45,34 @@ const emojiMap: Record<MessageType | string, string> = {
 };
 
 function buildSignalMessage(payload: TelegramRequest['payload']): string {
-  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', '⚽ <b>NOVO SINAL</b>', '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
+  const lines = ['✨ <b>NOVO LAYOUT PREMIUM (PROPOSTO)</b>', '⚽ <b>NOVO SINAL</b>', '────────────────────', ''];
   if (payload?.game) lines.push(`⚽ Jogo: <b>${payload.game}</b>`);
   if (payload?.market) lines.push(`📋 Mercado: <b>${payload.market}</b>`);
-  if (payload?.odds) lines.push(`💹 Odd: <b>${payload.odds}</b>`);
-  if (payload?.stake) lines.push(`💰 Stake: <b>R$ ${payload.stake}</b>`);
+  if (payload?.odds) lines.push(`💹 Odd: <code>${payload.odds}</code>`);
+  if (payload?.stake) lines.push(`💰 Stake: <code>R$ ${payload.stake}</code>`);
   if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
   lines.push('');
-  lines.push(`💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`);
+  lines.push(`💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`);
   lines.push('');
   lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
 }
 
 function buildResultMessage(payload: TelegramRequest['payload']): string {
-  const resultEmoji = payload?.result === 'Green' ? '✅' : payload?.result === 'Red' ? '❌' : '↩️';
-  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', `${resultEmoji} <b>RESULTADO: ${payload?.result?.toUpperCase() || 'VOID'}</b>`, '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
-  if (payload?.game) lines.push(`⚽ Jogo: <b>${payload.game}</b>`);
-  if (payload?.market) lines.push(`📋 Mercado: <b>${payload.market}</b>`);
+  const resultEmoji = payload?.result === 'Green' ? '✅' : payload?.result === 'Red' ? '❌' : '🟡';
+  const statusLabel = payload?.result === 'Green' ? 'GREEN!' : payload?.result === 'Red' ? 'RED' : 'VOID (ANULADO)';
+  const title = `FREE FIRE: ${statusLabel}`;
+
+  const lines = [`${resultEmoji} <b>${title}</b>`, ''];
+  if (payload?.game) lines.push(`⚽ <b>${payload.game}</b>`);
+  if (payload?.market) lines.push(`🎯 Filtro: <b>${payload.market}</b>`);
   if (payload?.profit !== undefined) {
     const profitSign = payload.profit >= 0 ? '+' : '';
-    lines.push(`💰 Resultado: <b>${profitSign}R$ ${payload.profit}</b>`);
+    lines.push(`🏁 Resultado: <code>${profitSign}R$ ${payload.profit}</code>`);
   }
   if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
   lines.push('');
-  lines.push(`💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`);
+  lines.push(`💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`);
   lines.push('');
   lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
