@@ -136,12 +136,11 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
       throw gamesErr;
     }
 
-    // 2. Fetch pending Live Alerts (Monitoramento do Robô)
+    // 2. Fetch recent Live Alerts (all from last 24h to ensure data integrity)
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: dbAlerts, error: alertsErr } = await sb
       .from('live_alerts')
       .select('*, robot_variations(send_telegram)')
-      .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.eq.pending')
       .gte('created_at', oneDayAgo);
 
     if (alertsErr) {
@@ -221,7 +220,31 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
 
     // 6. Process each monitored fixture
     for (const fId of monitoredFixtureIds) {
-      const fixture = fixtureMap.get(fId);
+      let fixture = fixtureMap.get(fId);
+
+      // Enhanced Data Integrity: Check if we need to fetch individual details
+      // 1. If fixture not in live list
+      // 2. BUT either final_score is pending OR goals list is shorter than the score indicates
+      const associatedAlerts = dbAlerts?.filter(a => String(a.fixture_id) === fId) || [];
+      const needsUpdate = associatedAlerts.some(a => {
+        const scorePending = a.final_score === 'pending';
+        const currentGoalsCount = Array.isArray(a.goal_events) ? a.goal_events.length : 0;
+        const [h, aScore] = (a.final_score && a.final_score !== 'pending') ? a.final_score.split('x').map(Number) : [0, 0];
+        const goalsNeeded = h + aScore;
+        return scorePending || (goalsNeeded > currentGoalsCount);
+      });
+
+      if (!fixture && needsUpdate) {
+        console.log(`[Monitor] Fixture ${fId} needs sync (pending or incomplete goals), fetching details individually...`);
+        fixture = await fetchFixtureDetails(sb, fId);
+        if (fixture) {
+          fixtureMap.set(fId, fixture);
+        } else {
+          console.warn(`[Monitor] Could not find details for fixture ${fId}`);
+          continue;
+        }
+      }
+
       if (!fixture) continue;
 
       const currentHome = fixture.goals.home ?? 0;
@@ -453,10 +476,13 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
           }
 
           // Always update final_score and events if game is finished or data changed
-          const scoreChanged = a.final_score !== updates.final_score;
-          const goalsMissing = !a.goal_events || (Array.isArray(a.goal_events) && a.goal_events.length === 0 && events.length > 0);
+          const scoreChanged = updates.final_score !== 'pending' && a.final_score !== updates.final_score;
+          const currentGoalsCount = Array.isArray(a.goal_events) ? a.goal_events.length : 0;
+          const newGoalsCount = events.length;
+          const goalsChanged = newGoalsCount > currentGoalsCount;
 
-          if (resolveNeeded || scoreChanged || goalsMissing) {
+          if (resolveNeeded || scoreChanged || goalsChanged) {
+            console.log(`[Monitor] Updating alert ${a.id}: Score ${a.final_score}->${updates.final_score}, Gols ${currentGoalsCount}->${newGoalsCount}`);
             await sb.from('live_alerts').update(updates).eq('id', a.id);
             itemsUpdated++;
           }
