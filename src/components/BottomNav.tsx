@@ -10,7 +10,6 @@ export const BottomNav = () => {
     { to: "/performance", label: "Desemp.", icon: BarChart3 },
     { to: "/bankroll", label: "Banca", icon: Wallet },
     { to: "/robo", label: "Robô", icon: Bot },
-    { to: "/lay-0x1", label: "Dash", icon: Target },
   ];
 
   const isActive = (path: string) => location.pathname === path;

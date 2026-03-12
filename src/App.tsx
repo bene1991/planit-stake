@@ -14,7 +14,6 @@ import { useSupabaseGames } from "@/hooks/useSupabaseGames";
 import { Layout } from "./components/Layout";
 import { toast } from "sonner";
 import { LiveScoresProvider } from "@/contexts/LiveScoresContext";
-import { Lay1x0Provider } from "@/contexts/Lay1x0Context";
 import { sendTelegramNotification } from "@/utils/telegramNotification";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useAuth } from "@/contexts/AuthContext";
@@ -50,8 +49,6 @@ const Auth = lazyWithRetry(() => import("./pages/Auth"));
 const Account = lazyWithRetry(() => import("./pages/Account"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 const MatchbookOdds = lazyWithRetry(() => import("./pages/MatchbookOdds"));
-const Lay0x1 = lazyWithRetry(() => import("./pages/Lay0x1"));
-const Lay1x0 = lazyWithRetry(() => import("./pages/Lay1x0"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
 
 const PageLoader = () => (
@@ -120,8 +117,6 @@ const AppContent = () => {
             <Route path="/method-analysis" element={<ProtectedRoute><Layout><MethodAnalysis /></Layout></ProtectedRoute>} />
             <Route path="/account" element={<ProtectedRoute><Layout><Account /></Layout></ProtectedRoute>} />
             <Route path="/matchbook" element={<ProtectedRoute><Layout><MatchbookOdds /></Layout></ProtectedRoute>} />
-            <Route path="/lay-0x1" element={<ProtectedRoute><Layout><Lay0x1 /></Layout></ProtectedRoute>} />
-            <Route path="/lay-1x0" element={<ProtectedRoute><Layout><Lay1x0 /></Layout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -147,11 +142,9 @@ const App = () => {
             <Sonner />
             <BrowserRouter>
               <AuthProvider>
-                <Lay1x0Provider>
-                  <LogoProvider>
-                    <AppContent />
-                  </LogoProvider>
-                </Lay1x0Provider>
+                <LogoProvider>
+                  <AppContent />
+                </LogoProvider>
               </AuthProvider>
             </BrowserRouter>
           </ErrorBoundary>

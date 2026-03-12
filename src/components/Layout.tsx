@@ -19,8 +19,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { to: "/bankroll", label: "Banca", icon: Wallet },
     { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
     { to: "/method-analysis", label: "Análise", icon: FlaskConical },
-    { to: "/lay-0x1", label: "Lay 0x1", icon: Target },
-    { to: "/lay-1x0", label: "Lay 1x0", icon: Crosshair },
     { to: "/robo", label: "Robô", icon: Bot },
   ];
 
