@@ -53,8 +53,6 @@ async function sendFreeFireTelegram(
   if (payload.goals) msg += `⚽ Gols: <code>${payload.goals || '-'}</code>\n`;
   if (payload.result === 'VOID') msg += `⚠️ <i>Motivo: Gol marcado antes dos 30 minutos.</i>\n`;
 
-  msg += `\n💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`;
-
   const { data: settings } = await supabase
     .from('settings')
     .select('telegram_bot_token, telegram_chat_id')
@@ -175,6 +173,7 @@ serve(async (req: Request) => {
                 let sheetResult: 'GREEN' | 'RED' | 'VOID' | null = null;
                 if (hasEarlyGoal) sheetResult = 'VOID';
                 else if (hasGoalInWindowHT) sheetResult = 'GREEN';
+                else if (isHtFinished) sheetResult = 'RED';
 
                 if (sheetResult) {
                   // Telegram
@@ -197,14 +196,19 @@ serve(async (req: Request) => {
                       result: sheetResult
                     })
                   });
+
+                  updates.goal_ht_result = sheetResult.toLowerCase();
+                  hasUpdate = true;
                 }
               } catch (sheetErr) {
                 console.error('[Resolver] Sheets/Telegram Update (HT) failed:', sheetErr);
+                updates.goal_ht_result = result;
+                hasUpdate = true;
               }
+            } else {
+              updates.goal_ht_result = result;
+              hasUpdate = true;
             }
-
-            updates.goal_ht_result = result;
-            hasUpdate = true;
           }
 
           // Resolve Over 1.5 (Full Time Result for Free Fire)
@@ -250,12 +254,14 @@ serve(async (req: Request) => {
                     result: sheetResult
                   })
                 });
+                updates.over15_result = sheetResult.toLowerCase();
               } catch (sheetErr) {
                 console.error('[Resolver] Sheets/Telegram Update (FT) failed:', sheetErr);
+                updates.over15_result = result;
               }
+            } else {
+              updates.over15_result = result;
             }
-
-            updates.over15_result = result;
             updates.final_score = fs;
             hasUpdate = true;
           }

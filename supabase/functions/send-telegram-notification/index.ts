@@ -72,8 +72,6 @@ function buildResultMessage(payload: TelegramRequest['payload']): string {
   }
   if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
   lines.push('');
-  lines.push(`💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`);
-  lines.push('');
   lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
 }

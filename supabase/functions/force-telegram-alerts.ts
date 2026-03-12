@@ -58,12 +58,12 @@ serve(async (req) => {
             text += `🎯 Filtro: <b>${alert.variation_name}</b>\n\n`;
             text += `📊 <b>ESTATÍSTICAS EM TEMPO REAL</b>\n`;
             text += `────────────────────\n`;
-            text += `📉 xG: <b>${stats.h.xg} - ${stats.a.xg}</b>\n`;
-            text += `⛳ Cantos: <b>${stats.h.corners} - ${stats.a.corners}</b>\n`;
-            text += `🥊 Na Área: <b>${stats.h.shotsInBox} - ${stats.a.shotsInBox}</b>\n`;
-            text += `🚀 Chutes: <b>${stats.h.shots} - ${stats.a.shots}</b>\n`;
-            text += `🎯 No Alvo: <b>${stats.h.shotsOn} - ${stats.a.shotsOn}</b>\n`;
-            text += `⏳ Posse: <b>${stats.h.possession}% - ${stats.a.possession}%</b>\n\n`;
+            text += `📉 xG: <code>${stats.h.xg} - ${stats.a.xg}</code>\n`;
+            text += `⛳ Cantos: <code>${stats.h.corners} - ${stats.a.corners}</code>\n`;
+            text += `🥊 Na Área: <code>${stats.h.shotsInBox} - ${stats.a.shotsInBox}</code>\n`;
+            text += `🚀 Chutes: <code>${stats.h.shots} - ${stats.a.shots}</code>\n`;
+            text += `🎯 No Alvo: <code>${stats.h.shotsOn} - ${stats.a.shotsOn}</code>\n`;
+            text += `⏳ Posse: <code>${stats.h.possession}% - ${stats.a.possession}%</code>\n\n`;
             text += `💰 <b><a href="${matchUrl}">ABRIR NA EXCHANGE</a></b>`;
 
             const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;

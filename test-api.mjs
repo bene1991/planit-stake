@@ -1,0 +1,1 @@
+const data = await fetch('https://zswefmaedkdvbzakuzod.supabase.co/functions/v1/api-football', { method: 'POST', headers: {'Authorization': 'Bearer ' + process.env.SUPABASE_ANON_KEY}, body: JSON.stringify({endpoint: 'fixtures?id=1398607'})}); console.log(await data.json());

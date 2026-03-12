@@ -131,19 +131,6 @@ async function runRobot() {
             console.error('[Cron] Failed to trigger monitor:', monErr);
         }
 
-        try {
-            console.log('[Cron] Triggering live-alerts-resolver...');
-            fetch(`${SUPABASE_URL}/functions/v1/live-alerts-resolver`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                    'apikey': SUPABASE_SERVICE_ROLE_KEY
-                },
-            }).catch(e => console.error('[Cron] Async Resolver trigger error:', e));
-        } catch (resolverErr) {
-            console.error('[Cron] Failed to trigger resolver:', resolverErr);
-        }
 
         console.log(`[Cron] Starting fixture loop for ${fixtures.length} games...`);
 

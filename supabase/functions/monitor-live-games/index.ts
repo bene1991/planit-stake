@@ -49,19 +49,28 @@ async function fetchLiveFixtures(sb: any): Promise<any> {
 }
 
 async function fetchFixtureEvents(sb: any, fixtureId: string): Promise<any[]> {
-  try {
-    const { data, error } = await sb.functions.invoke('api-football', {
-      body: {
-        endpoint: 'fixtures/events',
-        params: { fixture: fixtureId }
-      }
-    });
-    if (error) throw error;
-    return data.response || [];
-  } catch (err) {
-    console.error('[Monitor] Failed to fetch events via proxy:', err);
-    return [];
-  }
+  const { data } = await sb.functions.invoke('api-football', { body: { endpoint: 'fixtures/events', params: { fixture: fixtureId } } });
+  return data?.response || [];
+}
+
+async function fetchFixtureDetails(sb: any, fixtureId: string): Promise<any> {
+  const { data } = await sb.functions.invoke('api-football', { body: { endpoint: 'fixtures', params: { id: fixtureId } } });
+  return data?.response?.[0];
+}
+
+async function updateGoogleSheet(fixtureId: string, goalsStr: string, score: string, result: string) {
+  const webhookUrl = 'https://script.google.com/macros/s/AKfycbxru8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
+  await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'UPDATE_ALERT',
+      fixtureId: String(fixtureId),
+      goalsInterval: goalsStr,
+      finalScore: score,
+      result: result
+    })
+  }).catch(() => { });
 }
 
 async function sendTelegram(botToken: string, chatId: string, payload: string | { message: string, title?: string, type?: string }, userId?: string) {
@@ -333,129 +342,121 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
         }
       }
 
-      // --- Part B: Update Robot Alerts ---
-      const relatedAlerts = dbAlerts?.filter(a => String(a.fixture_id) === fId) || [];
-      if (relatedAlerts.length > 0) {
-        const events = await fetchFixtureEvents(sb, fId);
-        const goalEvents = events
-          .filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty')
-          .map((e: any) => ({
-            minute: e.time.elapsed, extra: e.time.extra,
-            team: e.team?.name, player: e.player?.name, detail: e.detail
-          }));
+      // --- Part B: Sync Robot Alerts Stats ---
+      const alerts = dbAlerts?.filter(a => String(a.fixture_id) === fId) || [];
+      if (alerts.length > 0) {
+        const fFull = await fetchFixtureDetails(sb, fId);
+        if (!fFull) continue;
 
-        // Group results by market+result to avoid double notifications for different variations
-        const groupKey = (market: string, res: string) => `${market}_${res}`;
-        const notifiedGroups = new Set<string>();
+        const events = fFull.events?.filter((e: any) => e.type === 'Goal' && e.detail !== 'Missed Penalty') || [];
+        const goalsStr = events.map((e: any) => `${e.time.elapsed}'`).join(', ');
+        const hasEarlyGoal = events.some((e: any) => e.time.elapsed < 30);
+        const hasGoalHT = events.some((e: any) => e.time.elapsed >= 30 && e.time.elapsed <= 45);
 
-        for (const alert of relatedAlerts) {
-          const tSettings = settingsMap.get(alert.owner_id);
+        const status = fFull.fixture.status.short, minute = fFull.fixture.status.elapsed;
+        const isHtFinished = ['HT', '2H', 'FT'].includes(status) || minute > 45;
+        const isFtFinished = ['FT'].includes(status);
+
+        for (const a of alerts) {
+          const tS = settingsMap.get(a.owner_id);
+          const isFF = a.variation_name?.toLowerCase().includes('free fire');
           const updates: any = {
-            final_score: `${currentHome}x${currentAway}`,
-            goal_events: goalEvents,
+            final_score: `${fFull.goals.home}x${fFull.goals.away}`,
+            goal_events: events.map((e: any) => ({ minute: e.time.elapsed, team: e.team?.name })),
             updated_at: new Date().toISOString()
           };
           let resolveNeeded = false;
 
-          // 1. Goal HT resolution
-          if (alert.goal_ht_result === 'pending') {
-            const hasGoal1T = (currentHome + currentAway > 0) && (minute <= 45 || isHalfTime);
-            const isLate1T = isHalfTime || minute > 45;
+          // Resolution Logic
+          if (a.goal_ht_result === 'pending') {
+            let res: 'GREEN' | 'RED' | 'VOID' | null = null;
+            let reason = '';
 
-            if (hasGoal1T || isLate1T) {
-              const res = (currentHome + currentAway > 0) ? 'green' : 'red';
-              const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
-              const gKey = groupKey('gt_ht', res);
+            if (isFF) {
+              // FREE FIRE: Window 30' to 70'
+              const hasGoalFF = events.some((e: any) => e.time.elapsed >= 30 && e.time.elapsed <= 70);
+              const isPastFF = minute > 70 || isFinished;
 
-              if (tSettings && sendTelegramEnabled && !notifiedGroups.has(gKey)) {
-                // ATOMIC LOCK
-                const alertKey = `alert_ht_${alert.id}_${res}`;
-                const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
-                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: fId, p_owner_id: alert.owner_id
-                });
-
-                if (isNewAlert) {
-                  // Find all other pending alerts for this game with same result to include their names
-                  const sameResultAlerts = relatedAlerts.filter(a =>
-                    a.id !== alert.id &&
-                    a.goal_ht_result === 'pending' &&
-                    a.robot_variations?.send_telegram !== false
-                  );
-                  const names = [alert.variation_name, ...sameResultAlerts.map(a => a.variation_name)].join(', ');
-
-                  const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Gol no 1T</b>\n🎯 Filtros: ${names}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
-                  const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
-                  if (sent) {
-                    updates.goal_ht_result = res;
-                    resolveNeeded = true;
-                    notifiedGroups.add(gKey);
-                    await new Promise(r => setTimeout(r, 200));
-                  } else {
-                    await sb.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: fId, event_key: alertKey });
-                  }
-                }
-              } else {
-                updates.goal_ht_result = res;
-                resolveNeeded = true;
+              if (hasEarlyGoal) {
+                res = 'VOID';
+                reason = 'Gol marcado antes dos 30 minutos.';
+              } else if (hasGoalFF) {
+                res = 'GREEN';
+              } else if (isPastFF) {
+                res = 'RED';
+                reason = 'Sem gols entre os 30 e 70 minutos.';
               }
+            } else {
+              // STANDARD: HT (30-45)
+              if (hasEarlyGoal) {
+                res = 'VOID';
+                reason = 'Gol marcado antes dos 30 minutos.';
+              } else if (hasGoalHT) {
+                res = 'GREEN';
+              } else if (isHalfTime || minute > 45 || isFinished) {
+                res = 'RED';
+              }
+            }
+
+            if (res) {
+              // ATOMIC DEDUPLICATION
+              const alertKey = `alert_res_${a.id}_${res}`;
+              const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
+                p_alert_id: a.id, p_market_key: alertKey, p_fixture_id: fId, p_owner_id: a.owner_id
+              });
+
+              if (isNewAlert) {
+                const emoji = res === 'VOID' ? '🟡' : (res === 'GREEN' ? '✅' : '❌');
+                const label = isFF ? `FREE FIRE: ${res === 'VOID' ? 'VOID (ANULADO)' : (res === 'GREEN' ? 'GREEN!' : 'RED')}` : `ROBÔ: ${res === 'VOID' ? 'VOID (ANULADO)' : (res === 'GREEN' ? 'GREEN!' : 'RED')}`;
+
+                let msg = `${emoji} <b>${label}</b>\n\n⚽ <b>${a.home_team} vs ${a.away_team}</b>\n🏆 ${a.league_name}\n🎯 Filtro: <b>${a.variation_name}</b>\n\n🏁 Placar: <code>${fFull.goals.home}x${fFull.goals.away}</code>\n`;
+                if (goalsStr) msg += `⚽ Gols: <code>${goalsStr}</code>\n`;
+                if (reason) msg += `⚠️ <i>Motivo: ${reason}</i>\n`;
+
+                if (tS && a.robot_variations?.send_telegram !== false) {
+                  await sendTelegram(tS.telegram_bot_token, tS.telegram_chat_id, { message: msg, type: 'alert' }, a.owner_id);
+                  notificationsSent++;
+                }
+
+                // Update Spreadsheet with current score
+                const sheetScore = (res === 'GREEN' || res === 'RED') ? `${fFull.goals.home}x${fFull.goals.away}` : `${fFull.score.halftime.home}x${fFull.score.halftime.away}`;
+                await updateGoogleSheet(fId, goalsStr, sheetScore, res);
+              }
+
+              updates.goal_ht_result = res.toLowerCase();
+              if (isFF) updates.over15_result = res.toLowerCase(); // Sync for FF
+              resolveNeeded = true;
             }
           }
 
-          // 2. Over 1.5 resolution
-          if (alert.over15_result === 'pending') {
-            const hasOver15 = (currentHome + currentAway >= 2);
-            if (hasOver15 || isFinished) {
-              const res = hasOver15 ? 'green' : 'red';
-              const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
-              const gKey = groupKey('o15', res);
+          // Standard FT/O15 (non-FF or still pending)
+          if (!isFF && a.over15_result === 'pending' && isFinished) {
+            const total = (fFull.goals.home || 0) + (fFull.goals.away || 0);
+            let res: 'GREEN' | 'RED' | 'VOID' = hasEarlyGoal ? 'VOID' : (total >= 2 ? 'GREEN' : 'RED');
 
-              if (tSettings && sendTelegramEnabled && !notifiedGroups.has(gKey)) {
-                // ATOMIC LOCK
-                const alertKey = `alert_o15_${alert.id}_${res}`;
-                const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
-                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: fId, p_owner_id: alert.owner_id
-                });
+            const alertKey = `alert_ft_${a.id}_${res}`;
+            const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
+              p_alert_id: a.id, p_market_key: alertKey, p_fixture_id: fId, p_owner_id: a.owner_id
+            });
 
-                if (isNewAlert) {
-                  const sameResultAlerts = relatedAlerts.filter(a =>
-                    a.id !== alert.id &&
-                    a.over15_result === 'pending' &&
-                    a.robot_variations?.send_telegram !== false
-                  );
-                  const names = [alert.variation_name, ...sameResultAlerts.map(a => a.variation_name)].join(', ');
+            if (isNewAlert) {
+              const emoji = res === 'VOID' ? '🟡' : (res === 'GREEN' ? '✅' : '❌'), label = `ROBÔ: ${res === 'VOID' ? 'VOID (ANULADO)' : (res === 'GREEN' ? 'GREEN!' : 'RED')}`;
+              let msg = `${emoji} <b>${label}</b>\n\n⚽ <b>${a.home_team} vs ${a.away_team}</b>\n🏆 ${a.league_name}\n🎯 Filtro: <b>${a.variation_name}</b>\n\n🏁 Placar: <code>${fFull.goals.home}x${fFull.goals.away}</code>\n`;
+              if (goalsStr) msg += `⚽ Gols: <code>${goalsStr}</code>\n`;
+              if (res === 'VOID') msg += `⚠️ <i>Motivo: Gol marcado antes dos 30 minutos.</i>\n`;
 
-                  const msg = `${res === 'green' ? '✅' : '❌'} <b>ROBÔ: ${res === 'green' ? 'GREEN!' : 'RED!'}</b>\n\n⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n🏆 ${alert.league_name}\n📊 Mercado: <b>Over 1.5</b>\n🎯 Filtros: ${names}\n🏁 Placar: <b>${currentHome}x${currentAway}</b>`;
-                  const sent = await sendTelegram(tSettings.telegram_bot_token, tSettings.telegram_chat_id, { message: msg, type: 'alert' }, alert.owner_id);
-                  if (sent) {
-                    updates.over15_result = res;
-                    resolveNeeded = true;
-                    notifiedGroups.add(gKey);
-                    await new Promise(r => setTimeout(r, 200));
-                  } else {
-                    await sb.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: fId, event_key: alertKey });
-                  }
-                }
-              } else {
-                updates.over15_result = res;
-                resolveNeeded = true;
+              if (tS && a.robot_variations?.send_telegram !== false) {
+                await sendTelegram(tS.telegram_bot_token, tS.telegram_chat_id, { message: msg, type: 'alert' }, a.owner_id);
+                notificationsSent++;
               }
+              await updateGoogleSheet(fId, goalsStr, `${fFull.goals.home}x${fFull.goals.away}`, res);
             }
+            updates.over15_result = res.toLowerCase();
+            resolveNeeded = true;
           }
 
-          if (resolveNeeded || isFinished) {
-            await sb.from('live_alerts').update(updates).eq('id', alert.id);
-            // ... (rest of the logic remains same)
-
-            // Proactively update lay1x0_analyses if it relates to this fixture
-            const resVal = (currentHome === 1 && currentAway === 0) ? 'Red' : 'Green';
-            if (currentHome !== 1 || currentAway !== 0 || isFinished) {
-              await sb.from('lay1x0_analyses').update({
-                result: resVal,
-                final_score_home: currentHome,
-                final_score_away: currentAway,
-                resolved_at: new Date().toISOString()
-              }).eq('fixture_id', fId);
-            }
+          if (resolveNeeded) {
+            await sb.from('live_alerts').update(updates).eq('id', a.id);
             itemsUpdated++;
           }
         }
