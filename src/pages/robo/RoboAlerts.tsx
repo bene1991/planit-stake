@@ -102,8 +102,10 @@ export default function RoboAlerts() {
                         const old = payload.old as LiveAlert;
 
                         setAlerts(prev => {
-                            // If the update resolves the alert, remove it from the list
-                            if (updated.is_discarded || (updated.goal_ht_result !== 'pending' && updated.over15_result !== 'pending')) {
+                            const isFT = updated.final_score && updated.final_score !== 'pending' && updated.final_score !== '';
+
+                            // If initialized or discarded or both markets resolved or match is FT/Finished
+                            if (updated.is_discarded || (updated.goal_ht_result !== 'pending' && updated.over15_result !== 'pending') || isFT) {
                                 return prev.filter(a => a.id !== updated.id);
                             }
                             // Otherwise update it in the list
@@ -198,9 +200,10 @@ export default function RoboAlerts() {
 
             if (error) throw error;
 
-            const activeAlerts = (data || []).filter(a =>
-                !a.is_discarded && (a.goal_ht_result === 'pending' || a.over15_result === 'pending')
-            );
+            const activeAlerts = (data || []).filter(a => {
+                const isFT = a.final_score && a.final_score !== 'pending' && a.final_score !== '';
+                return !a.is_discarded && (a.goal_ht_result === 'pending' || a.over15_result === 'pending') && !isFT;
+            });
 
             setAlerts(activeAlerts);
 

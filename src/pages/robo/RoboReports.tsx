@@ -318,7 +318,7 @@ export default function RoboReports() {
         });
     }, [validRawAlerts, data?.gamesMap, uniqueGamesOnly]);
 
-    // Lógica da Simulação de Estratégia
+    // Lógica da Simulação Free Fire
     const simulationResult = useMemo(() => {
         if (!simulationBase.length) return null;
 
@@ -327,6 +327,10 @@ export default function RoboReports() {
         const analyzableGames = simulationBase.filter(f => {
             const finishedStatuses = ['Finished', 'FT', 'AET', 'PEN'];
             const isFinishedInMap = finishedStatuses.includes(f.fixtureStatus);
+
+            // Regra VOID local: se saiu gol antes dos 30, desconsidera da simulação
+            const earlyGoal = f.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < 30);
+            if (earlyGoal) return false;
 
             // Fallback: se não estiver no gamesMap, mas tiver final_score no alerta
             // Ou se o jogo for "antigo" (assumimos que acabou após o tempo de saída escolhido)
@@ -726,7 +730,7 @@ export default function RoboReports() {
         }, [] as number[]);
         ws["!cols"] = maxWidths.map(w => ({ wch: w + 2 }));
 
-        XLSX.writeFile(wb, `Simulacao_Estrategia_${format(new Date(), 'dd_MM_yy_HHmm')}.xlsx`);
+        XLSX.writeFile(wb, `Simulacao_Free_Fire_${format(new Date(), 'dd_MM_yy_HHmm')}.xlsx`);
         toast.success("Simulação exportada com sucesso!");
     };
 
@@ -748,7 +752,7 @@ export default function RoboReports() {
                             <BarChart3 className="w-4 h-4 mr-2" /> Análise Geral
                         </TabsTrigger>
                         <TabsTrigger value="simulation" className="data-[state=active]:bg-[#2a3142]">
-                            <TrendingUp className="w-4 h-4 mr-2" /> Simulação de Estratégia
+                            <TrendingUp className="w-4 h-4 mr-2" /> Simulação Free Fire
                         </TabsTrigger>
                     </TabsList>
 
