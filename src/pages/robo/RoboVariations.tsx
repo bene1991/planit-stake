@@ -35,6 +35,7 @@ interface Variation {
     min_combined_shots: number;
     active: boolean;
     send_telegram: boolean;
+    send_to_sheet: boolean;
 }
 
 export default function RoboVariations() {
@@ -47,7 +48,7 @@ export default function RoboVariations() {
         name: '', description: '', min_minute: 15, max_minute: 30,
         require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
         min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
-        send_telegram: true
+        send_telegram: true, send_to_sheet: true
     });
 
     useEffect(() => {
@@ -101,13 +102,28 @@ export default function RoboVariations() {
         }
     };
 
+    const toggleSheet = async (id: string, currentStatus: boolean) => {
+        try {
+            const { error } = await supabase
+                .from('robot_variations')
+                .update({ send_to_sheet: !currentStatus })
+                .eq('id', id);
+
+            if (error) throw error;
+            setVariations(variations.map(v => v.id === id ? { ...v, send_to_sheet: !currentStatus } : v));
+            toast.success(`Sincronização Sheets ${!currentStatus ? 'ativada' : 'desativada'} para esta variação.`);
+        } catch (error: any) {
+            toast.error('Erro ao alterar status da planilha', { description: error?.message || 'Erro desconhecido' });
+        }
+    };
+
     const handleOpenCreate = () => {
         setEditingVariation(null);
         setFormData({
             name: '', description: '', min_minute: 15, max_minute: 30,
             require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
             min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
-            send_telegram: true
+            send_telegram: true, send_to_sheet: true
         });
         setIsModalOpen(true);
     };
@@ -127,7 +143,8 @@ export default function RoboVariations() {
             min_shots_insidebox: v.min_shots_insidebox || 0,
             min_possession: v.min_possession,
             min_combined_shots: v.min_combined_shots,
-            send_telegram: v.send_telegram ?? true
+            send_telegram: v.send_telegram ?? true,
+            send_to_sheet: v.send_to_sheet ?? true
         });
         setIsModalOpen(true);
     };
@@ -315,6 +332,22 @@ export default function RoboVariations() {
                                                 onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })}
                                             />
                                         </div>
+                                        <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-lg bg-yellow-500/10">
+                                                    <LayoutGrid className="w-4 h-4 text-yellow-400" />
+                                                </div>
+                                                <div className="space-y-0.5">
+                                                    <Label htmlFor="send-sheet-form" className="cursor-pointer text-sm font-bold">Planilha Sheets</Label>
+                                                    <p className="text-[10px] text-zinc-500">Sincronizar com Google Sheets</p>
+                                                </div>
+                                            </div>
+                                            <Switch
+                                                id="send-sheet-form"
+                                                checked={formData.send_to_sheet}
+                                                onCheckedChange={(c) => setFormData({ ...formData, send_to_sheet: c })}
+                                            />
+                                        </div>
                                     </div>
 
                                     {/* Technical Specs */}
@@ -468,6 +501,14 @@ export default function RoboVariations() {
                                                     className="h-3.5 scale-75 data-[state=checked]:bg-blue-500"
                                                 />
                                             </div>
+                                            <div className="flex items-center gap-2 group/tip" title="Sincronização com Google Sheets">
+                                                <LayoutGrid className={cn("w-3.5 h-3.5 transition-colors", v.send_to_sheet ? "text-yellow-400" : "text-zinc-800")} />
+                                                <Switch
+                                                    checked={v.send_to_sheet ?? true}
+                                                    onCheckedChange={() => toggleSheet(v.id, v.send_to_sheet ?? true)}
+                                                    className="h-3.5 scale-75 data-[state=checked]:bg-yellow-500"
+                                                />
+                                            </div>
                                         </div>
 
                                         <Button
@@ -505,6 +546,7 @@ export default function RoboVariations() {
                                 <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Janela</th>
                                 <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Gatilhos Principais</th>
                                 <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Telegram</th>
+                                <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sheets</th>
                                 <th className="p-4 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-right">Ações</th>
                             </tr>
                         </thead>
@@ -560,6 +602,16 @@ export default function RoboVariations() {
                                                     onCheckedChange={() => toggleTelegram(v.id, v.send_telegram ?? true)}
                                                     disabled={!v.active}
                                                     className="h-3.5 scale-75 data-[state=checked]:bg-blue-500"
+                                                />
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex items-center justify-center">
+                                                <Switch
+                                                    checked={v.send_to_sheet ?? true}
+                                                    onCheckedChange={() => toggleSheet(v.id, v.send_to_sheet ?? true)}
+                                                    disabled={!v.active}
+                                                    className="h-3.5 scale-75 data-[state=checked]:bg-yellow-500"
                                                 />
                                             </div>
                                         </td>

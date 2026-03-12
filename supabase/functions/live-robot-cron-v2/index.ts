@@ -95,7 +95,7 @@ async function runRobot() {
         const { data: blockedLeagues } = await supabase.from('robot_blocked_leagues').select('league_id').eq('active', true);
         const blockedSet = new Set(blockedLeagues?.map((l: any) => String(l.league_id)) || []);
 
-        const { data: variations } = await supabase.from('robot_variations').select('*').eq('active', true);
+        const { data: variations } = await supabase.from('robot_variations').select('*, send_to_sheet').eq('active', true);
         if (!variations || variations.length === 0) {
             console.log('[Cron] No active variations found.');
             return;
@@ -261,6 +261,7 @@ async function runRobot() {
 
                     const processedNames = [];
                     const processedNamesForTelegram = [];
+                    const variationsForSheet = matchedResults.filter(v => v.send_to_sheet === true);
 
                     for (const v of matchedResults) {
                         // Não dá continue instantaneo pra podermos montar o webhook mesmo se já constar em BD de outro cron
@@ -285,28 +286,55 @@ async function runRobot() {
                         }
                     }
 
-                    if (processedNamesForTelegram.length > 0) {
-                        if (isFirstAlertForFixture) {
-                            try {
-                                const d = new Date();
-                                const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-                                const webhookUrl = 'https://script.google.com/macros/s/AKfycbxx8v-ebefycSipV1YVIyR2RH7Rxpb7nvRP6swlp_R_Hvx234d8mxBnO46Am6FwuqFh/exec';
+                    if (processedNamesForTelegram.length > 0 || variationsForSheet.length > 0) {
+                        // NOVA LÓGICA DE SINCRONIZAÇÃO: Verifica se este JOGO já foi enviado para a planilha HOJE usando logs
+                        if (variationsForSheet.length > 0) {
+                            const { data: alreadySent } = await supabase
+                                .from('robot_execution_logs')
+                                .select('id')
+                                .eq('fixture_id', fId)
+                                .eq('stage', 'GOOGLE_SHEETS_SUCCESS')
+                                .limit(1);
 
-                                await fetch(webhookUrl, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        action: 'NEW_ALERT',
-                                        date: dateStr,
-                                        match: teams,
-                                        league: lName,
-                                        method: processedNamesForTelegram.join(', '),
-                                        alertMinute: String(tElapsed),
-                                        fixtureId: fId
-                                    })
-                                });
-                            } catch (sheetErr) {
-                                console.error('[Cron] Google Sheets NEW_ALERT failed:', sheetErr);
+                            if (!alreadySent || alreadySent.length === 0) {
+                                try {
+                                    const d = new Date();
+                                    const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                                    const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
+
+                                    const sheetResponse = await fetch(webhookUrl, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            action: 'NEW_ALERT',
+                                            date: dateStr,
+                                            match: teams,
+                                            league: lName,
+                                            method: variationsForSheet.map(v => v.name).join(', '),
+                                            alertMinute: String(tElapsed),
+                                            fixtureId: fId
+                                        })
+                                    });
+
+                                    if (sheetResponse.ok) {
+                                        logsBuffer.push({
+                                            fixture_id: fId, league_id: lId, stage: 'GOOGLE_SHEETS_SUCCESS',
+                                            reason: `Sucesso Sheets: ${teams}`, details: { method: variationsForSheet.map(v => v.name).join(', ') }
+                                        });
+                                    } else {
+                                        const errTxt = await sheetResponse.text();
+                                        logsBuffer.push({
+                                            fixture_id: fId, league_id: lId, stage: 'GOOGLE_SHEETS_ERROR',
+                                            reason: `Erro Sheets: ${teams}`, details: { status: sheetResponse.status, error: errTxt }
+                                        });
+                                    }
+                                } catch (sheetErr) {
+                                    console.error('[Cron] Google Sheets NEW_ALERT failed:', sheetErr);
+                                    logsBuffer.push({
+                                        fixture_id: fId, league_id: lId, stage: 'GOOGLE_SHEETS_ERROR',
+                                        reason: `Exceção Sheets: ${teams}`, details: { error: String(sheetErr) }
+                                    });
+                                }
                             }
                         }
 
@@ -314,6 +342,7 @@ async function runRobot() {
                         const escapedHome = escapeHtml(hTeam);
                         const escapedAway = escapeHtml(aTeam);
                         const escapedLeague = escapeHtml(lName);
+
                         const message = `🤖 <b>ROBÔ AO VIVO</b>\n\n⚽ <b>${escapedHome} vs ${escapedAway}</b>\n🏆 ${escapedLeague}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${escapeHtml(combinedNames)}</b>\n\n📊 <b>STATS (ATUAL)</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%`;
 
                         const result = await sendTelegram({ userId: defaultUserId, message, type: 'alert' });

@@ -32,74 +32,51 @@ async function callApiFootball(endpoint: string, token: string, params: Record<s
 }
 
 
-async function sendTelegramResult(
+async function sendFreeFireTelegram(
   supabase: any,
-  homeTeam: string,
-  awayTeam: string,
-  leagueName: string,
-  variationName: string,
-  resultType: 'green' | 'red',
-  market: string,
-  finalScore: string,
-  userId?: string
-): Promise<boolean> {
-  const maxRetries = 2;
-  const emoji = resultType === 'green' ? '✅' : '❌';
-  const label = resultType === 'green' ? 'GREEN' : 'RED';
-  const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
-
-  const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      if (attempt > 0) {
-        const delay = Math.pow(2, attempt) * 500;
-        console.log(`[Resolver] Telegram retry ${attempt}/${maxRetries} after ${delay}ms...`);
-        await new Promise(r => setTimeout(r, delay));
-      }
-
-      // Get user settings for this specific owner
-      const { data: settings } = await supabase
-        .from('settings')
-        .select('telegram_bot_token, telegram_chat_id')
-        .eq('owner_id', userId)
-        .not('telegram_bot_token', 'is', null)
-        .not('telegram_chat_id', 'is', null)
-        .single();
-
-      if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) {
-        console.log(`[Resolver] Skipping Telegram for owner ${userId} (Not configured)`);
-        return true;
-      }
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY.trim()}`,
-          'apikey': SUPABASE_SERVICE_ROLE_KEY.trim()
-        },
-        body: JSON.stringify({
-          userId,
-          message: msg,
-          title: 'Resultado',
-          type: 'alert'
-        }),
-      });
-
-      if (response.ok) return true;
-
-      const errorText = await response.text();
-      console.error(`[Resolver] Telegram attempt ${attempt} failed (Status ${response.status}):`, errorText);
-
-      // If it's a persistent error like 401/400, don't just loop endlessly if retries won't help
-      if (response.status === 401 || response.status === 400) return false;
-
-    } catch (err) {
-      console.error(`[Resolver] Telegram attempt ${attempt} catch error:`, err);
-    }
+  payload: {
+    home: string, away: string, league: string, variation: string,
+    result: 'GREEN' | 'RED' | 'VOID',
+    score: string, time?: string, goals?: string, userId?: string
   }
-  return false;
+): Promise<boolean> {
+  const emoji = payload.result === 'GREEN' ? '✅' : payload.result === 'RED' ? '❌' : '🟡';
+  const title = payload.result === 'GREEN' ? 'FREE FIRE: GREEN!' : payload.result === 'RED' ? 'FREE FIRE: RED' : 'FREE FIRE: VOID (ANULADO)';
+
+  let msg = `${emoji} <b>${title}</b>\n\n`;
+  msg += `⚽ <b>${payload.home} vs ${payload.away}</b>\n`;
+  msg += `🏆 ${payload.league}\n`;
+  msg += `🎯 Filtro: <b>${payload.variation}</b>\n\n`;
+  msg += `🏁 Placar: <b>${payload.score}</b>\n`;
+
+  if (payload.goals) msg += `⚽ Gols: ${payload.goals}\n`;
+  if (payload.result === 'VOID') msg += `⚠️ <i>Motivo: Gol marcado antes dos 30 minutos.</i>\n`;
+
+  const { data: settings } = await supabase
+    .from('settings')
+    .select('telegram_bot_token, telegram_chat_id')
+    .eq('owner_id', payload.userId)
+    .not('telegram_bot_token', 'is', null)
+    .not('telegram_chat_id', 'is', null)
+    .single();
+
+  if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) return true;
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY.trim()}`,
+        'apikey': SUPABASE_SERVICE_ROLE_KEY.trim()
+      },
+      body: JSON.stringify({ userId: payload.userId, message: msg, type: 'alert' }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('[Telegram] Error:', e);
+    return false;
+  }
 }
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -176,24 +153,9 @@ serve(async (req: Request) => {
           // Resolve Goal HT
           if (alert.goal_ht_result === 'pending' && isHtFinished) {
             const result = htGoals > 0 ? 'green' : 'red';
-            const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0} (HT)`;
+            const htScore = `${fixtureObj.score.halftime.home || 0}x${fixtureObj.score.halftime.away || 0}`;
 
-            // Send Telegram result (Fire and forget, don't block DB update)
-            if (alert.robot_variations?.send_telegram !== false) {
-              const sent = await sendTelegramResult(
-                supabase,
-                alert.home_team, alert.away_team,
-                alert.league_name || '', alert.variation_name || 'Padrão',
-                result as 'green' | 'red', 'goal_ht', htScore,
-                alert.owner_id
-              );
-              if (!sent) {
-                console.error(`[Resolver] Failed to deliver Goal HT Telegram for alert ${alert.id}. Proceeding with DB update to avoid blocking.`);
-              }
-            }
-
-            // --- GOOGLE SHEETS AUTOMATION ---
-            // Only update sheets if Telegram notification is enabled for this variation
+            // --- UNIFIED FREE FIRE LOGIC (HT) ---
             if (alert.robot_variations?.send_telegram !== false) {
               try {
                 const apiGoalEvents = fixtureObj.events
@@ -204,10 +166,23 @@ serve(async (req: Request) => {
                   })) || [];
 
                 const goalsStr = apiGoalEvents.map((e: any) => `${e.minute}${e.extra ? '+' + e.extra : ''}'`).join(', ');
-                const hasGoalInWindow = apiGoalEvents.some((e: any) => e.minute >= 30 && e.minute <= 70);
+                const hasEarlyGoal = apiGoalEvents.some((e: any) => e.minute < 30);
+                const hasGoalInWindowHT = apiGoalEvents.some((e: any) => e.minute >= 30 && e.minute <= 45);
 
-                if (hasGoalInWindow) {
-                  const webhookUrl = 'https://script.google.com/macros/s/AKfycbxx8v-ebefycSipV1YVIyR2RH7Rxpb7nvRP6swlp_R_Hvx234d8mxBnO46Am6FwuqFh/exec';
+                let sheetResult: 'GREEN' | 'RED' | 'VOID' | null = null;
+                if (hasEarlyGoal) sheetResult = 'VOID';
+                else if (hasGoalInWindowHT) sheetResult = 'GREEN';
+
+                if (sheetResult) {
+                  // Telegram
+                  await sendFreeFireTelegram(supabase, {
+                    home: alert.home_team, away: alert.away_team, league: alert.league_name || '',
+                    variation: alert.variation_name || 'Padrão',
+                    result: sheetResult, score: htScore, goals: goalsStr, userId: alert.owner_id
+                  });
+
+                  // Sheets
+                  const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
                   await fetch(webhookUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -216,12 +191,12 @@ serve(async (req: Request) => {
                       fixtureId: String(fixtureId),
                       goalsInterval: goalsStr,
                       finalScore: htScore,
-                      result: 'GREEN'
+                      result: sheetResult
                     })
                   });
                 }
               } catch (sheetErr) {
-                console.error('[Resolver] Google Sheets UPDATE_ALERT (HT) failed:', sheetErr);
+                console.error('[Resolver] Sheets/Telegram Update (HT) failed:', sheetErr);
               }
             }
 
@@ -229,27 +204,12 @@ serve(async (req: Request) => {
             hasUpdate = true;
           }
 
-          // Resolve Over 1.5
+          // Resolve Over 1.5 (Full Time Result for Free Fire)
           if (alert.over15_result === 'pending' && isMatchFinished) {
             const result = totalGoals >= 2 ? 'green' : 'red';
             const fs = `${fixtureObj.goals.home}x${fixtureObj.goals.away}`;
 
-            // Send Telegram result (Fire and forget, don't block DB update)
-            if (alert.robot_variations?.send_telegram !== false) {
-              const sent = await sendTelegramResult(
-                supabase,
-                alert.home_team, alert.away_team,
-                alert.league_name || '', alert.variation_name || 'Padrão',
-                result as 'green' | 'red', 'over15', fs,
-                alert.owner_id
-              );
-              if (!sent) {
-                console.error(`[Resolver] Failed to deliver Over 1.5 Telegram for alert ${alert.id}. Proceeding with DB update.`);
-              }
-            }
-
-            // --- GOOGLE SHEETS AUTOMATION ---
-            // Only update sheets if Telegram notification is enabled for this variation
+            // --- UNIFIED FREE FIRE LOGIC (FT) ---
             if (alert.robot_variations?.send_telegram !== false) {
               try {
                 const apiGoalEvents = fixtureObj.events
@@ -260,12 +220,22 @@ serve(async (req: Request) => {
                   })) || [];
 
                 const goalsStr = apiGoalEvents.map((e: any) => `${e.minute}${e.extra ? '+' + e.extra : ''}'`).join(', ');
-
-                // Rule: GREEN if goal between 30 and 70 minutes
+                const hasEarlyGoal = apiGoalEvents.some((e: any) => e.minute < 30);
                 const hasGoalInWindow = apiGoalEvents.some((e: any) => e.minute >= 30 && e.minute <= 70);
-                const sheetResult = hasGoalInWindow ? 'GREEN' : 'RED';
 
-                const webhookUrl = 'https://script.google.com/macros/s/AKfycbxx8v-ebefycSipV1YVIyR2RH7Rxpb7nvRP6swlp_R_Hvx234d8mxBnO46Am6FwuqFh/exec';
+                let sheetResult: 'GREEN' | 'RED' | 'VOID' = 'RED';
+                if (hasEarlyGoal) sheetResult = 'VOID';
+                else if (hasGoalInWindow) sheetResult = 'GREEN';
+
+                // Telegram
+                await sendFreeFireTelegram(supabase, {
+                  home: alert.home_team, away: alert.away_team, league: alert.league_name || '',
+                  variation: alert.variation_name || 'Padrão',
+                  result: sheetResult, score: fs, goals: goalsStr, userId: alert.owner_id
+                });
+
+                // Sheets
+                const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
                 await fetch(webhookUrl, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -278,7 +248,7 @@ serve(async (req: Request) => {
                   })
                 });
               } catch (sheetErr) {
-                console.error('[Resolver] Google Sheets UPDATE_ALERT (FT) failed:', sheetErr);
+                console.error('[Resolver] Sheets/Telegram Update (FT) failed:', sheetErr);
               }
             }
 
