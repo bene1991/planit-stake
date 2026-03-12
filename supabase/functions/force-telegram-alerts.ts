@@ -26,13 +26,13 @@ serve(async (req) => {
             .order('created_at', { ascending: false });
 
         if (error) throw error;
-        if (!alerts || alerts.length === 0) return new Response(JSON.stringify({msg: "Sem alertas no tempo delimitado"}));
+        if (!alerts || alerts.length === 0) return new Response(JSON.stringify({ msg: "Sem alertas no tempo delimitado" }));
 
         const telegramBotToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
         const telegramChatId = "-1002334812301"; // Default chat ID, let's also fetch from profile.
-        
+
         let targetChatId = Deno.env.get('TELEGRAM_CHAT_ID') || telegramChatId;
-        
+
         const { data: profiles } = await supabaseAdmin.from('profiles').select('id, telegram_chat_id');
         if (profiles && profiles.length > 0 && profiles[0].telegram_chat_id) {
             targetChatId = profiles[0].telegram_chat_id;
@@ -40,38 +40,53 @@ serve(async (req) => {
 
         let sentCount = 0;
         for (const alert of alerts) {
-             const stats = alert.stats_snapshot;
-             if (!stats) continue;
-             const hTeam = alert.home_team;
-             const aTeam = alert.away_team;
-             const lName = alert.league_name;
-             const tElapsed = alert.minute_at_alert;
+            const stats = alert.stats_snapshot;
+            if (!stats) continue;
+            const hTeam = alert.home_team;
+            const aTeam = alert.away_team;
+            const lName = alert.league_name;
+            const tElapsed = alert.minute_at_alert;
 
-             const matchUrl = `https://bolsadeaposta.bet.br/b/exchange?q=${encodeURIComponent(hTeam)}`;
-             const text = `🤖 <b>ROBÔ AO VIVO (REPLAY)</b>\n\n⚽ <b>${hTeam} vs ${aTeam}</b>\n🏆 ${lName}\n⏰ ${tElapsed}'\n🔥 Filtros: <b>${alert.variation_name}</b>\n\n📊 <b>STATS DO MINUTO ${tElapsed}'</b>\nxG: ${stats.h.xg}-${stats.a.xg}\nEscanteios: ${stats.h.corners}-${stats.a.corners}\nChutes na Área: ${stats.h.shotsInBox}-${stats.a.shotsInBox}\nTotal Chutes: ${stats.h.shots}-${stats.a.shots}\nNo Alvo: ${stats.h.shotsOn}-${stats.a.shotsOn}\nPosse: ${stats.h.possession}%-${stats.a.possession}%\n\n👉 <a href="${matchUrl}">Abrir na Bolsa de Aposta</a>`;
+            const matchUrl = `https://bolsadeaposta.bet.br/b/exchange?q=${encodeURIComponent(hTeam)}`;
 
-             const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
-             for (const prof of profiles || [{telegram_chat_id: targetChatId}]) {
-                 if (prof.telegram_chat_id) {
-                     try {
-                         const resp = await fetch(url, {
-                             method: 'POST',
-                             headers: { 'Content-Type': 'application/json' },
-                             body: JSON.stringify({
-                                 chat_id: prof.telegram_chat_id,
-                                 text: text,
-                                 parse_mode: 'HTML'
-                             })
-                         });
-                         if (resp.ok) {
-                             sentCount++;
-                         } else {
-                             const errTxt = await resp.text();
-                             console.error("Telegram error:", errTxt);
-                         }
-                     } catch(e) { console.error("error sending", e) }
-                 }
-             }
+            let text = `✨ <b>NOVO LAYOUT PREMIUM (REPLAY)</b>\n`;
+            text += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+            text += `⚽ <b>${hTeam} vs ${aTeam}</b>\n`;
+            text += `🏆 ${lName}\n`;
+            text += `⏰ Minuto: <b>${tElapsed}'</b>\n`;
+            text += `🎯 Filtro: <b>${alert.variation_name}</b>\n\n`;
+            text += `📊 <b>ESTATÍSTICAS EM TEMPO REAL</b>\n`;
+            text += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+            text += `📉 xG: <b>${stats.h.xg} - ${stats.a.xg}</b>\n`;
+            text += `⛳ Cantos: <b>${stats.h.corners} - ${stats.a.corners}</b>\n`;
+            text += `🥊 Na Área: <b>${stats.h.shotsInBox} - ${stats.a.shotsInBox}</b>\n`;
+            text += `🚀 Chutes: <b>${stats.h.shots} - ${stats.a.shots}</b>\n`;
+            text += `🎯 No Alvo: <b>${stats.h.shotsOn} - ${stats.a.shotsOn}</b>\n`;
+            text += `⌛ Posse: <b>${stats.h.possession}% - ${stats.a.possession}%</b>\n\n`;
+            text += `� <a href="${matchUrl}">ABRIR NA EXCHANGE</a>`;
+
+            const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
+            for (const prof of profiles || [{ telegram_chat_id: targetChatId }]) {
+                if (prof.telegram_chat_id) {
+                    try {
+                        const resp = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                chat_id: prof.telegram_chat_id,
+                                text: text,
+                                parse_mode: 'HTML'
+                            })
+                        });
+                        if (resp.ok) {
+                            sentCount++;
+                        } else {
+                            const errTxt = await resp.text();
+                            console.error("Telegram error:", errTxt);
+                        }
+                    } catch (e) { console.error("error sending", e) }
+                }
+            }
         }
 
         return new Response(JSON.stringify({ status: 'ok', sent: sentCount }), { headers: corsHeaders, status: 200 });
