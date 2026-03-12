@@ -328,12 +328,7 @@ export default function RoboReports() {
             const finishedStatuses = ['Finished', 'FT', 'AET', 'PEN'];
             const isFinishedInMap = finishedStatuses.includes(f.fixtureStatus);
 
-            // Regra VOID local: se saiu gol antes dos 30, desconsidera da simulação
-            const earlyGoal = f.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < 30);
-            if (earlyGoal) return false;
-
             // Fallback: se não estiver no gamesMap, mas tiver final_score no alerta
-            // Ou se o jogo for "antigo" (assumimos que acabou após o tempo de saída escolhido)
             const hasFinalScore = f.final_score && f.final_score !== 'pending' && f.final_score !== null;
 
             // Se o jogo é antigo o suficiente (> 4 horas), assumimos que está encerrado
@@ -355,11 +350,14 @@ export default function RoboReports() {
                 return realMin >= entryMin && realMin <= exitMin;
             });
 
-            totalGoalsInWindow += goalsInWindow.length;
+            const isVoid = game.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < 30);
 
-            if (goalsInWindow.length > 0) {
+            if (isVoid) {
+                // Profit zero for VOID
+            } else if (goalsInWindow.length > 0) {
                 greens++;
                 cumulativeStakes += greenStake;
+                totalGoalsInWindow += goalsInWindow.length;
             } else {
                 reds++;
                 cumulativeStakes -= redStake;
@@ -402,6 +400,12 @@ export default function RoboReports() {
                 const isOld = game.created_at ? (new Date().getTime() - new Date(game.created_at).getTime() > 4 * 60 * 60 * 1000) : false;
                 const isAnalyzable = isFinishedInMap || hasFinalScore || isOld;
 
+                const isVoid = game.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < 30);
+                let finalResult: 'green' | 'red' | 'void' | 'pending' = !isAnalyzable ? 'pending' : (isVoid ? 'void' : (goalsInWindow.length > 0 ? 'green' : 'red'));
+
+                // User request: Show ALL goals in the list
+                const goalsToShow = game.allGoalEvents.sort((a: any, b: any) => (a.minute + (a.extra || 0)) - (b.minute + (b.extra || 0)));
+
                 return {
                     fixture_id: game.fixture_id,
                     date: game.created_at,
@@ -411,8 +415,8 @@ export default function RoboReports() {
                     variation: game.variation_name,
                     variation_id: game.variation_id,
                     minute_at_alert: game.minute_at_alert,
-                    result: !isAnalyzable ? 'pending' : (goalsInWindow.length > 0 ? 'green' : 'red'),
-                    goals: goalsInWindow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
+                    result: finalResult,
+                    goals: goalsToShow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
                     final_score: game.final_score || 'N/A'
                 };
             }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
@@ -1186,7 +1190,7 @@ export default function RoboReports() {
                                                         <th className="px-4 py-3 font-medium">Partida</th>
                                                         <th className="px-4 py-3 font-medium">Liga</th>
                                                         <th className="px-4 py-3 font-medium">Alerta</th>
-                                                        <th className="px-4 py-3 font-medium">Gols ({entryMin}'-{exitMin}')</th>
+                                                        <th className="px-4 py-3 font-medium">Gols (Total)</th>
                                                         <th className="px-4 py-2 font-medium text-right">Fim</th>
                                                         <th className="px-4 py-3 font-medium text-right">Resultado</th>
                                                     </tr>
@@ -1220,7 +1224,8 @@ export default function RoboReports() {
                                                                     }`}>
                                                                     {game.result === 'green' ? `+${greenStake}` :
                                                                         game.result === 'red' ? `-${redStake}` :
-                                                                            'PENDENTE'}
+                                                                            game.result === 'void' ? 'VOID' :
+                                                                                'PENDENTE'}
                                                                 </span>
                                                             </td>
                                                         </tr>

@@ -137,11 +137,12 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
     }
 
     // 2. Fetch pending Live Alerts (Monitoramento do Robô)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: dbAlerts, error: alertsErr } = await sb
       .from('live_alerts')
       .select('*, robot_variations(send_telegram)')
-      .or('goal_ht_result.eq.pending,over15_result.eq.pending')
-      .gte('created_at', today);
+      .or('goal_ht_result.eq.pending,over15_result.eq.pending,final_score.eq.pending')
+      .gte('created_at', oneDayAgo);
 
     if (alertsErr) {
       console.error('[Monitor] Error fetching alerts from DB:', alertsErr);
@@ -388,10 +389,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
               }
             } else {
               // STANDARD: HT (30-45)
-              if (hasEarlyGoal) {
-                res = 'VOID';
-                reason = 'Gol marcado antes dos 30 minutos.';
-              } else if (hasGoalHT) {
+              if (hasGoalHT) {
                 res = 'GREEN';
               } else if (isHalfTime || minute > 45 || isFinished) {
                 res = 'RED';
@@ -432,7 +430,7 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
           // Standard FT/O15 (non-FF or still pending)
           if (!isFF && a.over15_result === 'pending' && isFinished) {
             const total = (fFull.goals.home || 0) + (fFull.goals.away || 0);
-            let res: 'GREEN' | 'RED' | 'VOID' = hasEarlyGoal ? 'VOID' : (total >= 2 ? 'GREEN' : 'RED');
+            let res: 'GREEN' | 'RED' = (total >= 2 ? 'GREEN' : 'RED');
 
             const alertKey = `alert_ft_${a.id}_${res}`;
             const { data: isNewAlert } = await sb.rpc('mark_alert_resolved_atomically', {
@@ -440,10 +438,9 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
             });
 
             if (isNewAlert) {
-              const emoji = res === 'VOID' ? '🟡' : (res === 'GREEN' ? '✅' : '❌'), label = `ROBÔ: ${res === 'VOID' ? 'VOID (ANULADO)' : (res === 'GREEN' ? 'GREEN!' : 'RED')}`;
+              const emoji = res === 'GREEN' ? '✅' : '❌', label = `ROBÔ: ${res === 'GREEN' ? 'GREEN!' : 'RED'}`;
               let msg = `${emoji} <b>${label}</b>\n\n⚽ <b>${a.home_team} vs ${a.away_team}</b>\n🏆 ${a.league_name}\n🎯 Filtro: <b>${a.variation_name}</b>\n\n🏁 Placar: <code>${fFull.goals.home}x${fFull.goals.away}</code>\n`;
               if (goalsStr) msg += `⚽ Gols: <code>${goalsStr}</code>\n`;
-              if (res === 'VOID') msg += `⚠️ <i>Motivo: Gol marcado antes dos 30 minutos.</i>\n`;
 
               if (tS && a.robot_variations?.send_telegram !== false) {
                 await sendTelegram(tS.telegram_bot_token, tS.telegram_chat_id, { message: msg, type: 'alert' }, a.owner_id);
@@ -455,7 +452,11 @@ async function handleMonitor(sb: ReturnType<typeof createClient>, providedFixtur
             resolveNeeded = true;
           }
 
-          if (resolveNeeded) {
+          // Always update final_score and events if game is finished or data changed
+          const scoreChanged = a.final_score !== updates.final_score;
+          const goalsMissing = !a.goal_events || (Array.isArray(a.goal_events) && a.goal_events.length === 0 && events.length > 0);
+
+          if (resolveNeeded || scoreChanged || goalsMissing) {
             await sb.from('live_alerts').update(updates).eq('id', a.id);
             itemsUpdated++;
           }
