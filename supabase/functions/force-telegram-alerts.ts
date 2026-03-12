@@ -49,21 +49,22 @@ serve(async (req) => {
 
             const matchUrl = `https://bolsadeaposta.bet.br/b/exchange?q=${encodeURIComponent(hTeam)}`;
 
-            let text = `✨ <b>NOVO LAYOUT PREMIUM (REPLAY)</b>\n`;
-            text += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+            let text = `✨ <b>NOVO LAYOUT PREMIUM (REPLAY)</b>\n\n`;
+            text += `🔥 <b>FREE FIRE: NOVO ALERTA</b>\n`;
+            text += `────────────────────\n\n`;
             text += `⚽ <b>${hTeam} vs ${aTeam}</b>\n`;
             text += `🏆 ${lName}\n`;
             text += `⏰ Minuto: <b>${tElapsed}'</b>\n`;
             text += `🎯 Filtro: <b>${alert.variation_name}</b>\n\n`;
             text += `📊 <b>ESTATÍSTICAS EM TEMPO REAL</b>\n`;
-            text += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+            text += `────────────────────\n`;
             text += `📉 xG: <b>${stats.h.xg} - ${stats.a.xg}</b>\n`;
             text += `⛳ Cantos: <b>${stats.h.corners} - ${stats.a.corners}</b>\n`;
             text += `🥊 Na Área: <b>${stats.h.shotsInBox} - ${stats.a.shotsInBox}</b>\n`;
             text += `🚀 Chutes: <b>${stats.h.shots} - ${stats.a.shots}</b>\n`;
             text += `🎯 No Alvo: <b>${stats.h.shotsOn} - ${stats.a.shotsOn}</b>\n`;
-            text += `⌛ Posse: <b>${stats.h.possession}% - ${stats.a.possession}%</b>\n\n`;
-            text += `� <a href="${matchUrl}">ABRIR NA EXCHANGE</a>`;
+            text += `⏳ Posse: <b>${stats.h.possession}% - ${stats.a.possession}%</b>\n\n`;
+            text += `💰 <b><a href="${matchUrl}">ABRIR NA EXCHANGE</a></b>`;
 
             const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
             for (const prof of profiles || [{ telegram_chat_id: targetChatId }]) {

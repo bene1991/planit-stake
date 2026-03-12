@@ -41,19 +41,19 @@ async function sendFreeFireTelegram(
   }
 ): Promise<boolean> {
   const emoji = payload.result === 'GREEN' ? '✅' : payload.result === 'RED' ? '❌' : '🟡';
-  const title = payload.result === 'GREEN' ? 'FREE FIRE: GREEN!' : payload.result === 'RED' ? 'FREE FIRE: RED' : 'FREE FIRE: VOID (ANULADO)';
+  const statusLabel = payload.result === 'GREEN' ? 'GREEN!' : payload.result === 'RED' ? 'RED' : 'VOID (ANULADO)';
+  const title = `FREE FIRE: ${statusLabel}`;
 
-  let msg = `${emoji} <b>${title}</b>\n`;
-  msg += `⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n`;
+  let msg = `${emoji} <b>${title}</b>\n\n`;
   msg += `⚽ <b>${payload.home} vs ${payload.away}</b>\n`;
   msg += `🏆 ${payload.league}\n`;
   msg += `🎯 Filtro: <b>${payload.variation}</b>\n\n`;
-  msg += `🏁 Placar: <b>${payload.score}</b>\n`;
+  msg += `🏁 Placar: <code>${payload.score}</code>\n`;
 
-  if (payload.goals) msg += `⚽ Gols: <b>${payload.goals}</b>\n`;
+  if (payload.goals) msg += `⚽ Gols: <code>${payload.goals || '-'}</code>\n`;
   if (payload.result === 'VOID') msg += `⚠️ <i>Motivo: Gol marcado antes dos 30 minutos.</i>\n`;
 
-  msg += `\n💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`;
+  msg += `\n💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`;
 
   const { data: settings } = await supabase
     .from('settings')
