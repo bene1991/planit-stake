@@ -121,7 +121,7 @@ export function GameForm({ methods, editingGame, onSubmit, onCancel }: GameFormP
   return (
     <Card className="p-6 border-2 border-border/60">
       <h2 className="mb-4 text-xl font-bold">
-        {editingGame ? "Editar Jogo" : "Adicionar Jogo"}
+        {editingGame ? "Editar Evento" : "Adicionar Evento"}
       </h2>
       <div className="space-y-4">
         <div className="grid gap-4 md:grid-cols-3">
@@ -202,10 +202,10 @@ export function GameForm({ methods, editingGame, onSubmit, onCancel }: GameFormP
         </div>
 
         <div>
-          <Label className="mb-2 block">Métodos Planejados</Label>
+          <Label className="mb-2 block">Estratégias Planejadas</Label>
           {methods.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Cadastre métodos na Gestão de Banca primeiro
+              Cadastre estratégias na Gestão de Portfólio primeiro
             </p>
           ) : (
             <div className="grid gap-2 md:grid-cols-2">
@@ -231,14 +231,14 @@ export function GameForm({ methods, editingGame, onSubmit, onCancel }: GameFormP
             id="notes"
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            placeholder="Adicione observações sobre este jogo..."
+            placeholder="Adicione observações sobre este evento..."
             rows={3}
           />
         </div>
 
         <div className="flex gap-2">
           <Button onClick={handleSubmit} className="flex-1">
-            {editingGame ? "Salvar Alterações" : "Adicionar Jogo"}
+            {editingGame ? "Salvar Alterações" : "Adicionar Evento"}
           </Button>
           <Button variant="outline" onClick={onCancel}>
             Cancelar

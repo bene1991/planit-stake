@@ -7,7 +7,7 @@ const envConfig = fs.readFileSync('.env', 'utf-8').split('\n').filter(line => li
 
 const supabaseUrl = envConfig.VITE_SUPABASE_URL || 'https://zswefmaedkdvbzakuzod.supabase.co';
 const serviceRoleKey = envConfig.SUPABASE_SERVICE_ROLE_KEY || envConfig.VITE_SUPABASE_PUBLISHABLE_KEY;
-const webhookUrl = 'https://script.google.com/macros/s/AKfycbw9s_3Y5-qXTo_8p7S-F6lH-t1-h8p-q-P-s-s-R-r-T-E-L/exec';
+const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
 
 async function getMatchData(fixtureId) {
     try {
@@ -63,15 +63,18 @@ async function run() {
                 fixtureId: String(t.id),
                 alertMinute: t.min,
                 finalScore: data.finalScore,
-                goalsInterval: data.goalsInterval, // CHAVE CORRIGIDA!
-                result: data.result
+                goalsInterval: data.goalsInterval // CHAVE CORRIGIDA!
             };
 
+            const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
             await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            
+            // Add delay
+            await new Promise(r => setTimeout(r, 500));
         }
     }
     console.log("--- FINALIZADO MASTER UPDATE ---");

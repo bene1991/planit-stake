@@ -24,7 +24,7 @@ const defaultBankroll: Bankroll = {
 export const useSupabaseBankroll = () => {
   const { user } = useAuth();
   const [bankroll, setBankroll] = useState<Bankroll>(defaultBankroll);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -44,7 +44,7 @@ export const useSupabaseBankroll = () => {
 
     if (error) {
       console.error('Error loading bankroll:', error);
-      setLoading(false);
+      setIsLoading(false);
       return;
     }
 
@@ -71,7 +71,7 @@ export const useSupabaseBankroll = () => {
         console.error('Error creating bankroll:', insertError);
       }
     }
-    setLoading(false);
+    setIsLoading(false);
   };
 
   const loadMethods = async () => {
@@ -259,14 +259,46 @@ export const useSupabaseBankroll = () => {
     }
   };
 
+  const calculateRecommendedStake = (methodId: string): number => {
+    const method = bankroll.methods.find(m => m.id === methodId);
+    if (!method) return 0;
+    // Basic calculation: total * (percentage/100)
+    return (bankroll.total * method.percentage) / 100;
+  };
+
+  const calculateStakeFromCustomValue = (percentage: number): number => {
+    if (percentage <= 0) return 0;
+    return (bankroll.total * percentage) / 100;
+  };
+
+  const isStakeSafe = (stake: number): boolean => {
+    // A stake is considered safe if it's <= 5% of the total bankroll
+    // This is a common bankroll management rule of thumb
+    if (bankroll.total === 0) return false;
+    const percentage = (stake / bankroll.total) * 100;
+    return percentage <= 5;
+  };
+
+  const initialCapital = 5000;
+  const currentCapital = bankroll.total;
+  const profit = currentCapital - initialCapital;
+  const profitPercentage = (profit / initialCapital) * 100;
+
   return {
     bankroll,
-    loading,
+    isLoading,
+    currentCapital,
+    initialCapital,
+    profit,
+    profitPercentage,
     updateTotal,
     addMethod,
     updateMethod,
     deleteMethod,
     atualizarIndicesConfianca,
     moveMethod,
+    calculateRecommendedStake,
+    calculateStakeFromCustomValue,
+    isStakeSafe,
   };
 };

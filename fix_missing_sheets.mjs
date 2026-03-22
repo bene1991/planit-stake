@@ -45,8 +45,7 @@ async function main() {
           action: 'UPDATE_ALERT',
           fixtureId: fId,
           goalsInterval: goalsStr,
-          finalScore: finalScore,
-          result: sheetResult
+          finalScore: finalScore
         })
       });
       console.log(`Webhook disparado, status: ${req.status}`);

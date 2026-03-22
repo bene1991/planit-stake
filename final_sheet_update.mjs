@@ -19,8 +19,7 @@ async function getResult(fixtureId) {
     return {
         fixtureId,
         finalScore: score,
-        goalMinutes: goalsStr || '-',
-        result: hasGoalInWindow ? 'GREEN' : 'RED'
+        goalMinutes: goalsStr || '-'
     };
 }
 

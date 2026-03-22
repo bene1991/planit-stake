@@ -39,8 +39,7 @@ async function main() {
                 action: 'UPDATE_ALERT',
                 fixtureId: fId,
                 goalsInterval: goalsStr,
-                finalScore: alert.final_score,
-                result: finalResult
+                finalScore: alert.final_score
             })
         });
         console.log(fId, updateRes.status, await updateRes.text());

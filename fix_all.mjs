@@ -41,28 +41,34 @@ async function run() {
   
   console.log('Found', badAlerts.length, 'bad green alerts needing fix to RED');
   
-  // Do in batches
   for (let i = 0; i < badAlerts.length; i++) {
     const a = badAlerts[i];
-    console.log(`[${i+1}/${badAlerts.length}] Fixing: ${a.fixture_id} ${a.home_team} vs ${a.away_team} - RED`);
-    await sb.from('live_alerts').update({ goal_ht_result: 'red' }).eq('id', a.id);
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [${i+1}/${badAlerts.length}] Fixing: ${a.fixture_id} ${a.home_team} vs ${a.away_team} - RED`);
     
     try {
-      const webhookUrl = 'https://script.google.com/macros/s/AKfycbzp1ZngBLwh8jwt7TZUGHgohQZSfd-Gpz1-vTISriNzd9YTGINO9ogqB318Vy-9Uqth/exec';
-      await fetch(webhookUrl, {
+      const { error: updateError } = await sb.from('live_alerts').update({ goal_ht_result: 'red' }).eq('id', a.id);
+      if (updateError) console.error(`[${timestamp}] Supabase update error:`, updateError);
+
+      const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'UPDATE_ALERT',
           fixtureId: String(a.fixture_id),
           finalScore: a.final_score || '',
-          result: 'red',
           goalsInterval: ''
         })
       });
-    } catch(e) {}
+      if (!response.ok) {
+        console.warn(`[${timestamp}] Webhook returned status ${response.status}`);
+      }
+    } catch(e) {
+      console.error(`[${timestamp}] Error in loop for ${a.fixture_id}:`, e.message);
+    }
     
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 500)); // Increased delay to avoid bottlenecks
   }
   
   console.log('Done fixing greens to red!');
@@ -96,7 +102,7 @@ async function run() {
     await sb.from('live_alerts').update({ goal_ht_result: 'green' }).eq('id', a.id);
     
     try {
-      const webhookUrl = 'https://script.google.com/macros/s/AKfycbzp1ZngBLwh8jwt7TZUGHgohQZSfd-Gpz1-vTISriNzd9YTGINO9ogqB318Vy-9Uqth/exec';
+      const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
       await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,13 +110,14 @@ async function run() {
           action: 'UPDATE_ALERT',
           fixtureId: String(a.fixture_id),
           finalScore: a.final_score || '',
-          result: 'green',
           goalsInterval: '' // probably want to compute this, but ok
         })
       });
-    } catch(e) {}
+    } catch(e) {
+      console.error(`Error in loop for ${a.fixture_id}:`, e.message);
+    }
     
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 500)); // Increased delay
   }
   
   console.log('Finished everything.');

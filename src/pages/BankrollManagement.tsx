@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { MethodEditor } from "@/components/MethodEditor";
 
 export default function BankrollManagement() {
-  const { bankroll, loading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca, moveMethod } = useSupabaseBankroll();
+  const { bankroll, isLoading, updateTotal, addMethod, updateMethod, deleteMethod, atualizarIndicesConfianca, moveMethod } = useSupabaseBankroll();
   const { games } = useSupabaseGames();
   const noFilters = useMemo(() => ({ dateFrom: null, dateTo: null, selectedMethods: [] as string[], selectedLeagues: [] as string[], period: 'all' as const, result: 'all' as const }), []);
   const { bankrollEvolution } = useFilteredStatistics(games, bankroll.methods, noFilters);
@@ -75,7 +75,7 @@ export default function BankrollManagement() {
     toast.success("Método atualizado com sucesso!");
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
@@ -276,7 +276,7 @@ export default function BankrollManagement() {
         onOpenChange={setIsEditorOpen}
         method={editingMethod}
         onConfirm={handleEditMethod}
-        loading={loading}
+        loading={isLoading}
         remainingPercentage={remainingPercentage}
       />
     </div>

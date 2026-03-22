@@ -10,7 +10,7 @@ import fetch from "node-fetch";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 const apiKey = envConfig.API_FOOTBALL_KEY || 'ab7a8f3b2591ddbfd1a711deeb880df9';
-const webhookUrl = 'https://script.google.com/macros/s/AKfycbw9s_3Y5-qXTo_8p7S-F6lH-t1-h8p-q-P-s-s-R-r-T-E-L/exec';
+const webhookUrl = 'https://script.google.com/macros/s/AKfycbxruR8yWA91z_vnHKGBgB5C6_M8yIXXdtMPz8I2EiV777QlA6iIDfEH2_QyVyMYp74E/exec';
 
 async function sendToSheet(payload) {
     try {
@@ -21,6 +21,9 @@ async function sendToSheet(payload) {
         });
         const text = await response.text();
         console.log(`[SHEETS] ${payload.action} | FIX_ID: ${payload.fixtureId} -> OK!`);
+        
+        // Add artificial delay to avoid bottlenecks
+        await new Promise(r => setTimeout(r, 500));
     } catch (err) {
         console.error(`[SHEETS ERROR] ${err.message}`);
     }
@@ -113,8 +116,7 @@ async function run() {
                 fixtureId: Number(fId),
                 alertMinute: fObj.minute,
                 finalScore: finalScoreStr,
-                goalMinutes: goalsStr,
-                result: resultToSheet
+                goalMinutes: goalsStr
             });
 
             // Atualizar Banco de Dados Supabase para não passar nesse loop na próxima varredura

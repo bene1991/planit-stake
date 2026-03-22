@@ -71,10 +71,10 @@ serve(async (req) => {
     if (blockErr) throw blockErr;
     const blockedSet = new Set(blockedLeagues?.map(l => String(l.league_id)) || []);
 
-    // 2. Fetch active variations
+    // 2. Fetch active variations (with joined groups)
     const { data: variations, error: varErr } = await supabase
       .from('robot_variations')
-      .select('*')
+      .select('*, telegram_groups(*)')
       .eq('active', true);
     if (varErr) throw varErr;
     if (!variations || variations.length === 0) {
@@ -118,7 +118,8 @@ serve(async (req) => {
 
       const timeElapsed = f.fixture.status.elapsed;
       const statusLong = f.fixture.status.long;
-      if (statusLong !== 'First Half') continue;
+      // (REMOVED) if (statusLong !== 'First Half') continue; - This restriction was redundant as robot variations already have min_minute/max_minute.
+
       if (timeElapsed < globalMinMin || timeElapsed > globalMaxMin) continue;
 
       // Fetch precise stats
@@ -157,6 +158,11 @@ serve(async (req) => {
       for (const v of variations) {
         if (timeElapsed < v.min_minute || timeElapsed > v.max_minute) continue;
         if (v.require_score_zero && (currentStats.h.goals > 0 || currentStats.a.goals > 0)) continue;
+        
+        // Add max_goals filter if present
+        if (v.max_goals !== null && v.max_goals !== undefined && (currentStats.h.goals + currentStats.a.goals) > v.max_goals) {
+          continue;
+        }
 
         const hDom = delta.h.attacks >= delta.a.attacks;
         const dom = hDom ? delta.h : delta.a;
@@ -171,12 +177,8 @@ serve(async (req) => {
 
       if (triggeredVars.length > 0) {
         // --- DEDUPLICATION & COOLDOWN ---
-        // Double check with minute-lock to prevent concurrent execution duplicates
-        const { data: isDuplicate } = await supabase.rpc('check_duplicate_alert', {
-          p_fixture_id: fixtureId,
-          p_minute: timeElapsed
-        });
-        if (isDuplicate) continue;
+        // (MODIFIED) Removed global check_duplicate_alert RPC which enforced a 15-min global lock per fixture.
+        // We now rely on variation-level uniqueness and the filter below.
 
         // 1. Get existing variation IDs for this fixture to identify TRULY NEW variations
         const { data: existing, error: existErr } = await supabase
@@ -191,63 +193,98 @@ serve(async (req) => {
 
         const existingIds = new Set(existing?.map(e => e.variation_id).filter(id => id) || []);
 
-        // 2. Identify TRULY NEW variations for this game
+        // 2. Identify NEW variations for this game
         const newVars = triggeredVars.filter(v => !existingIds.has(v.id));
 
         if (newVars.length === 0) continue;
 
-        // 3. Global Cooldown check (skip Telegram if any alert sent in last 15 mins for this game)
-        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-        const { data: recent } = await supabase.from('live_alerts')
-          .select('id')
-          .eq('fixture_id', fixtureId)
-          .gte('created_at', fifteenMinsAgo)
-          .limit(1);
+        // --- INSERT NEW ALERTS & GROUP BY DESTINATION (Chat + Bot) ---
+        const alertsByDest = new Map<string, { botToken: string, chatId: string, varNames: string[] }>();
+        const ownerId = newVars[0].owner_id;
+        const ts = settingsMap.get(ownerId);
 
-        const isCooldown = (recent?.length || 0) > 0;
-
-        // --- INSERT NEW ALERTS (One per variation) ---
-        const processedNames = [];
         for (const v of newVars) {
-          const { error: insErr } = await supabase.from('live_alerts').insert({
-            fixture_id: fixtureId, league_id: leagueId, league_name: f.league.name,
-            home_team: f.teams.home.name, away_team: f.teams.away.name,
-            minute_at_alert: timeElapsed, variation_id: v.id, variation_name: v.name,
+          // Enhanced Under 2.5 detection (regex to catch Under 2.5 or Under 2,5)
+          const isUnder = v.result_type === 'UNDER_GOALS' || /under 2[.,]5/i.test(v.name || '');
+          
+          let over15_result = 'pending';
+          let under25_result = 'pending';
+
+          if (isUnder) {
+            over15_result = 'ignored';
+            under25_result = 'pending';
+          } else {
+            over15_result = 'pending';
+            under25_result = 'ignored';
+          }
+          
+          const insertData: any = {
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            league_name: f.league.name,
+            home_team: f.teams.home.name,
+            away_team: f.teams.away.name,
+            minute_at_alert: timeElapsed,
+            variation_id: v.id,
+            variation_name: v.name,
             stats_snapshot: { fullMatch: currentStats, window10Min: delta }
+          };
+
+          // Database Resilience: only set these if the system is migrated.
+          const { error: insErr } = await supabase.from('live_alerts').insert({
+            ...insertData,
+            over15_result: isUnder ? 'ignored' : 'pending',
+            under25_result: isUnder ? 'pending' : 'ignored'
           });
-          if (!insErr) {
-            processedNames.push(v.name);
+
+          if (insErr) {
+            console.error(`Error inserting alert (likely missing columns): ${insErr.message}. Retrying simple insert.`);
+            await supabase.from('live_alerts').insert(insertData);
+          }
+
+          // Priority Logic for Destination and Bot
+          const group = Array.isArray(v.telegram_groups) ? v.telegram_groups[0] : v.telegram_groups;
+          const destChatId = group?.chat_id || v.telegram_chat_id || ts?.telegram_chat_id;
+          const botToken = group?.bot_token || ts?.telegram_bot_token;
+
+
+          if (destChatId && botToken) {
+            const destKey = `${botToken}_${destChatId}`;
+            if (!alertsByDest.has(destKey)) {
+              alertsByDest.set(destKey, { botToken, chatId: destChatId, varNames: [] });
+            }
+            alertsByDest.get(destKey)!.varNames.push(v.name);
           }
         }
 
-        // --- DISPATCH TELEGRAM (only if not in cooldown and at least one variation was inserted) ---
-        if (!isCooldown && processedNames.length > 0) {
-          const ownerId = newVars[0].owner_id;
-          const ts = settingsMap.get(ownerId);
-          if (ts) {
-            const league = f.league.name;
-            const h = f.teams.home.name;
-            const a = f.teams.away.name;
-            const score = `${currentStats.h.goals}x${currentStats.a.goals}`;
-            const varList = processedNames.join(', ');
+        // --- DISPATCH TELEGRAM PER DESTINATION ---
+        for (const { botToken, chatId, varNames } of alertsByDest.values()) {
+          const varList = varNames.join(', ');
+          const league = f.league.name;
+          const h = f.teams.home.name;
+          const a = f.teams.away.name;
+          const score = `${currentStats.h.goals}x${currentStats.a.goals}`;
 
-            const msg = `🚨 <b>ROBÔ AO VIVO</b>\n\n` +
-              `⚽ <b>${h} ${score} ${a}</b>\n` +
-              `🏟 ${league} | ⏱ ${timeElapsed}'\n\n` +
-              `📊 <b>STATS (ATUAL):</b>\n` +
-              `• Posse: ${currentStats.h.possession}% - ${currentStats.a.possession}%\n` +
-              `• Chutes: ${currentStats.h.shots} - ${currentStats.a.shots}\n` +
-              `• Ataques Perigosos: ${currentStats.h.attacks} - ${currentStats.a.attacks}\n\n` +
-              `🔥 <b>JANELA 10 MIN:</b>\n` +
-              `• Chutes: ${delta.h.shots} - ${delta.a.shots}\n` +
-              `• Ataques Perigosos: ${delta.h.attacks} - ${delta.a.attacks}\n\n` +
-              `⭐ <b>VARIATIONS:</b> ${varList}`;
+          const msg = `🚨 <b>ROBÔ AO VIVO</b>\n\n` +
+            `⚽ <b>${h} ${score} ${a}</b>\n` +
+            `🏟 ${league} | ⏱ ${timeElapsed}'\n\n` +
+            `📊 <b>STATS (ATUAL):</b>\n` +
+            `• Posse: ${currentStats.h.possession}% - ${currentStats.a.possession}%\n` +
+            `• Chutes: ${currentStats.h.shots} - ${currentStats.a.shots}\n` +
+            `• Ataques Perigosos: ${currentStats.h.attacks} - ${currentStats.a.attacks}\n\n` +
+            `🔥 <b>JANELA 10 MIN:</b>\n` +
+            `• Chutes: ${delta.h.shots} - ${delta.a.shots}\n` +
+            `• Ataques Perigosos: ${delta.h.attacks} - ${delta.a.attacks}\n\n` +
+            `⭐ <b>VARIATIONS:</b> ${varList}`;
 
-            await sendTelegram(ts.telegram_bot_token, ts.telegram_chat_id, msg);
-            addLog({ fixture_id: fixtureId, league_id: leagueId, stage: 'ALERT_SENT', reason: 'Telegram sent', details: { variations: varList, cooldown: false } });
-          }
-        } else if (isCooldown) {
-          addLog({ fixture_id: fixtureId, league_id: leagueId, stage: 'ALERT_COOLDOWN', reason: 'Global fixture cooldown active', details: { last_15_min: true } });
+          await sendTelegram(botToken, chatId, msg);
+          addLog({ 
+            fixture_id: fixtureId, 
+            league_id: leagueId, 
+            stage: 'ALERT_SENT', 
+            reason: 'Telegram sent', 
+            details: { variations: varList, chat_id: chatId } 
+          });
         }
       }
     }

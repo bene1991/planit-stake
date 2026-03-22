@@ -162,13 +162,23 @@ serve(async (req) => {
   const apiKeyHeader = req.headers.get('apikey');
   const legacyAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
 
-  const isServiceRole = authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY) || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
-  const isAnon = authHeader?.includes(SUPABASE_ANON_KEY) || apiKeyHeader === SUPABASE_ANON_KEY;
+  const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` || authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY) || apiKeyHeader === SUPABASE_SERVICE_ROLE_KEY;
+  const isAnon = authHeader === `Bearer ${SUPABASE_ANON_KEY}` || authHeader?.includes(SUPABASE_ANON_KEY) || apiKeyHeader === SUPABASE_ANON_KEY;
   const hasLegacyAnon = authHeader?.includes(legacyAnonKey) || apiKeyHeader === legacyAnonKey;
 
   if (!isServiceRole && !isAnon && !hasLegacyAnon) {
     console.error('[Auth] Unauthorized request to api-football');
-    return new Response(JSON.stringify({ error: 'Unauthorized', details: 'Invalid token' }), {
+    console.log('Auth Header length:', authHeader?.length || 0);
+    console.log('API Key Header length:', apiKeyHeader?.length || 0);
+    return new Response(JSON.stringify({ 
+      error: 'Unauthorized', 
+      details: 'Invalid token',
+      debug: {
+        hasAuth: !!authHeader,
+        hasApiKey: !!apiKeyHeader,
+        serviceKeySet: !!SUPABASE_SERVICE_ROLE_KEY
+      }
+    }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

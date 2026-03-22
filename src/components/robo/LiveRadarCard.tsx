@@ -1,9 +1,19 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
-import { Clock, Zap, DollarSign, Globe, Activity } from "lucide-react";
-import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { Progress } from "@/components/ui/progress";
+import { TrendingUp, TrendingDown, Clock, Trophy, MapPin, Activity, Zap, Target, DollarSign, Globe } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+
+interface GoalEvent {
+    minute: number;
+    team: string;
+    player: string;
+    type: string;
+    extra?: number;
+}
 
 interface VariationTrigger {
     id: string;
@@ -28,9 +38,11 @@ interface LiveRadarCardProps {
     totalReds: number;
     totalProfit: number;
     createdAt: string;
+    goalEvents?: GoalEvent[];
 }
 
 export const LiveRadarCard: React.FC<LiveRadarCardProps> = ({
+    fixtureId,
     leagueName,
     homeTeam,
     awayTeam,
@@ -42,7 +54,8 @@ export const LiveRadarCard: React.FC<LiveRadarCardProps> = ({
     totalGreens,
     totalReds,
     totalProfit,
-    createdAt
+    createdAt,
+    goalEvents = []
 }) => {
     return (
         <motion.div
@@ -95,6 +108,41 @@ export const LiveRadarCard: React.FC<LiveRadarCardProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Match Goals Section */}
+            {goalEvents && goalEvents.length > 0 && (
+                <div className="px-6 pb-4">
+                    <div className="flex items-center justify-between mb-3 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">
+                        GOLS DA PARTIDA
+                        <div className="h-px flex-1 bg-white/10 ml-4" />
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                        {goalEvents.sort((a: any, b: any) => a.minute - b.minute).map((goal: any, idx: number) => {
+                            const isHome = goal.team === homeTeam;
+                            return (
+                                <div key={idx} className={cn(
+                                    "flex items-center gap-2 group/goal",
+                                    isHome ? "flex-row" : "flex-row-reverse"
+                                )}>
+                                    <div className={cn(
+                                        "flex items-center gap-2 px-2 py-1 rounded-md transition-colors",
+                                        isHome ? "bg-emerald-500/5 text-emerald-400" : "bg-zinc-500/5 text-zinc-400"
+                                    )}>
+                                        <span className="font-mono text-[9px] font-black opacity-50">
+                                            {goal.minute}{goal.extra ? `+${goal.extra}` : ""}'
+                                        </span>
+                                        <div className="h-1.5 w-1.5 rounded-full bg-current opacity-50" />
+                                        <span className="text-[10px] font-bold truncate max-w-[120px]">
+                                            {goal.player || "GOL"}
+                                        </span>
+                                    </div>
+                                    <div className="flex-1" />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Triggered Strategies */}
             <div className="p-6 space-y-5">

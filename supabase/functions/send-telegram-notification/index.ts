@@ -49,39 +49,18 @@ function buildSignalMessage(payload: TelegramRequest['payload']): string {
   if (payload?.game) lines.push(`⚽ Jogo: <b>${payload.game}</b>`);
   if (payload?.market) lines.push(`📋 Mercado: <b>${payload.market}</b>`);
   if (payload?.odds) lines.push(`💹 Odd: <code>${payload.odds}</code>`);
-  if (payload?.stake) lines.push(`💰 Stake: <code>R$ ${payload.stake}</code>`);
-  if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
-  lines.push('');
-  lines.push(`💰 <b><a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a></b>`);
-  lines.push('');
-  lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
-  return lines.join('\n');
-}
-
-function buildResultMessage(payload: TelegramRequest['payload']): string {
-  const resultEmoji = payload?.result === 'Green' ? '✅' : payload?.result === 'Red' ? '❌' : '🟡';
-  const statusLabel = payload?.result === 'Green' ? 'GREEN!' : payload?.result === 'Red' ? 'RED' : 'VOID (ANULADO)';
-  const title = `FREE FIRE: ${statusLabel}`;
-
-  const lines = [`${resultEmoji} <b>${title}</b>`, ''];
-  if (payload?.game) lines.push(`⚽ <b>${payload.game}</b>`);
-  if (payload?.market) lines.push(`🎯 Filtro: <b>${payload.market}</b>`);
-  if (payload?.profit !== undefined) {
-    const profitSign = payload.profit >= 0 ? '+' : '';
-    lines.push(`🏁 Resultado: <code>${profitSign}R$ ${payload.profit}</code>`);
-  }
   if (payload?.note) lines.push(`📝 Obs: ${payload.note}`);
   lines.push('');
   lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
 }
 
-function buildAlertMessage(payload: TelegramRequest['payload'], title?: string, message?: string): string {
-  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', `🚨 <b>ALERTA: ${title || 'Atenção'}</b>`, '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
+function buildAlertMessage(title: string, message: string, payload?: TelegramRequest['payload']): string {
+  const resultEmoji = payload?.result === 'Green' ? '🟢' : payload?.result === 'Red' ? '🔴' : '🔔';
+  const prefix = `<b>${resultEmoji} ${title}</b>`;
+  const lines = ['✨ <b>NOVO LAYOUT PREMIUM</b>', prefix, '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯', ''];
   if (message) lines.push(message);
   if (payload?.note) lines.push(`📝 ${payload.note}`);
-  lines.push('');
-  lines.push(`💰 <a href="https://bolsadeaposta.bet.br/b/exchange">ABRIR NA EXCHANGE</a>`);
   lines.push('');
   lines.push(`🕐 <b>${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</b>`);
   return lines.join('\n');
@@ -155,18 +134,10 @@ serve(async (req) => {
       }
     }
 
-    // Global fallback for automated processes (no userId)
+    // No global fallback - avoid sending to wrong groups if credentials missing
     if (!botToken || !chatId) {
-      const { data: fallbackSettings } = await supabaseAdmin
-        .from('settings')
-        .select('telegram_bot_token, telegram_chat_id')
-        .not('telegram_bot_token', 'is', null)
-        .not('telegram_chat_id', 'is', null)
-        .limit(1)
-        .single();
-
-      if (fallbackSettings?.telegram_bot_token) botToken = fallbackSettings.telegram_bot_token;
-      if (fallbackSettings?.telegram_chat_id) chatId = fallbackSettings.telegram_chat_id;
+      console.error(`[Telegram] Missing credentials. botToken: ${botToken ? 'exists' : 'missing'}, chatId: ${chatId ? 'exists' : 'missing'}`);
+      throw new Error('Telegram credentials not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Supabase secrets or configure in account settings.');
     }
 
     if (!botToken || !chatId) {
@@ -183,12 +154,12 @@ serve(async (req) => {
     if (action === 'sendSignal') {
       text = buildSignalMessage(payload);
       messageType = 'signal';
-    } else if (action === 'sendResult') {
-      text = buildResultMessage(payload);
-      messageType = 'result';
     } else if (action === 'sendAlert') {
-      text = buildAlertMessage(payload, title, message);
+      text = buildAlertMessage(title || 'Atenção', message || '', payload);
       messageType = 'alert';
+    } else if (action === 'send') {
+      const emoji = type === 'result' ? (message?.toUpperCase().includes('GREEN') ? '🟢' : '🔴') : type === 'signal' ? '🎯' : '📢';
+      text = `${emoji} ${message || ''}`;
     } else {
       // Backward compatible: free-form message
       const emoji = emojiMap[type || 'notification'] || 'ℹ️';

@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { motion, AnimatePresence } from 'framer-motion';
 import RoboVariations from './robo/RoboVariations';
 import RoboBlockedLeagues from './robo/RoboBlockedLeagues';
+import RoboTelegramGroups from './robo/components/RoboTelegramGroups';
 import RoboAlerts from './robo/RoboAlerts';
 import RoboPerformance from './robo/RoboPerformance';
 import RoboLogs from './robo/RoboLogs';
@@ -206,7 +207,7 @@ export default function RoboAoVivo() {
                             { id: 'alerts', icon: Zap, label: 'Radar Ao Vivo', color: 'text-amber-500' },
                             { id: 'performance', icon: TrendingUp, label: 'Performance', color: 'text-emerald-500' },
                             { id: 'reports', icon: BarChart3, label: 'Deep Intelligence', color: 'text-blue-500' },
-                            { id: 'settings', icon: Settings2, label: 'Engine Setup', color: 'text-zinc-400' }
+                            { id: 'settings', icon: Settings2, label: 'Configurações', color: 'text-zinc-400' }
                         ].map((t) => (
                             <TabsTrigger
                                 key={t.id}
@@ -247,6 +248,10 @@ export default function RoboAoVivo() {
 
                         <TabsContent value="settings" className="mt-0 focus:outline-none border-none">
                             <div className="space-y-12 pb-20">
+                                <section>
+                                    <RoboTelegramGroups />
+                                </section>
+
                                 <section>
                                     <div className="flex items-center justify-between mb-8">
                                         <div className="flex items-center gap-3">

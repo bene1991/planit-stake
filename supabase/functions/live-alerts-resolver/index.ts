@@ -24,74 +24,7 @@ async function callApiFootball(endpoint: string) {
   return res.json();
 }
 
-async function sendTelegramResult(
-  supabase: any,
-  homeTeam: string,
-  awayTeam: string,
-  leagueName: string,
-  variationName: string,
-  resultType: 'green' | 'red',
-  market: string,
-  finalScore: string,
-  userId?: string
-): Promise<boolean> {
-  const maxRetries = 2;
-  const emoji = resultType === 'green' ? '✅' : '❌';
-  const label = resultType === 'green' ? 'GREEN' : 'RED';
-  const marketLabel = market === 'goal_ht' ? 'Gol no 1T' : 'Over 1.5';
 
-  const msg = `${emoji} <b>ROBÔ: ${label}!</b>\n\n⚽ <b>${homeTeam} vs ${awayTeam}</b>\n🏆 ${leagueName}\n📊 Mercado: <b>${marketLabel}</b>\n🎯 Filtro: ${variationName}\n🏁 Placar: <b>${finalScore}</b>`;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      if (attempt > 0) {
-        const delay = Math.pow(2, attempt) * 500;
-        console.log(`[Resolver] Telegram retry ${attempt}/${maxRetries} after ${delay}ms...`);
-        await new Promise(r => setTimeout(r, delay));
-      }
-
-      // Get user settings for this specific owner
-      const { data: settings } = await supabase
-        .from('settings')
-        .select('telegram_bot_token, telegram_chat_id')
-        .eq('owner_id', userId)
-        .not('telegram_bot_token', 'is', null)
-        .not('telegram_chat_id', 'is', null)
-        .single();
-
-      if (!settings?.telegram_bot_token || !settings?.telegram_chat_id) {
-        console.log(`[Resolver] Skipping Telegram for owner ${userId} (Not configured)`);
-        return true;
-      }
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-telegram-notification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'apikey': SUPABASE_SERVICE_ROLE_KEY
-        },
-        body: JSON.stringify({
-          userId,
-          message: msg,
-          title: 'Resultado',
-          type: 'alert'
-        }),
-      });
-
-      if (response.ok) return true;
-
-      const errorText = await response.text();
-      console.error(`[Resolver] Telegram attempt ${attempt} failed:`, errorText);
-
-      if (response.status === 401) return false;
-
-    } catch (err) {
-      console.error(`[Resolver] Telegram attempt ${attempt} catch error:`, err);
-    }
-  }
-  return false;
-}
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -112,10 +45,7 @@ serve(async (req: Request) => {
 
     if (!hasServiceRole && !hasAnon && !hasLegacyAnon) {
       console.error('[Auth] Unauthorized request to live-alerts-resolver');
-      return new Response(JSON.stringify({
-        error: 'Unauthorized',
-        authReceived: authHeader ? 'present' : 'missing'
-      }), {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -123,21 +53,14 @@ serve(async (req: Request) => {
   }
 
   try {
-    console.log('Starting Live Alerts Resolver...');
-
     const { data: pendingAlerts, error: fetchErr } = await supabase
       .from('live_alerts')
-      .select('*, robot_variations(send_telegram)')
-      .or([
-        'goal_ht_result.eq.pending',
-        'over15_result.eq.pending',
-        'final_score.is.null',
-        'goal_events.is.null'
-      ].join(','))
-      .limit(200);
+      .select('id, fixture_id, home_team, away_team, league_name, variation_name, variation_id, owner_id, goal_ht_result, over15_result, under25_result, final_score, goal_events')
+      .or('goal_ht_result.eq.pending,over15_result.eq.pending,under25_result.eq.pending,final_score.is.null')
+      .limit(50);
 
-    if (fetchErr) throw fetchErr;
-    if (!pendingAlerts || pendingAlerts.length === 0) {
+      if (fetchErr) throw fetchErr;
+      if (!pendingAlerts || pendingAlerts.length === 0) {
       console.log('No pending alerts to resolve.');
       return new Response(JSON.stringify({ status: 'ok', resolved: 0 }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -164,122 +87,44 @@ serve(async (req: Request) => {
         // Total Goals
         const totalGoals = (fixtureObj.goals.home || 0) + (fixtureObj.goals.away || 0);
 
-        const isHtFinished = ['HT', '2H', 'FT', 'AET', 'PEN'].includes(statusStr) || timeElapsed > 45;
+        const isHtFinished = ['HT', '2H', 'FT', 'AET', 'PEN'].includes(statusStr);
         const isMatchFinished = ['FT', 'AET', 'PEN', 'PST', 'CANC', 'ABD', 'AWD', 'WO'].includes(statusStr);
 
         const alertsToUpdate = pendingAlerts.filter((a: any) => a.fixture_id === fixtureId);
-        const notifiedGroups = new Set<string>();
-        const groupKey = (market: string, res: string) => `${market}_${res}`;
-
         for (const alert of alertsToUpdate) {
           const updates: any = { updated_at: new Date().toISOString() };
           let hasUpdate = false;
-
-          // Resolve Goal HT
-          if (alert.goal_ht_result === 'pending') {
-            const hasHtGoal = htGoals > 0;
-            const shouldResolveHt = hasHtGoal || isHtFinished;
-
-            if (shouldResolveHt) {
-              const result = hasHtGoal ? 'green' : 'red';
-              const htScore = `${fixtureObj.score.halftime.home ?? 0}x${fixtureObj.score.halftime.away ?? 0} (HT)`;
-              const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
-              const gKey = groupKey('ht', result);
-
-              if (sendTelegramEnabled && !notifiedGroups.has(gKey)) {
-                // ATOMIC LOCK
-                const alertKey = `alert_ht_${alert.id}_${result}`;
-                const { data: isNewAlert } = await supabase.rpc('mark_alert_resolved_atomically', {
-                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: String(fixtureId), p_owner_id: alert.owner_id
-                });
-
-                if (isNewAlert) {
-                  // Find other alerts for same fixture/result to group names
-                  const sameResultAlerts = alertsToUpdate.filter(a =>
-                    a.id !== alert.id &&
-                    a.goal_ht_result === 'pending' &&
-                    a.robot_variations?.send_telegram !== false
-                  );
-                  const names = [alert.variation_name || 'Padrão', ...sameResultAlerts.map(a => a.variation_name || 'Padrão')].join(', ');
-
-                  const sent = await sendTelegramResult(
-                    supabase,
-                    alert.home_team, alert.away_team,
-                    alert.league_name || '', names,
-                    result as 'green' | 'red', 'goal_ht', htScore,
-                    alert.owner_id
-                  );
-
-                  if (!sent) {
-                    await supabase.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: String(fixtureId), event_key: alertKey });
-                  } else {
-                    updates.goal_ht_result = result;
-                    hasUpdate = true;
-                    notifiedGroups.add(gKey);
-                  }
-                }
-              } else {
-                updates.goal_ht_result = result;
-                hasUpdate = true;
-              }
-            }
-          }
-
-          // Resolve Over 1.5
-          if (alert.over15_result === 'pending') {
-            const hasTwoGoals = totalGoals >= 2;
-            const shouldResolveO15 = hasTwoGoals || isMatchFinished;
-
-            if (shouldResolveO15) {
-              const result = hasTwoGoals ? 'green' : 'red';
-              const fs = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
-              const sendTelegramEnabled = alert.robot_variations?.send_telegram !== false;
-              const gKey = groupKey('o15', result);
-
-              if (sendTelegramEnabled && !notifiedGroups.has(gKey)) {
-                // ATOMIC LOCK
-                const alertKey = `alert_o15_${alert.id}_${result}`;
-                const { data: isNewAlert } = await supabase.rpc('mark_alert_resolved_atomically', {
-                  p_alert_id: alert.id, p_market_key: alertKey, p_fixture_id: String(fixtureId), p_owner_id: alert.owner_id
-                });
-
-                if (isNewAlert) {
-                  const sameResultAlerts = alertsToUpdate.filter(a =>
-                    a.id !== alert.id &&
-                    a.over15_result === 'pending' &&
-                    a.robot_variations?.send_telegram !== false
-                  );
-                  const names = [alert.variation_name || 'Padrão', ...sameResultAlerts.map(a => a.variation_name || 'Padrão')].join(', ');
-
-                  const sent = await sendTelegramResult(
-                    supabase,
-                    alert.home_team, alert.away_team,
-                    alert.league_name || '', names,
-                    result as 'green' | 'red', 'over15', fs,
-                    alert.owner_id
-                  );
-
-                  if (!sent) {
-                    await supabase.from('sent_notifications').delete().match({ owner_id: alert.owner_id, fixture_id: String(fixtureId), event_key: alertKey });
-                  } else {
-                    updates.over15_result = result;
-                    updates.final_score = fs;
-                    hasUpdate = true;
-                    notifiedGroups.add(gKey);
-                  }
-                }
-              } else {
-                updates.over15_result = result;
-                updates.final_score = fs;
-                hasUpdate = true;
-              }
-            }
-          }
 
           // Always sync current score so the UI reflects live/final score
           const currentScore = `${fixtureObj.goals.home ?? 0}x${fixtureObj.goals.away ?? 0}`;
           if (alert.final_score !== currentScore) {
             updates.final_score = currentScore;
+            hasUpdate = true;
+          }
+
+          // Helper to evaluate results for sub-columns (HT and Over 1.5)
+          const resultHT = htGoals > 0 ? 'green' : 'red';
+          const resultO15 = totalGoals >= 2 ? 'green' : 'red';
+
+          if (alert.goal_ht_result === 'pending' && isHtFinished) {
+            updates.goal_ht_result = resultHT;
+            hasUpdate = true;
+          }
+
+          if (alert.over15_result === 'pending' && (totalGoals >= 2 || isMatchFinished)) {
+            updates.over15_result = resultO15;
+            hasUpdate = true;
+          }
+
+          // Also set the main 'status' column for general dashboard usage
+          if (isMatchFinished && (!alert.status || alert.status === 'pending')) {
+            // For HT bot, result is resultHT. For Over 1.5 bot, result is resultO15.
+            // Simplified: if any green, or if match finished and not green, it's red.
+            if (updates.goal_ht_result === 'green' || updates.over15_result === 'green') {
+              updates.status = 'GREEN';
+            } else if (isMatchFinished) {
+              updates.status = 'RED';
+            }
             hasUpdate = true;
           }
 
@@ -302,13 +147,11 @@ serve(async (req: Request) => {
             hasUpdate = true;
           }
 
-          // Auto-discard if everything is resolved to keep the radar clean
-          const finalHt = updates.goal_ht_result || alert.goal_ht_result;
-          const finalO15 = updates.over15_result || alert.over15_result;
-          if (finalHt !== 'pending' && finalO15 !== 'pending' && !alert.is_discarded) {
+          // Auto-discard when match is finished
+          if (isMatchFinished && !alert.is_discarded) {
             updates.is_discarded = true;
+            if (!updates.status) updates.status = 'COMPLETED';
             hasUpdate = true;
-            console.log(`[Resolver] Auto-discarding resolved alert ${alert.id}`);
           }
 
           if (hasUpdate) {

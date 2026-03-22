@@ -64,7 +64,6 @@ serve(async (req) => {
             text += `🚀 Chutes: <code>${stats.h.shots} - ${stats.a.shots}</code>\n`;
             text += `🎯 No Alvo: <code>${stats.h.shotsOn} - ${stats.a.shotsOn}</code>\n`;
             text += `⏳ Posse: <code>${stats.h.possession}% - ${stats.a.possession}%</code>\n\n`;
-            text += `💰 <b><a href="${matchUrl}">ABRIR NA EXCHANGE</a></b>`;
 
             const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
             for (const prof of profiles || [{ telegram_chat_id: targetChatId }]) {

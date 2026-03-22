@@ -10,7 +10,10 @@ import {
 import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap, Save, FileSpreadsheet, Check, ChevronDown, Filter } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfDay, endOfDay, subDays, isToday, isWithinInterval, subWeeks, subMonths } from 'date-fns';
+import { Calendar as CalendarIcon } from "lucide-react";
+import { DateRange } from "react-day-picker";
+import { Calendar } from "@/components/ui/calendar";
 import GoalHazardChart from './components/GoalHazardChart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -141,6 +144,11 @@ export default function RoboReports() {
         return []; // Better to start fresh to avoid name/ID confusion
     });
     const [dateFilter, setDateFilter] = useState<string>("all");
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: subDays(new Date(), 30),
+        to: new Date(),
+    });
+    const [activeTab, setActiveTab] = useState<string>("charts");
 
     // Simulation states
     const [entryMin, setEntryMin] = useState<number>(30);
@@ -191,12 +199,12 @@ export default function RoboReports() {
             const [alerts, activeVariationsRes, games] = await Promise.all([
                 fetchAll('live_alerts'),
                 supabase.from('robot_variations').select('id, name').eq('active', true),
-                fetchAll('games', 'api_fixture_id, status')
+                fetchAll('games', 'api_fixture_id, status, final_score_home, final_score_away')
             ]);
 
             if (activeVariationsRes.error) throw activeVariationsRes.error;
 
-            const gamesMap = new Map(games.map(g => [String(g.api_fixture_id), g.status]));
+            const gamesMap = new Map(games.map(g => [String(g.api_fixture_id), g]));
 
             return {
                 alerts,
@@ -223,20 +231,24 @@ export default function RoboReports() {
         }
 
         if (dateFilter === "today") {
-            const today = new Date().toISOString().split('T')[0];
-            filtered = filtered.filter(a => a.created_at?.startsWith(today));
+            filtered = filtered.filter(a => isToday(parseISO(a.created_at!)));
         } else if (dateFilter === "this_week") {
-            const date = new Date();
-            date.setDate(date.getDate() - 7);
-            filtered = filtered.filter(a => new Date(a.created_at!) >= date);
+            const startOfPeriod = startOfDay(subDays(new Date(), 7));
+            filtered = filtered.filter(a => parseISO(a.created_at!) >= startOfPeriod);
         } else if (dateFilter === "this_month") {
-            const date = new Date();
-            date.setMonth(date.getMonth() - 1);
-            filtered = filtered.filter(a => new Date(a.created_at!) >= date);
+            const startOfPeriod = startOfDay(subDays(new Date(), 30));
+            filtered = filtered.filter(a => parseISO(a.created_at!) >= startOfPeriod);
+        } else if (dateFilter === "custom" && dateRange?.from) {
+            const from = startOfDay(dateRange.from);
+            const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
+            filtered = filtered.filter(a => {
+                const dt = parseISO(a.created_at!);
+                return dt >= from && dt <= to;
+            });
         }
 
         return filtered;
-    }, [data, selectedLeague, selectedVariations, dateFilter]);
+    }, [data, selectedLeague, selectedVariations, dateFilter, dateRange]);
 
     // Unique leagues and variations for filters
     const leagues = useMemo(() => [...new Set(data?.alerts?.map(a => a.league_name).filter(Boolean))], [data?.alerts]);
@@ -291,8 +303,24 @@ export default function RoboReports() {
         });
 
         return Array.from(varFixtureMap.values()).map(alert => {
-            const allGoalEvents: any[] = typeof alert.goal_events === 'string' ? JSON.parse(alert.goal_events) : (alert.goal_events || []);
-            const fixtureStatus = data?.gamesMap.get(String(alert.fixture_id));
+            // goal_events is the JSONB column with the actual events
+            const originalEvents = typeof alert.goal_events === 'string' ? JSON.parse(alert.goal_events) : (alert.goal_events || []);
+            
+            // goal_events_captured is just a boolean flag in DB
+            // If it's true, we trust goal_events more, but for safety we used a combined logic
+            const fixtureStatusObj = data?.gamesMap.get(String(alert.fixture_id));
+            const fixtureStatus = fixtureStatusObj?.status;
+
+            // Calculate current score from events
+            const homeGoals = originalEvents.filter((e: any) => e.team === alert.home_team).length;
+            const awayGoals = originalEvents.filter((e: any) => e.team === alert.away_team).length;
+            const eventScore = `${homeGoals}x${awayGoals}`;
+
+            // Priority: games table scores (live) > alert table final_score > calculation from events
+            const finalScore = (fixtureStatusObj && fixtureStatusObj.final_score_home !== null && fixtureStatusObj.final_score_away !== null)
+                ? `${fixtureStatusObj.final_score_home}x${fixtureStatusObj.final_score_away}` 
+                : (alert.final_score && alert.final_score !== 'pending' ? alert.final_score : eventScore);
+            const allGoalEvents: any[] = originalEvents;
             const alertMinute = alert.minute_at_alert || 0;
 
             const validGoals = allGoalEvents.filter(e => {
@@ -308,11 +336,12 @@ export default function RoboReports() {
                 allGoalEvents,
                 validGoals,
                 fixtureStatus,
+                final_score: finalScore,
                 firstGoalMinute: firstGoal ? (firstGoal.minute + (firstGoal.extra || 0)) : undefined,
                 secondGoalMinute: secondGoal ? (secondGoal.minute + (secondGoal.extra || 0)) : undefined,
                 timeToFirstGoal: firstGoal ? ((firstGoal.minute + (firstGoal.extra || 0)) - alertMinute) : null,
                 timeToSecondGoal: secondGoal ? ((secondGoal.minute + (secondGoal.extra || 0)) - alertMinute) : null,
-                htGreen: alert.goal_ht_result === 'green' || (firstGoal && (firstGoal.minute + (firstGoal.extra || 0)) <= 45),
+                htGreen: alert.goal_ht_result === 'green' || (alert.ht_score && alert.ht_score !== '0-0') || (firstGoal && (firstGoal.minute + (firstGoal.extra || 0)) <= 45),
                 over15Green: alert.over15_result === 'green' || allGoalEvents.length >= 2
             };
         });
@@ -350,7 +379,8 @@ export default function RoboReports() {
                 return realMin >= entryMin && realMin <= exitMin;
             });
 
-            const isVoid = game.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < 30);
+            const isFFMode = activeTab === 'simulation';
+            const isVoid = !isFFMode && game.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < entryMin);
 
             if (isVoid) {
                 // Profit zero for VOID
@@ -400,8 +430,9 @@ export default function RoboReports() {
                 const isOld = game.created_at ? (new Date().getTime() - new Date(game.created_at).getTime() > 4 * 60 * 60 * 1000) : false;
                 const isAnalyzable = isFinishedInMap || hasFinalScore || isOld;
 
-                const isVoid = game.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < 30);
-                let finalResult: 'green' | 'red' | 'void' | 'pending' = !isAnalyzable ? 'pending' : (isVoid ? 'void' : (goalsInWindow.length > 0 ? 'green' : 'red'));
+                const isFFMode = activeTab === 'simulation';
+                const isVoid = !isFFMode && game.allGoalEvents.some((g: any) => (g.minute + (g.extra || 0)) < entryMin);
+                let finalResult: 'green' | 'red' | 'void' | 'pending' = !isAnalyzable ? 'pending' : (isFFMode ? (goalsInWindow.length > 0 ? 'green' : 'red') : (isVoid ? 'void' : (goalsInWindow.length > 0 ? 'green' : 'red')));
 
                 // User request: Show ALL goals in the list
                 const goalsToShow = game.allGoalEvents.sort((a: any, b: any) => (a.minute + (a.extra || 0)) - (b.minute + (b.extra || 0)));
@@ -421,7 +452,7 @@ export default function RoboReports() {
                 };
             }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
         };
-    }, [simulationBase, entryMin, exitMin, greenStake, redStake]);
+    }, [simulationBase, entryMin, exitMin, greenStake, redStake, activeTab]);
 
     // Cálculo da performance por variação dentro da simulação
     const simulationByVariation = useMemo(() => {
@@ -440,7 +471,7 @@ export default function RoboReports() {
             if (game.result === 'green') {
                 stats[reportName].greens++;
                 stats[reportName].profit += greenStake;
-            } else {
+            } else if (game.result === 'red') {
                 stats[reportName].reds++;
                 stats[reportName].profit -= redStake;
             }
@@ -748,7 +779,7 @@ export default function RoboReports() {
     }
 
     return (
-        <Tabs defaultValue="charts" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-[#1e2333]/50 p-4 rounded-lg border border-[#2a3142]">
                 <div className="flex flex-col md:flex-row gap-4 flex-1">
                     <TabsList className="bg-[#1e2333] border border-[#2a3142]">
@@ -771,26 +802,111 @@ export default function RoboReports() {
                             </SelectContent>
                         </Select>
 
-                        <div className="flex items-center gap-2 px-3 py-2 bg-[#2a3142] border border-[#3b4256] rounded-md">
-                            <Filter className="w-3.5 h-3.5 text-gray-400" />
-                            <span className="text-xs text-gray-300 font-medium whitespace-nowrap">
-                                {selectedVariations.length === 0 ? "Todas as Variações" :
-                                    selectedVariations.length === 1 ? (variations.find(v => v.id === selectedVariations[0])?.name || "1 Variação") :
-                                        `${selectedVariations.length} Variações selecionadas`}
-                            </span>
-                        </div>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <div className="flex items-center gap-2 px-3 py-2 bg-[#2a3142] border border-[#3b4256] rounded-md cursor-pointer hover:bg-[#343b4d] transition-colors">
+                                    <Filter className="w-3.5 h-3.5 text-gray-400" />
+                                    <span className="text-xs text-gray-300 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
+                                        {selectedVariations.length === 0 ? "Todas as Variações" :
+                                            selectedVariations.length === 1 ? (variations.find(v => v.id === selectedVariations[0])?.name || "1 Variação") :
+                                                `${selectedVariations.length} Variações`}
+                                    </span>
+                                    <ChevronDown className="w-3 h-3 text-gray-500" />
+                                </div>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-3 bg-[#1e2333] border-[#2a3142] shadow-xl" align="start">
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between pb-2 border-b border-[#2a3142]">
+                                        <span className="text-xs font-semibold text-white">Filtrar Variações</span>
+                                        <Button
+                                            variant="link"
+                                            className="h-auto p-0 text-[10px] text-blue-400 hover:text-blue-300"
+                                            onClick={() => setSelectedVariations([])}
+                                        >
+                                            Limpar
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-1 mt-2 max-h-[250px] overflow-y-auto custom-scrollbar">
+                                        <div
+                                            className="flex items-center space-x-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors"
+                                            onClick={() => setSelectedVariations([])}
+                                        >
+                                            <Checkbox checked={selectedVariations.length === 0} id="header-var-all" />
+                                            <label htmlFor="header-var-all" className="text-xs text-white cursor-pointer select-none">Todas</label>
+                                        </div>
+                                        <div className="h-px bg-[#2a3142] my-1" />
+                                        {variations.map(v => (
+                                            <div
+                                                key={v.id}
+                                                className="flex items-center space-x-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors"
+                                                onClick={() => {
+                                                    setSelectedVariations(prev =>
+                                                        prev.includes(v.id) ? prev.filter(i => i !== v.id) : [...prev, v.id]
+                                                    );
+                                                }}
+                                            >
+                                                <Checkbox checked={selectedVariations.includes(v.id)} id={`header-var-${v.id}`} />
+                                                <label htmlFor={`header-var-${v.id}`} className="text-xs text-gray-300 cursor-pointer select-none">{v.name}</label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
 
-                        <Select value={dateFilter} onValueChange={setDateFilter}>
-                            <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
-                                <SelectValue placeholder="Período" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Desde o Início</SelectItem>
-                                <SelectItem value="today">Hoje</SelectItem>
-                                <SelectItem value="this_week">Últimos 7 dias</SelectItem>
-                                <SelectItem value="this_month">Últimos 30 dias</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                            <Select value={dateFilter} onValueChange={setDateFilter}>
+                                <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">
+                                    <SelectValue placeholder="Período" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Desde o Início</SelectItem>
+                                    <SelectItem value="today">Hoje</SelectItem>
+                                    <SelectItem value="this_week">Últimos 7 dias</SelectItem>
+                                    <SelectItem value="this_month">Últimos 30 dias</SelectItem>
+                                    <SelectItem value="custom">Personalizado</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {dateFilter === "custom" && (
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                                "w-[240px] justify-start text-left font-normal bg-[#2a3142] border-[#3b4256] text-white hover:bg-[#32394e]",
+                                                !dateRange && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {dateRange?.from ? (
+                                                dateRange.to ? (
+                                                    <>
+                                                        {format(dateRange.from, "dd/MM/yy")} -{" "}
+                                                        {format(dateRange.to, "dd/MM/yy")}
+                                                    </>
+                                                ) : (
+                                                    format(dateRange.from, "dd/MM/yy")
+                                                )
+                                            ) : (
+                                                <span>Selecionar datas</span>
+                                            )}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0 bg-[#1e2333] border-[#2a3142]" align="start">
+                                        <Calendar
+                                            initialFocus
+                                            mode="range"
+                                            defaultMonth={dateRange?.from}
+                                            selected={dateRange}
+                                            onSelect={setDateRange}
+                                            numberOfMonths={2}
+                                            className="bg-[#1e2333] text-white"
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+                        </div>
 
                         <Button
                             variant="outline"

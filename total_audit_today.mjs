@@ -103,8 +103,7 @@ async function run() {
                 fixtureId: String(f.fixture_id),
                 alertMinute: f.minute_at_alert,
                 finalScore: data.finalScore,
-                goalsInterval: data.goalsInterval,
-                result: data.result
+                goalsInterval: data.goalsInterval
             };
             await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updatePayload) });
         }

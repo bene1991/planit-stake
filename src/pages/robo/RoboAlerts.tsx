@@ -30,6 +30,7 @@ interface GroupedAlert {
     totalGreens: number;
     totalReds: number;
     totalProfit: number;
+    goal_events?: any[];
 }
 
 export default function RoboAlerts() {
@@ -234,7 +235,8 @@ export default function RoboAlerts() {
                 triggers: [],
                 totalGreens: 0,
                 totalReds: 0,
-                totalProfit: 0
+                totalProfit: 0,
+                goal_events: alert.goal_events
             };
         }
 
@@ -336,6 +338,7 @@ export default function RoboAlerts() {
                                     totalReds={group.totalReds}
                                     totalProfit={group.totalProfit}
                                     createdAt={group.created_at}
+                                    goalEvents={group.goal_events}
                                 />
                             );
                         })}

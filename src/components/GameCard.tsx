@@ -350,7 +350,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               </Select>
                             </div>
                             <div>
-                              <Label className="text-xs font-medium mb-1">Stake (R$)</Label>
+                              <Label className="text-xs font-medium mb-1">Alocação (R$)</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -363,7 +363,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               />
                             </div>
                             <div>
-                              <Label className="text-xs font-medium mb-1">Odd Entrada</Label>
+                              <Label className="text-xs font-medium mb-1">Ratio Entrada</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -376,7 +376,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               />
                             </div>
                             <div>
-                              <Label className="text-xs font-medium mb-1">Odd Saída</Label>
+                              <Label className="text-xs font-medium mb-1">Ratio Saída</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -407,7 +407,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                                     </span>
                                   );
                                 }
-                                return <span className="text-muted-foreground">Preencha stake e odd para ver previsão</span>;
+                                return <span className="text-muted-foreground">Preencha alocação e ratio para ver previsão</span>;
                               })()}
                             </div>
                           )}
@@ -509,7 +509,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         </Select>
                       </div>
                       <div>
-                        <Label className="text-xs font-medium mb-1">Stake (R$)</Label>
+                        <Label className="text-xs font-medium mb-1">Alocação (R$)</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -522,7 +522,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         />
                       </div>
                       <div>
-                        <Label className="text-xs font-medium mb-1">Odd Entrada</Label>
+                        <Label className="text-xs font-medium mb-1">Ratio Entrada</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -535,7 +535,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                         />
                       </div>
                       <div>
-                        <Label className="text-xs font-medium mb-1">Odd Saída</Label>
+                        <Label className="text-xs font-medium mb-1">Ratio Saída</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -566,7 +566,7 @@ export function GameCard({ game, methods, onUpdate, onDelete, onEdit, onRefresh,
                               </span>
                             );
                           }
-                          return <span className="text-muted-foreground">Preencha stake e odd para ver previsão</span>;
+                          return <span className="text-muted-foreground">Preencha alocação e ratio para ver previsão</span>;
                         })()}
                       </div>
                     )}

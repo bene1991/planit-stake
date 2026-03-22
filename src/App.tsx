@@ -50,6 +50,7 @@ const Account = lazyWithRetry(() => import("./pages/Account"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 const MatchbookOdds = lazyWithRetry(() => import("./pages/MatchbookOdds"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
+const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
 
 const PageLoader = () => (
   <div className="flex min-h-[60vh] items-center justify-center">
@@ -108,6 +109,7 @@ const AppContent = () => {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><Layout><DailyPlanning /></Layout></ProtectedRoute>} />
             <Route path="/daily-planning" element={<Navigate to="/" replace />} />
             <Route path="/bankroll" element={<ProtectedRoute><Layout><BankrollManagement /></Layout></ProtectedRoute>} />

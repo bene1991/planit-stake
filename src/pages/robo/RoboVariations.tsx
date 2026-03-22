@@ -33,10 +33,20 @@ interface Variation {
     min_shots_insidebox: number;
     min_possession: number;
     min_combined_shots: number;
+    pressure_1?: number;
+    pressure_2?: number;
+    max_goals?: number;
     active: boolean;
     send_telegram: boolean;
     send_to_sheet: boolean;
+    telegram_group_id?: string;
 }
+
+interface TelegramGroup {
+    id: string;
+    name: string;
+}
+
 
 export default function RoboVariations() {
     const [variations, setVariations] = useState<Variation[]>([]);
@@ -44,16 +54,26 @@ export default function RoboVariations() {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingVariation, setEditingVariation] = useState<Variation | null>(null);
+    const [groups, setGroups] = useState<TelegramGroup[]>([]);
     const [formData, setFormData] = useState({
         name: '', description: '', min_minute: 15, max_minute: 30,
         require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
         min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
-        send_telegram: true, send_to_sheet: true
+        pressure_1: 0, pressure_2: 0, max_goals: 99,
+        send_telegram: true, send_to_sheet: true, telegram_group_id: ''
     });
+
 
     useEffect(() => {
         fetchVariations();
+        fetchGroups();
     }, []);
+
+    const fetchGroups = async () => {
+        const { data } = await supabase.from('telegram_groups').select('id, name').order('name');
+        if (data) setGroups(data);
+    };
+
 
     const fetchVariations = async () => {
         try {
@@ -123,8 +143,10 @@ export default function RoboVariations() {
             name: '', description: '', min_minute: 15, max_minute: 30,
             require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
             min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
-            send_telegram: true, send_to_sheet: true
+            pressure_1: 0, pressure_2: 0, max_goals: 99,
+            send_telegram: true, send_to_sheet: true, telegram_group_id: ''
         });
+
         setIsModalOpen(true);
     };
 
@@ -143,9 +165,14 @@ export default function RoboVariations() {
             min_shots_insidebox: v.min_shots_insidebox || 0,
             min_possession: v.min_possession,
             min_combined_shots: v.min_combined_shots,
+            pressure_1: v.pressure_1 || 0,
+            pressure_2: v.pressure_2 || 0,
+            max_goals: v.max_goals ?? 99,
             send_telegram: v.send_telegram ?? true,
-            send_to_sheet: v.send_to_sheet ?? true
+            send_to_sheet: v.send_to_sheet ?? true,
+            telegram_group_id: v.telegram_group_id || ''
         });
+
         setIsModalOpen(true);
     };
 
@@ -316,21 +343,37 @@ export default function RoboVariations() {
                                                 onCheckedChange={(c) => setFormData({ ...formData, require_score_zero: c })}
                                             />
                                         </div>
-                                        <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 rounded-lg bg-emerald-500/10">
-                                                    <Send className="w-4 h-4 text-emerald-400" />
+                                        <div className="flex flex-col gap-3 p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700 md:col-span-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 rounded-lg bg-blue-500/10">
+                                                        <Send className="w-4 h-4 text-blue-400" />
+                                                    </div>
+                                                    <div className="space-y-0.5">
+                                                        <Label htmlFor="send-telegram-form" className="cursor-pointer text-sm font-bold">Grupo Telegram</Label>
+                                                        <p className="text-[10px] text-zinc-500">Onde os alertas serão enviados</p>
+                                                    </div>
                                                 </div>
-                                                <div className="space-y-0.5">
-                                                    <Label htmlFor="send-telegram-form" className="cursor-pointer text-sm font-bold">Telegram</Label>
-                                                    <p className="text-[10px] text-zinc-500">Notificar canais ativos</p>
-                                                </div>
+                                                <Switch
+                                                    id="send-telegram-form"
+                                                    checked={formData.send_telegram}
+                                                    onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })}
+                                                />
                                             </div>
-                                            <Switch
-                                                id="send-telegram-form"
-                                                checked={formData.send_telegram}
-                                                onCheckedChange={(c) => setFormData({ ...formData, send_telegram: c })}
-                                            />
+                                            {formData.send_telegram && (
+                                                <div className="mt-2">
+                                                    <select
+                                                        value={formData.telegram_group_id}
+                                                        onChange={(e) => setFormData({ ...formData, telegram_group_id: e.target.value })}
+                                                        className="w-full bg-zinc-900 border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-primary/20 outline-none"
+                                                    >
+                                                        <option value="">Selecione um grupo...</option>
+                                                        {groups.map(group => (
+                                                            <option key={group.id} value={group.id}>{group.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-950/30 border border-zinc-800 transition-colors hover:border-zinc-700">
                                             <div className="flex items-center gap-3">
@@ -348,6 +391,8 @@ export default function RoboVariations() {
                                                 onCheckedChange={(c) => setFormData({ ...formData, send_to_sheet: c })}
                                             />
                                         </div>
+
+
                                     </div>
 
                                     {/* Technical Specs */}
@@ -373,10 +418,19 @@ export default function RoboVariations() {
                                             <StatField label="No Alvo" value={formData.min_shots_on_target} icon={<MousePointer2 className="w-3 h-3" />}
                                                 onChange={v => setFormData({ ...formData, min_shots_on_target: parseInt(v) })} />
 
-                                            <StatField label="Posse Mínima %" value={formData.min_possession} icon={<Hash className="w-3 h-3" />}
-                                                onChange={v => setFormData({ ...formData, min_possession: parseInt(v) })} />
-                                        </div>
-                                    </div>
+                                             <StatField label="Posse Mínima %" value={formData.min_possession} icon={<Hash className="w-3 h-3" />}
+                                                 onChange={v => setFormData({ ...formData, min_possession: parseInt(v) })} />
+
+                                             <StatField label="Pressão Casa (%)" value={formData.pressure_1 ?? 0} icon={<Zap className="w-3 h-3 text-orange-500" />}
+                                                 onChange={v => setFormData({ ...formData, pressure_1: parseInt(v) })} />
+
+                                             <StatField label="Pressão Fora (%)" value={formData.pressure_2 ?? 0} icon={<Zap className="w-3 h-3 text-purple-500" />}
+                                                 onChange={v => setFormData({ ...formData, pressure_2: parseInt(v) })} />
+
+                                             <StatField label="Máx Gols Jogo" value={formData.max_goals ?? 99} icon={<Target className="w-3 h-3 text-red-500" />}
+                                                 onChange={v => setFormData({ ...formData, max_goals: parseInt(v) })} />
+                                         </div>
+                                     </div>
 
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-2">
