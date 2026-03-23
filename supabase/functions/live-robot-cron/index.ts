@@ -120,7 +120,7 @@ serve(async (req) => {
       const statusLong = f.fixture.status.long;
       // (REMOVED) if (statusLong !== 'First Half') continue; - This restriction was redundant as robot variations already have min_minute/max_minute.
 
-      if (timeElapsed < globalMinMin || timeElapsed > globalMaxMin) continue;
+      if (timeElapsed < 0 || timeElapsed > 95) continue;
 
       // Fetch precise stats
       let statsData;
@@ -139,19 +139,42 @@ serve(async (req) => {
       const hStats = rawStats[0]?.statistics;
       const aStats = rawStats[1]?.statistics;
       const currentStats = {
-        h: { shots: extractStat(hStats, 'Total Shots'), shotsOn: extractStat(hStats, 'Shots on Goal'), attacks: extractStat(hStats, 'Dangerous Attacks'), possession: extractStat(hStats, 'Ball Possession'), goals: f.goals.home || 0 },
-        a: { shots: extractStat(aStats, 'Total Shots'), shotsOn: extractStat(aStats, 'Shots on Goal'), attacks: extractStat(aStats, 'Dangerous Attacks'), possession: extractStat(aStats, 'Ball Possession'), goals: f.goals.away || 0 }
+        h: { shots: extractStat(hStats, 'Shots on Goal') + extractStat(hStats, 'Shots off Goal'), shotsOn: extractStat(hStats, 'Shots on Goal'), attacks: extractStat(hStats, 'Dangerous Attacks'), possession: extractStat(hStats, 'Ball Possession'), goals: f.goals.home || 0 },
+        a: { shots: extractStat(aStats, 'Shots on Goal') + extractStat(aStats, 'Shots off Goal'), shotsOn: extractStat(aStats, 'Shots on Goal'), attacks: extractStat(aStats, 'Dangerous Attacks'), possession: extractStat(aStats, 'Ball Possession'), goals: f.goals.away || 0 }
       };
 
-      // Snapshot & Delta logic (simplified for clarity but robust)
+      // Snapshot & Delta logic (Simplified: only require snapshot if variation needs it)
       await supabase.from('live_stats_snapshots').insert({ fixture_id: fixtureId, minute: timeElapsed, stats_json: currentStats });
+      
       const targetMin = timeElapsed - 10;
-      const { data: oldSnap } = await supabase.from('live_stats_snapshots').select('stats_json').eq('fixture_id', fixtureId).lte('minute', targetMin + 2).gte('minute', targetMin - 2).order('minute', { ascending: false }).limit(1);
+      const { data: snapshotData } = await supabase
+        .from('live_stats_snapshots')
+        .select('stats_json')
+        .eq('fixture_id', fixtureId)
+        .lte('minute', targetMin + 2)
+        .gte('minute', targetMin - 2)
+        .order('minute', { ascending: false })
+        .limit(1);
 
-      if (!oldSnap?.[0]) continue;
-      const oldStats = oldSnap[0].stats_json;
+      const oldStats = snapshotData?.[0]?.stats_json;
+      const hasSnapshot = !!oldStats;
+
       const diff = (a: number, b: number) => Math.max(0, a - b);
-      const delta = { h: { shots: diff(currentStats.h.shots, oldStats.h.shots), shotsOn: diff(currentStats.h.shotsOn, oldStats.h.shotsOn), attacks: diff(currentStats.h.attacks, oldStats.h.attacks) }, a: { shots: diff(currentStats.a.shots, oldStats.a.shots), shotsOn: diff(currentStats.a.shotsOn, oldStats.a.shotsOn), attacks: diff(currentStats.a.attacks, oldStats.a.attacks) } };
+      const delta = hasSnapshot ? {
+        h: { 
+          shots: diff(currentStats.h.shots, oldStats.h.shots), 
+          shotsOn: diff(currentStats.h.shotsOn, oldStats.h.shotsOn), 
+          attacks: diff(currentStats.h.attacks, oldStats.h.attacks) 
+        },
+        a: { 
+          shots: diff(currentStats.a.shots, oldStats.a.shots), 
+          shotsOn: diff(currentStats.a.shotsOn, oldStats.a.shotsOn), 
+          attacks: diff(currentStats.a.attacks, oldStats.a.attacks) 
+        }
+      } : {
+        h: { shots: 0, shotsOn: 0, attacks: 0 },
+        a: { shots: 0, shotsOn: 0, attacks: 0 }
+      };
 
       // Variation Loop
       const triggeredVars = [];
@@ -159,18 +182,29 @@ serve(async (req) => {
         if (timeElapsed < v.min_minute || timeElapsed > v.max_minute) continue;
         if (v.require_score_zero && (currentStats.h.goals > 0 || currentStats.a.goals > 0)) continue;
         
-        // Add max_goals filter if present
         if (v.max_goals !== null && v.max_goals !== undefined && (currentStats.h.goals + currentStats.a.goals) > v.max_goals) {
           continue;
         }
 
-        const hDom = delta.h.attacks >= delta.a.attacks;
+        // Determine which team is "dominant" based on attacks DELTA (if snapshot available) or total attacks
+        const hDom = hasSnapshot 
+          ? delta.h.attacks >= delta.a.attacks
+          : currentStats.h.attacks >= currentStats.a.attacks;
+          
         const dom = hDom ? delta.h : delta.a;
         const domPoss = hDom ? currentStats.h.possession : currentStats.a.possession;
 
-        const ok = dom.shots >= v.min_shots && dom.shotsOn >= v.min_shots_on_target &&
-          dom.attacks >= v.min_dangerous_attacks && domPoss >= v.min_possession &&
-          (delta.h.shots + delta.a.shots) >= v.min_combined_shots;
+        // CRITICAL: If variation requires a delta (min_dangerous_attacks > 0) but we have no snapshot, skip it.
+        if (v.min_dangerous_attacks > 0 && !hasSnapshot) continue;
+
+        const combinedShots = currentStats.h.shots + currentStats.a.shots;
+        const combinedShotsOn = currentStats.h.shotsOn + currentStats.a.shotsOn;
+        
+        const ok = combinedShots >= v.min_shots && 
+                   combinedShotsOn >= v.min_shots_on_target &&
+                   dom.attacks >= v.min_dangerous_attacks && 
+                   domPoss >= v.min_possession &&
+                   combinedShots >= (v.min_combined_shots || 0);
 
         if (ok) triggeredVars.push(v);
       }
@@ -200,23 +234,11 @@ serve(async (req) => {
 
         // --- INSERT NEW ALERTS & GROUP BY DESTINATION (Chat + Bot) ---
         const alertsByDest = new Map<string, { botToken: string, chatId: string, varNames: string[] }>();
-        const ownerId = newVars[0].owner_id;
-        const ts = settingsMap.get(ownerId);
+        const firstSetting = settings?.[0]; // Fallback for systems without per-variation ownership
 
         for (const v of newVars) {
           // Enhanced Under 2.5 detection (regex to catch Under 2.5 or Under 2,5)
           const isUnder = v.result_type === 'UNDER_GOALS' || /under 2[.,]5/i.test(v.name || '');
-          
-          let over15_result = 'pending';
-          let under25_result = 'pending';
-
-          if (isUnder) {
-            over15_result = 'ignored';
-            under25_result = 'pending';
-          } else {
-            over15_result = 'pending';
-            under25_result = 'ignored';
-          }
           
           const insertData: any = {
             fixture_id: fixtureId,
@@ -238,15 +260,18 @@ serve(async (req) => {
           });
 
           if (insErr) {
-            console.error(`Error inserting alert (likely missing columns): ${insErr.message}. Retrying simple insert.`);
+            console.error(`Error inserting alert (likely missing columns or duplicate): ${insErr.message}. Retrying simple insert.`);
             await supabase.from('live_alerts').insert(insertData);
           }
 
           // Priority Logic for Destination and Bot
+          // Use cast to any because owner_id might be missing from TS types
+          const vOwnerId = (v as any).owner_id;
+          const ts = settingsMap.get(vOwnerId) || firstSetting;
+          
           const group = Array.isArray(v.telegram_groups) ? v.telegram_groups[0] : v.telegram_groups;
           const destChatId = group?.chat_id || v.telegram_chat_id || ts?.telegram_chat_id;
           const botToken = group?.bot_token || ts?.telegram_bot_token;
-
 
           if (destChatId && botToken) {
             const destKey = `${botToken}_${destChatId}`;
@@ -254,6 +279,8 @@ serve(async (req) => {
               alertsByDest.set(destKey, { botToken, chatId: destChatId, varNames: [] });
             }
             alertsByDest.get(destKey)!.varNames.push(v.name);
+          } else {
+            console.warn(`Missing Telegram Config for variation ${v.name}: chatId=${destChatId}, hasBotToken=${!!botToken}`);
           }
         }
 
