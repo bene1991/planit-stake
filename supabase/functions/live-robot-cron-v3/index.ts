@@ -304,9 +304,10 @@ serve(async (req) => {
 
           if (alertsByDest.size > 0) {
             for (const { botToken, chatId, varNames } of alertsByDest.values()) {
+              const score = `${f.goals.home ?? 0} x ${f.goals.away ?? 0}`;
               const msg = `✅ <b>ROBÔ OFICIAL (COM NOVO MINUTO)</b>\n` +
                           `________________________________\n\n` +
-                          `⚽ <b>${f.teams.home.name} vs ${f.teams.away.name}</b>\n` +
+                          `⚽ <b>${f.teams.home.name} ${score} ${f.teams.away.name}</b>\n` +
                           `🏆 ${f.league.name}\n` +
                           `⏰ Minuto: ${timeElapsed}'\n` +
                           `🎯 Filtro: ${varNames.join(', ')}\n\n` +
