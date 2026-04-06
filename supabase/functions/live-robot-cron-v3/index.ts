@@ -304,7 +304,7 @@ serve(async (req) => {
 
           if (alertsByDest.size > 0) {
             for (const { botToken, chatId, varNames } of alertsByDest.values()) {
-              const msg = `🔥 <b>FREE FIRE: NOVO ALERTA</b>\n` +
+              const msg = `✅ <b>ROBÔ OFICIAL (COM NOVO MINUTO)</b>\n` +
                           `________________________________\n\n` +
                           `⚽ <b>${f.teams.home.name} vs ${f.teams.away.name}</b>\n` +
                           `🏆 ${f.league.name}\n` +
@@ -345,10 +345,36 @@ serve(async (req) => {
       if (logErr) console.error('Error flushing logs:', logErr);
     }
 
+    // Ping de sucesso do robô
+    await supabase.from('robot_status').update({
+      status: 'online',
+      last_ping: new Date().toISOString()
+    }).eq('id', '00000000-0000-0000-0000-000000000000');
+
     return new Response(JSON.stringify({ status: 'ok', logs: logsBuffer.length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('Cron Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
+    
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    try {
+      // 1. Gravar o status de erro
+      await supabase.from('robot_status').update({
+        status: 'error',
+        last_error_message: errorMessage,
+        last_error_at: new Date().toISOString()
+      }).eq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // 2. Avisar no Telegram (pegando o primeiro grupo ou a config de admin)
+      const { data: settings } = await supabase.from('settings').select('telegram_bot_token, telegram_chat_id').limit(1);
+      if (settings && settings.length > 0 && settings[0].telegram_bot_token && settings[0].telegram_chat_id) {
+         const alertMsg = `🚨 <b>MONITORAMENTO: ERRO NO ROBÔ</b>\n\nO robô de sinais encontrou um problema e parou de funcionar:\n\n<code>${errorMessage.substring(0, 300)}</code>\n\nAbra o painel online para verificar.`;
+         await sendTelegram(settings[0].telegram_bot_token, settings[0].telegram_chat_id, alertMsg);
+      }
+    } catch (metricError) {
+      console.error('Failed to register error state:', metricError);
+    }
+    
+    return new Response(JSON.stringify({ error: errorMessage }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });
   }
 });

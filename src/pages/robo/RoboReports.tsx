@@ -10,8 +10,8 @@ import {
 import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap, Save, FileSpreadsheet, Check, ChevronDown, Filter, Send, Clock } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { format, parseISO, startOfDay, endOfDay, subDays, isToday, isWithinInterval, subWeeks, subMonths } from 'date-fns';
-import { Calendar as CalendarIcon } from "lucide-react";
+import { format, parseISO, startOfDay, endOfDay, subDays, isToday, isWithinInterval, subWeeks, subMonths, differenceInMinutes } from 'date-fns';
+import { Calendar as CalendarIcon, Activity } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import GoalHazardChart from './components/GoalHazardChart';
@@ -168,6 +168,30 @@ export default function RoboReports() {
     useEffect(() => {
         localStorage.setItem('robo_reports_selected_variation_ids', JSON.stringify(selectedVariations));
     }, [selectedVariations]);
+
+    // Fetch robot status
+    const { data: robotStatus } = useQuery({
+        queryKey: ['robot-status'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('robot_status')
+                .select('*')
+                .eq('id', '00000000-0000-0000-0000-000000000000')
+                .single();
+            if (error) return null;
+            return data;
+        },
+        refetchInterval: 30000, // Refetch every 30 seconds
+    });
+
+    const isRobotOnline = useMemo(() => {
+        if (!robotStatus) return false;
+        if (robotStatus.status === 'error') return false;
+        
+        // Se o último ping for mais antigo que 3 minutos (180s), considera offline
+        const diff = differenceInMinutes(new Date(), new Date(robotStatus.last_ping));
+        return diff <= 3;
+    }, [robotStatus]);
 
     // Fetch all historic alerts, active variations and game statuses
     const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -883,6 +907,18 @@ export default function RoboReports() {
                             <TrendingUp className="w-4 h-4 mr-2" /> Simulação Free Fire
                         </TabsTrigger>
                     </TabsList>
+
+                    {robotStatus && (
+                        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#2a3142] rounded-md border border-[#3b4256]" title={robotStatus.status === 'error' ? robotStatus.last_error_message : `Último sinal: ${format(new Date(robotStatus.last_ping), 'HH:mm:ss')}`}>
+                            <div className="relative flex h-3 w-3">
+                                <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", isRobotOnline ? "bg-emerald-400" : "bg-rose-400")}></span>
+                                <span className={cn("relative inline-flex rounded-full h-3 w-3", isRobotOnline ? "bg-emerald-500" : "bg-rose-500")}></span>
+                            </div>
+                            <span className={cn("text-xs font-semibold", isRobotOnline ? "text-emerald-400" : "text-rose-400")}>
+                                {isRobotOnline ? "Robô Online" : "Robô Offline/Erro"}
+                            </span>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <Select value={selectedLeague} onValueChange={setSelectedLeague}>

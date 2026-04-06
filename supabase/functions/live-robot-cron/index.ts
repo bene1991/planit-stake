@@ -114,7 +114,16 @@ serve(async (req) => {
     for (const f of fixtures) {
       const fixtureId = String(f.fixture.id);
       const leagueId = String(f.league.id);
-      if (blockedSet.has(leagueId)) continue;
+      if (blockedSet.has(leagueId)) {
+        addLog({ 
+          fixture_id: fixtureId, 
+          league_id: leagueId, 
+          stage: 'DISCARDED_PRE_FILTER', 
+          reason: 'Blocked League', 
+          details: { league: f.league.name } 
+        });
+        continue;
+      }
 
       const timeElapsed = f.fixture.status.elapsed;
       const statusLong = f.fixture.status.long;
@@ -186,13 +195,12 @@ serve(async (req) => {
           continue;
         }
 
-        // Determine which team is "dominant" based on attacks DELTA (if snapshot available) or total attacks
-        const hDom = hasSnapshot 
-          ? delta.h.attacks >= delta.a.attacks
-          : currentStats.h.attacks >= currentStats.a.attacks;
-          
-        const dom = hDom ? delta.h : delta.a;
-        const domPoss = hDom ? currentStats.h.possession : currentStats.a.possession;
+        // Determine if any team (or both) satisfies the pressure/possession requirements
+        const hPressure = hasSnapshot ? delta.h.attacks : currentStats.h.attacks;
+        const aPressure = hasSnapshot ? delta.a.attacks : currentStats.a.attacks;
+        
+        const hSatisfies = hPressure >= (v.min_dangerous_attacks || 0) && currentStats.h.possession >= (v.min_possession || 0);
+        const aSatisfies = aPressure >= (v.min_dangerous_attacks || 0) && currentStats.a.possession >= (v.min_possession || 0);
 
         // CRITICAL: If variation requires a delta (min_dangerous_attacks > 0) but we have no snapshot, skip it.
         if (v.min_dangerous_attacks > 0 && !hasSnapshot) continue;
@@ -200,13 +208,35 @@ serve(async (req) => {
         const combinedShots = currentStats.h.shots + currentStats.a.shots;
         const combinedShotsOn = currentStats.h.shotsOn + currentStats.a.shotsOn;
         
-        const ok = combinedShots >= v.min_shots && 
-                   combinedShotsOn >= v.min_shots_on_target &&
-                   dom.attacks >= v.min_dangerous_attacks && 
-                   domPoss >= v.min_possession &&
-                   combinedShots >= (v.min_combined_shots || 0);
+        const shotsOk = combinedShots >= (v.min_shots || 0) && combinedShotsOn >= (v.min_shots_on_target || 0);
+        const pressureOk = hSatisfies || aSatisfies;
+        const totalCombinedOk = combinedShots >= (v.min_combined_shots || 0);
 
-        if (ok) triggeredVars.push(v);
+        const ok = shotsOk && pressureOk && totalCombinedOk;
+
+        if (!ok) {
+          // Add detailed log for debug
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            variation_id: v.id,
+            stage: 'VARIATION_EVALUATION',
+            reason: 'Discarded by filters',
+            details: {
+              variation_name: v.name,
+              time: timeElapsed,
+              shots: `${combinedShots}/${v.min_shots}`,
+              shotsOn: `${combinedShotsOn}/${v.min_shots_on_target}`,
+              hPressure: `${hPressure}/${v.min_dangerous_attacks}`,
+              aPressure: `${aPressure}/${v.min_dangerous_attacks}`,
+              hPossession: `${currentStats.h.possession}%/${v.min_possession}%`,
+              aPossession: `${currentStats.a.possession}%/${v.min_possession}%`
+            }
+          });
+          continue;
+        }
+
+        triggeredVars.push(v);
       }
 
       if (triggeredVars.length > 0) {
@@ -273,13 +303,14 @@ serve(async (req) => {
           const destChatId = group?.chat_id || v.telegram_chat_id || ts?.telegram_chat_id;
           const botToken = group?.bot_token || ts?.telegram_bot_token;
 
-          if (destChatId && botToken) {
+          // PERSISTENCE IS DONE. NOW CHECK IF WE SHOULD SEND TO TELEGRAM.
+          if (v.send_telegram && destChatId && botToken) {
             const destKey = `${botToken}_${destChatId}`;
             if (!alertsByDest.has(destKey)) {
               alertsByDest.set(destKey, { botToken, chatId: destChatId, varNames: [] });
             }
             alertsByDest.get(destKey)!.varNames.push(v.name);
-          } else {
+          } else if (v.send_telegram) {
             console.warn(`Missing Telegram Config for variation ${v.name}: chatId=${destChatId}, hasBotToken=${!!botToken}`);
           }
         }
@@ -292,7 +323,7 @@ serve(async (req) => {
           const a = f.teams.away.name;
           const score = `${currentStats.h.goals}x${currentStats.a.goals}`;
 
-          const msg = `🚨 <b>ROBÔ AO VIVO</b>\n\n` +
+          const msg = `🚨 <b>ANTIGO - ROBÔ AO VIVO</b>\n\n` +
             `⚽ <b>${h} ${score} ${a}</b>\n` +
             `🏟 ${league} | ⏱ ${timeElapsed}'\n\n` +
             `📊 <b>STATS (ATUAL):</b>\n` +
@@ -319,6 +350,13 @@ serve(async (req) => {
     // Cleanup & Flush
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     await supabase.from('live_stats_snapshots').delete().lt('created_at', fourHoursAgo);
+
+    // PERSIST LOGS
+    if (logsBuffer.length > 0) {
+      console.log(`Persisting ${logsBuffer.length} logs...`);
+      const { error: logErr } = await supabase.from('robot_execution_logs').insert(logsBuffer);
+      if (logErr) console.error('Error persisting logs:', logErr);
+    }
 
     return new Response(JSON.stringify({ status: 'ok', logs: logsBuffer.length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
