@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Check, X, Loader2, Edit3, Power, Send, Hash, MousePointer2, LayoutPanelLeft, Rocket, FlaskConical, Target, Clock, Activity, Zap, Info, LayoutGrid, List } from "lucide-react";
+import { Plus, Check, X, Loader2, Edit3, Trash2, Power, Send, Hash, MousePointer2, LayoutPanelLeft, Rocket, FlaskConical, Target, Clock, Activity, Zap, Info, LayoutGrid, List } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,7 @@ interface Variation {
     send_telegram: boolean;
     send_to_sheet: boolean;
     telegram_group_id?: string;
+    telegram_alert_minute?: number;
 }
 
 interface TelegramGroup {
@@ -60,7 +61,8 @@ export default function RoboVariations() {
         require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
         min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
         pressure_1: 0, pressure_2: 0, max_goals: 99,
-        send_telegram: true, send_to_sheet: true, telegram_group_id: ''
+        send_telegram: true, send_to_sheet: true, telegram_group_id: '',
+        telegram_alert_minute: null as number | null
     });
 
 
@@ -144,7 +146,8 @@ export default function RoboVariations() {
             require_score_zero: true, min_shots: 0, min_shots_on_target: 0,
             min_expected_goals: 0, min_corners: 0, min_shots_insidebox: 0, min_possession: 0, min_combined_shots: 0,
             pressure_1: 0, pressure_2: 0, max_goals: 99,
-            send_telegram: true, send_to_sheet: true, telegram_group_id: ''
+            send_telegram: true, send_to_sheet: true, telegram_group_id: '',
+            telegram_alert_minute: null
         });
 
         setIsModalOpen(true);
@@ -170,19 +173,145 @@ export default function RoboVariations() {
             max_goals: v.max_goals ?? 99,
             send_telegram: v.send_telegram ?? true,
             send_to_sheet: v.send_to_sheet ?? true,
-            telegram_group_id: v.telegram_group_id || ''
+            telegram_group_id: v.telegram_group_id || '',
+            telegram_alert_minute: v.telegram_alert_minute ?? null
         });
 
         setIsModalOpen(true);
     };
 
+    const deleteVariation = async (id: string, name: string) => {
+        if (!confirm(`Deseja realmente excluir a estratégia "${name}"? Esta ação removerá permanentemente TODO o histórico da aba Simulação e registros de performance.`)) return;
+        
+        try {
+            setLoading(true);
+            
+            // Função para limpar tabelas pesadas em lotes indexados
+            const cleanTableInBatches = async (tableName: string) => {
+                let hasMore = true;
+                let totalDeleted = 0;
+                
+                while (hasMore) {
+                    // Busca rápida de IDs via Índice (Lote de 300 para evitar Bad Request)
+                    const { data: batch, error: fetchError } = await supabase
+                        .from(tableName)
+                        .select('id')
+                        .eq('variation_id', id)
+                        .limit(300);
+
+                    if (fetchError) throw fetchError;
+
+                    if (!batch || batch.length === 0) {
+                        hasMore = false;
+                        break;
+                    }
+
+                    const ids = batch.map(b => b.id);
+                    const { error: deleteError } = await supabase
+                        .from(tableName)
+                        .delete()
+                        .in('id', ids);
+
+                    if (deleteError) throw deleteError;
+                    
+                    totalDeleted += ids.length;
+                    console.log(`Limpando ${tableName}... ${totalDeleted} registros removidos.`);
+                    
+                    if (ids.length < 300) hasMore = false;
+                }
+            };
+
+            // 1. Limpar Alertas de Simulação (Aba Simulação)
+            await cleanTableInBatches('live_alerts');
+
+            // 2. Limpar Logs de Execução (Audit Logs)
+            await cleanTableInBatches('robot_execution_logs');
+
+            // 3. Deletar a variação em si
+            const { error: variantError } = await supabase
+                .from('robot_variations')
+                .delete()
+                .eq('id', id);
+
+            if (variantError) throw variantError;
+
+            setVariations(variations.filter(v => v.id !== id));
+            toast.success('Estratégia e histórico removidos com sucesso!');
+        } catch (error: any) {
+            console.error('Erro detalhado:', error);
+            toast.error('Erro ao excluir estratégia', { 
+                description: error.message || "Muitos dados vinculados. Tente novamente." 
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleTestTelegram = async (v: Variation) => {
+        // 1. Busca o Bot Token nas configurações globais
+        const { data: settingsData } = await supabase
+            .from('settings')
+            .select('telegram_bot_token')
+            .limit(1)
+            .single();
+
+        // 2. Busca o chat_id no grupo vinculado
+        const { data: groupData } = await supabase
+            .from('telegram_groups')
+            .select('chat_id')
+            .eq('id', v.telegram_group_id)
+            .single();
+
+        const botToken = settingsData?.telegram_bot_token;
+        const targetChatId = groupData?.chat_id;
+
+        if (!botToken) {
+            toast.error("Configuração de Bot não encontrada na tabela 'settings'.");
+            return;
+        }
+
+        if (!targetChatId) {
+            toast.error("Este grupo não possui um Chat ID configurado ou não está vinculado à variação.");
+            return;
+        }
+
+        const toastId = toast.loading(`Enviando teste para ${v.name}...`);
+
+        try {
+            const message = `🛠️ <b>TESTE DE CONEXÃO: ${v.name}</b>\n\nEste é um alerta de teste para confirmar que as configurações da variação estão funcionando corretamente.\n\n✅ <b>BOT:</b> OK\n✅ <b>CHAT ID:</b> ${targetChatId}`;
+            
+            const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: targetChatId,
+                    text: message,
+                    parse_mode: 'HTML'
+                })
+            });
+
+            if (!response.ok) throw new Error('Falha ao enviar para o Telegram');
+
+            toast.success("Mensagem de teste enviada!", { id: toastId });
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao enviar teste. Verifique o Bot Token e Chat ID.", { id: toastId });
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            // Sanitização para campos UUID (converte string vazia para null)
+            const preparedData = {
+                ...formData,
+                telegram_group_id: formData.telegram_group_id === '' ? null : formData.telegram_group_id
+            };
+
             if (editingVariation) {
                 const { data, error } = await supabase
                     .from('robot_variations')
-                    .update(formData)
+                    .update(preparedData)
                     .eq('id', editingVariation.id)
                     .select()
                     .single();
@@ -191,7 +320,7 @@ export default function RoboVariations() {
                 setVariations(variations.map(v => v.id === editingVariation.id ? data : v));
                 toast.success('Configurações salvas!');
             } else {
-                const { data, error } = await supabase.from('robot_variations').insert([formData]).select().single();
+                const { data, error } = await supabase.from('robot_variations').insert([preparedData]).select().single();
                 if (error) throw error;
                 setVariations([...variations, data]);
                 toast.success('Nova estratégia criada!');
@@ -361,17 +490,35 @@ export default function RoboVariations() {
                                                 />
                                             </div>
                                             {formData.send_telegram && (
-                                                <div className="mt-2">
-                                                    <select
-                                                        value={formData.telegram_group_id}
-                                                        onChange={(e) => setFormData({ ...formData, telegram_group_id: e.target.value })}
-                                                        className="w-full bg-zinc-900 border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-primary/20 outline-none"
-                                                    >
-                                                        <option value="">Selecione um grupo...</option>
-                                                        {groups.map(group => (
-                                                            <option key={group.id} value={group.id}>{group.name}</option>
-                                                        ))}
-                                                    </select>
+                                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[10px] text-zinc-500 font-bold uppercase">Grupo de Destino</Label>
+                                                        <select
+                                                            value={formData.telegram_group_id}
+                                                            onChange={(e) => setFormData({ ...formData, telegram_group_id: e.target.value })}
+                                                            className="w-full bg-zinc-900 border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-primary/20 outline-none"
+                                                        >
+                                                            <option value="">Selecione um grupo...</option>
+                                                            {groups.map(group => (
+                                                                <option key={group.id} value={group.id}>{group.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label className="text-[10px] text-zinc-500 font-bold uppercase">Minuto p/ Alerta</Label>
+                                                            <span title="Se definido, o Telegram só avisará neste minuto do jogo.">
+                                                                <Info className="w-3 h-3 text-zinc-600 cursor-help" />
+                                                            </span>
+                                                        </div>
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="Imediato (vazio)"
+                                                            value={formData.telegram_alert_minute ?? ''}
+                                                            onChange={(e) => setFormData({ ...formData, telegram_alert_minute: e.target.value ? parseInt(e.target.value) : null })}
+                                                            className="bg-zinc-900 border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-primary/20"
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -519,6 +666,11 @@ export default function RoboVariations() {
                                                         SCORE 0x0
                                                     </div>
                                                 )}
+                                                {v.telegram_alert_minute && (
+                                                    <div className="text-[10px] text-emerald-400 font-black uppercase bg-emerald-500/5 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                                        TELEGRAM @ {v.telegram_alert_minute}'
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="flex items-center">
@@ -564,15 +716,23 @@ export default function RoboVariations() {
                                                 />
                                             </div>
                                         </div>
-
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleOpenEdit(v)}
-                                            className="h-8 px-4 rounded-full text-[10px] font-black text-zinc-400 hover:text-white hover:bg-white/5 uppercase tracking-widest flex items-center gap-2"
-                                        >
-                                            <Edit3 className="w-3 h-3" /> Configurar
-                                        </Button>
+                                        <div className="flex items-center space-x-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => handleTestTelegram(v)}
+                                                className="h-8 w-8 text-zinc-500 hover:text-emerald-500 hover:bg-emerald-500/10"
+                                                title="Testar Conexão Telegram"
+                                            >
+                                                <Send className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(v)} className="h-8 w-8 text-zinc-500 hover:text-white hover:bg-white/10">
+                                                <Edit3 className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => deleteVariation(v.id, v.name)} className="h-8 w-8 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10">
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </div>
                                     </div>
                                 </Card>
 
@@ -683,6 +843,14 @@ export default function RoboVariations() {
                                                     className="h-8 w-8 p-0 rounded-full text-zinc-500 hover:text-white"
                                                 >
                                                     <Edit3 className="w-3.5 h-3.5" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => deleteVariation(v.id, v.name)}
+                                                    className="h-8 w-8 p-0 rounded-full text-zinc-500 hover:text-red-500 hover:bg-red-500/10"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </Button>
                                             </div>
                                         </td>

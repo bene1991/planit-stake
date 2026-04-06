@@ -63,7 +63,7 @@ serve(async (req) => {
   const addLog = (entry: LogEntry) => logsBuffer.push(entry);
 
   try {
-    console.log('Starting Live Robot Execution (v4 - Duplicate Fix)...');
+    console.log('Starting Live Robot Execution (v4 - Parallel Optimized)...');
 
     // 1. Fetch blocked leagues
     const { data: blockedLeagues, error: blockErr } = await supabase
@@ -84,14 +84,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ status: 'No active variations' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Determine global min/max minute boundaries
-    let globalMinMin = 100, globalMaxMin = 0;
-    variations.forEach(v => {
-      if (v.min_minute < globalMinMin) globalMinMin = v.min_minute;
-      if (v.max_minute > globalMaxMin) globalMaxMin = v.max_minute;
-    });
-
-    // 3. Fetch Telegram Settings (batch)
+    // 3. Fetch Telegram Settings
     const { data: settings } = await supabase
       .from('settings')
       .select('owner_id, telegram_bot_token, telegram_chat_id');
@@ -112,189 +105,248 @@ serve(async (req) => {
     }
     console.log(`Fetched ${fixtures.length} live fixtures.`);
 
-    // 5. Processing Loop
-    for (const f of fixtures) {
-      const fixtureId = String(f.fixture.id);
-      const leagueId = String(f.league.id);
-      if (blockedSet.has(leagueId)) continue;
+    // 5. Processing Loop (Parallelized)
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < fixtures.length; i += BATCH_SIZE) {
+      const batch = fixtures.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (f: any) => {
+        const fixtureId = String(f.fixture.id);
+        const leagueId = String(f.league.id);
+        if (blockedSet.has(leagueId)) return;
 
-      const timeElapsed = f.fixture.status.elapsed;
-      const statusLong = f.fixture.status.long;
-      // (REMOVED) if (statusLong !== 'First Half') continue; - This restriction was redundant as robot variations already have min_minute/max_minute.
+        const timeElapsed = f.fixture.status.elapsed;
+        if (timeElapsed < 0 || timeElapsed > 95) return;
 
-      if (timeElapsed < 0 || timeElapsed > 95) continue;
-
-      // Fetch precise stats
-      let statsData;
-      try {
-        statsData = await callApiFootball('fixtures/statistics', { fixture: fixtureId });
-      } catch (e) { console.error(`Error fetching stats for ${fixtureId}:`, e); continue; }
-
-      const rawStats = statsData?.response || [];
-      if (rawStats.length < 2) continue;
-
-      const extractStat = (teamStats: any[], type: string) => {
-        const item = teamStats?.find(s => s.type === type);
-        return item?.value ? parseInt(item.value.toString().replace('%', '')) : 0;
-      };
-
-      const hStats = rawStats[0]?.statistics;
-      const aStats = rawStats[1]?.statistics;
-      const currentStats = {
-        h: { shots: extractStat(hStats, 'Shots on Goal') + extractStat(hStats, 'Shots off Goal'), shotsOn: extractStat(hStats, 'Shots on Goal'), attacks: extractStat(hStats, 'Dangerous Attacks'), possession: extractStat(hStats, 'Ball Possession'), goals: f.goals.home || 0 },
-        a: { shots: extractStat(aStats, 'Shots on Goal') + extractStat(aStats, 'Shots off Goal'), shotsOn: extractStat(aStats, 'Shots on Goal'), attacks: extractStat(aStats, 'Dangerous Attacks'), possession: extractStat(aStats, 'Ball Possession'), goals: f.goals.away || 0 }
-      };
-
-      // Snapshot & Delta logic (simplified for clarity but robust)
-      await supabase.from('live_stats_snapshots').insert({ fixture_id: fixtureId, minute: timeElapsed, stats_json: currentStats });
-      const targetMin = timeElapsed - 10;
-      const { data: oldSnap } = await supabase.from('live_stats_snapshots').select('stats_json').eq('fixture_id', fixtureId).lte('minute', targetMin + 2).gte('minute', targetMin - 2).order('minute', { ascending: false }).limit(1);
-
-      const oldStats = oldSnap?.[0]?.stats_json;
-      const diff = (a: number, b: number) => Math.max(0, a - b);
-      const delta = oldStats 
-        ? { h: { shots: diff(currentStats.h.shots, oldStats.h.shots), shotsOn: diff(currentStats.h.shotsOn, oldStats.h.shotsOn), attacks: diff(currentStats.h.attacks, oldStats.h.attacks) }, a: { shots: diff(currentStats.a.shots, oldStats.a.shots), shotsOn: diff(currentStats.a.shotsOn, oldStats.a.shotsOn), attacks: diff(currentStats.a.attacks, oldStats.a.attacks) } }
-        : { h: { shots: 0, shotsOn: 0, attacks: 0 }, a: { shots: 0, shotsOn: 0, attacks: 0 } };
-
-      // Variation Loop
-      const triggeredVars = [];
-      for (const v of variations) {
-        if (timeElapsed < v.min_minute || timeElapsed > v.max_minute) continue;
-        if (v.require_score_zero && (currentStats.h.goals > 0 || currentStats.a.goals > 0)) continue;
-        
-        // Handle snapshot dependency
-        if (!oldStats && (v.min_dangerous_attacks > 0 || v.pressure_1 > 0 || v.pressure_2 > 0)) {
-           continue; 
+        // Fetch precise stats
+        let statsData;
+        try {
+          statsData = await callApiFootball('fixtures/statistics', { fixture: fixtureId });
+        } catch (e) { 
+          console.error(`Error fetching stats for ${fixtureId}:`, e); 
+          return; 
         }
 
-        // Add max_goals filter if present
-        if (v.max_goals !== null && v.max_goals !== undefined && (currentStats.h.goals + currentStats.a.goals) > v.max_goals) {
-          continue;
-        }
+        const rawStats = statsData?.response || [];
+        if (rawStats.length < 2) return;
 
-        // Add pressure filters (Window 10 Attack thresholds)
-        if (v.pressure_1 > 0 && delta.h.attacks < v.pressure_1) continue;
-        if (v.pressure_2 > 0 && delta.a.attacks < v.pressure_2) continue;
+        const extractStat = (teamStats: any[], type: string) => {
+          const item = teamStats?.find(s => s.type === type);
+          return item?.value ? parseFloat(item.value.toString().replace('%', '')) : 0;
+        };
 
-        // Determine which team is "dominant" based on the last 10 minutes DELTA
-        const hDom = delta.h.attacks >= delta.a.attacks;
-        const dom = hDom ? delta.h : delta.a;
-        const domPoss = hDom ? currentStats.h.possession : currentStats.a.possession;
+        const hStats = rawStats[0]?.statistics;
+        const aStats = rawStats[1]?.statistics;
+        const getShots = (stats: any[]) => {
+          const totalReported = extractStat(stats, 'Total Shots');
+          if (totalReported > 0) return totalReported;
+          return extractStat(stats, 'Shots on Goal') + extractStat(stats, 'Shots off Goal') + extractStat(stats, 'Blocked Shots');
+        };
 
+        const currentStats = {
+          h: { 
+            shots: getShots(hStats), 
+            shotsOn: extractStat(hStats, 'Shots on Goal'), 
+            xg: extractStat(hStats, 'Expected Goals'),
+            corners: extractStat(hStats, 'Corner Kicks'),
+            shotsInBox: extractStat(hStats, 'Shots insidebox'),
+            attacks: extractStat(hStats, 'Dangerous Attacks'), 
+            possession: extractStat(hStats, 'Ball Possession'), 
+            goals: f.goals.home || 0 
+          },
+          a: { 
+            shots: getShots(aStats), 
+            shotsOn: extractStat(aStats, 'Shots on Goal'), 
+            xg: extractStat(aStats, 'Expected Goals'),
+            corners: extractStat(aStats, 'Corner Kicks'),
+            shotsInBox: extractStat(aStats, 'Shots insidebox'),
+            attacks: extractStat(aStats, 'Dangerous Attacks'), 
+            possession: extractStat(aStats, 'Ball Possession'), 
+            goals: f.goals.away || 0 
+          }
+        };
+
+        // Snapshot & Delta logic
+        await supabase.from('live_stats_snapshots').insert({ fixture_id: fixtureId, minute: timeElapsed, stats_json: currentStats });
+        const targetMin = timeElapsed - 10;
+        const { data: oldSnap } = await supabase.from('live_stats_snapshots').select('stats_json').eq('fixture_id', fixtureId).lte('minute', targetMin + 2).gte('minute', targetMin - 2).order('minute', { ascending: false }).limit(1);
+
+        const oldStats = oldSnap?.[0]?.stats_json;
+        const diff = (a: number, b: number) => Math.max(0, a - b);
+        const delta = oldStats 
+          ? { h: { shots: diff(currentStats.h.shots, oldStats.h.shots), shotsOn: diff(currentStats.h.shotsOn, oldStats.h.shotsOn), attacks: diff(currentStats.h.attacks, oldStats.h.attacks) }, a: { shots: diff(currentStats.a.shots, oldStats.a.shots), shotsOn: diff(currentStats.a.shotsOn, oldStats.a.shotsOn), attacks: diff(currentStats.a.attacks, oldStats.a.attacks) } }
+          : { h: { shots: 0, shotsOn: 0, attacks: 0 }, a: { shots: 0, shotsOn: 0, attacks: 0 } };
+
+        // Variation Loop
+        const triggeredVars = [];
         const combinedShots = currentStats.h.shots + currentStats.a.shots;
         const combinedShotsOn = currentStats.h.shotsOn + currentStats.a.shotsOn;
-        const ok = combinedShots >= v.min_shots && 
-                   combinedShotsOn >= v.min_shots_on_target &&
-                   dom.attacks >= v.min_dangerous_attacks && 
-                   domPoss >= v.min_possession &&
-                   combinedShots >= v.min_combined_shots;
 
-        if (ok) triggeredVars.push(v);
-      }
+        for (const v of variations) {
+          if (timeElapsed < v.min_minute || timeElapsed > v.max_minute) continue;
+          if (v.require_score_zero && (currentStats.h.goals > 0 || currentStats.a.goals > 0)) continue;
+          if (!oldStats && (v.min_dangerous_attacks > 0 || v.pressure_1 > 0 || v.pressure_2 > 0)) continue;
+          if (v.max_goals !== null && v.max_goals !== undefined && (currentStats.h.goals + currentStats.a.goals) > v.max_goals) continue;
 
-      if (triggeredVars.length > 0) {
-        // --- DEDUPLICATION & COOLDOWN ---
-        const { data: existing, error: existErr } = await supabase
-          .from('live_alerts')
-          .select('variation_id')
-          .eq('fixture_id', fixtureId);
+          if (v.pressure_1 > 0 && delta.h.attacks < v.pressure_1) continue;
+          if (v.pressure_2 > 0 && delta.a.attacks < v.pressure_2) continue;
 
-        if (existErr) {
-          console.error(`Error checking existing alerts for ${fixtureId}:`, existErr);
-          continue;
-        }
+          const hDom = delta.h.attacks >= delta.a.attacks;
+          const dom = hDom ? delta.h : delta.a;
+          const domPoss = hDom ? currentStats.h.possession : currentStats.a.possession;
 
-        const existingIds = new Set(existing?.map(e => e.variation_id).filter(id => id) || []);
-        const newVars = triggeredVars.filter(v => !existingIds.has(v.id));
+          const minShots = v.min_shots || 0;
+          const minShotsOn = v.min_shots_on_target || 0;
+          const minCorners = v.min_corners || 0;
+          const minShotsInBox = v.min_shots_insidebox || 0;
 
-        if (newVars.length === 0) continue;
+          const minDangerous = v.min_dangerous_attacks || 0;
+          const minPoss = v.min_possession || 0;
+          const minCombined = v.min_combined_shots || 0;
 
-        // --- INSERT NEW ALERTS & GROUP BY DESTINATION (Chat + Bot) ---
-        const alertsByDest = new Map<string, { botToken: string, chatId: string, varNames: string[] }>();
-        const firstSetting = settings?.[0];
+          const hMatch = currentStats.h.shots >= minShots && 
+                         currentStats.h.corners >= minCorners &&
+                         currentStats.h.shotsInBox >= minShotsInBox;
 
-        for (const v of newVars) {
-           // Enhanced Under 2.5 detection (regex to catch Under 2.5 or Under 2,5)
-          const isUnder = v.result_type === 'UNDER_GOALS' || /under 2[.,]5/i.test(v.name || '');
+          const aMatch = currentStats.a.shots >= minShots && 
+                         currentStats.a.shotsOn >= minShotsOn && // Still optional if he wants strictly shots as individual
+                         currentStats.a.corners >= minCorners &&
+                         currentStats.a.shotsInBox >= minShotsInBox;
 
-          const insertData: any = {
-            fixture_id: fixtureId,
-            league_id: leagueId,
-            league_name: f.league.name,
-            home_team: f.teams.home.name,
-            away_team: f.teams.away.name,
-            minute_at_alert: parseInt(String(timeElapsed).replace("'", "")),
-            variation_id: v.id,
-            variation_name: v.name,
-            stats_snapshot: { fullMatch: currentStats, window10Min: delta },
-            win_30_70: null,
-            over15_result: isUnder ? 'ignored' : 'pending',
-            under25_result: isUnder ? 'pending' : 'ignored'
-          };
+          const ok = (hMatch || aMatch) &&
+                     combinedShotsOn >= minShotsOn &&
+                     dom.attacks >= minDangerous && 
+                     domPoss >= minPoss &&
+                     combinedShots >= minCombined;
 
-          const { error: insErr } = await supabase.from('live_alerts').insert(insertData);
-
-          if (insErr) {
-            console.error(`Error inserting alert: ${insErr.message}. Retrying simple insert.`);
-            await supabase.from('live_alerts').insert({ ...insertData, over15_result: undefined, under25_result: undefined });
-          }
-
-          // Priority Logic for Destination and Bot
-          const vOwnerId = (v as any).owner_id;
-          const ts = settingsMap.get(vOwnerId) || firstSetting;
-
-          const group = Array.isArray(v.telegram_groups) ? v.telegram_groups[0] : v.telegram_groups;
-          const destChatId = group?.chat_id || v.telegram_chat_id || ts?.telegram_chat_id;
-          const botToken = group?.bot_token || ts?.telegram_bot_token;
-
-          if (destChatId && botToken) {
-            const destKey = `${botToken}_${destChatId}`;
-            if (!alertsByDest.has(destKey)) {
-              alertsByDest.set(destKey, { botToken, chatId: destChatId, varNames: [] });
-            }
-            alertsByDest.get(destKey)!.varNames.push(v.name);
+          if (ok) {
+            triggeredVars.push(v);
           } else {
-            console.warn(`Missing Telegram Config for variation ${v.name}: chatId=${destChatId}, hasBotToken=${!!botToken}`);
+            let failReason = `Filtro ${v.name} não atingido (Híbrido Individual/Soma): `;
+            const fails = [];
+            
+            const hFails = [];
+            if (currentStats.h.shots < minShots) hFails.push(`S(${currentStats.h.shots}/${minShots})`);
+            if (currentStats.h.corners < (v.min_corners || 0)) hFails.push(`C(${currentStats.h.corners}/${v.min_corners})`);
+            if (currentStats.h.shotsInBox < (v.min_shots_insidebox || 0)) hFails.push(`IB(${currentStats.h.shotsInBox}/${v.min_shots_insidebox})`);
+
+            const aFails = [];
+            if (currentStats.a.shots < minShots) aFails.push(`S(${currentStats.a.shots}/${minShots})`);
+            if (currentStats.a.corners < (v.min_corners || 0)) aFails.push(`C(${currentStats.a.corners}/${v.min_corners})`);
+            if (currentStats.a.shotsInBox < (v.min_shots_insidebox || 0)) aFails.push(`IB(${currentStats.a.shotsInBox}/${v.min_shots_insidebox})`);
+
+            if (hFails.length > 0 && aFails.length > 0) {
+                fails.push(`Pressão Individual (F)`);
+            }
+            
+            if (combinedShotsOn < minShotsOn) fails.push(`No Alvo Somado (${combinedShotsOn}/${minShotsOn})`);
+            if (dom.attacks < minDangerous) fails.push(`Ataques Perigosos (${dom.attacks}/${minDangerous})`);
+            if (domPoss < minPoss) fails.push(`Posse (${domPoss}%/${minPoss}%)`);
+            if (combinedShots < minCombined) fails.push(`Volume Total (${combinedShots}/${minCombined})`);
+
+            addLog({
+              fixture_id: fixtureId,
+              league_id: leagueId,
+              variation_id: v.id,
+              stage: 'VARIATION_EVALUATION',
+              reason: failReason + fails.join(' | '),
+              details: { stats: currentStats, minute: timeElapsed }
+            });
           }
         }
 
-        // --- DISPATCH TELEGRAM PER DESTINATION ---
-        for (const { botToken, chatId, varNames } of alertsByDest.values()) {
-          const varList = varNames.join(', ');
-          const league = f.league.name;
-          const h = f.teams.home.name;
-          const a = f.teams.away.name;
-          const score = `${currentStats.h.goals}x${currentStats.a.goals}`;
+        if (triggeredVars.length > 0 || true) { // Always check for delayed alerts even if no new triggers
+          const { data: existing } = await supabase.from('live_alerts').select('*').eq('fixture_id', fixtureId);
+          const existingMap = new Map(existing?.map(e => [e.variation_id, e]) || []);
+          
+          const alertsByDest = new Map();
+          
+          for (const v of variations) {
+            const matchesFilter = triggeredVars.some(tv => tv.id === v.id);
+            const isNewTrigger = matchesFilter && !existingMap.has(v.id);
+            const isDelayedPending = existingMap.has(v.id) && 
+                                    !(existingMap.get(v.id) as any).telegram_sent && 
+                                    v.telegram_alert_minute && 
+                                    timeElapsed >= v.telegram_alert_minute;
 
-          const msg = `🚨 <b>ROBÔ AO VIVO</b>\n\n` +
-            `⚽ <b>${h} ${score} ${a}</b>\n` +
-            `🏟 ${league} | ⏱ ${timeElapsed}'\n\n` +
-            `📊 <b>STATS (ATUAL):</b>\n` +
-            `• Posse: ${currentStats.h.possession}% - ${currentStats.a.possession}%\n` +
-            `• Chutes: ${currentStats.h.shots} - ${currentStats.a.shots}\n` +
-            `• Ataques Perigosos: ${currentStats.h.attacks} - ${currentStats.a.attacks}\n\n` +
-            `🔥 <b>JANELA 10 MIN:</b>\n` +
-            `• Chutes: ${delta.h.shots} - ${delta.a.shots}\n` +
-            `• Ataques Perigosos: ${delta.h.attacks} - ${delta.a.attacks}\n\n` +
-            `⭐ <b>VARIATIONS:</b> ${varList}`;
+            if (isNewTrigger || isDelayedPending) {
+              const shouldSendTelegram = v.send_telegram && (!v.telegram_alert_minute || timeElapsed >= v.telegram_alert_minute);
+              
+              if (isNewTrigger) {
+                const insertData = {
+                  fixture_id: fixtureId, league_id: leagueId, league_name: f.league.name,
+                  home_team: f.teams.home.name, away_team: f.teams.away.name,
+                  minute_at_alert: timeElapsed, variation_id: v.id, variation_name: v.name,
+                  stats_snapshot: { fullMatch: currentStats, window10Min: delta },
+                  telegram_sent: shouldSendTelegram,
+                  telegram_alert_minute: v.telegram_alert_minute
+                };
+                await supabase.from('live_alerts').insert(insertData);
+              } else if (isDelayedPending) {
+                await supabase.from('live_alerts').update({ telegram_sent: true }).eq('fixture_id', fixtureId).eq('variation_id', v.id);
+              }
 
-          await sendTelegram(botToken, chatId, msg);
-          addLog({ 
-            fixture_id: fixtureId, 
-            league_id: leagueId, 
-            stage: 'ALERT_SENT', 
-            reason: 'Telegram sent', 
-            details: { variations: varList, chat_id: chatId } 
-          });
+              if (shouldSendTelegram) {
+                const ts = settingsMap.get(v.owner_id) || settings?.[0];
+                const group = Array.isArray(v.telegram_groups) ? v.telegram_groups[0] : v.telegram_groups;
+                const destChatId = group?.chat_id || v.telegram_chat_id || ts?.telegram_chat_id;
+                const botToken = group?.bot_token || ts?.telegram_bot_token;
+
+                if (destChatId && botToken) {
+                  const key = `${botToken}_${destChatId}`;
+                  if (!alertsByDest.has(key)) alertsByDest.set(key, { botToken, chatId: destChatId, varNames: [] });
+                  
+                  const alertLabel = v.telegram_alert_minute ? `${v.name} (@${v.telegram_alert_minute}')` : v.name;
+                  alertsByDest.get(key).varNames.push(alertLabel);
+                }
+              }
+            }
+          }
+
+          if (alertsByDest.size > 0) {
+            for (const { botToken, chatId, varNames } of alertsByDest.values()) {
+              const msg = `🔥 <b>FREE FIRE: NOVO ALERTA</b>\n` +
+                          `________________________________\n\n` +
+                          `⚽ <b>${f.teams.home.name} vs ${f.teams.away.name}</b>\n` +
+                          `🏆 ${f.league.name}\n` +
+                          `⏰ Minuto: ${timeElapsed}'\n` +
+                          `🎯 Filtro: ${varNames.join(', ')}\n\n` +
+                          `📊 <b>ESTATÍSTICAS EM TEMPO REAL</b>\n` +
+                          `________________________________\n\n` +
+                          `📉 xG: ${currentStats.h.xg} - ${currentStats.a.xg}\n` +
+                          `⛳ Cantos: ${currentStats.h.corners} - ${currentStats.a.corners}\n` +
+                          `🥊 Na Área: ${currentStats.h.shotsInBox} - ${currentStats.a.shotsInBox}\n` +
+                          `🚀 Chutes: ${currentStats.h.shots} - ${currentStats.a.shots}\n` +
+                          `🎯 No Alvo: ${currentStats.h.shotsOn} - ${currentStats.a.shotsOn}\n` +
+                          `⌛ Posse: ${currentStats.h.possession}% - ${currentStats.a.possession}%\n\n` +
+                          `💰 <a href="https://www.bolsadeaposta.com/">ABRIR NA EXCHANGE</a>`;
+              
+              await sendTelegram(botToken, chatId, msg);
+              addLog({ 
+                fixture_id: fixtureId, 
+                league_id: leagueId, 
+                stage: 'ALERT_SENT', 
+                reason: 'Telegram sent', 
+                details: { variations: varNames.join(', ') } 
+              });
+            }
+          }
         }
-      }
+      }));
     }
 
-    // Cleanup & Flush
+    // Cleanup snapshots older than 4 hours
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     await supabase.from('live_stats_snapshots').delete().lt('created_at', fourHoursAgo);
 
+    // 6. Flush Logs to DB
+    if (logsBuffer.length > 0) {
+      console.log(`Flushing ${logsBuffer.length} logs to database...`);
+      const { error: logErr } = await supabase.from('robot_execution_logs').insert(logsBuffer);
+      if (logErr) console.error('Error flushing logs:', logErr);
+    }
+
     return new Response(JSON.stringify({ status: 'ok', logs: logsBuffer.length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
   } catch (error) {
     console.error('Cron Error:', error);
     return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 });

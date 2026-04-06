@@ -5,9 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    AreaChart, Area, ReferenceArea, ReferenceLine, ReferenceDot, Cell
+    AreaChart, Area, ReferenceArea, ReferenceLine, ReferenceDot, Cell, LabelList
 } from 'recharts';
-import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap, Save, FileSpreadsheet, Check, ChevronDown, Filter } from "lucide-react";
+import { Loader2, Plus, Trash2, RotateCcw, TrendingUp, Info, BarChart3, List, Zap, Save, FileSpreadsheet, Check, ChevronDown, Filter, Send, Clock } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, parseISO, startOfDay, endOfDay, subDays, isToday, isWithinInterval, subWeeks, subMonths } from 'date-fns';
@@ -157,6 +157,11 @@ export default function RoboReports() {
     const [redStake, setRedStake] = useState<number>(2.0);
     const [simName, setSimName] = useState<string>("");
     const [uniqueGamesOnly, setUniqueGamesOnly] = useState<boolean>(false);
+    const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+    // Estados para o filtro de análise de gols por minuto (calculadora de intervalo)
+    const [analysisMin, setAnalysisMin] = useState<number>(66);
+    const [analysisMax, setAnalysisMax] = useState<number>(90);
 
     const { simulations, saveSimulation, deleteSimulation } = useStrategySimulations();
 
@@ -198,7 +203,7 @@ export default function RoboReports() {
 
             const [alerts, activeVariationsRes, games] = await Promise.all([
                 fetchAll('live_alerts'),
-                supabase.from('robot_variations').select('id, name').eq('active', true),
+                supabase.from('robot_variations').select('id, name, telegram_alert_minute').eq('active', true),
                 fetchAll('games', 'api_fixture_id, status, final_score_home, final_score_away')
             ]);
 
@@ -396,7 +401,8 @@ export default function RoboReports() {
             equityCurveData.push({
                 index: index + 1,
                 profit: parseFloat(cumulativeStakes.toFixed(2)),
-                game: `${game.home_team} vs ${game.away_team}`
+                game: `${game.home_team} vs ${game.away_team}`,
+                date: game.created_at
             });
         });
 
@@ -437,6 +443,9 @@ export default function RoboReports() {
                 // User request: Show ALL goals in the list
                 const goalsToShow = game.allGoalEvents.sort((a: any, b: any) => (a.minute + (a.extra || 0)) - (b.minute + (b.extra || 0)));
 
+                const activeVar = variations.find(v => v.id === game.variation_id);
+                const telegramAlertMinute = game.telegram_alert_minute || activeVar?.telegram_alert_minute;
+
                 return {
                     fixture_id: game.fixture_id,
                     date: game.created_at,
@@ -446,13 +455,16 @@ export default function RoboReports() {
                     variation: game.variation_name,
                     variation_id: game.variation_id,
                     minute_at_alert: game.minute_at_alert,
+                    telegram_sent: game.telegram_sent,
+                    telegram_alert_minute: telegramAlertMinute,
                     result: finalResult,
                     goals: goalsToShow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
+                    raw_goal_events: game.allGoalEvents || [],
                     final_score: game.final_score || 'N/A'
                 };
             }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
         };
-    }, [simulationBase, entryMin, exitMin, greenStake, redStake, activeTab]);
+    }, [simulationBase, entryMin, exitMin, greenStake, redStake, activeTab, variations]);
 
     // Cálculo da performance por variação dentro da simulação
     const simulationByVariation = useMemo(() => {
@@ -490,6 +502,47 @@ export default function RoboReports() {
             }))
             .sort((a, b) => b.profit - a.profit);
     }, [simulationResult, greenStake, redStake, selectedVariations]);
+
+    const simulationGoalsByMinute = useMemo(() => {
+        if (!simulationResult) return [];
+
+        const minuteCounts: Record<number, number> = {};
+        for (let i = 1; i <= 90; i++) minuteCounts[i] = 0;
+
+        simulationResult.analyzedGames.forEach(game => {
+            if (game.raw_goal_events) {
+                game.raw_goal_events.forEach((g: any) => {
+                    const min = g.minute;
+                    if (min >= 1 && min <= 90) {
+                        minuteCounts[min]++;
+                    }
+                });
+            }
+        });
+
+        const data = Object.entries(minuteCounts).map(([min, count]) => ({
+            minute: parseInt(min),
+            gols: count
+        }));
+
+        const sortedCounts = [...data].sort((a, b) => b.gols - a.gols);
+        const top10Minutes = new Set(sortedCounts.slice(0, 10).filter(d => d.gols > 0).map(d => d.minute));
+
+        return data.map(item => {
+            const isTop10 = top10Minutes.has(item.minute);
+            return {
+                ...item,
+                isTop10,
+                label: isTop10 ? item.gols : ""
+            };
+        });
+    }, [simulationResult]);
+
+    const totalGoalsInAnalysisRange = useMemo(() => {
+        return simulationGoalsByMinute
+            .filter(item => item.minute >= analysisMin && item.minute <= analysisMax)
+            .reduce((acc, item) => acc + item.gols, 0);
+    }, [simulationGoalsByMinute, analysisMin, analysisMax]);
 
     const handleSaveSim = () => {
         if (!simName) {
@@ -532,6 +585,46 @@ export default function RoboReports() {
         // Os filtros precisam ser aplicados manualmente pelo usuário para refletir o snapshot se desejar,
         // mas o Recalcular usa os filtros ATUAIS da tela conforme pedido.
         toast.info(`Recalculando ${sim.name} com base nos filtros atuais.`);
+    };
+
+    const handleSyncGoals = async () => {
+        const fixtureIds = processedFixtures
+            .filter(f => f.fixture_id)
+            .map(f => f.fixture_id);
+
+        if (fixtureIds.length === 0) {
+            toast.error("Nenhum jogo filtrado para sincronizar");
+            return;
+        }
+
+        setIsSyncing(true);
+        const toastId = toast.loading(`Sincronizando gols de ${fixtureIds.length} jogos...`);
+
+        try {
+            const chunkSize = 50;
+            for (let i = 0; i < fixtureIds.length; i += chunkSize) {
+                const chunk = fixtureIds.slice(i, i + chunkSize);
+                const { error } = await supabase.functions.invoke('live-alerts-resolver-v3', {
+                    body: { 
+                        manual_fixture_ids: chunk,
+                        force_full_history: true // Let the backend know to ignore age limits
+                    }
+                });
+
+                if (error) {
+                    console.error("Batch error:", error);
+                    // continue with other batches but maybe notify
+                }
+            }
+
+            toast.success("Sincronização concluída com sucesso!", { id: toastId });
+            refetch();
+        } catch (err: any) {
+            console.error("Erro na sincronização:", err);
+            toast.error(`Falha ao sincronizar: ${err.message || 'Erro desconhecido'}`, { id: toastId });
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     // Data Processing for Charts
@@ -912,11 +1005,25 @@ export default function RoboReports() {
                             variant="outline"
                             size="icon"
                             className={cn(
+                                "bg-[#1e2333] border-[#2a3142] text-amber-400 hover:text-amber-300 transition-all",
+                                isSyncing && "animate-pulse brightness-125"
+                            )}
+                            onClick={handleSyncGoals}
+                            disabled={isSyncing || isRefetching}
+                            title="Sincronizar Gols (API)"
+                        >
+                            <Zap className={cn("w-4 h-4", isSyncing && "fill-current")} />
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className={cn(
                                 "bg-[#1e2333] border-[#2a3142] text-gray-400 hover:text-white transition-all",
                                 isRefetching && "animate-spin brightness-125 text-emerald-400"
                             )}
                             onClick={() => refetch()}
-                            disabled={isRefetching}
+                            disabled={isRefetching || isSyncing}
                             title="Atualizar dados"
                         >
                             <RotateCcw className="w-4 h-4" />
@@ -1305,7 +1412,9 @@ export default function RoboReports() {
                                                         <th className="px-4 py-3 font-medium">Data</th>
                                                         <th className="px-4 py-3 font-medium">Partida</th>
                                                         <th className="px-4 py-3 font-medium">Liga</th>
+                                                        <th className="px-4 py-3 font-medium">Método</th>
                                                         <th className="px-4 py-3 font-medium">Alerta</th>
+                                                        <th className="px-4 py-3 font-medium text-center">Telegram</th>
                                                         <th className="px-4 py-3 font-medium">Gols (Total)</th>
                                                         <th className="px-4 py-2 font-medium text-right">Fim</th>
                                                         <th className="px-4 py-3 font-medium text-right">Resultado</th>
@@ -1319,12 +1428,37 @@ export default function RoboReports() {
                                                             </td>
                                                             <td className="px-4 py-3 font-medium text-gray-200">
                                                                 <div className="flex flex-col">
-                                                                    <span className="truncate max-w-[150px] sm:max-w-none">{game.home_team} vs {game.away_team}</span>
+                                                                    <span className="truncate max-w-[150px] sm:max-w-none" title={`${game.home_team} vs ${game.away_team}`}>{game.home_team} vs {game.away_team}</span>
                                                                     <span className="text-[9px] text-gray-500">ID: {game.fixture_id}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]">{game.league}</td>
+                                                            <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]" title={game.league}>{game.league}</td>
+                                                            <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]" title={game.variation}>{game.variation}</td>
                                                             <td className="px-4 py-3 text-gray-400">{game.minute_at_alert}'</td>
+                                                            <td className="px-4 py-3 text-gray-400">
+                                                                <div className="flex items-center gap-1.5 justify-center">
+                                                                    {game.telegram_alert_minute ? (
+                                                                        <div className={`flex flex-col items-center gap-0.5 p-1 rounded-md border ${game.telegram_sent ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
+                                                                            {game.telegram_sent ? (
+                                                                                <>
+                                                                                    <Send className="w-3.5 h-3.5 text-emerald-500" />
+                                                                                    <span className="text-[8px] font-bold text-emerald-500 uppercase">Enviado</span>
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                                                    <span className="text-[8px] font-bold text-amber-500 uppercase">@{game.telegram_alert_minute}'</span>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="flex flex-col items-center opacity-30">
+                                                                            <Send className="w-3.5 h-3.5 text-gray-500" />
+                                                                            <span className="text-[8px] font-bold text-gray-500 uppercase">Imediato</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </td>
                                                             <td className="px-4 py-3">
                                                                 {game.goals ? (
                                                                     <span className="text-emerald-400 font-medium">{game.goals}</span>
@@ -1369,7 +1503,12 @@ export default function RoboReports() {
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} opacity={0.5} />
-                                        <XAxis dataKey="index" hide />
+                                        <XAxis 
+                                            dataKey="date" 
+                                            tick={{ fontSize: 10 }}
+                                            stroke="#8b949e"
+                                            tickFormatter={(date) => date ? format(parseISO(date), 'dd/MM') : ''}
+                                        />
                                         <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
                                         <Tooltip
                                             contentStyle={{ backgroundColor: '#1a1f2d', border: '1px solid #2a3142', color: '#fff' }}
@@ -1389,6 +1528,119 @@ export default function RoboReports() {
                                 </ResponsiveContainer>
                             </CardContent>
                         </Card>
+
+                        {/* Gols por Minuto dentro da Simulação */}
+                        <Card className="bg-[#1e2333] border-[#2a3142]">
+                            <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+                                <div>
+                                    <CardTitle className="text-base flex items-center text-white">
+                                        <BarChart3 className="w-4 h-4 mr-2 text-blue-400" /> GOLS POR MINUTO
+                                    </CardTitle>
+                                    <CardDescription className="text-xs">Distribuição de todos os gols reais (1-90') nos jogos filtrados.</CardDescription>
+                                </div>
+                                
+                                {/* Filtro de Análise de Intervalo solicitado pelo usuário */}
+                                <div className="flex items-center space-x-2 bg-[#2a3142]/60 p-2 rounded-lg border border-blue-500/20 shadow-lg group">
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[9px] text-gray-400 font-bold uppercase">Analisar Intervalo</span>
+                                            <button 
+                                                onClick={() => { setAnalysisMin(66); setAnalysisMax(90); }}
+                                                className="text-[9px] text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100 flex items-center gap-1"
+                                                title="Resetar para 66-90"
+                                            >
+                                                <RotateCcw className="w-2.5 h-2.5" />
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center space-x-1">
+                                            <Input 
+                                                type="number" 
+                                                value={analysisMin} 
+                                                onChange={(e) => setAnalysisMin(parseInt(e.target.value) || 0)}
+                                                className="w-12 h-7 text-xs bg-[#1a1f2d] border-[#3b4256] text-white p-1 text-center font-mono focus:border-blue-500/50 transition-colors" 
+                                            />
+                                            <span className="text-gray-500 text-xs">a</span>
+                                            <Input 
+                                                type="number" 
+                                                value={analysisMax} 
+                                                onChange={(e) => setAnalysisMax(parseInt(e.target.value) || 0)}
+                                                className="w-12 h-7 text-xs bg-[#1a1f2d] border-[#3b4256] text-white p-1 text-center font-mono focus:border-blue-500/50 transition-colors" 
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="h-8 w-px bg-gray-700 mx-1"></div>
+                                    <div className="flex flex-col items-center px-1">
+                                        <span className="text-[9px] text-blue-400 font-bold uppercase mb-0.5">Total de Gols</span>
+                                        <div className="flex items-center gap-2">
+                                            <Badge className="bg-blue-600 hover:bg-blue-500 text-white font-mono py-0.5 px-2 text-xs">
+                                                {totalGoalsInAnalysisRange}
+                                            </Badge>
+                                            <span className="text-[10px] text-gray-500 font-mono">
+                                                ({simulationGoalsByMinute.reduce((acc, item) => acc + item.gols, 0) > 0 
+                                                    ? ((totalGoalsInAnalysisRange / simulationGoalsByMinute.reduce((acc, item) => acc + item.gols, 0)) * 100).toFixed(1) 
+                                                    : 0}%)
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="h-[400px] pt-4 relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart 
+                                        data={simulationGoalsByMinute} 
+                                        margin={{ top: 20, right: 10, left: -25, bottom: 20 }}
+                                        barCategoryGap="20%"
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} opacity={0.4} />
+                                        <XAxis 
+                                            dataKey="minute" 
+                                            stroke="#8b949e" 
+                                            tick={{ fontSize: 9 }} 
+                                            interval={4}
+                                            label={{ value: 'Minuto', position: 'insideBottomRight', offset: -10, fill: '#8b949e', fontSize: 10 }}
+                                        />
+                                        <YAxis stroke="#8b949e" tick={{ fontSize: 10 }} />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#1a1f2d', border: '1px solid #2a3142', borderRadius: '8px' }}
+                                            itemStyle={{ color: '#fff' }}
+                                            cursor={{ fill: 'white', opacity: 0.05 }}
+                                            formatter={(value: number) => [`${value} Gols`, 'Frequência']}
+                                            labelFormatter={(label: number) => `Minuto: ${label}'`}
+                                        />
+                                        
+                                        {/* Highlight do intervalo de análise */}
+                                        <ReferenceArea 
+                                            x1={analysisMin} 
+                                            x2={analysisMax} 
+                                            fill="#3b82f6" 
+                                            fillOpacity={0.06} 
+                                            stroke="#3b82f6" 
+                                            strokeOpacity={0.2} 
+                                            strokeDasharray="4 4"
+                                        />
+
+                                        <Bar dataKey="gols">
+                                            <LabelList 
+                                                dataKey="label" 
+                                                position="top" 
+                                                fill="#ef4444" 
+                                                fontSize={9} 
+                                                fontWeight="bold"
+                                                offset={5} 
+                                            />
+                                            {simulationGoalsByMinute.map((entry: any, index: number) => (
+                                                <Cell 
+                                                    key={`cell-${index}`} 
+                                                    fill={entry.isTop10 ? '#ef4444' : '#3b82f6'} 
+                                                    fillOpacity={entry.minute >= analysisMin && entry.minute <= analysisMax ? 1 : 0.6}
+                                                />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+
 
                         {/* Performance por Variação dentro da Simulação */}
                         <Card className="bg-[#1e2333] border-[#2a3142]">
@@ -1451,6 +1703,9 @@ export default function RoboReports() {
                                 </div>
                             </CardContent>
                         </Card>
+
+
+
                     </div>
                 </div>
 
