@@ -908,18 +908,6 @@ export default function RoboReports() {
                         </TabsTrigger>
                     </TabsList>
 
-                    {robotStatus && (
-                        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-[#2a3142] rounded-md border border-[#3b4256]" title={robotStatus.status === 'error' ? robotStatus.last_error_message : `Último sinal: ${format(new Date(robotStatus.last_ping), 'HH:mm:ss')}`}>
-                            <div className="relative flex h-3 w-3">
-                                <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", isRobotOnline ? "bg-emerald-400" : "bg-rose-400")}></span>
-                                <span className={cn("relative inline-flex rounded-full h-3 w-3", isRobotOnline ? "bg-emerald-500" : "bg-rose-500")}></span>
-                            </div>
-                            <span className={cn("text-xs font-semibold", isRobotOnline ? "text-emerald-400" : "text-rose-400")}>
-                                {isRobotOnline ? "Robô Online" : "Robô Offline/Erro"}
-                            </span>
-                        </div>
-                    )}
-
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <Select value={selectedLeague} onValueChange={setSelectedLeague}>
                             <SelectTrigger className="w-[180px] bg-[#2a3142] border-[#3b4256]">

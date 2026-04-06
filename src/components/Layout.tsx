@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
 import { BottomNav } from "./BottomNav";
+import { RobotStatusBadge } from "./RobotStatusBadge";
 import { cn } from "@/lib/utils";
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
@@ -62,6 +63,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
+            <RobotStatusBadge />
             <ThemeToggle />
 
             {user ? (
