@@ -1,0 +1,117 @@
+[
+  {
+    "id": "11018df3-7ed2-459a-9c18-87366a8a3aa1",
+    "name": "4 Ch Alvo + Posse 70% - 5,5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "59c37221-1932-4ffc-be84-8018db998977",
+    "name": "Chute 4/4 - -0,5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "f4e44f02-6cd4-4e23-a716-6059d85be3ea",
+    "name": "Chute 5/2 - 53 stk 50 - 100",
+    "telegram_alert_minute": 63
+  },
+  {
+    "id": "9136d38e-ab07-4013-97ca-34270eca604a",
+    "name": "Free Fire - Chute 6/2",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "85ba261f-67d8-4dab-99d2-118107b179a3",
+    "name": "Free Fire - Chute 5/3",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "c6b30a11-399a-48e7-b79e-b3f33487d3bb",
+    "name": "Free Fire - 3 Ch Alvo + Posse 70%",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "0ae3eff4-0307-4f9c-ba6a-65552b49fd54",
+    "name": "Chute 6/4",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "23404ee2-6a82-4201-bb00-3247739e2185",
+    "name": "2 Ch Alvo + Posse 65% - 1,5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "d2695f37-bac9-4313-84c7-baaaa68fda41",
+    "name": "3 Ch Alvo + Posse 60% - 9,5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "74e59528-df8f-485b-bfc3-0c9481a3f35a",
+    "name": "PRESSAO_MODERADA_VOLUME",
+    "telegram_alert_minute": 62
+  },
+  {
+    "id": "1ea2a09a-9106-4e07-8ed3-404c83a50f16",
+    "name": "2 Ch Alvo + Posse 60% - 7,5 STK",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "14e34890-7fcf-4ea0-865a-b63f5da127ad",
+    "name": "2 Ch Alvo + Posse 70% - 5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "442620af-b8b2-4b17-8e6f-2f9e2f2596f3",
+    "name": "4 Ch Alvo + Posse 60% - 1 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "4d2546fa-03e4-455a-a199-f8bd1d14c467",
+    "name": "4 Ch Alvo + Posse 65% - 4,5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "8e2f8e73-54b7-49ce-864d-c684b2f3cdd1",
+    "name": "Chute 4/2 - -7 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "21013a0a-30a2-46dc-85ee-949c6dee5598",
+    "name": "Chute 4/3 - 1,5 stk",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "c4e0532a-8544-4968-916d-deaef3475028",
+    "name": "3 Ch Alvo + Posse 65%",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "88c616c6-26f9-41c2-b9ee-c038558f80b5",
+    "name": "PRESSAO_EXTREMA_GOL_IMINENTE",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "eeab9bf4-17cd-4d78-baaf-75d6d468aef3",
+    "name": "PRESSAO_FORTE_DOMINIO",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "e15837ef-b0c3-4aa3-b473-753276a9e140",
+    "name": "Pressão Moderada",
+    "telegram_alert_minute": 63
+  },
+  {
+    "id": "68ddb879-d07b-4a81-b5f2-baa88477f0f6",
+    "name": "Pressão Alta Unilateral (5 Stakes de lucro)",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "f8692a04-83da-4489-a234-96463c0f75cd",
+    "name": "Pressão Extrema",
+    "telegram_alert_minute": null
+  },
+  {
+    "id": "9945400c-f59f-4622-8ea0-427a4475c151",
+    "name": "Chute 6/3",
+    "telegram_alert_minute": null
+  }
+]

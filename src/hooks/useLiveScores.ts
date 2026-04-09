@@ -63,7 +63,7 @@ export interface RedCardEvent {
 export type OnRedCardDetected = (event: RedCardEvent) => void;
 
 // Default intervals (used as fallback)
-const DEFAULT_ACTIVE_INTERVAL = 15 * 1000;
+const DEFAULT_ACTIVE_INTERVAL = 60 * 1000;
 const REFRESH_INTERVAL_IDLE = 120 * 1000;
 
 // Minimum interval between calls (throttle protection)

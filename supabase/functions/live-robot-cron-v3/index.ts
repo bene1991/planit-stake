@@ -18,7 +18,7 @@ async function callApiFootball(endpoint: string, params: Record<string, unknown>
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     },
     body: JSON.stringify({ endpoint, ...params }),
   });
@@ -115,7 +115,31 @@ serve(async (req) => {
         if (blockedSet.has(leagueId)) return;
 
         const timeElapsed = f.fixture.status.elapsed;
+        if (timeElapsed === null || timeElapsed === undefined) return;
         if (timeElapsed < 0 || timeElapsed > 95) return;
+
+        const totalGoals = (f.goals.home || 0) + (f.goals.away || 0);
+
+        // Pre-filter: Check if any active variation could potentially match this game's minute and score
+        const potentialVars = variations.filter(v => {
+          if (timeElapsed < v.min_minute || timeElapsed > v.max_minute) return false;
+          if (v.require_score_zero && totalGoals > 0) return false;
+          // Note: max_goals null/undefined means no limit
+          if (v.max_goals !== null && v.max_goals !== undefined && totalGoals > v.max_goals) return false;
+          return true;
+        });
+
+        if (potentialVars.length === 0) {
+          // Economy: Skip API call if no variation matches current state
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: `Ignorado (Economia): Minuto ${timeElapsed}' ou Placar ${f.goals.home}x${f.goals.away} fora das janelas ativas`,
+            details: { league: f.league.name, teams: `${f.teams.home.name} vs ${f.teams.away.name}` }
+          });
+          return;
+        }
 
         // Fetch precise stats
         let statsData;
@@ -249,7 +273,12 @@ serve(async (req) => {
               variation_id: v.id,
               stage: 'VARIATION_EVALUATION',
               reason: failReason + fails.join(' | '),
-              details: { stats: currentStats, minute: timeElapsed }
+              details: { 
+                league: f.league.name,
+                teams: `${f.teams.home.name} vs ${f.teams.away.name}`,
+                stats: currentStats, 
+                minute: timeElapsed 
+              }
             });
           }
         }

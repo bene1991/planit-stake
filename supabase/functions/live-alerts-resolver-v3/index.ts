@@ -80,10 +80,14 @@ serve(async (req: Request) => {
       .select('id, fixture_id, home_team, away_team, league_name, variation_name, win_30_70, goal_ht_result, over15_result, under25_result, corners_at_alert, final_score, ht_score, goal_events, goal_events_captured, minute_at_alert, created_at, stats_snapshot')
       .gte('created_at', sevenDaysAgo);
 
+    const fourMinutesAgo = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+
     if (manualFixtureIds) {
       alertsQuery = alertsQuery.in('fixture_id', manualFixtureIds);
     } else {
-      alertsQuery = alertsQuery.or('win_30_70.is.null,final_score.is.null,goal_events_captured.is.false,ht_score.is.null,goal_ht_result.eq.pending,over15_result.eq.pending,under25_result.eq.pending');
+      alertsQuery = alertsQuery
+        .or('win_30_70.is.null,final_score.is.null,goal_events_captured.is.false,ht_score.is.null,goal_ht_result.eq.pending,over15_result.eq.pending,under25_result.eq.pending')
+        .or(`updated_at.is.null,updated_at.lt.${fourMinutesAgo}`);
     }
 
     const { data: pendingAlerts, error: fetchErr } = await alertsQuery

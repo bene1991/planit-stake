@@ -50,6 +50,8 @@ export default function RoboLogs() {
             case 'CLEANUP': return <Badge variant="outline" className="text-zinc-400">Limpeza DB</Badge>;
             case 'DISCARDED_PRE_FILTER': return <Badge variant="secondary" className="bg-emerald-900/40 text-emerald-300">Pré-Filtro</Badge>;
             case 'DISCARDED_FILTER': return <Badge variant="secondary" className="bg-red-900/40 text-red-300">Filtro Rejeitado</Badge>;
+            case 'VARIATION_EVALUATION': return <Badge variant="secondary" className="bg-slate-700/50 text-slate-300 border-slate-600">Análise Filtro</Badge>;
+            case 'ALERT_SENT': return <Badge variant="secondary" className="bg-green-600/20 text-green-400 border-green-500/20">Alerta Enviado</Badge>;
             default: return <Badge variant="outline">{stage}</Badge>;
         }
     };

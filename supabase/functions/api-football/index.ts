@@ -22,7 +22,7 @@ const CACHE_TTL: Record<string, number> = {
   live: 5 * 1000,
   fixtures_date: 10 * 60 * 1000,
   fixtures_id: 10 * 1000,
-  statistics: 15 * 1000,
+  statistics: 55 * 1000,
   events: 15 * 1000,
   leagues: 24 * 60 * 60 * 1000,
   teams: 24 * 60 * 60 * 1000,
