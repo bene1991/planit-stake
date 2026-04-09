@@ -491,7 +491,8 @@ export default function RoboReports() {
                     result: finalResult,
                     goals: goalsToShow.map((g: any) => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
                     raw_goal_events: game.allGoalEvents || [],
-                    final_score: game.final_score || 'N/A'
+                    final_score: game.final_score || 'N/A',
+                    stats_snapshot: game.stats_snapshot || game.stats_at_alert
                 };
             }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
         };
