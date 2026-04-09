@@ -15,6 +15,7 @@ import { Calendar as CalendarIcon, Activity } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import GoalHazardChart from './components/GoalHazardChart';
+import { AlertStatsModal } from '@/components/robo/AlertStatsModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -158,6 +159,12 @@ export default function RoboReports() {
     const [simName, setSimName] = useState<string>("");
     const [uniqueGamesOnly, setUniqueGamesOnly] = useState<boolean>(false);
     const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+    // Stats Modal state
+    const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+    const [selectedGameStats, setSelectedGameStats] = useState<any | null>(null);
+    const [selectedHomeTeam, setSelectedHomeTeam] = useState("");
+    const [selectedAwayTeam, setSelectedAwayTeam] = useState("");
 
     // Estados para o filtro de análise de gols por minuto (calculadora de intervalo)
     const [analysisMin, setAnalysisMin] = useState<number>(66);
@@ -897,6 +904,14 @@ export default function RoboReports() {
 
     return (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <AlertStatsModal
+                isOpen={isStatsModalOpen}
+                onClose={() => setIsStatsModalOpen(false)}
+                rawStats={selectedGameStats}
+                homeTeam={selectedHomeTeam}
+                awayTeam={selectedAwayTeam}
+            />
+
             <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-[#1e2333]/50 p-4 rounded-lg border border-[#2a3142]">
                 <div className="flex flex-col md:flex-row gap-4 flex-1">
                     <TabsList className="bg-[#1e2333] border border-[#2a3142]">
@@ -1437,7 +1452,8 @@ export default function RoboReports() {
                                                         <th className="px-4 py-3 font-medium">Partida</th>
                                                         <th className="px-4 py-3 font-medium">Liga</th>
                                                         <th className="px-4 py-3 font-medium">Método</th>
-                                                        <th className="px-4 py-3 font-medium">Alerta</th>
+                                                        <th className="px-4 py-3 font-medium text-center">Alerta</th>
+                                                        <th className="px-4 py-3 font-medium text-center whitespace-nowrap">Stats Momento</th>
                                                         <th className="px-4 py-3 font-medium text-center">Telegram</th>
                                                         <th className="px-4 py-3 font-medium">Gols (Total)</th>
                                                         <th className="px-4 py-2 font-medium text-right">Fim</th>
@@ -1458,7 +1474,24 @@ export default function RoboReports() {
                                                             </td>
                                                             <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]" title={game.league}>{game.league}</td>
                                                             <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]" title={game.variation}>{game.variation}</td>
-                                                            <td className="px-4 py-3 text-gray-400">{game.minute_at_alert}'</td>
+                                                            <td className="px-4 py-3 text-gray-400 text-center">{game.minute_at_alert}'</td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className={cn("h-7 w-7", game.stats_snapshot ? "hover:bg-blue-500/20 text-blue-400" : "opacity-30 cursor-not-allowed")}
+                                                                    onClick={() => {
+                                                                        if (!game.stats_snapshot) return;
+                                                                        setSelectedGameStats(game.stats_snapshot);
+                                                                        setSelectedHomeTeam(game.home_team);
+                                                                        setSelectedAwayTeam(game.away_team);
+                                                                        setIsStatsModalOpen(true);
+                                                                    }}
+                                                                    title={game.stats_snapshot ? "Ver estatísticas no momento do alerta" : "Estatísticas indisponíveis"}
+                                                                >
+                                                                    <BarChart3 className="h-4 w-4" />
+                                                                </Button>
+                                                            </td>
                                                             <td className="px-4 py-3 text-gray-400">
                                                                 <div className="flex items-center gap-1.5 justify-center">
                                                                     {game.telegram_alert_minute ? (
