@@ -112,11 +112,38 @@ serve(async (req) => {
       await Promise.all(batch.map(async (f: any) => {
         const fixtureId = String(f.fixture.id);
         const leagueId = String(f.league.id);
-        if (blockedSet.has(leagueId)) return;
+        if (blockedSet.has(leagueId)) {
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: 'Liga bloqueada',
+            details: { league: f.league?.name, teams: `${f.teams.home.name} vs ${f.teams.away.name}`, minute: timeElapsed }
+          });
+          return;
+        }
 
         const timeElapsed = f.fixture.status.elapsed;
-        if (timeElapsed === null || timeElapsed === undefined) return;
-        if (timeElapsed < 0 || timeElapsed > 95) return;
+        if (timeElapsed === null || timeElapsed === undefined) {
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: `Status: ${f.fixture.status.short || 'Break Time'}`,
+            details: { league: f.league?.name, teams: `${f.teams.home.name} vs ${f.teams.away.name}`, minute: null }
+          });
+          return;
+        }
+        if (timeElapsed < 0 || timeElapsed > 95) {
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: `Fora da faixa de minutos`,
+            details: { league: f.league?.name, teams: `${f.teams.home.name} vs ${f.teams.away.name}`, minute: timeElapsed }
+          });
+          return;
+        }
 
         const totalGoals = (f.goals.home || 0) + (f.goals.away || 0);
 
