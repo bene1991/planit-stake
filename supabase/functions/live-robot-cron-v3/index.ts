@@ -173,12 +173,28 @@ serve(async (req) => {
         try {
           statsData = await callApiFootball('fixtures/statistics', { fixture: fixtureId });
         } catch (e) { 
-          console.error(`Error fetching stats for ${fixtureId}:`, e); 
+          console.error(`Error fetching stats for ${fixtureId}:`, e);
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: `Erro API: Falha ao buscar estatísticas`,
+            details: { league: f.league?.name, teams: `${f.teams?.home?.name} vs ${f.teams?.away?.name}`, minute: timeElapsed }
+          });
           return; 
         }
 
         const rawStats = statsData?.response || [];
-        if (rawStats.length < 2) return;
+        if (rawStats.length < 2) {
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: `Stats indisponíveis: Sem cobertura ao vivo pela API`,
+            details: { league: f.league?.name, teams: `${f.teams?.home?.name} vs ${f.teams?.away?.name}`, minute: timeElapsed }
+          });
+          return;
+        }
 
         const extractStat = (teamStats: any[], type: string) => {
           const item = teamStats?.find(s => s.type === type);
