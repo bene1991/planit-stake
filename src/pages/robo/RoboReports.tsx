@@ -1277,8 +1277,8 @@ export default function RoboReports() {
             </TabsContent>
 
             <TabsContent value="simulation" className="space-y-6 mt-0">
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    <Card className="bg-[#1e2333] border-[#2a3142] lg:col-span-1">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <Card className="bg-[#1e2333] border-[#2a3142] lg:col-span-2 h-fit sticky top-6">
                         <CardHeader>
                             <CardTitle className="text-lg flex items-center">
                                 <TrendingUp className="w-5 h-5 mr-2 text-emerald-400" /> Configuração
@@ -1410,7 +1410,7 @@ export default function RoboReports() {
                         </CardContent>
                     </Card>
 
-                    <div className="lg:col-span-3 space-y-6">
+                    <div className="lg:col-span-10 space-y-6">
                         {simulationResult && (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1445,9 +1445,9 @@ export default function RoboReports() {
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent className="p-0">
-                                        <div className="overflow-x-auto max-h-[400px]">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-[#2a3142]/50 text-gray-400 text-[10px] uppercase sticky top-0">
+                                        <div className="max-h-[650px] overflow-y-auto custom-scrollbar">
+                                            <table className="w-full text-sm text-left border-collapse">
+                                                <thead className="bg-[#2a3142]/50 text-gray-400 text-[10px] uppercase sticky top-0 z-10">
                                                     <tr>
                                                         <th className="px-4 py-3 font-medium">Data</th>
                                                         <th className="px-4 py-3 font-medium">Partida</th>
@@ -1469,12 +1469,12 @@ export default function RoboReports() {
                                                             </td>
                                                             <td className="px-4 py-3 font-medium text-gray-200">
                                                                 <div className="flex flex-col">
-                                                                    <span className="truncate max-w-[150px] sm:max-w-none" title={`${game.home_team} vs ${game.away_team}`}>{game.home_team} vs {game.away_team}</span>
+                                                                    <span title={`${game.home_team} vs ${game.away_team}`}>{game.home_team} vs {game.away_team}</span>
                                                                     <span className="text-[9px] text-gray-500">ID: {game.fixture_id}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]" title={game.league}>{game.league}</td>
-                                                            <td className="px-4 py-3 text-gray-400 text-xs truncate max-w-[100px]" title={game.variation}>{game.variation}</td>
+                                                            <td className="px-4 py-3 text-gray-400 text-xs" title={game.league}>{game.league}</td>
+                                                            <td className="px-4 py-3 text-gray-400 text-xs" title={game.variation}>{game.variation}</td>
                                                             <td className="px-4 py-3 text-gray-400 text-center">{game.minute_at_alert}'</td>
                                                             <td className="px-4 py-3 text-center">
                                                                 <Button

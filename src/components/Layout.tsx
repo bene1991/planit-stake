@@ -29,7 +29,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     <div className="min-h-screen flex flex-col bg-background">
       {/* Fixed Header */}
       <header className="h-16 border-b border-border/30 bg-background/80 backdrop-blur-xl shrink-0 sticky top-0 z-50">
-        <div className="container mx-auto h-full px-4 lg:px-6 flex items-center justify-between">
+        <div className="max-w-[98%] mx-auto h-full px-4 lg:px-6 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <span className="text-xl lg:text-2xl font-bold">
@@ -168,7 +168,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
 
       {/* Main Content */}
       <main className="flex-1 relative">
-        <div className="container mx-auto px-4 lg:px-6 py-6 lg:py-8 animate-fade-in">
+        <div className="max-w-[98%] mx-auto px-2 lg:px-4 py-6 lg:py-8 animate-fade-in text-foreground">
           {children}
         </div>
       </main>

@@ -95,6 +95,13 @@ serve(async (req) => {
       }
     });
 
+    // 3.5 Fetch Pending Telegram Alerts
+    const { data: pendingAlerts } = await supabase
+      .from('live_alerts')
+      .select('fixture_id')
+      .eq('telegram_sent', false);
+    const pendingSet = new Set(pendingAlerts?.map(a => String(a.fixture_id)) || []);
+
     // 4. Fetch Live Fixtures
     let fixtures = [];
     try {
@@ -156,8 +163,8 @@ serve(async (req) => {
           return true;
         });
 
-        if (potentialVars.length === 0) {
-          // Economy: Skip API call if no variation matches current state
+        if (potentialVars.length === 0 && !pendingSet.has(fixtureId)) {
+          // Economy: Skip API call if no variation matches current state AND no pending alerts
           addLog({
             fixture_id: fixtureId,
             league_id: leagueId,
