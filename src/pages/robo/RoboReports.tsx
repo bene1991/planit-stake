@@ -1449,34 +1449,34 @@ export default function RoboReports() {
                                             <table className="w-full text-sm text-left border-collapse">
                                                 <thead className="bg-[#2a3142]/50 text-gray-400 text-[10px] uppercase sticky top-0 z-10">
                                                     <tr>
-                                                        <th className="px-2 py-2 font-medium">Data</th>
-                                                        <th className="px-2 py-2 font-medium">Partida</th>
-                                                        <th className="px-2 py-2 font-medium">Liga</th>
-                                                        <th className="px-2 py-2 font-medium">Método</th>
-                                                        <th className="px-2 py-2 font-medium text-center">Alerta</th>
-                                                        <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Stats Momento</th>
-                                                        <th className="px-2 py-2 font-medium text-center">Telegram</th>
-                                                        <th className="px-2 py-2 font-medium">Gols (Total)</th>
-                                                        <th className="px-2 py-1.5 font-medium text-right">Fim</th>
-                                                        <th className="px-2 py-2 font-medium text-right">Resultado</th>
+                                                        <th className="px-1.5 py-1.5 font-medium w-16">Data</th>
+                                                        <th className="px-1.5 py-1.5 font-medium min-w-[160px]">Partida</th>
+                                                        <th className="px-1.5 py-1.5 font-medium min-w-[100px]">Liga</th>
+                                                        <th className="px-1.5 py-1.5 font-medium min-w-[80px]">Método</th>
+                                                        <th className="px-1.5 py-1.5 font-medium text-center w-12">Alerta</th>
+                                                        <th className="px-1.5 py-1.5 font-medium text-center w-20">Stats</th>
+                                                        <th className="px-1.5 py-1.5 font-medium text-center w-20">Telegram</th>
+                                                        <th className="px-1.5 py-1.5 font-medium text-center w-16">Gols</th>
+                                                        <th className="px-1.5 py-1.5 font-medium text-right w-12">Fim</th>
+                                                        <th className="px-1.5 py-1.5 font-medium text-right w-20">Rdo</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-[#2a3142]">
                                                     {simulationResult.analyzedGames.map((game: any, idx: number) => (
                                                         <tr key={`${game.fixture_id}-${idx}`} className="hover:bg-white/5 transition-colors border-b border-[#2a3142]/30">
-                                                            <td className="px-2 py-1.5 text-gray-400 text-[10px] whitespace-nowrap">
+                                                            <td className="px-1.5 py-1 text-gray-400 text-[10px] whitespace-nowrap">
                                                                 {game.date ? format(parseISO(game.date), 'dd/MM HH:mm') : '-'}
                                                             </td>
-                                                            <td className="px-2 py-1.5 font-medium text-gray-200 text-[11px]">
-                                                                <div className="flex flex-col">
-                                                                    <span title={`${game.home_team} vs ${game.away_team}`} className="whitespace-nowrap">{game.home_team} vs {game.away_team}</span>
+                                                            <td className="px-1.5 py-1 font-medium text-gray-200 text-[11px]">
+                                                                <div className="flex flex-col truncate max-w-[180px]">
+                                                                    <span title={`${game.home_team} vs ${game.away_team}`} className="truncate">{game.home_team} vs {game.away_team}</span>
                                                                     <span className="text-[8px] text-gray-500">ID: {game.fixture_id}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-2 py-1.5 text-gray-400 text-[10px] whitespace-nowrap" title={game.league}>{game.league}</td>
-                                                            <td className="px-2 py-1.5 text-gray-400 text-[10px] whitespace-nowrap" title={game.variation}>{game.variation}</td>
-                                                            <td className="px-2 py-1.5 text-gray-400 text-center text-[11px]">{game.minute_at_alert}'</td>
-                                                            <td className="px-2 py-1.5 text-center">
+                                                            <td className="px-1.5 py-1 text-gray-400 text-[10px] truncate max-w-[100px]" title={game.league}>{game.league}</td>
+                                                            <td className="px-1.5 py-1 text-gray-400 text-[10px] truncate max-w-[80px]" title={game.variation}>{game.variation}</td>
+                                                            <td className="px-1.5 py-1 text-gray-400 text-center text-[11px]">{game.minute_at_alert}'</td>
+                                                            <td className="px-1.5 py-1 text-center">
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
@@ -1493,7 +1493,7 @@ export default function RoboReports() {
                                                                     <BarChart3 className="h-3.5 w-3.5" />
                                                                 </Button>
                                                             </td>
-                                                            <td className="px-2 py-1.5 text-gray-400">
+                                                            <td className="px-1.5 py-1 text-gray-400">
                                                                 <div className="flex items-center gap-1.5 justify-center">
                                                                     {game.telegram_alert_minute ? (
                                                                         <div className={`flex flex-col items-center gap-0.5 p-1 rounded-md border ${game.telegram_sent ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
