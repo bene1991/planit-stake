@@ -31,7 +31,7 @@ const MethodsList: React.FC = () => {
       while (true) {
         const { data, error } = await supabase
           .from('live_alerts')
-          .select('fixture_id, variation_id, created_at, final_score, goal_events, telegram_sent')
+          .select('fixture_id, variation_id, created_at, final_score, goal_events, telegram_sent, league_id, league_name, minute_at_alert')
           .range(from, from + 999);
         if (error) throw error;
         if (!data || data.length === 0) break;
@@ -47,12 +47,16 @@ const MethodsList: React.FC = () => {
     if (!methods || !alerts) return [];
     return methods.map(m => {
       const variationIds: string[] = m.filters_snapshot?.variation_ids || [];
+      const quarantine = new Set((m.filters_snapshot?.quarantine_leagues || []).map(String));
       const entryMin = m.entry_minute;
       const exitMin = m.exit_minute;
       const greenStake = m.green_stake;
       const redStake = m.red_stake;
 
-      const filtered = alerts.filter(a => variationIds.includes(a.variation_id));
+      const filtered = alerts.filter(a =>
+        variationIds.includes(a.variation_id) &&
+        !quarantine.has(String(a.league_id))
+      );
       const byFixture = new Map<string, any>();
       for (const a of filtered) {
         const k = String(a.fixture_id);
