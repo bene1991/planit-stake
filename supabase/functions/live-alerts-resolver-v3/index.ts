@@ -9,20 +9,30 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
 const GS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbw9s_3Y5-qXTo_8p7S-F6lH-t1-h8p-q-P-s-s-R-r-T-E-L/exec';
 
+
 async function callApiFootball(endpoint: string) {
+  console.log(`[Resolver] Calling API: ${endpoint}`);
   const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Authorization': `Bearer ${LEGACY_ANON_KEY}`, // Using Legacy key for reliable internal AUTH
     },
     body: JSON.stringify({ endpoint }),
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error(`[Resolver] API Error (${res.status}):`, errorText);
+    throw new Error(`API error: ${res.status}`);
+  }
+  
   return res.json();
 }
+
 
 async function syncToGoogleSheets(data: any) {
   try {
@@ -77,12 +87,13 @@ serve(async (req: Request) => {
     // 1. Fetch Alerts - Use updated_at to ensure fair processing of the entire pool
     let alertsQuery = supabase
       .from('live_alerts')
-      .select('id, fixture_id, home_team, away_team, league_name, variation_name, win_30_70, goal_ht_result, over15_result, under25_result, corners_at_alert, final_score, ht_score, goal_events, goal_events_captured, minute_at_alert, created_at, stats_snapshot')
+      .select('id, fixture_id, home_team, away_team, league_name, variation_name, win_30_70, goal_ht_result, over15_result, under25_result, final_score, ht_score, goal_events, goal_events_captured, minute_at_alert, created_at, stats_snapshot')
       .gte('created_at', sevenDaysAgo);
 
     const fourMinutesAgo = new Date(Date.now() - 4 * 60 * 1000).toISOString();
 
     if (manualFixtureIds) {
+      console.log(`[Resolver] Filtering for ${manualFixtureIds.length} manual fixtures`);
       alertsQuery = alertsQuery.in('fixture_id', manualFixtureIds);
     } else {
       alertsQuery = alertsQuery
@@ -92,7 +103,8 @@ serve(async (req: Request) => {
 
     const { data: pendingAlerts, error: fetchErr } = await alertsQuery
       .order('updated_at', { ascending: true, nullsFirst: true })
-      .limit(100);
+      .limit(500); // Increased limit for better coverage
+
 
     // 2. Fetch Active Games
     let gamesQuery = supabase

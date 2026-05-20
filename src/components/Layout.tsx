@@ -21,6 +21,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
     { to: "/method-analysis", label: "Análise", icon: FlaskConical },
     { to: "/robo", label: "Robô", icon: Bot },
+    { to: "/robo/methods", label: "Métodos", icon: FlaskConical },
   ];
 
   const isActive = (path: string) => location.pathname === path;

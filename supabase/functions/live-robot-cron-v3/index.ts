@@ -13,12 +13,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
 
+const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
+
 async function callApiFootball(endpoint: string, params: Record<string, unknown> = {}) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Authorization': `Bearer ${LEGACY_ANON_KEY}`,
+      'apikey': LEGACY_ANON_KEY
     },
     body: JSON.stringify({ endpoint, ...params }),
   });
@@ -84,6 +87,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ status: 'No active variations' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // 2b. Build per-variation quarantined leagues map from methods (strategy_simulations)
+    const { data: methods } = await supabase
+      .from('strategy_simulations')
+      .select('filters_snapshot');
+    const quarantineByVariation = new Map<string, Set<string>>();
+    for (const m of methods || []) {
+      const fs: any = m.filters_snapshot || {};
+      const vIds: string[] = fs.variation_ids || [];
+      const qLeagues: string[] = fs.quarantine_leagues || [];
+      if (!vIds.length || !qLeagues.length) continue;
+      for (const vid of vIds) {
+        if (!quarantineByVariation.has(vid)) quarantineByVariation.set(vid, new Set());
+        for (const l of qLeagues) quarantineByVariation.get(vid)!.add(l);
+      }
+    }
+
     // 3. Fetch Telegram Settings
     const { data: settings } = await supabase
       .from('settings')
@@ -94,23 +113,33 @@ serve(async (req) => {
         settingsMap.set(s.owner_id, s);
       }
     });
-
-    // 3.5 Fetch Pending Telegram Alerts
-    const { data: pendingAlerts } = await supabase
-      .from('live_alerts')
-      .select('fixture_id')
-      .eq('telegram_sent', false);
-    const pendingSet = new Set(pendingAlerts?.map(a => String(a.fixture_id)) || []);
-
-    // 4. Fetch Live Fixtures
+    // 4. Fetch Live Fixtures first so we can filter pending alerts
     let fixtures = [];
     try {
       const data = await callApiFootball('fixtures?live=all');
       fixtures = data?.response || [];
     } catch (e) {
       console.error('Failed to fetch live fixtures:', e);
+      addLog({
+        fixture_id: '999999',
+        league_id: '999999',
+        stage: 'DISCARDED_PRE_FILTER',
+        reason: `ERRO AO BUSCAR FIXTURES: ${e}`,
+        details: { error: String(e) }
+      });
     }
     console.log(`Fetched ${fixtures.length} live fixtures.`);
+    const fixtureIds = fixtures.map((f: any) => String(f.fixture.id));
+
+    // 3.5 Fetch Pending Telegram Alerts (Specifically for current live games)
+    const { data: pendingAlerts } = await supabase
+      .from('live_alerts')
+      .select('fixture_id')
+      .eq('telegram_sent', false)
+      .in('fixture_id', fixtureIds); // BLINDAGEM: Only fetch relevant live alerts
+    const pendingSet = new Set(pendingAlerts?.map(a => String(a.fixture_id)) || []);
+
+
 
     // 5. Processing Loop (Parallelized)
     const BATCH_SIZE = 5;
@@ -119,6 +148,8 @@ serve(async (req) => {
       await Promise.all(batch.map(async (f: any) => {
         const fixtureId = String(f.fixture.id);
         const leagueId = String(f.league.id);
+        const timeElapsed = f.fixture.status.elapsed;
+
         if (blockedSet.has(leagueId)) {
           addLog({
             fixture_id: fixtureId,
@@ -129,8 +160,6 @@ serve(async (req) => {
           });
           return;
         }
-
-        const timeElapsed = f.fixture.status.elapsed;
         if (timeElapsed === null || timeElapsed === undefined) {
           addLog({
             fixture_id: fixtureId,
@@ -193,13 +222,25 @@ serve(async (req) => {
 
         const rawStats = statsData?.response || [];
         if (rawStats.length < 2) {
-          addLog({
-            fixture_id: fixtureId,
-            league_id: leagueId,
-            stage: 'DISCARDED_PRE_FILTER',
-            reason: `Stats indisponíveis: Sem cobertura ao vivo pela API`,
-            details: { league: f.league?.name, teams: `${f.teams?.home?.name} vs ${f.teams?.away?.name}`, minute: timeElapsed }
-          });
+          // SAFEGUARD: Only discard if game is past 15 minutes.
+          // In early minutes, stats may be temporarily empty for major leagues.
+          if (timeElapsed >= 15) {
+            addLog({
+              fixture_id: fixtureId,
+              league_id: leagueId,
+              stage: 'DISCARDED_PRE_FILTER',
+              reason: `Stats indisponíveis: Sem cobertura ao vivo pela API (${timeElapsed}')`,
+              details: { league: f.league?.name, teams: `${f.teams?.home?.name} vs ${f.teams?.away?.name}`, minute: timeElapsed }
+            });
+          } else {
+            addLog({
+              fixture_id: fixtureId,
+              league_id: leagueId,
+              stage: 'DISCARDED_PRE_FILTER',
+              reason: `Stats ainda não disponíveis (${timeElapsed}' < 15') — aguardando próximo ciclo`,
+              details: { league: f.league?.name, teams: `${f.teams?.home?.name} vs ${f.teams?.away?.name}`, minute: timeElapsed }
+            });
+          }
           return;
         }
 
@@ -364,7 +405,21 @@ serve(async (req) => {
                 await supabase.from('live_alerts').update({ telegram_sent: true }).eq('fixture_id', fixtureId).eq('variation_id', v.id);
               }
 
-              if (shouldSendTelegram) {
+              // Quarentena por método: pula Telegram se essa variação tem essa liga em quarentena (compara por league_id)
+              const qSet = quarantineByVariation.get(v.id);
+              const isQuarantined = qSet?.has(String(f.league.id)) || qSet?.has(f.league.name);
+              if (isQuarantined) {
+                addLog({
+                  fixture_id: fixtureId,
+                  league_id: leagueId,
+                  variation_id: v.id,
+                  stage: 'ALERT_SENT',
+                  reason: 'Telegram SKIPPED (liga em quarentena)',
+                  details: { league: f.league.name, variation: v.name }
+                });
+              }
+
+              if (shouldSendTelegram && !isQuarantined) {
                 const ts = settingsMap.get(v.owner_id) || settings?.[0];
                 const group = Array.isArray(v.telegram_groups) ? v.telegram_groups[0] : v.telegram_groups;
                 const destChatId = group?.chat_id || v.telegram_chat_id || ts?.telegram_chat_id;
@@ -372,17 +427,18 @@ serve(async (req) => {
 
                 if (destChatId && botToken) {
                   const key = `${botToken}_${destChatId}`;
-                  if (!alertsByDest.has(key)) alertsByDest.set(key, { botToken, chatId: destChatId, varNames: [] });
-                  
+                  if (!alertsByDest.has(key)) alertsByDest.set(key, { botToken, chatId: destChatId, varNames: [], variationIds: [] });
+
                   const alertLabel = v.telegram_alert_minute ? `${v.name} (@${v.telegram_alert_minute}')` : v.name;
                   alertsByDest.get(key).varNames.push(alertLabel);
+                  alertsByDest.get(key).variationIds.push(v.id);
                 }
               }
             }
           }
 
           if (alertsByDest.size > 0) {
-            for (const { botToken, chatId, varNames } of alertsByDest.values()) {
+            for (const { botToken, chatId, varNames, variationIds } of alertsByDest.values()) {
               const score = `${f.goals.home ?? 0} x ${f.goals.away ?? 0}`;
               const msg = `✅ <b>ROBÔ OFICIAL (COM NOVO MINUTO)</b>\n` +
                           `________________________________\n\n` +
@@ -399,19 +455,126 @@ serve(async (req) => {
                           `🎯 No Alvo: ${currentStats.h.shotsOn} - ${currentStats.a.shotsOn}\n` +
                           `⌛ Posse: ${currentStats.h.possession}% - ${currentStats.a.possession}%\n\n` +
                           `💰 <a href="https://www.bolsadeaposta.com/">ABRIR NA EXCHANGE</a>`;
-              
-              await sendTelegram(botToken, chatId, msg);
-              addLog({ 
-                fixture_id: fixtureId, 
-                league_id: leagueId, 
-                stage: 'ALERT_SENT', 
-                reason: 'Telegram sent', 
-                details: { variations: varNames.join(', ') } 
-              });
+
+              const sent = await sendTelegram(botToken, chatId, msg);
+              if (sent) {
+                addLog({
+                  fixture_id: fixtureId,
+                  league_id: leagueId,
+                  stage: 'ALERT_SENT',
+                  reason: 'Telegram sent',
+                  details: { variations: varNames.join(', ') }
+                });
+              } else {
+                await supabase.from('live_alerts')
+                  .update({ telegram_sent: false })
+                  .eq('fixture_id', fixtureId)
+                  .in('variation_id', variationIds);
+                addLog({
+                  fixture_id: fixtureId,
+                  league_id: leagueId,
+                  stage: 'ALERT_SENT',
+                  reason: 'Telegram send FAILED (will retry in Pass 2)',
+                  details: { variations: varNames.join(', '), chat_id: chatId }
+                });
+              }
             }
           }
         }
       }));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PASS 2: Resilient Recovery — Process ALL pending delayed Telegram alerts
+    // This catches any alerts that were missed due to API errors (429, etc.)
+    // during the fixture processing loop above.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('[RESILIENT] Checking for pending delayed Telegram alerts...');
+    const { data: allPending } = await supabase
+      .from('live_alerts')
+      .select('*')
+      .eq('telegram_sent', false)
+      .not('telegram_alert_minute', 'is', null)
+      .in('fixture_id', fixtureIds); // BLINDAGEM: Only check live games
+
+    if (allPending && allPending.length > 0) {
+      console.log(`[RESILIENT] Found ${allPending.length} pending delayed alerts to check.`);
+
+      for (const alert of allPending) {
+        // Find the matching live fixture to check current minute
+        const liveFixture = fixtures.find((fx: any) => String(fx.fixture.id) === alert.fixture_id);
+        if (!liveFixture) continue; // Game not live (already finished or not started)
+
+        const currentMinute = liveFixture.fixture?.status?.elapsed;
+        if (!currentMinute || currentMinute < alert.telegram_alert_minute) continue; // Not yet time
+
+        // Find the variation config for this alert
+        const variation = variations.find((v: any) => v.id === alert.variation_id);
+        if (!variation || !variation.send_telegram) continue;
+
+        // Quarentena: pula se essa variação tem essa liga em quarentena em algum método (compara por league_id)
+        const qSet2 = quarantineByVariation.get(variation.id);
+        if (qSet2?.has(String(liveFixture.league.id)) || qSet2?.has(liveFixture.league.name)) {
+          // marca como enviado pra parar de reprocessar; loga skip
+          await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
+          addLog({
+            fixture_id: alert.fixture_id,
+            league_id: alert.league_id,
+            variation_id: variation.id,
+            stage: 'ALERT_SENT',
+            reason: 'Telegram SKIPPED (liga em quarentena - Pass 2)',
+            details: { league: liveFixture.league.name, variation: variation.name }
+          });
+          continue;
+        }
+
+        // Get Telegram destination
+        const ts = settingsMap.get(variation.owner_id) || settings?.[0];
+        const group = Array.isArray(variation.telegram_groups) ? variation.telegram_groups[0] : variation.telegram_groups;
+        const destChatId = group?.chat_id || variation.telegram_chat_id || ts?.telegram_chat_id;
+        const botToken = group?.bot_token || ts?.telegram_bot_token;
+
+        if (!destChatId || !botToken) continue;
+
+        // Use saved snapshot from when the alert was first triggered
+        const stats = alert.stats_snapshot?.fullMatch;
+        const score = `${liveFixture.goals.home ?? 0} x ${liveFixture.goals.away ?? 0}`;
+
+        const msg = `✅ <b>ROBÔ OFICIAL (RECUPERADO @${alert.telegram_alert_minute}')</b>\n` +
+                    `________________________________\n\n` +
+                    `⚽ <b>${alert.home_team} ${score} ${alert.away_team}</b>\n` +
+                    `🏆 ${alert.league_name}\n` +
+                    `⏰ Minuto Atual: ${currentMinute}' (Sinal: ${alert.minute_at_alert}')\n` +
+                    `🎯 Filtro: ${alert.variation_name}\n\n` +
+                    (stats
+                      ? `📊 <b>ESTATÍSTICAS (Snapshot ${alert.minute_at_alert}')</b>\n` +
+                        `________________________________\n\n` +
+                        `📉 xG: ${stats.h?.xg || 0} - ${stats.a?.xg || 0}\n` +
+                        `⛳ Cantos: ${stats.h?.corners || 0} - ${stats.a?.corners || 0}\n` +
+                        `🥊 Na Área: ${stats.h?.shotsInBox || 0} - ${stats.a?.shotsInBox || 0}\n` +
+                        `🚀 Chutes: ${stats.h?.shots || 0} - ${stats.a?.shots || 0}\n` +
+                        `🎯 No Alvo: ${stats.h?.shotsOn || 0} - ${stats.a?.shotsOn || 0}\n` +
+                        `⌛ Posse: ${stats.h?.possession || 0}% - ${stats.a?.possession || 0}%\n\n`
+                      : '') +
+                    `💰 <a href="https://www.bolsadeaposta.com/">ABRIR NA EXCHANGE</a>`;
+
+        const sent = await sendTelegram(botToken, destChatId, msg);
+        if (sent) {
+          await supabase.from('live_alerts')
+            .update({ telegram_sent: true })
+            .eq('fixture_id', alert.fixture_id)
+            .eq('variation_id', alert.variation_id);
+
+          addLog({
+            fixture_id: alert.fixture_id,
+            league_id: alert.league_id,
+            stage: 'ALERT_SENT',
+            reason: `Telegram sent (resilient recovery @${alert.telegram_alert_minute}')`,
+            details: { variation: alert.variation_name, minute: currentMinute }
+          });
+          console.log(`[RESILIENT] ✅ Sent delayed alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
+        }
+      }
     }
 
     // Cleanup snapshots older than 4 hours

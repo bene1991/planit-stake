@@ -228,6 +228,17 @@ serve(async (req) => {
 
     console.log(`[CACHE MISS] ${cacheKey}`);
 
+    // === Rate Limit Brake ===
+    // If we know we're close to the API limit (280/min), pause until next window
+    if (lastRateLimit && lastRateLimit.remaining < 30) {
+      const secondsUntilReset = 62 - new Date().getSeconds(); // next minute + 2s safety
+      if (secondsUntilReset > 0 && secondsUntilReset <= 65) {
+        console.log(`[RATE BRAKE] Only ${lastRateLimit.remaining} remaining. Pausing ${secondsUntilReset}s for window reset...`);
+        await new Promise(r => setTimeout(r, secondsUntilReset * 1000));
+        lastRateLimit = null; // Reset after waiting
+      }
+    }
+
     // Build query string
     const queryParams = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -253,9 +264,30 @@ serve(async (req) => {
         headers: { 'x-apisports-key': apiKey },
       });
 
+      // === 429 Specific Handling ===
+      // Don't waste retries on rate limit - wait for window reset
+      if (response.status === 429) {
+        const waitTime = Math.max(30, 62 - new Date().getSeconds());
+        console.warn(`[429 BRAKE] Rate limited! Waiting ${waitTime}s (attempt ${attempt}/${maxRetries})...`);
+        await response.text().catch(() => {}); // consume body
+        lastRateLimit = { limit: 280, remaining: 0, used: 280 };
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, waitTime * 1000));
+          continue;
+        }
+        throw new Error(`API-Football rate limited (429) after ${maxRetries} attempts. Quota: 280/min.`);
+      }
+
       const responseText = await response.text();
       try {
         data = JSON.parse(responseText);
+        // Log response summary for debugging
+        const resultsCount = data?.results ?? data?.response?.length ?? '?';
+        const hasErrors = data?.errors && Object.keys(data.errors).length > 0;
+        console.log(`[API RESPONSE] ${cacheKey} | status: ${response.status} | results: ${resultsCount} | errors: ${hasErrors ? JSON.stringify(data.errors) : 'none'}`);
+        if (resultsCount === 0 || hasErrors) {
+          console.log(`[API RESPONSE DETAIL] ${JSON.stringify(data).substring(0, 1000)}`);
+        }
         break; // success
       } catch {
         console.error(`[API-Football] Attempt ${attempt}/${maxRetries} Non-JSON response (${response.status}):`, responseText.substring(0, 200));
@@ -295,9 +327,18 @@ serve(async (req) => {
     }
 
     // Save to both L1 and L2 caches ONLY if valid
-    setL1(cacheKey, data, ttl);
-    setL2(cacheKey, data, ttl); // fire-and-forget
-    console.log(`[CACHED L1+L2] ${cacheKey} for ${ttl / 1000}s`);
+    // SAFEGUARD: Never cache empty stats/events responses — they may be temporarily unavailable
+    // (e.g. first minutes of a match). Caching [] would block retries for the entire TTL window.
+    const isEmptyResponse = Array.isArray(data?.response) && data.response.length === 0;
+    const isStatisticsOrEvents = cacheKey.startsWith('fixtures/statistics') || cacheKey.startsWith('fixtures/events');
+
+    if (isEmptyResponse && isStatisticsOrEvents) {
+      console.log(`[CACHE SKIP] Empty response for ${cacheKey} — not caching to allow retry next cycle`);
+    } else {
+      setL1(cacheKey, data, ttl);
+      setL2(cacheKey, data, ttl); // fire-and-forget
+      console.log(`[CACHED L1+L2] ${cacheKey} for ${ttl / 1000}s`);
+    }
 
     const responseData = {
       ...data,

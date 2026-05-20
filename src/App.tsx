@@ -49,6 +49,8 @@ const Auth = lazyWithRetry(() => import("./pages/Auth"));
 const Account = lazyWithRetry(() => import("./pages/Account"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 const MatchbookOdds = lazyWithRetry(() => import("./pages/MatchbookOdds"));
+const MethodDetail = lazyWithRetry(() => import("./pages/robo/MethodDetail"));
+const MethodsList = lazyWithRetry(() => import("./pages/robo/MethodsList"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
 const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
 
@@ -114,6 +116,8 @@ const AppContent = () => {
             <Route path="/daily-planning" element={<Navigate to="/" replace />} />
             <Route path="/bankroll" element={<ProtectedRoute><Layout><BankrollManagement /></Layout></ProtectedRoute>} />
             <Route path="/robo" element={<ProtectedRoute><Layout><RoboAoVivo /></Layout></ProtectedRoute>} />
+            <Route path="/robo/methods" element={<ProtectedRoute><Layout><MethodsList /></Layout></ProtectedRoute>} />
+            <Route path="/robo/methods/:id" element={<ProtectedRoute><Layout><MethodDetail /></Layout></ProtectedRoute>} />
             <Route path="/performance" element={<ProtectedRoute><Layout><Performance /></Layout></ProtectedRoute>} />
             <Route path="/monthly-report" element={<ProtectedRoute><Layout><MonthlyReport /></Layout></ProtectedRoute>} />
             <Route path="/method-analysis" element={<ProtectedRoute><Layout><MethodAnalysis /></Layout></ProtectedRoute>} />

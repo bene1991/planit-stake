@@ -15,6 +15,7 @@ import { Calendar as CalendarIcon, Activity } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
 import GoalHazardChart from './components/GoalHazardChart';
+import DailyProfitCalendar from './components/DailyProfitCalendar';
 import { AlertStatsModal } from '@/components/robo/AlertStatsModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { Link } from 'react-router-dom';
 
 // Tooltip customizado para o gráfico de probabilidade acumulada
 const CustomProbabilityTooltip = ({ active, payload }: any) => {
@@ -422,7 +424,7 @@ export default function RoboReports() {
                 // Profit zero for VOID
             } else if (goalsInWindow.length > 0) {
                 greens++;
-                cumulativeStakes += greenStake;
+                cumulativeStakes += greenStake * (1 - 0.045);
                 totalGoalsInWindow += goalsInWindow.length;
             } else {
                 reds++;
@@ -578,7 +580,7 @@ export default function RoboReports() {
 
     const handleSaveSim = () => {
         if (!simName) {
-            toast.error("Dê um nome para a simulação");
+            toast.error("Dê um nome para o método");
             return;
         }
 
@@ -602,6 +604,7 @@ export default function RoboReports() {
             filters_snapshot: {
                 league: selectedLeague,
                 variation: selectedVariations.join(','),
+                variation_ids: selectedVariations,
                 date: dateFilter
             },
             simulation_version: 'v2'
@@ -1382,15 +1385,15 @@ export default function RoboReports() {
                             </div>
 
                             <div className="pt-4 border-t border-[#2a3142] space-y-4">
-                                <Label className="text-gray-400">Salvar Simulação</Label>
+                                <Label className="text-gray-400">Criar Método</Label>
                                 <Input
-                                    placeholder="Nome da simulação..."
+                                    placeholder="Nome do método..."
                                     value={simName}
                                     onChange={(e) => setSimName(e.target.value)}
                                     className="bg-[#2a3142] border-[#3b4256]"
                                 />
                                 <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveSim}>
-                                    <Plus className="w-4 h-4 mr-2" /> Salvar Resultados
+                                    <Plus className="w-4 h-4 mr-2" /> Salvar como Método
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -1530,7 +1533,7 @@ export default function RoboReports() {
                                                                     game.result === 'red' ? 'bg-rose-500/10 text-rose-500' :
                                                                         'bg-amber-500/10 text-amber-500'
                                                                     }`}>
-                                                                    {game.result === 'green' ? `+${greenStake}` :
+                                                                    {game.result === 'green' ? `+${(greenStake * (1 - 0.045)).toFixed(3)}` :
                                                                         game.result === 'red' ? `-${redStake}` :
                                                                             game.result === 'void' ? 'VOID' :
                                                                                 'PENDENTE'}
@@ -1543,6 +1546,12 @@ export default function RoboReports() {
                                         </div>
                                     </CardContent>
                                 </Card>
+
+                                <DailyProfitCalendar
+                                    games={simulationResult.analyzedGames || []}
+                                    greenStake={greenStake}
+                                    redStake={redStake}
+                                />
                             </div>
                         )}
 
@@ -1805,13 +1814,21 @@ export default function RoboReports() {
                                         </div>
                                     </div>
 
-                                    <Button
-                                        variant="outline"
-                                        className="w-full bg-transparent border-[#3b4256] text-gray-300 hover:text-white"
-                                        onClick={() => handleRecalculate(sim)}
-                                    >
-                                        <RotateCcw className="w-3 h-3 mr-2" /> Recalcular com Filtros Atuais
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        <Link to={`/robo/methods/${sim.id}`} className="flex-1">
+                                            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+                                                <BarChart3 className="w-3 h-3 mr-2" /> Abrir Método
+                                            </Button>
+                                        </Link>
+                                        <Button
+                                            variant="outline"
+                                            className="bg-transparent border-[#3b4256] text-gray-300 hover:text-white"
+                                            onClick={() => handleRecalculate(sim)}
+                                            title="Recalcular com Filtros Atuais"
+                                        >
+                                            <RotateCcw className="w-3 h-3" />
+                                        </Button>
+                                    </div>
                                 </CardContent>
                             </Card>
                         ))}
