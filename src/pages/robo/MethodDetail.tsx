@@ -59,19 +59,7 @@ const MethodDetail: React.FC = () => {
   const [optimisticQuarantine, setOptimisticQuarantine] = useState<string[] | null>(null);
   const [savingQuarantine, setSavingQuarantine] = useState(false);
 
-  const overrideKey = `method_${id}_red_overrides`;
-  const [redOverrides, setRedOverrides] = useState<Record<string, number>>(() => {
-    try { return JSON.parse(localStorage.getItem(overrideKey) || '{}'); } catch { return {}; }
-  });
-  const setRedOverride = (fixtureId: string, value: number | null) => {
-    setRedOverrides(prev => {
-      const next = { ...prev };
-      if (value === null || Number.isNaN(value)) delete next[fixtureId];
-      else next[fixtureId] = value;
-      localStorage.setItem(overrideKey, JSON.stringify(next));
-      return next;
-    });
-  };
+  const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, number> | null>(null);
 
   const { data: method, isLoading: loadingMethod } = useQuery({
     queryKey: ['method', id],
@@ -88,6 +76,33 @@ const MethodDetail: React.FC = () => {
   });
 
   const quarantinedLeagues: string[] = optimisticQuarantine ?? (method?.filters_snapshot?.quarantine_leagues || []);
+  const redOverrides: Record<string, number> = optimisticOverrides ?? (method?.filters_snapshot?.red_overrides || {});
+  const setRedOverride = async (fixtureId: string, value: number | null) => {
+    if (!method) return;
+    const current: Record<string, number> = { ...(method.filters_snapshot?.red_overrides || {}) };
+    if (value === null || Number.isNaN(value)) delete current[fixtureId];
+    else current[fixtureId] = value;
+    setOptimisticOverrides(current);
+    const newSnap = { ...(method.filters_snapshot || {}), red_overrides: current };
+    const { data: updated, error } = await supabase
+      .from('strategy_simulations')
+      .update({ filters_snapshot: newSnap })
+      .eq('id', method.id)
+      .select();
+    if (error) {
+      toast.error('Erro ao salvar red override: ' + error.message);
+      setOptimisticOverrides(null);
+      return;
+    }
+    if (!updated || updated.length === 0) {
+      toast.error('Red override não persistiu (RLS bloqueou update)');
+      setOptimisticOverrides(null);
+      return;
+    }
+    toast.success(value === null ? 'Override removido' : `Red salvo: ${value}`);
+    await queryClient.invalidateQueries({ queryKey: ['method', id] });
+    setOptimisticOverrides(null);
+  };
   const toggleQuarantine = async (league: string) => {
     if (!method) return;
     const current: string[] = method.filters_snapshot?.quarantine_leagues || [];
@@ -467,13 +482,16 @@ const MethodDetail: React.FC = () => {
                         <div className="inline-flex items-center gap-1 bg-rose-500/10 rounded px-1.5 py-0.5">
                           <span className="text-rose-500 text-[10px] font-bold">-</span>
                           <input
-                            type="number"
-                            step="0.1"
-                            min="0"
+                            key={`red-${g.fixture_id}-${redOverrides[String(g.fixture_id)] ?? 'def'}`}
+                            type="text"
+                            inputMode="decimal"
                             defaultValue={redOverrides[String(g.fixture_id)] ?? method.red_stake}
                             onBlur={(e) => {
-                              const v = parseFloat(e.target.value);
+                              const v = parseFloat(e.target.value.replace(',', '.'));
                               setRedOverride(String(g.fixture_id), Number.isFinite(v) && v !== method.red_stake ? v : null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                             }}
                             className="w-12 bg-transparent text-rose-400 text-[11px] font-bold text-right outline-none border-b border-transparent hover:border-rose-500/40 focus:border-rose-500"
                             title="Editar red stake (clique fora pra salvar)"

@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 interface AnalyzedGame {
   date?: string;
   result?: 'green' | 'red' | 'void' | string;
+  profit?: number;
 }
 
 interface DailyProfitCalendarProps {
@@ -66,14 +67,17 @@ const DailyProfitCalendar: React.FC<DailyProfitCalendarProps> = ({ games, greenS
       gMap.get(key)!.push(g);
       const agg = map.get(key)!;
       const greenNet = greenStake * (1 - 0.045);
-      if (g.result === 'green') { agg.greens++; agg.profit += greenNet; }
-      else if (g.result === 'red') { agg.reds++; agg.profit -= redStake; }
+      const gp = typeof g.profit === 'number'
+        ? g.profit
+        : g.result === 'green' ? greenNet : g.result === 'red' ? -redStake : 0;
+      if (g.result === 'green') { agg.greens++; agg.profit += gp; }
+      else if (g.result === 'red') { agg.reds++; agg.profit += gp; }
       else continue;
       agg.entries++;
 
       if (d >= monthStart && d <= monthEnd) {
-        if (g.result === 'green') { greens++; profit += greenNet; }
-        else if (g.result === 'red') { reds++; profit -= redStake; }
+        if (g.result === 'green') { greens++; profit += gp; }
+        else if (g.result === 'red') { reds++; profit += gp; }
         entries++;
       }
     }
