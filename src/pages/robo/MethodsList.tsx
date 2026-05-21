@@ -1,16 +1,22 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FlaskConical, ArrowRight, Loader2, Plus } from 'lucide-react';
+import { FlaskConical, ArrowRight, Loader2, Plus, CalendarDays } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 const GREEN_NET = 1 - 0.045;
 
+type Period = 'today' | '7d' | '30d' | 'this_month' | 'all' | 'custom';
+
 const MethodsList: React.FC = () => {
+  const [period, setPeriod] = useState<Period>('all');
+  const [customFrom, setCustomFrom] = useState<string>('');
+  const [customTo, setCustomTo] = useState<string>('');
+
   const { data: methods, isLoading } = useQuery({
     queryKey: ['methods-list'],
     queryFn: async () => {
@@ -43,20 +49,44 @@ const MethodsList: React.FC = () => {
     },
   });
 
+  const { fromMs, toMs } = useMemo(() => {
+    const now = Date.now();
+    if (period === 'today') {
+      const d = new Date(); d.setHours(0,0,0,0);
+      return { fromMs: d.getTime(), toMs: Infinity };
+    }
+    if (period === '7d') return { fromMs: now - 7*86400000, toMs: Infinity };
+    if (period === '30d') return { fromMs: now - 30*86400000, toMs: Infinity };
+    if (period === 'this_month') {
+      const d = new Date(); d.setDate(1); d.setHours(0,0,0,0);
+      return { fromMs: d.getTime(), toMs: Infinity };
+    }
+    if (period === 'custom') {
+      const f = customFrom ? new Date(customFrom + 'T00:00:00').getTime() : 0;
+      const t = customTo ? new Date(customTo + 'T23:59:59').getTime() : Infinity;
+      return { fromMs: f, toMs: t };
+    }
+    return { fromMs: 0, toMs: Infinity };
+  }, [period, customFrom, customTo]);
+
   const enriched = useMemo(() => {
     if (!methods || !alerts) return [];
     return methods.map(m => {
       const variationIds: string[] = m.filters_snapshot?.variation_ids || [];
       const quarantine = new Set((m.filters_snapshot?.quarantine_leagues || []).map(String));
+      const overrides: Record<string, number> = m.filters_snapshot?.red_overrides || {};
       const entryMin = m.entry_minute;
       const exitMin = m.exit_minute;
       const greenStake = m.green_stake;
       const redStake = m.red_stake;
 
-      const filtered = alerts.filter(a =>
-        variationIds.includes(a.variation_id) &&
-        !quarantine.has(String(a.league_id))
-      );
+      const filtered = alerts.filter(a => {
+        if (!variationIds.includes(a.variation_id)) return false;
+        if (quarantine.has(String(a.league_id))) return false;
+        const t = a.created_at ? new Date(a.created_at).getTime() : 0;
+        if (t < fromMs || t > toMs) return false;
+        return true;
+      });
       const byFixture = new Map<string, any>();
       for (const a of filtered) {
         const k = String(a.fixture_id);
@@ -80,7 +110,10 @@ const MethodsList: React.FC = () => {
           return min >= entryMin && min <= exitMin;
         });
         if (inWin) { greens++; profit += greenStake * GREEN_NET; chrono.push({ result: 'green', profit: greenStake * GREEN_NET }); }
-        else { reds++; profit -= redStake; chrono.push({ result: 'red', profit: -redStake }); }
+        else {
+          const eff = overrides[String(a.fixture_id)] ?? redStake;
+          reds++; profit -= eff; chrono.push({ result: 'red', profit: -eff });
+        }
         lastDate = a.created_at;
       }
 
@@ -102,7 +135,7 @@ const MethodsList: React.FC = () => {
 
       return { ...m, entries, greens, reds, profit, winRate, roi, maxDD, streak, lastDate };
     });
-  }, [methods, alerts]);
+  }, [methods, alerts, fromMs, toMs]);
 
   if (isLoading) {
     return (
@@ -125,6 +158,52 @@ const MethodsList: React.FC = () => {
         <Link to="/robo">
           <Button className="bg-emerald-600 hover:bg-emerald-700"><Plus className="w-4 h-4 mr-2" /> Criar Novo</Button>
         </Link>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap bg-[#1e2333] border border-[#2a3142] rounded-lg p-3">
+        <CalendarDays className="w-4 h-4 text-gray-400" />
+        <span className="text-xs text-gray-400 mr-2">Período:</span>
+        {([
+          ['today', 'Hoje'],
+          ['7d', '7 dias'],
+          ['30d', '30 dias'],
+          ['this_month', 'Este mês'],
+          ['all', 'Tudo'],
+          ['custom', 'Personalizado'],
+        ] as [Period, string][]).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setPeriod(key)}
+            className={cn(
+              'px-3 py-1 text-xs rounded-md border transition-colors',
+              period === key
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                : 'bg-[#161b27] border-[#2a3142] text-gray-400 hover:text-white hover:border-[#3b4256]'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+        {period === 'custom' && (
+          <div className="flex items-center gap-2 ml-2">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="bg-[#161b27] border border-[#2a3142] rounded px-2 py-1 text-xs text-gray-200"
+            />
+            <span className="text-gray-500 text-xs">até</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="bg-[#161b27] border border-[#2a3142] rounded px-2 py-1 text-xs text-gray-200"
+            />
+          </div>
+        )}
+        <div className="ml-auto text-[11px] text-gray-500">
+          {enriched.reduce((s, m: any) => s + (m.entries || 0), 0)} entradas total
+        </div>
       </div>
 
       {(!methods || methods.length === 0) && (
