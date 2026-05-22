@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, BarChart3, Loader2, CalendarDays, TrendingDown, TrendingUp, Send, Clock, Pencil, Search, X, Shield, ShieldOff, Share2, Link2 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Loader2, CalendarDays, TrendingDown, TrendingUp, Send, Clock, Pencil, Search, X, Shield, ShieldOff, Share2, Link2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parseISO, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -161,7 +161,7 @@ const MethodDetail: React.FC = () => {
     },
   });
 
-  const { data, isLoading: loadingAlerts } = useQuery({
+  const { data, isLoading: loadingAlerts, isFetching: fetchingAlerts } = useQuery({
     queryKey: ['method-alerts', id],
     enabled: !!method,
     queryFn: async () => {
@@ -339,6 +339,21 @@ const MethodDetail: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['method-alerts', id] });
+              queryClient.invalidateQueries({ queryKey: ['method', id] });
+              toast.success('Atualizando...');
+            }}
+            disabled={fetchingAlerts}
+            className="border-[#3b4256] text-gray-200 hover:bg-white/5"
+            title="Recarregar dados"
+          >
+            <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', fetchingAlerts && 'animate-spin')} />
+            Atualizar
+          </Button>
           <Button
             variant="outline"
             size="sm"
