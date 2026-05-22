@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, BarChart3, Loader2, CalendarDays, TrendingDown, TrendingUp, Send, Clock, Pencil, Search, X, Shield, ShieldOff } from 'lucide-react';
+import { ArrowLeft, BarChart3, Loader2, CalendarDays, TrendingDown, TrendingUp, Send, Clock, Pencil, Search, X, Shield, ShieldOff, Share2, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parseISO, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,6 +30,7 @@ interface Method {
   red_stake: number;
   filters_snapshot: any;
   created_at: string;
+  is_public?: boolean;
 }
 
 const fetchAll = async (table: string, columns = '*') => {
@@ -337,9 +338,52 @@ const MethodDetail: React.FC = () => {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="border-[#3b4256] text-gray-200 hover:bg-white/5">
-          <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar Método
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const next = !method.is_public;
+              const { error } = await supabase
+                .from('strategy_simulations')
+                .update({ is_public: next })
+                .eq('id', method.id);
+              if (error) { toast.error('Erro: ' + error.message); return; }
+              if (next) {
+                const url = `${window.location.origin}/oferta/${method.id}`;
+                try { await navigator.clipboard.writeText(url); } catch {}
+                toast.success('Página pública ativada — link copiado');
+              } else {
+                toast.success('Página pública desativada');
+              }
+              queryClient.invalidateQueries({ queryKey: ['method', id] });
+            }}
+            className={cn(
+              'border-[#3b4256] text-gray-200 hover:bg-white/5',
+              method.is_public && 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+            )}
+          >
+            <Share2 className="w-3.5 h-3.5 mr-1.5" />
+            {method.is_public ? 'Página Pública ON' : 'Compartilhar'}
+          </Button>
+          {method.is_public && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const url = `${window.location.origin}/oferta/${method.id}`;
+                navigator.clipboard.writeText(url).then(() => toast.success('Link copiado'));
+              }}
+              className="border-[#3b4256] text-gray-200 hover:bg-white/5"
+              title="Copiar link público"
+            >
+              <Link2 className="w-3.5 h-3.5 mr-1.5" /> Copiar link
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="border-[#3b4256] text-gray-200 hover:bg-white/5">
+            <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar Método
+          </Button>
+        </div>
       </div>
 
       <EditMethodDialog

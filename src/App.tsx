@@ -52,6 +52,7 @@ const MatchbookOdds = lazyWithRetry(() => import("./pages/MatchbookOdds"));
 const MethodDetail = lazyWithRetry(() => import("./pages/robo/MethodDetail"));
 const MethodsList = lazyWithRetry(() => import("./pages/robo/MethodsList"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
+const OfferPage = lazyWithRetry(() => import("./pages/OfferPage"));
 const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
 
 const PageLoader = () => (
@@ -111,6 +112,7 @@ const AppContent = () => {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/oferta/:id" element={<OfferPage />} />
             <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><Layout><DailyPlanning /></Layout></ProtectedRoute>} />
             <Route path="/daily-planning" element={<Navigate to="/" replace />} />
