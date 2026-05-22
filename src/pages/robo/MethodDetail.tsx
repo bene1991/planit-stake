@@ -52,7 +52,9 @@ const MethodDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'games' | 'analysis' | 'quarantine'>('games');
   const [editOpen, setEditOpen] = useState(false);
-  const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d' | 'this_month'>('all');
+  const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d' | 'this_month' | 'custom'>('all');
+  const [customFrom, setCustomFrom] = useState<string>('');
+  const [customTo, setCustomTo] = useState<string>('');
   const [filterLeague, setFilterLeague] = useState<string>('all');
   const [filterTeam, setFilterTeam] = useState<string>('');
 
@@ -177,12 +179,17 @@ const MethodDetail: React.FC = () => {
     const periodFloor =
       filterPeriod === '7d' ? Date.now() - 7 * 24 * 3600 * 1000 :
       filterPeriod === '30d' ? Date.now() - 30 * 24 * 3600 * 1000 :
-      filterPeriod === 'this_month' ? (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); })() : 0;
+      filterPeriod === 'this_month' ? (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); })() :
+      filterPeriod === 'custom' && customFrom ? new Date(customFrom + 'T00:00:00').getTime() : 0;
+    const periodCeil =
+      filterPeriod === 'custom' && customTo ? new Date(customTo + 'T23:59:59').getTime() : Infinity;
     const teamQ = filterTeam.trim().toLowerCase();
 
     const filtered = (data.alerts as any[]).filter(a => {
       if (variationIds.length === 0 || !variationIds.includes(a.variation_id)) return false;
-      if (periodFloor > 0 && new Date(a.created_at).getTime() < periodFloor) return false;
+      const ts = a.created_at ? new Date(a.created_at).getTime() : 0;
+      if (periodFloor > 0 && ts < periodFloor) return false;
+      if (periodCeil !== Infinity && ts > periodCeil) return false;
       if (filterLeague !== 'all' && String(a.league_id) !== filterLeague) return false;
       if (teamQ && !(`${a.home_team} ${a.away_team}`.toLowerCase().includes(teamQ))) return false;
       return true;
@@ -259,7 +266,7 @@ const MethodDetail: React.FC = () => {
     const roi = analyzable.length ? (totalStakes / analyzable.length) * 100 : 0;
 
     return { games: mainGames, allGames: games, quarantineGames, analyzable: analyzable.length, datasetSize: mainGames.length, greens, reds, totalStakes, winRate, roi };
-  }, [method, data, redOverrides, filterPeriod, filterLeague, filterTeam, quarantinedLeagues]);
+  }, [method, data, redOverrides, filterPeriod, customFrom, customTo, filterLeague, filterTeam, quarantinedLeagues]);
 
   const allLeagues = useMemo(() => {
     if (!method || !data) return [] as { id: string; label: string }[];
@@ -372,9 +379,32 @@ const MethodDetail: React.FC = () => {
               <SelectItem value="7d">Últimos 7 dias</SelectItem>
               <SelectItem value="30d">Últimos 30 dias</SelectItem>
               <SelectItem value="this_month">Este mês</SelectItem>
+              <SelectItem value="custom">Personalizado</SelectItem>
             </SelectContent>
           </Select>
         </div>
+        {filterPeriod === 'custom' && (
+          <>
+            <div className="flex flex-col">
+              <Label className="text-[10px] text-gray-500 mb-1">De</Label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="h-8 bg-[#2a3142] border border-[#3b4256] rounded-md px-2 text-xs text-gray-200"
+              />
+            </div>
+            <div className="flex flex-col">
+              <Label className="text-[10px] text-gray-500 mb-1">Até</Label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="h-8 bg-[#2a3142] border border-[#3b4256] rounded-md px-2 text-xs text-gray-200"
+              />
+            </div>
+          </>
+        )}
         <div className="flex flex-col">
           <Label className="text-[10px] text-gray-500 mb-1">Liga</Label>
           <Select value={filterLeague} onValueChange={setFilterLeague}>
@@ -403,7 +433,7 @@ const MethodDetail: React.FC = () => {
           </div>
         </div>
         {(filterPeriod !== 'all' || filterLeague !== 'all' || filterTeam) && (
-          <Button variant="ghost" size="sm" onClick={() => { setFilterPeriod('all'); setFilterLeague('all'); setFilterTeam(''); }} className="h-8 text-gray-400 hover:text-white">
+          <Button variant="ghost" size="sm" onClick={() => { setFilterPeriod('all'); setCustomFrom(''); setCustomTo(''); setFilterLeague('all'); setFilterTeam(''); }} className="h-8 text-gray-400 hover:text-white">
             Limpar
           </Button>
         )}
