@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +49,20 @@ const fetchAll = async (table: string, columns = '*') => {
 
 const MethodDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const { data: allMethods } = useQuery({
+    queryKey: ['methods-switcher'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('strategy_simulations')
+        .select('id, name')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
   const [tab, setTab] = useState<'games' | 'analysis' | 'quarantine'>('games');
   const [editOpen, setEditOpen] = useState(false);
   const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d' | 'this_month' | 'custom'>('all');
@@ -304,7 +317,21 @@ const MethodDetail: React.FC = () => {
             <Button variant="ghost" size="sm" className="text-gray-300"><ArrowLeft className="w-4 h-4 mr-1" /> Voltar</Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-white">{method.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-white">{method.name}</h1>
+              {allMethods && allMethods.length > 1 && (
+                <Select value={method.id} onValueChange={(v) => navigate(`/robo/methods/${v}`)}>
+                  <SelectTrigger className="h-7 w-[42px] bg-[#2a3142] border-[#3b4256] text-xs px-2 [&>svg]:opacity-100" title="Trocar de método">
+                    <span className="sr-only">Trocar método</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allMethods.map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <p className="text-xs text-gray-500">
               Janela {method.entry_minute}' → {method.exit_minute}' · Stakes +{method.green_stake} / -{method.red_stake} · Criado em {format(parseISO(method.created_at), 'dd/MM/yyyy')}
             </p>
