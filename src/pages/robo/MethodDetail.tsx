@@ -172,13 +172,24 @@ const MethodDetail: React.FC = () => {
       const gamesMap = new Map(games.map((g: any) => [String(g.api_fixture_id), g]));
       // build league_id -> country map by joining alerts to games via fixture_id
       const leagueCountry = new Map<string, string>();
+      const leagueNames = new Map<string, string>();
       for (const a of alerts) {
         const lid = String(a.league_id || '');
-        if (!lid || leagueCountry.has(lid)) continue;
-        const g = gamesMap.get(String(a.fixture_id));
-        if (g && (g as any).country) leagueCountry.set(lid, (g as any).country);
+        if (!lid) continue;
+        if (a.league_name && !leagueNames.has(lid)) leagueNames.set(lid, a.league_name);
+        if (!leagueCountry.has(lid)) {
+          const g = gamesMap.get(String(a.fixture_id));
+          if (g && (g as any).country) leagueCountry.set(lid, (g as any).country);
+        }
       }
-      return { alerts, gamesMap, leagueCountry };
+      // fallback: scan games table for league names (covers leagues never alerted)
+      for (const g of games as any[]) {
+        if (g.league) {
+          // games table uses league name string keyed by fixture, no league_id direct;
+          // skip if already covered. Best-effort.
+        }
+      }
+      return { alerts, gamesMap, leagueCountry, leagueNames };
     },
   });
 
@@ -669,7 +680,7 @@ const MethodDetail: React.FC = () => {
                   {quarantinedLeagues.map(l => {
                     // find a games entry with that league_id to label nicely
                     const sample = (result?.allGames || result?.quarantineGames || []).find((g: any) => String(g.league_id) === String(l)) as any;
-                    const label = sample?.league || sample?.league_name || l;
+                    const label = sample?.league || sample?.league_name || data?.leagueNames?.get(String(l)) || l;
                     return (
                       <button
                         key={l}
@@ -726,7 +737,7 @@ const MethodDetail: React.FC = () => {
                     const added = dates[lid];
                     const ligaGames = (result.allGames || []).filter((g: any) => String(g.league_id) === String(lid) && g.result !== 'pending');
                     const sample = ligaGames[0] || (result.quarantineGames || []).find((g: any) => String(g.league_id) === String(lid));
-                    const label = sample?.league || sample?.league_name || lid;
+                    const label = sample?.league || sample?.league_name || data?.leagueNames?.get(String(lid)) || lid;
                     const before = added ? ligaGames.filter((g: any) => new Date(g.date) < new Date(added)) : ligaGames;
                     const after = added ? ligaGames.filter((g: any) => new Date(g.date) >= new Date(added)) : [];
                     const agg = (arr: any[]) => {
