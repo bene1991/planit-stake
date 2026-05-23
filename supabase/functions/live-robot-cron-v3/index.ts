@@ -88,19 +88,32 @@ serve(async (req) => {
     }
 
     // 2b. Build per-variation quarantined leagues map from methods (strategy_simulations)
+    // RULE: Telegram só pula a liga se TODOS os métodos que usam aquela variação a quarentenaram
+    // (interseção das quarentenas). Assim, se pelo menos um método ainda quer essa liga, o
+    // Telegram sai. Se a variação não pertence a nenhum método, nada é quarentenado.
     const { data: methods } = await supabase
       .from('strategy_simulations')
       .select('filters_snapshot');
-    const quarantineByVariation = new Map<string, Set<string>>();
+    const quarantineSetsByVariation = new Map<string, Set<string>[]>();
     for (const m of methods || []) {
       const fs: any = m.filters_snapshot || {};
       const vIds: string[] = fs.variation_ids || [];
       const qLeagues: string[] = fs.quarantine_leagues || [];
-      if (!vIds.length || !qLeagues.length) continue;
+      if (!vIds.length) continue;
+      const set = new Set<string>(qLeagues.map(String));
       for (const vid of vIds) {
-        if (!quarantineByVariation.has(vid)) quarantineByVariation.set(vid, new Set());
-        for (const l of qLeagues) quarantineByVariation.get(vid)!.add(l);
+        if (!quarantineSetsByVariation.has(vid)) quarantineSetsByVariation.set(vid, []);
+        quarantineSetsByVariation.get(vid)!.push(set);
       }
+    }
+    const quarantineByVariation = new Map<string, Set<string>>();
+    for (const [vid, sets] of quarantineSetsByVariation.entries()) {
+      if (sets.length === 0) continue;
+      const intersection = new Set<string>(sets[0]);
+      for (let i = 1; i < sets.length; i++) {
+        for (const l of intersection) if (!sets[i].has(l)) intersection.delete(l);
+      }
+      if (intersection.size > 0) quarantineByVariation.set(vid, intersection);
     }
 
     // 3. Fetch Telegram Settings
