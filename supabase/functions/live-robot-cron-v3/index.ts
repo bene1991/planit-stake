@@ -590,6 +590,93 @@ serve(async (req) => {
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // SAFETY NET PASS — envia delayed alerts mesmo se o jogo sumiu do live feed
+    // (cobre: jogo em halftime estendido, buraco da API, jogo encerrado precoce)
+    // Estima o horário ideal de envio: created_at + (alert_minute - minute_at_alert) min
+    // + 20 min de margem (halftime + ruído). Se passou, manda com snapshot salvo.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('[SAFETY] Checking stuck delayed alerts (independent of live feed)...');
+    const stuckCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const { data: stuckAlerts } = await supabase
+      .from('live_alerts')
+      .select('*')
+      .eq('telegram_sent', false)
+      .not('telegram_alert_minute', 'is', null)
+      .gte('created_at', stuckCutoff);
+
+    if (stuckAlerts && stuckAlerts.length > 0) {
+      console.log(`[SAFETY] ${stuckAlerts.length} pending delayed alerts to evaluate.`);
+      const SAFETY_MARGIN_MIN = 20;
+      for (const alert of stuckAlerts) {
+        const createdMs = new Date(alert.created_at).getTime();
+        const minutesElapsed = (Date.now() - createdMs) / 60000;
+        const minutesNeeded = (alert.telegram_alert_minute - (alert.minute_at_alert || 0)) + SAFETY_MARGIN_MIN;
+        if (minutesElapsed < minutesNeeded) continue;
+
+        // Skip if quarantine intersection applies
+        const qSet3 = quarantineByVariation.get(alert.variation_id);
+        if (qSet3?.has(String(alert.league_id))) {
+          await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
+          addLog({
+            fixture_id: alert.fixture_id,
+            league_id: alert.league_id,
+            variation_id: alert.variation_id,
+            stage: 'ALERT_SENT',
+            reason: 'Telegram SKIPPED (quarentena - Safety Net)',
+            details: { league: alert.league_name, variation: alert.variation_name }
+          });
+          continue;
+        }
+
+        const variation = variations.find((v: any) => v.id === alert.variation_id);
+        if (!variation || !variation.send_telegram) {
+          await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
+          continue;
+        }
+
+        const ts = settingsMap.get(variation.owner_id) || settings?.[0];
+        const group = Array.isArray(variation.telegram_groups) ? variation.telegram_groups[0] : variation.telegram_groups;
+        const destChatId = group?.chat_id || variation.telegram_chat_id || ts?.telegram_chat_id;
+        const botToken = group?.bot_token || ts?.telegram_bot_token;
+        if (!destChatId || !botToken) continue;
+
+        const stats = alert.stats_snapshot?.fullMatch;
+        const msg = `⏰ <b>ROBÔ OFICIAL (RECUPERADO POR SAFETY NET @${alert.telegram_alert_minute}')</b>\n` +
+                    `________________________________\n\n` +
+                    `⚽ <b>${alert.home_team} vs ${alert.away_team}</b>\n` +
+                    `🏆 ${alert.league_name}\n` +
+                    `⏰ Sinal: ${alert.minute_at_alert}' · Alvo: ${alert.telegram_alert_minute}'\n` +
+                    `🎯 Filtro: ${alert.variation_name}\n` +
+                    `⚠️ <i>Jogo saiu do feed ao vivo — alerta enviado por segurança com base no snapshot do sinal</i>\n\n` +
+                    (stats
+                      ? `📊 <b>ESTATÍSTICAS (Snapshot ${alert.minute_at_alert}')</b>\n` +
+                        `________________________________\n\n` +
+                        `📉 xG: ${stats.h?.xg || 0} - ${stats.a?.xg || 0}\n` +
+                        `⛳ Cantos: ${stats.h?.corners || 0} - ${stats.a?.corners || 0}\n` +
+                        `🥊 Na Área: ${stats.h?.shotsInBox || 0} - ${stats.a?.shotsInBox || 0}\n` +
+                        `🚀 Chutes: ${stats.h?.shots || 0} - ${stats.a?.shots || 0}\n` +
+                        `🎯 No Alvo: ${stats.h?.shotsOn || 0} - ${stats.a?.shotsOn || 0}\n` +
+                        `⌛ Posse: ${stats.h?.possession || 0}% - ${stats.a?.possession || 0}%\n\n`
+                      : '') +
+                    `💰 <a href="https://www.bolsadeaposta.com/">ABRIR NA EXCHANGE</a>`;
+
+        const sent = await sendTelegram(botToken, destChatId, msg);
+        if (sent) {
+          await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
+          addLog({
+            fixture_id: alert.fixture_id,
+            league_id: alert.league_id,
+            variation_id: alert.variation_id,
+            stage: 'ALERT_SENT',
+            reason: `Telegram sent (SAFETY NET @${alert.telegram_alert_minute}', ${Math.round(minutesElapsed)}min após sinal)`,
+            details: { variation: alert.variation_name }
+          });
+          console.log(`[SAFETY] ✅ Sent stuck alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
+        }
+      }
+    }
+
     // Cleanup snapshots older than 4 hours
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     await supabase.from('live_stats_snapshots').delete().lt('created_at', fourHoursAgo);
