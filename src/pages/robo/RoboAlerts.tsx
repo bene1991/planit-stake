@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion, AnimatePresence } from "framer-motion";
 import { LiveRadarCard } from "@/components/robo/LiveRadarCard";
+import LiveRadarGrid from "@/components/robo/LiveRadarGrid";
 
 type LiveAlert = any & {
     robot_variations?: { name: string }
@@ -281,6 +282,10 @@ export default function RoboAlerts() {
 
     return (
         <div className="space-y-8">
+            <LiveRadarGrid />
+
+            <div className="border-t border-zinc-800/50 pt-8" />
+
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h3 className="text-2xl font-black text-white flex items-center tracking-tighter uppercase group cursor-default">

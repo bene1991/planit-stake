@@ -295,6 +295,21 @@ serve(async (req) => {
 
         // Snapshot & Delta logic
         await supabase.from('live_stats_snapshots').insert({ fixture_id: fixtureId, minute: timeElapsed, stats_json: currentStats });
+
+        // Radar upsert — mantém snapshot mais recente de cada jogo avaliado
+        await supabase.from('radar_live_fixtures').upsert({
+          fixture_id: fixtureId,
+          home_team: f.teams.home.name,
+          away_team: f.teams.away.name,
+          league_id: leagueId,
+          league_name: f.league?.name,
+          home_score: f.goals.home || 0,
+          away_score: f.goals.away || 0,
+          minute: timeElapsed,
+          status: f.fixture?.status?.short,
+          stats_snapshot: currentStats,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'fixture_id' });
         const targetMin = timeElapsed - 10;
         const { data: oldSnap } = await supabase.from('live_stats_snapshots').select('stats_json').eq('fixture_id', fixtureId).lte('minute', targetMin + 2).gte('minute', targetMin - 2).order('minute', { ascending: false }).limit(1);
 
@@ -680,6 +695,10 @@ serve(async (req) => {
     // Cleanup snapshots older than 4 hours
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     await supabase.from('live_stats_snapshots').delete().lt('created_at', fourHoursAgo);
+
+    // Cleanup radar — remove fixtures não atualizados nos últimos 6 min (saíram do live)
+    const radarCutoff = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    await supabase.from('radar_live_fixtures').delete().lt('updated_at', radarCutoff);
 
     // 6. Flush Logs to DB
     if (logsBuffer.length > 0) {
