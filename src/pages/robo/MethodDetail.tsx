@@ -1133,7 +1133,7 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
                 })}
                 {topPeaks.map((p, i) => (
                   <ReferenceDot key={`peak-${i}`} x={p.date} y={p.profit} r={5} fill="#10b981" stroke="#0c0f17" strokeWidth={1.5}
-                    label={{ value: `${i + 1}`, position: 'top', fill: '#10b981', fontSize: 11, fontWeight: 800 }} />
+                    label={{ value: `#${i + 1} +${p.profit.toFixed(1)}`, position: 'top', fill: '#10b981', fontSize: 10, fontWeight: 800 }} />
                 ))}
               </AreaChart>
             </ResponsiveContainer>
