@@ -917,38 +917,6 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
     return closed.sort((a, b) => b.magnitude - a.magnitude).slice(0, 5);
   }, [equityData]);
 
-  const runups = useMemo(() => {
-    if (equityData.length === 0) return [] as { valleyIdx: number; peakIdx: number; valleyDate: string; peakDate: string; valleyProfit: number; peakProfit: number; magnitude: number }[];
-    const closed: { valleyIdx: number; peakIdx: number; valleyDate: string; peakDate: string; valleyProfit: number; peakProfit: number; magnitude: number }[] = [];
-    let valley = equityData[0];
-    let peak = equityData[0];
-    for (let i = 1; i < equityData.length; i++) {
-      const p = equityData[i];
-      if (p.profit < valley.profit) {
-        if (peak.index > valley.index && peak.profit - valley.profit > 0) {
-          closed.push({
-            valleyIdx: valley.index, peakIdx: peak.index,
-            valleyDate: valley.date, peakDate: peak.date,
-            valleyProfit: valley.profit, peakProfit: peak.profit,
-            magnitude: peak.profit - valley.profit,
-          });
-        }
-        valley = p; peak = p;
-      } else if (p.profit > peak.profit) {
-        peak = p;
-      }
-    }
-    if (peak.index > valley.index && peak.profit - valley.profit > 0) {
-      closed.push({
-        valleyIdx: valley.index, peakIdx: peak.index,
-        valleyDate: valley.date, peakDate: peak.date,
-        valleyProfit: valley.profit, peakProfit: peak.profit,
-        magnitude: peak.profit - valley.profit,
-      });
-    }
-    return closed.sort((a, b) => b.magnitude - a.magnitude).slice(0, 5);
-  }, [equityData]);
-
   const stats = useMemo(() => {
     let peak = 0, maxDD = 0, equity = 0;
     let curGreen = 0, curRed = 0;
@@ -1134,20 +1102,10 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
                 {drawdowns.map((dd, i) => {
                   const isWorst = i === 0;
                   return (
-                    <React.Fragment key={`dd-${i}`}>
+                    <React.Fragment key={i}>
                       <ReferenceArea x1={dd.peakDate} x2={dd.valleyDate} fill={isWorst ? '#ef4444' : '#f59e0b'} fillOpacity={isWorst ? 0.12 : 0.06} />
                       <ReferenceDot x={dd.peakDate} y={dd.peakProfit} r={4} fill={isWorst ? '#ef4444' : '#f59e0b'} stroke="#0c0f17" strokeWidth={1.5} />
-                      <ReferenceDot x={dd.valleyDate} y={dd.valleyProfit} r={4} fill={isWorst ? '#ef4444' : '#f59e0b'} stroke="#0c0f17" strokeWidth={1.5} label={{ value: `DD#${i + 1} -${dd.magnitude.toFixed(1)}`, position: 'bottom', fill: isWorst ? '#fca5a5' : '#fcd34d', fontSize: 9, fontWeight: 700 }} />
-                    </React.Fragment>
-                  );
-                })}
-                {runups.map((ru, i) => {
-                  const isBest = i === 0;
-                  return (
-                    <React.Fragment key={`ru-${i}`}>
-                      <ReferenceArea x1={ru.valleyDate} x2={ru.peakDate} fill={isBest ? '#10b981' : '#34d399'} fillOpacity={isBest ? 0.10 : 0.05} />
-                      <ReferenceDot x={ru.valleyDate} y={ru.valleyProfit} r={4} fill={isBest ? '#10b981' : '#34d399'} stroke="#0c0f17" strokeWidth={1.5} />
-                      <ReferenceDot x={ru.peakDate} y={ru.peakProfit} r={4} fill={isBest ? '#10b981' : '#34d399'} stroke="#0c0f17" strokeWidth={1.5} label={{ value: `RU#${i + 1} +${ru.magnitude.toFixed(1)}`, position: 'top', fill: isBest ? '#6ee7b7' : '#a7f3d0', fontSize: 9, fontWeight: 700 }} />
+                      <ReferenceDot x={dd.valleyDate} y={dd.valleyProfit} r={4} fill={isWorst ? '#ef4444' : '#f59e0b'} stroke="#0c0f17" strokeWidth={1.5} label={{ value: `#${i + 1} -${dd.magnitude.toFixed(1)}`, position: 'bottom', fill: isWorst ? '#fca5a5' : '#fcd34d', fontSize: 9, fontWeight: 700 }} />
                     </React.Fragment>
                   );
                 })}
@@ -1175,33 +1133,6 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
                         Vale: {dd.valleyDate ? format(parseISO(dd.valleyDate), 'dd/MM') : '—'} ({dd.valleyProfit >= 0 ? '+' : ''}{dd.valleyProfit.toFixed(1)})
                       </p>
                       <p className="text-[9px] text-gray-600 mt-0.5">{days}d · {dd.valleyIdx - dd.peakIdx} jogos</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          {runups.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-[#2a3142]">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-                <TrendingUp className="w-3 h-3 text-emerald-400" /> Top {runups.length} Evoluções (Run-ups)
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
-                {runups.map((ru, i) => {
-                  const days = Math.max(1, Math.round((new Date(ru.peakDate).getTime() - new Date(ru.valleyDate).getTime()) / 86400000));
-                  return (
-                    <div key={i} className={cn('rounded-md border p-2', i === 0 ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-emerald-500/20 bg-emerald-500/[0.03]')}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-emerald-400">#{i + 1}</span>
-                        <span className="text-sm font-extrabold text-emerald-400">+{ru.magnitude.toFixed(2)} stk</span>
-                      </div>
-                      <p className="text-[9px] text-gray-400 leading-tight">
-                        Vale: {ru.valleyDate ? format(parseISO(ru.valleyDate), 'dd/MM') : '—'} ({ru.valleyProfit >= 0 ? '+' : ''}{ru.valleyProfit.toFixed(1)})
-                      </p>
-                      <p className="text-[9px] text-gray-400 leading-tight">
-                        Pico: {ru.peakDate ? format(parseISO(ru.peakDate), 'dd/MM') : '—'} (+{ru.peakProfit.toFixed(1)})
-                      </p>
-                      <p className="text-[9px] text-gray-600 mt-0.5">{days}d · {ru.peakIdx - ru.valleyIdx} jogos</p>
                     </div>
                   );
                 })}
