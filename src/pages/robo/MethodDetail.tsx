@@ -917,6 +917,18 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
     return closed.sort((a, b) => b.magnitude - a.magnitude).slice(0, 5);
   }, [equityData]);
 
+  const topPeaks = useMemo(() => {
+    if (equityData.length < 3) return [] as { index: number; date: string; profit: number }[];
+    const locals: { index: number; date: string; profit: number }[] = [];
+    for (let i = 1; i < equityData.length - 1; i++) {
+      const p = equityData[i];
+      if (p.profit > equityData[i - 1].profit && p.profit >= equityData[i + 1].profit) {
+        locals.push({ index: p.index, date: p.date, profit: p.profit });
+      }
+    }
+    return locals.sort((a, b) => b.profit - a.profit).slice(0, 5);
+  }, [equityData]);
+
   const stats = useMemo(() => {
     let peak = 0, maxDD = 0, equity = 0;
     let curGreen = 0, curRed = 0;
@@ -1109,6 +1121,10 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
                     </React.Fragment>
                   );
                 })}
+                {topPeaks.map((p, i) => (
+                  <ReferenceDot key={`peak-${i}`} x={p.date} y={p.profit} r={5} fill="#10b981" stroke="#0c0f17" strokeWidth={1.5}
+                    label={{ value: `${i + 1}`, position: 'top', fill: '#10b981', fontSize: 11, fontWeight: 800 }} />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           </div>
