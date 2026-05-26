@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import { format, parseISO, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, ReferenceDot, ReferenceArea, AreaChart, Area } from 'recharts';
 import DailyProfitCalendar from './components/DailyProfitCalendar';
 
 const GREEN_NET = 1 - 0.045;
@@ -885,6 +885,38 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
     });
   }, [chrono]);
 
+  const drawdowns = useMemo(() => {
+    if (equityData.length === 0) return [] as { peakIdx: number; valleyIdx: number; peakDate: string; valleyDate: string; peakProfit: number; valleyProfit: number; magnitude: number }[];
+    const closed: { peakIdx: number; valleyIdx: number; peakDate: string; valleyDate: string; peakProfit: number; valleyProfit: number; magnitude: number }[] = [];
+    let peak = equityData[0];
+    let valley = equityData[0];
+    for (let i = 1; i < equityData.length; i++) {
+      const p = equityData[i];
+      if (p.profit > peak.profit) {
+        if (valley.index > peak.index && peak.profit - valley.profit > 0) {
+          closed.push({
+            peakIdx: peak.index, valleyIdx: valley.index,
+            peakDate: peak.date, valleyDate: valley.date,
+            peakProfit: peak.profit, valleyProfit: valley.profit,
+            magnitude: peak.profit - valley.profit,
+          });
+        }
+        peak = p; valley = p;
+      } else if (p.profit < valley.profit) {
+        valley = p;
+      }
+    }
+    if (valley.index > peak.index && peak.profit - valley.profit > 0) {
+      closed.push({
+        peakIdx: peak.index, valleyIdx: valley.index,
+        peakDate: peak.date, valleyDate: valley.date,
+        peakProfit: peak.profit, valleyProfit: valley.profit,
+        magnitude: peak.profit - valley.profit,
+      });
+    }
+    return closed.sort((a, b) => b.magnitude - a.magnitude).slice(0, 5);
+  }, [equityData]);
+
   const stats = useMemo(() => {
     let peak = 0, maxDD = 0, equity = 0;
     let curGreen = 0, curRed = 0;
@@ -1067,9 +1099,46 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
                 <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={{ backgroundColor: '#1a1f2d', border: '1px solid #2a3142', color: '#e5e7eb', fontSize: 12 }} labelStyle={{ color: '#9ca3af' }} itemStyle={{ color: '#e5e7eb' }} formatter={(v: any) => [`${v} stk`, 'Lucro acumulado']} labelFormatter={(d: any) => d ? format(parseISO(d), "dd/MM/yyyy 'às' HH:mm") : ''} />
                 <ReferenceLine y={0} stroke="#4b5563" />
                 <Area type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={2} fill="url(#eq)" />
+                {drawdowns.map((dd, i) => {
+                  const isWorst = i === 0;
+                  return (
+                    <React.Fragment key={i}>
+                      <ReferenceArea x1={dd.peakDate} x2={dd.valleyDate} fill={isWorst ? '#ef4444' : '#f59e0b'} fillOpacity={isWorst ? 0.12 : 0.06} />
+                      <ReferenceDot x={dd.peakDate} y={dd.peakProfit} r={4} fill={isWorst ? '#ef4444' : '#f59e0b'} stroke="#0c0f17" strokeWidth={1.5} />
+                      <ReferenceDot x={dd.valleyDate} y={dd.valleyProfit} r={4} fill={isWorst ? '#ef4444' : '#f59e0b'} stroke="#0c0f17" strokeWidth={1.5} label={{ value: `#${i + 1} -${dd.magnitude.toFixed(1)}`, position: 'bottom', fill: isWorst ? '#fca5a5' : '#fcd34d', fontSize: 9, fontWeight: 700 }} />
+                    </React.Fragment>
+                  );
+                })}
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          {drawdowns.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-[#2a3142]">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <TrendingDown className="w-3 h-3 text-rose-400" /> Top {drawdowns.length} Drawdowns
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+                {drawdowns.map((dd, i) => {
+                  const days = Math.max(1, Math.round((new Date(dd.valleyDate).getTime() - new Date(dd.peakDate).getTime()) / 86400000));
+                  return (
+                    <div key={i} className={cn('rounded-md border p-2', i === 0 ? 'border-rose-500/40 bg-rose-500/5' : 'border-amber-500/30 bg-amber-500/5')}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={cn('text-[10px] font-bold', i === 0 ? 'text-rose-400' : 'text-amber-400')}>#{i + 1}</span>
+                        <span className={cn('text-sm font-extrabold', i === 0 ? 'text-rose-400' : 'text-amber-400')}>-{dd.magnitude.toFixed(2)} stk</span>
+                      </div>
+                      <p className="text-[9px] text-gray-400 leading-tight">
+                        Pico: {dd.peakDate ? format(parseISO(dd.peakDate), 'dd/MM') : '—'} (+{dd.peakProfit.toFixed(1)})
+                      </p>
+                      <p className="text-[9px] text-gray-400 leading-tight">
+                        Vale: {dd.valleyDate ? format(parseISO(dd.valleyDate), 'dd/MM') : '—'} ({dd.valleyProfit >= 0 ? '+' : ''}{dd.valleyProfit.toFixed(1)})
+                      </p>
+                      <p className="text-[9px] text-gray-600 mt-0.5">{days}d · {dd.valleyIdx - dd.peakIdx} jogos</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
