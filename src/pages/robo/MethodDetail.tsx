@@ -926,7 +926,17 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
         locals.push({ index: p.index, date: p.date, profit: p.profit });
       }
     }
-    return locals.sort((a, b) => b.profit - a.profit).slice(0, 5);
+    locals.sort((a, b) => b.profit - a.profit);
+    const MIN_GAP_MS = 5 * 86400000;
+    const chosen: { index: number; date: string; profit: number }[] = [];
+    for (const c of locals) {
+      const t = new Date(c.date).getTime();
+      if (chosen.every(x => Math.abs(new Date(x.date).getTime() - t) >= MIN_GAP_MS)) {
+        chosen.push(c);
+        if (chosen.length === 5) break;
+      }
+    }
+    return chosen;
   }, [equityData]);
 
   const stats = useMemo(() => {
