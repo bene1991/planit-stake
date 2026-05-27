@@ -8,7 +8,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Search, Loader2, Shield, Calendar, Star, Settings2, Plus, Clock, CheckCircle2 } from "lucide-react";
+import { Search, Loader2, Shield, ShieldOff, Calendar, Star, Settings2, Plus, Clock, CheckCircle2, Ban } from "lucide-react";
 import { useFixturesByDate, ApiFootballFixture, getStatusDisplay } from "@/hooks/useApiFootball";
 import { useFavoriteLeagues } from "@/hooks/useFavoriteLeagues";
 import { LeagueSelector } from "./LeagueSelector";
@@ -54,6 +54,20 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
   const { data: fixtures, loading, refetch } = useFixturesByDate(selectedDate, open);
   const { favoriteLeagues, isFavorite: isLeagueFavorite } = useFavoriteLeagues();
 
+  const BLOCK_KEY = 'planning_blocked_leagues';
+  const [blockedLeagues, setBlockedLeagues] = useState<Set<number>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(BLOCK_KEY) || '[]')); } catch { return new Set(); }
+  });
+  const [showBlocked, setShowBlocked] = useState(false);
+  const toggleBlockLeague = (leagueId: number) => {
+    setBlockedLeagues(prev => {
+      const next = new Set(prev);
+      if (next.has(leagueId)) next.delete(leagueId); else next.add(leagueId);
+      localStorage.setItem(BLOCK_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
   // Helper functions for quick date navigation
   const getDateString = (daysFromToday: number) => format(addDays(getNowInBrasilia(), daysFromToday), 'yyyy-MM-dd');
   const isDateSelected = (daysFromToday: number) => selectedDate === getDateString(daysFromToday);
@@ -93,9 +107,12 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
         if (!isLeagueFavorite(f.league.id)) return false;
       }
 
+      // Blocked leagues (local — só desta tela)
+      if (!showBlocked && blockedLeagues.has(f.league.id)) return false;
+
       return true;
     });
-  }, [fixtures, searchQuery, showFavoritesOnly, favoriteLeagues, isLeagueFavorite]);
+  }, [fixtures, searchQuery, showFavoritesOnly, favoriteLeagues, isLeagueFavorite, blockedLeagues, showBlocked]);
 
   // Split into upcoming and finished
   const upcomingFixtures = useMemo(() =>
@@ -113,22 +130,21 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
 
   // Group by league
   const groupedFixtures = useMemo(() => {
-    const groups = new Map<string, ApiFootballFixture[]>();
+    const groups = new Map<string, { label: string; leagueId: number; fixtures: ApiFootballFixture[] }>();
 
     filteredFixtures.forEach(f => {
       const key = `${f.league.country} - ${f.league.name}`;
       if (!groups.has(key)) {
-        groups.set(key, []);
+        groups.set(key, { label: key, leagueId: f.league.id, fixtures: [] });
       }
-      groups.get(key)!.push(f);
+      groups.get(key)!.fixtures.push(f);
     });
 
-    // Sort by time within each group
-    groups.forEach((fixtures) => {
-      fixtures.sort((a, b) => new Date(a.fixture.date).getTime() - new Date(b.fixture.date).getTime());
+    groups.forEach((g) => {
+      g.fixtures.sort((a, b) => new Date(a.fixture.date).getTime() - new Date(b.fixture.date).getTime());
     });
 
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [filteredFixtures]);
 
   const toggleFixture = (fixtureId: number) => {
@@ -307,6 +323,13 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
               <span className="text-xs text-muted-foreground">
                 {filteredFixtures.length} jogos
               </span>
+              {blockedLeagues.size > 0 && (
+                <label className="flex items-center gap-2 text-xs cursor-pointer ml-auto">
+                  <Checkbox checked={showBlocked} onCheckedChange={(c) => setShowBlocked(!!c)} />
+                  <Ban className="h-3.5 w-3.5 text-rose-400" />
+                  Mostrar bloqueadas ({blockedLeagues.size})
+                </label>
+              )}
             </div>
           </div>
 
@@ -333,13 +356,27 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
               </div>
             ) : (
               <div className="space-y-4 pt-2">
-                {groupedFixtures.map(([league, leagueFixtures]) => (
-                  <div key={league}>
-                    <h3 className="text-xs font-bold text-muted-foreground uppercase mb-2 sticky top-0 bg-background py-1 z-10">
-                      {league}
+                {groupedFixtures.map((group) => {
+                  const isBlocked = blockedLeagues.has(group.leagueId);
+                  return (
+                  <div key={group.label}>
+                    <h3 className="text-xs font-bold text-muted-foreground uppercase mb-2 sticky top-0 bg-background py-1 z-10 flex items-center justify-between gap-2">
+                      <span className={cn(isBlocked && 'line-through opacity-60')}>{group.label}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleBlockLeague(group.leagueId); }}
+                        className={cn(
+                          'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border transition-colors',
+                          isBlocked
+                            ? 'border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10'
+                            : 'border-rose-500/30 text-rose-400 hover:bg-rose-500/10'
+                        )}
+                        title={isBlocked ? 'Desbloquear liga (só pra esta tela)' : 'Bloquear liga (só pra esta tela)'}
+                      >
+                        {isBlocked ? <><ShieldOff className="w-3 h-3" /> Desbloquear</> : <><Ban className="w-3 h-3" /> Bloquear</>}
+                      </button>
                     </h3>
                     <div className="space-y-1">
-                      {leagueFixtures.map((fixture) => {
+                      {group.fixtures.map((fixture) => {
                         const isSelected = selectedFixtures.has(fixture.fixture.id);
                         const fixtureTime = format(new Date(fixture.fixture.date), 'HH:mm');
                         const status = getStatusDisplay(fixture.fixture.status);
@@ -406,7 +443,8 @@ export function ApiGameBrowser({ open, onOpenChange, methods, onAddGames, existi
                       })}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
