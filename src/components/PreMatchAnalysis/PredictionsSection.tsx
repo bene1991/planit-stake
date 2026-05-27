@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Flame, Shield, TrendingUp, Zap } from "lucide-react";
+import { Flame, Shield, TrendingUp, Zap, Eye } from "lucide-react";
 
 interface Prediction {
   predictions: {
@@ -129,12 +129,93 @@ function Indicator({
   );
 }
 
+interface Scenario { title: string; description: string; tone: 'low' | 'mid' | 'high' | 'extreme'; emoji: string }
+
+function readScenario(
+  scores: ReturnType<typeof computeScores>,
+  predictions: Prediction['predictions'],
+  homeTeam: string,
+  awayTeam: string
+): Scenario {
+  const h = scores.home, a = scores.away;
+  const homeWin = pct(predictions.percent?.home);
+  const awayWin = pct(predictions.percent?.away);
+  const drawPct = pct(predictions.percent?.draw);
+  const favorite = homeWin - awayWin > 15 ? 'home' : awayWin - homeWin > 15 ? 'away' : null;
+  const favTeam = favorite === 'home' ? homeTeam : favorite === 'away' ? awayTeam : null;
+  const undTeam = favorite === 'home' ? awayTeam : favorite === 'away' ? homeTeam : null;
+  const favScores = favorite === 'home' ? h : a;
+  const undScores = favorite === 'home' ? a : h;
+
+  const bothAttack = h.goalPotential >= 55 && a.goalPotential >= 55;
+  const bothDefSolid = h.defensiveFragility < 40 && a.defensiveFragility < 40;
+  const bothDefWeak = h.defensiveFragility >= 60 && a.defensiveFragility >= 60;
+  const oneSidedGoleada = favorite && favScores.goalPotential >= 60 && undScores.defensiveFragility >= 55 && scores.totalExpected >= 2.5;
+  const surpriseRisk = favorite && undScores.goalPotential >= 55 && favScores.defensiveFragility >= 55;
+
+  if (oneSidedGoleada) {
+    return {
+      title: `Cenário de goleada do ${favTeam}`,
+      description: `Favorito com ataque forte (${Math.round(favScores.goalPotential)}) contra defesa frágil do ${undTeam} (${Math.round(undScores.defensiveFragility)}). Expectativa: ${scores.totalExpected.toFixed(1)} gols.`,
+      tone: 'extreme',
+      emoji: '🔥',
+    };
+  }
+  if (bothDefSolid && scores.totalExpected < 2) {
+    return {
+      title: 'Jogo travado',
+      description: `As duas defesas são sólidas e o ataque combinado é fraco. Tendência de poucos gols (${scores.totalExpected.toFixed(1)} esperado). Cuidado com under 2.5.`,
+      tone: 'low',
+      emoji: '🧊',
+    };
+  }
+  if (bothAttack && bothDefWeak) {
+    return {
+      title: 'Jogo aberto, muitos gols',
+      description: `Os dois times atacam bem e defendem mal. Expectativa de ${scores.totalExpected.toFixed(1)} gols — over 2.5 e BTTS são tendências.`,
+      tone: 'extreme',
+      emoji: '⚡',
+    };
+  }
+  if (surpriseRisk) {
+    return {
+      title: `Atenção: ${undTeam} pode surpreender`,
+      description: `${favTeam} é favorito mas tem defesa vulnerável (${Math.round(favScores.defensiveFragility)}) e o ${undTeam} tem ataque eficiente (${Math.round(undScores.goalPotential)}).`,
+      tone: 'high',
+      emoji: '⚠️',
+    };
+  }
+  if (favorite && favScores.goalPotential >= 55) {
+    return {
+      title: `${favTeam} dominante`,
+      description: `Favorito claro com ataque forte (${Math.round(favScores.goalPotential)}). Vitória do ${favTeam} é a tendência principal.`,
+      tone: 'high',
+      emoji: '🎯',
+    };
+  }
+  if (drawPct >= 30) {
+    return {
+      title: 'Equilíbrio total',
+      description: `Sem favorito claro, chance de empate em ${drawPct}%. Mercado de dupla chance e under 2.5 ganham relevância.`,
+      tone: 'mid',
+      emoji: '⚖️',
+    };
+  }
+  return {
+    title: 'Jogo equilibrado',
+    description: `Sem padrão dominante. Expectativa de ${scores.totalExpected.toFixed(1)} gols, com ambos os times em condições parecidas.`,
+    tone: 'mid',
+    emoji: '🤝',
+  };
+}
+
 export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
   if (!prediction) return <p className="text-muted-foreground text-sm text-center py-4">Predições indisponíveis</p>;
 
   const { predictions, comparison } = prediction;
   const scores = computeScores(comparison, predictions);
   const advice = predictions.advice ? translateAdvice(predictions.advice) : null;
+  const scenario = readScenario(scores, predictions, homeTeam, awayTeam);
 
   const homeGP = classify(scores.home.goalPotential);
   const awayGP = classify(scores.away.goalPotential);
@@ -147,6 +228,17 @@ export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
 
   return (
     <div className="space-y-4">
+      <div className={cn('rounded-lg border p-4 flex items-start gap-3', toneColor(scenario.tone))}>
+        <span className="text-2xl leading-none">{scenario.emoji}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold opacity-70 mb-0.5">
+            <Eye className="w-3 h-3" /> Leitura do cenário
+          </div>
+          <p className="text-sm font-extrabold leading-tight">{scenario.title}</p>
+          <p className="text-[11px] opacity-90 mt-1 leading-snug">{scenario.description}</p>
+        </div>
+      </div>
+
       {advice && (
         <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 text-center">
           <span className="text-xs font-semibold text-primary">{advice}</span>
@@ -188,24 +280,24 @@ export function PredictionsSection({ prediction, homeTeam, awayTeam }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <p className="text-xs font-bold text-primary text-center truncate">{homeTeam}</p>
-          <Indicator icon={Flame} title="Potencial de gols" score={scores.home.goalPotential}
-            sub={`${homeGP.label} · ${scores.home.expectedGoals.toFixed(1)} xG`} tone={homeGP.tone} />
-          <Indicator icon={Shield} title="Fragilidade defensiva" score={scores.home.defensiveFragility}
-            sub={`${homeDF.label} · sofre ${scores.home.expectedConceded.toFixed(1)}`} tone={homeDF.tone} />
+          <Indicator icon={Flame} title={`xG ${scores.home.expectedGoals.toFixed(2)}`} score={scores.home.goalPotential}
+            sub={homeGP.label} tone={homeGP.tone} />
+          <Indicator icon={Shield} title={`xGA ${scores.home.expectedConceded.toFixed(2)}`} score={scores.home.defensiveFragility}
+            sub={homeDF.label} tone={homeDF.tone} />
         </div>
         <div className="space-y-2">
           <p className="text-xs font-bold text-destructive text-center truncate">{awayTeam}</p>
-          <Indicator icon={Flame} title="Potencial de gols" score={scores.away.goalPotential}
-            sub={`${awayGP.label} · ${scores.away.expectedGoals.toFixed(1)} xG`} tone={awayGP.tone} />
-          <Indicator icon={Shield} title="Fragilidade defensiva" score={scores.away.defensiveFragility}
-            sub={`${awayDF.label} · sofre ${scores.away.expectedConceded.toFixed(1)}`} tone={awayDF.tone} />
+          <Indicator icon={Flame} title={`xG ${scores.away.expectedGoals.toFixed(2)}`} score={scores.away.goalPotential}
+            sub={awayGP.label} tone={awayGP.tone} />
+          <Indicator icon={Shield} title={`xGA ${scores.away.expectedConceded.toFixed(2)}`} score={scores.away.defensiveFragility}
+            sub={awayDF.label} tone={awayDF.tone} />
         </div>
       </div>
 
-      <p className="text-[10px] text-muted-foreground text-center opacity-70">
-        <Zap className="inline w-3 h-3 mr-1 -mt-0.5" />
-        Índices 0-100 calculados via ataque, finalização, distribuição Poisson e gols esperados
-      </p>
+      <div className="bg-muted/20 border border-border/20 rounded-md p-2.5 text-[10px] text-muted-foreground space-y-1 leading-relaxed">
+        <p className="flex items-start gap-1.5"><Zap className="w-3 h-3 mt-0.5 shrink-0 text-amber-400" /><span><strong className="text-foreground">xG</strong> (gols esperados) — quantos gols o time deve marcar nesta partida. Score 0-100 combina ataque, finalização, Poisson e xG bruto.</span></p>
+        <p className="flex items-start gap-1.5"><Zap className="w-3 h-3 mt-0.5 shrink-0 text-rose-400" /><span><strong className="text-foreground">xGA</strong> (gols esperados sofridos) — quantos gols o time deve levar. Score 0-100 = fragilidade defensiva ajustada pelo ataque do adversário.</span></p>
+      </div>
     </div>
   );
 }

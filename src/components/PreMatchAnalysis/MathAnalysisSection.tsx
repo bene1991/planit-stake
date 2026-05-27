@@ -92,30 +92,11 @@ export function MathAnalysisSection({ homeLastMatches, awayLastMatches, homeTeam
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
           <BarChart3 className="h-3.5 w-3.5" />
-          Análise Matemática (Poisson)
+          Probabilidades de Gols
         </h4>
         <Badge variant="outline" className={`text-[10px] ${confidenceColor[analysis.confidence]}`}>
           {analysis.confidence === 'Alta' ? '📊' : analysis.confidence === 'Média' ? '⚠️' : '❗'} {analysis.confidence}
         </Badge>
-      </div>
-
-      {/* Lambdas */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[9px] text-muted-foreground">λ Casa</p>
-          <p className="text-sm font-bold font-mono text-primary">{analysis.lambdaHome.toFixed(2)}</p>
-          <p className="text-[9px] text-muted-foreground truncate">{homeTeam}</p>
-        </div>
-        <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[9px] text-muted-foreground">λ Fora</p>
-          <p className="text-sm font-bold font-mono text-destructive">{analysis.lambdaAway.toFixed(2)}</p>
-          <p className="text-[9px] text-muted-foreground truncate">{awayTeam}</p>
-        </div>
-        <div className="bg-muted/30 rounded-md p-2 text-center">
-          <p className="text-[9px] text-muted-foreground">λ Total</p>
-          <p className="text-sm font-bold font-mono">{analysis.lambdaTotal.toFixed(2)}</p>
-          <p className="text-[9px] text-muted-foreground">Esperado</p>
-        </div>
       </div>
 
       {/* Probabilities table */}
