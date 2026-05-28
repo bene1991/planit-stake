@@ -76,6 +76,7 @@ const MethodDetail: React.FC = () => {
   const [savingQuarantine, setSavingQuarantine] = useState(false);
 
   const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, number> | null>(null);
+  const [optimisticResultOverrides, setOptimisticResultOverrides] = useState<Record<string, 'green' | 'red'> | null>(null);
 
   const { data: method, isLoading: loadingMethod } = useQuery({
     queryKey: ['method', id],
@@ -93,6 +94,39 @@ const MethodDetail: React.FC = () => {
 
   const quarantinedLeagues: string[] = optimisticQuarantine ?? (method?.filters_snapshot?.quarantine_leagues || []);
   const redOverrides: Record<string, number> = optimisticOverrides ?? (method?.filters_snapshot?.red_overrides || {});
+  const resultOverrides: Record<string, 'green' | 'red'> = optimisticResultOverrides ?? (method?.filters_snapshot?.result_overrides || {});
+  const toggleResultOverride = async (fixtureId: string, computed: 'green' | 'red' | 'pending') => {
+    if (!method) return;
+    const current: Record<string, 'green' | 'red'> = { ...(method.filters_snapshot?.result_overrides || {}) };
+    const existing = current[fixtureId];
+    const effective = existing ?? (computed === 'pending' ? 'red' : computed);
+    const next: 'green' | 'red' = effective === 'green' ? 'red' : 'green';
+    if (computed !== 'pending' && next === computed) {
+      delete current[fixtureId];
+    } else {
+      current[fixtureId] = next;
+    }
+    setOptimisticResultOverrides(current);
+    const newSnap = { ...(method.filters_snapshot || {}), result_overrides: current };
+    const { data: updated, error } = await supabase
+      .from('strategy_simulations')
+      .update({ filters_snapshot: newSnap })
+      .eq('id', method.id)
+      .select();
+    if (error) {
+      toast.error('Erro ao alterar resultado: ' + error.message);
+      setOptimisticResultOverrides(null);
+      return;
+    }
+    if (!updated || updated.length === 0) {
+      toast.error('Alteração não persistiu (RLS bloqueou update)');
+      setOptimisticResultOverrides(null);
+      return;
+    }
+    toast.success(current[fixtureId] ? `Resultado alterado para ${current[fixtureId].toUpperCase()}` : 'Resultado restaurado');
+    await queryClient.invalidateQueries({ queryKey: ['method', id] });
+    setOptimisticResultOverrides(null);
+  };
   const setRedOverride = async (fixtureId: string, value: number | null) => {
     if (!method) return;
     const current: Record<string, number> = { ...(method.filters_snapshot?.red_overrides || {}) };
@@ -244,11 +278,13 @@ const MethodDetail: React.FC = () => {
         return m >= entryMin && m <= exitMin;
       });
 
-      const result: 'green' | 'red' | 'pending' = !analyzable
+      const computed: 'green' | 'red' | 'pending' = !analyzable
         ? 'pending'
         : goalsInWindow.length > 0
         ? 'green'
         : 'red';
+      const override = resultOverrides[String(a.fixture_id)];
+      const result: 'green' | 'red' | 'pending' = override ?? computed;
 
       const effectiveRed = redOverrides[String(a.fixture_id)] ?? redStake;
       const profit = result === 'green' ? greenStake * GREEN_NET : result === 'red' ? -effectiveRed : 0;
@@ -270,6 +306,8 @@ const MethodDetail: React.FC = () => {
         variation: a.variation_name,
         minute_at_alert: a.minute_at_alert,
         result,
+        computed_result: computed,
+        result_overridden: override !== undefined,
         profit,
         goals: sorted.map(g => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
         raw_goal_events: sorted,
@@ -291,7 +329,7 @@ const MethodDetail: React.FC = () => {
     const roi = analyzable.length ? (totalStakes / analyzable.length) * 100 : 0;
 
     return { games: mainGames, allGames: games, quarantineGames, analyzable: analyzable.length, datasetSize: mainGames.length, greens, reds, totalStakes, winRate, roi };
-  }, [method, data, redOverrides, filterPeriod, customFrom, customTo, filterLeague, filterTeam, quarantinedLeagues]);
+  }, [method, data, redOverrides, resultOverrides, filterPeriod, customFrom, customTo, filterLeague, filterTeam, quarantinedLeagues]);
 
   const allLeagues = useMemo(() => {
     if (!method || !data) return [] as { id: string; label: string }[];
@@ -630,14 +668,29 @@ const MethodDetail: React.FC = () => {
                               title="Restaurar padrão"
                             >×</button>
                           )}
+                          <button
+                            onClick={() => toggleResultOverride(String(g.fixture_id), (g as any).computed_result)}
+                            className="text-[9px] text-gray-400 hover:text-white ml-1"
+                            title={(g as any).result_overridden ? 'Resultado alterado manualmente — clique pra trocar' : 'Alterar resultado'}
+                          >↻</button>
                         </div>
                       ) : (
-                        <span className={cn('px-2 py-0.5 rounded text-[10px] font-bold uppercase',
-                          g.result === 'green' && 'bg-emerald-500/10 text-emerald-500',
-                          g.result === 'pending' && 'bg-amber-500/10 text-amber-500',
-                        )}>
-                          {g.result === 'green' ? `+${(method.green_stake * GREEN_NET).toFixed(3)}` : 'PENDENTE'}
-                        </span>
+                        <div className="inline-flex items-center gap-1">
+                          <span className={cn('px-2 py-0.5 rounded text-[10px] font-bold uppercase',
+                            g.result === 'green' && 'bg-emerald-500/10 text-emerald-500',
+                            g.result === 'pending' && 'bg-amber-500/10 text-amber-500',
+                          )}>
+                            {g.result === 'green' ? `+${(method.green_stake * GREEN_NET).toFixed(3)}` : 'PENDENTE'}
+                            {(g as any).result_overridden && <span className="ml-1 text-[8px] opacity-60">✎</span>}
+                          </span>
+                          {g.result !== 'pending' && (
+                            <button
+                              onClick={() => toggleResultOverride(String(g.fixture_id), (g as any).computed_result)}
+                              className="text-[9px] text-gray-400 hover:text-white"
+                              title={(g as any).result_overridden ? 'Resultado alterado manualmente — clique pra trocar' : 'Alterar resultado'}
+                            >↻</button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
