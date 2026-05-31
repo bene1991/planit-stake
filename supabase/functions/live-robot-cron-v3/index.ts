@@ -100,6 +100,7 @@ serve(async (req) => {
       const vIds: string[] = fs.variation_ids || [];
       const qLeagues: string[] = fs.quarantine_leagues || [];
       if (!vIds.length) continue;
+      if (fs.notify_enabled === false) continue; // Método com notificação desligada
       const entry: MethodEntry = {
         id: String(m.id),
         name: String(m.name || m.id),

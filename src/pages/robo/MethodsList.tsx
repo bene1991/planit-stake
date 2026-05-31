@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FlaskConical, ArrowRight, Loader2, Plus, CalendarDays } from 'lucide-react';
+import { FlaskConical, ArrowRight, Loader2, Plus, CalendarDays, Bell, BellOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +17,28 @@ const MethodsList: React.FC = () => {
   const [period, setPeriod] = useState<Period>('all');
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const toggleNotify = async (e: React.MouseEvent, m: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (togglingId) return;
+    setTogglingId(m.id);
+    const current = m.filters_snapshot?.notify_enabled !== false;
+    const newSnap = { ...(m.filters_snapshot || {}), notify_enabled: !current };
+    const { error } = await supabase
+      .from('strategy_simulations')
+      .update({ filters_snapshot: newSnap })
+      .eq('id', m.id);
+    setTogglingId(null);
+    if (error) {
+      toast.error('Erro: ' + error.message);
+      return;
+    }
+    toast.success(!current ? `Notificações ativadas: ${m.name}` : `Notificações desativadas: ${m.name}`);
+    queryClient.invalidateQueries({ queryKey: ['methods-list'] });
+  };
 
   const { data: methods, isLoading } = useQuery({
     queryKey: ['methods-list'],
@@ -226,7 +249,30 @@ const MethodsList: React.FC = () => {
                       Janela {m.entry_minute}'→{m.exit_minute}' · +{m.green_stake} / -{m.red_stake}
                     </p>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-gray-500" />
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const enabled = m.filters_snapshot?.notify_enabled !== false;
+                      const isToggling = togglingId === m.id;
+                      return (
+                        <button
+                          onClick={(e) => toggleNotify(e, m)}
+                          disabled={isToggling}
+                          title={enabled ? 'Notificações ATIVAS — clique para desligar' : 'Notificações DESLIGADAS — clique para ligar'}
+                          className={cn(
+                            'p-1.5 rounded-md border transition-colors',
+                            enabled
+                              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20'
+                              : 'bg-rose-500/10 border-rose-500/40 text-rose-400 hover:bg-rose-500/20'
+                          )}
+                        >
+                          {isToggling
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : enabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+                        </button>
+                      );
+                    })()}
+                    <ArrowRight className="w-4 h-4 text-gray-500" />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 text-center py-2 border-y border-[#2a3142]">
