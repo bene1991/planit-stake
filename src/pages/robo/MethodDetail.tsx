@@ -1570,8 +1570,8 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
     let alertMin: number | null = null;
     if (alertMinute.trim() !== '') {
       const n = parseInt(alertMinute, 10);
-      if (!Number.isFinite(n) || n < entry) {
-        toast.error(`Minuto da notificação deve ser >= ${entry} (entrada do método) ou vazio`);
+      if (!Number.isFinite(n) || n < 0 || n > 120) {
+        toast.error('Minuto da notificação deve estar entre 0 e 120 (ou vazio)');
         return;
       }
       alertMin = n;
@@ -1636,7 +1636,7 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
               className="bg-[#2a3142] border-[#3b4256]"
             />
             <p className="text-[10px] text-gray-500 mt-1">
-              Se preenchido, sobrescreve o minuto da variação. Deve ser ≥ {entry} (entrada do método).
+              Se preenchido, sobrescreve o minuto da variação (qualquer valor entre 0 e 120).
             </p>
           </div>
           <div>
