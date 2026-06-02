@@ -1545,6 +1545,9 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
   const [green, setGreen] = useState(method.green_stake);
   const [red, setRed] = useState(method.red_stake);
   const [vars, setVars] = useState<string[]>(method.filters_snapshot?.variation_ids || []);
+  const [alertMinute, setAlertMinute] = useState<string>(
+    method.filters_snapshot?.telegram_alert_minute != null ? String(method.filters_snapshot.telegram_alert_minute) : ''
+  );
   const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
@@ -1555,6 +1558,7 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
       setGreen(method.green_stake);
       setRed(method.red_stake);
       setVars(method.filters_snapshot?.variation_ids || []);
+      setAlertMinute(method.filters_snapshot?.telegram_alert_minute != null ? String(method.filters_snapshot.telegram_alert_minute) : '');
     }
   }, [open, method]);
 
@@ -1563,7 +1567,19 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
   const save = async () => {
     if (!name.trim()) { toast.error('Dê um nome para o método'); return; }
     if (vars.length === 0) { toast.error('Selecione pelo menos uma variação'); return; }
+    let alertMin: number | null = null;
+    if (alertMinute.trim() !== '') {
+      const n = parseInt(alertMinute, 10);
+      if (!Number.isFinite(n) || n < entry) {
+        toast.error(`Minuto da notificação deve ser >= ${entry} (entrada do método) ou vazio`);
+        return;
+      }
+      alertMin = n;
+    }
     setSaving(true);
+    const newSnap: any = { ...(method.filters_snapshot || {}), variation_ids: vars, variation: vars.join(',') };
+    if (alertMin == null) delete newSnap.telegram_alert_minute;
+    else newSnap.telegram_alert_minute = alertMin;
     const { error } = await supabase
       .from('strategy_simulations')
       .update({
@@ -1572,7 +1588,7 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
         exit_minute: exit,
         green_stake: green,
         red_stake: red,
-        filters_snapshot: { ...(method.filters_snapshot || {}), variation_ids: vars, variation: vars.join(',') },
+        filters_snapshot: newSnap,
       })
       .eq('id', method.id);
     setSaving(false);
@@ -1609,6 +1625,19 @@ const EditMethodDialog: React.FC<EditDialogProps> = ({ open, onClose, method, al
               <Label className="text-xs text-gray-400">Perda no Red</Label>
               <Input type="number" step="0.1" value={red} onChange={(e) => setRed(parseFloat(e.target.value) || 0)} className="bg-[#2a3142] border-[#3b4256]" />
             </div>
+          </div>
+          <div>
+            <Label className="text-xs text-gray-400">Minuto da Notificação Telegram (opcional)</Label>
+            <Input
+              type="number"
+              placeholder="vazio = usa o minuto da variação"
+              value={alertMinute}
+              onChange={(e) => setAlertMinute(e.target.value)}
+              className="bg-[#2a3142] border-[#3b4256]"
+            />
+            <p className="text-[10px] text-gray-500 mt-1">
+              Se preenchido, sobrescreve o minuto da variação. Deve ser ≥ {entry} (entrada do método).
+            </p>
           </div>
           <div>
             <Label className="text-xs text-gray-400 mb-1.5 block">Variações ({vars.length} selecionada(s))</Label>

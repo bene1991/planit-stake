@@ -93,7 +93,7 @@ serve(async (req) => {
     const { data: methods } = await supabase
       .from('strategy_simulations')
       .select('id, name, filters_snapshot');
-    type MethodEntry = { id: string; name: string; quarantine: Set<string> };
+    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null };
     const methodsByVariation = new Map<string, MethodEntry[]>();
     for (const m of methods || []) {
       const fs: any = m.filters_snapshot || {};
@@ -105,21 +105,31 @@ serve(async (req) => {
         id: String(m.id),
         name: String(m.name || m.id),
         quarantine: new Set(qLeagues.map(String)),
+        alertMinute: typeof fs.telegram_alert_minute === 'number' ? fs.telegram_alert_minute : null,
       };
       for (const vid of vIds) {
         if (!methodsByVariation.has(vid)) methodsByVariation.set(vid, []);
         methodsByVariation.get(vid)!.push(entry);
       }
     }
-    const methodsForAlert = (variationId: string, leagueId: any, leagueName: any, excludeIds: Set<string> = new Set()): MethodEntry[] => {
+    const methodsForAlert = (
+      variationId: string,
+      leagueId: any,
+      leagueName: any,
+      variationAlertMinute: number | null,
+      currentMinute: number,
+      excludeIds: Set<string> = new Set()
+    ): MethodEntry[] => {
       const list = methodsByVariation.get(variationId) || [];
       const lid = String(leagueId ?? '');
       const lname = String(leagueName ?? '');
-      return list.filter(m =>
-        !excludeIds.has(m.id) &&
-        !m.quarantine.has(lid) &&
-        !m.quarantine.has(lname)
-      );
+      return list.filter(m => {
+        if (excludeIds.has(m.id)) return false;
+        if (m.quarantine.has(lid) || m.quarantine.has(lname)) return false;
+        const effectiveMinute = m.alertMinute ?? variationAlertMinute;
+        if (effectiveMinute != null && currentMinute < effectiveMinute) return false;
+        return true;
+      });
     };
 
     // 3. Fetch Telegram Settings
@@ -413,18 +423,23 @@ serve(async (req) => {
           const existingMap = new Map(existing?.map(e => [e.variation_id, e]) || []);
           
           // Dispatch per-method: cada método com a variação e sem quarentena recebe 1 mensagem
+          // no seu próprio minuto (efetivo = método.alertMinute ?? variação.alertMinute).
           for (const v of variations) {
             const matchesFilter = triggeredVars.some(tv => tv.id === v.id);
             const existingAlert = existingMap.get(v.id) as any | undefined;
             const isNewTrigger = matchesFilter && !existingAlert;
-            const isDelayedPending = existingAlert &&
-                                    !existingAlert.telegram_sent &&
-                                    v.telegram_alert_minute &&
-                                    timeElapsed >= v.telegram_alert_minute;
 
-            if (!(isNewTrigger || isDelayedPending)) continue;
+            // Calcula candidatos (ignora minuto) e prontos (respeita minuto)
+            const allEligible = v.send_telegram
+              ? methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, Infinity, new Set())
+              : [];
+            const alreadyNotified = new Set<string>((existingAlert?.notified_method_ids || []) as string[]);
+            const targets = v.send_telegram
+              ? methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, timeElapsed, alreadyNotified)
+              : [];
 
-            const shouldSendTelegram = v.send_telegram && (!v.telegram_alert_minute || timeElapsed >= v.telegram_alert_minute);
+            const hasPendingWork = allEligible.length > 0 && allEligible.some(m => !alreadyNotified.has(m.id));
+            if (!isNewTrigger && !hasPendingWork) continue;
 
             if (isNewTrigger) {
               await supabase.from('live_alerts').insert({
@@ -432,27 +447,23 @@ serve(async (req) => {
                 home_team: f.teams.home.name, away_team: f.teams.away.name,
                 minute_at_alert: timeElapsed, variation_id: v.id, variation_name: v.name,
                 stats_snapshot: { fullMatch: currentStats, window10Min: delta },
-                telegram_sent: shouldSendTelegram,
+                telegram_sent: allEligible.length === 0, // sem destinatário possível, já considera enviado
                 telegram_alert_minute: v.telegram_alert_minute,
                 notified_method_ids: [] as string[],
               });
-            } else if (isDelayedPending) {
-              await supabase.from('live_alerts').update({ telegram_sent: true }).eq('fixture_id', fixtureId).eq('variation_id', v.id);
             }
 
-            if (!shouldSendTelegram) continue;
-
-            const alreadyNotified = new Set<string>((existingAlert?.notified_method_ids || []) as string[]);
-            const targets = methodsForAlert(v.id, f.league.id, f.league.name, alreadyNotified);
             if (targets.length === 0) {
-              addLog({
-                fixture_id: fixtureId,
-                league_id: leagueId,
-                variation_id: v.id,
-                stage: 'ALERT_SENT',
-                reason: 'Telegram SKIPPED (nenhum método elegível — quarentena ou sem método)',
-                details: { league: f.league.name, variation: v.name }
-              });
+              if (isNewTrigger && allEligible.length === 0) {
+                addLog({
+                  fixture_id: fixtureId,
+                  league_id: leagueId,
+                  variation_id: v.id,
+                  stage: 'ALERT_SENT',
+                  reason: 'Telegram SKIPPED (nenhum método elegível — quarentena ou sem método)',
+                  details: { league: f.league.name, variation: v.name }
+                });
+              }
               continue;
             }
 
@@ -506,20 +517,15 @@ serve(async (req) => {
               }
             }
 
-            if (notifiedNow.length > 0) {
-              const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
-              await supabase.from('live_alerts')
-                .update({ notified_method_ids: merged })
-                .eq('fixture_id', fixtureId)
-                .eq('variation_id', v.id);
-            }
-            // Se nenhum send teve sucesso, marca telegram_sent=false pra Pass 2 retentar
-            if (notifiedNow.length < targets.length) {
-              await supabase.from('live_alerts')
-                .update({ telegram_sent: false })
-                .eq('fixture_id', fixtureId)
-                .eq('variation_id', v.id);
-            }
+            const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
+            const allCovered = allEligible.every(m => merged.includes(m.id));
+            await supabase.from('live_alerts')
+              .update({
+                notified_method_ids: merged,
+                telegram_sent: allCovered,
+              })
+              .eq('fixture_id', fixtureId)
+              .eq('variation_id', v.id);
           }
         }
       }));
@@ -535,7 +541,6 @@ serve(async (req) => {
       .from('live_alerts')
       .select('*')
       .eq('telegram_sent', false)
-      .not('telegram_alert_minute', 'is', null)
       .in('fixture_id', fixtureIds); // BLINDAGEM: Only check live games
 
     if (allPending && allPending.length > 0) {
@@ -547,15 +552,16 @@ serve(async (req) => {
         if (!liveFixture) continue; // Game not live (already finished or not started)
 
         const currentMinute = liveFixture.fixture?.status?.elapsed;
-        if (!currentMinute || currentMinute < alert.telegram_alert_minute) continue; // Not yet time
+        if (!currentMinute) continue;
 
         // Find the variation config for this alert
         const variation = variations.find((v: any) => v.id === alert.variation_id);
         if (!variation || !variation.send_telegram) continue;
 
         const alreadyNotified = new Set<string>((alert.notified_method_ids || []) as string[]);
-        const targets = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, alreadyNotified);
-        if (targets.length === 0) {
+        const allEligible = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, Infinity, new Set());
+        const targets = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, currentMinute, alreadyNotified);
+        if (allEligible.length === 0) {
           await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
           addLog({
             fixture_id: alert.fixture_id,
@@ -567,6 +573,7 @@ serve(async (req) => {
           });
           continue;
         }
+        if (targets.length === 0) continue; // métodos pendentes mas minuto ainda não chegou
 
         const ts = settingsMap.get(variation.owner_id) || settings?.[0];
         const group = Array.isArray(variation.telegram_groups) ? variation.telegram_groups[0] : variation.telegram_groups;
@@ -613,11 +620,11 @@ serve(async (req) => {
 
         if (notifiedNow.length > 0) {
           const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
-          const allDone = notifiedNow.length === targets.length;
+          const allCovered = allEligible.every(m => merged.includes(m.id));
           await supabase.from('live_alerts')
-            .update({ notified_method_ids: merged, telegram_sent: allDone })
+            .update({ notified_method_ids: merged, telegram_sent: allCovered })
             .eq('id', alert.id);
-          if (allDone) console.log(`[RESILIENT] ✅ Sent delayed alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
+          if (allCovered) console.log(`[RESILIENT] ✅ Sent delayed alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
         }
       }
     }
@@ -634,18 +641,12 @@ serve(async (req) => {
       .from('live_alerts')
       .select('*')
       .eq('telegram_sent', false)
-      .not('telegram_alert_minute', 'is', null)
       .gte('created_at', stuckCutoff);
 
     if (stuckAlerts && stuckAlerts.length > 0) {
       console.log(`[SAFETY] ${stuckAlerts.length} pending delayed alerts to evaluate.`);
       const SAFETY_MARGIN_MIN = 20;
       for (const alert of stuckAlerts) {
-        const createdMs = new Date(alert.created_at).getTime();
-        const minutesElapsed = (Date.now() - createdMs) / 60000;
-        const minutesNeeded = (alert.telegram_alert_minute - (alert.minute_at_alert || 0)) + SAFETY_MARGIN_MIN;
-        if (minutesElapsed < minutesNeeded) continue;
-
         const variation = variations.find((v: any) => v.id === alert.variation_id);
         if (!variation || !variation.send_telegram) {
           await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
@@ -653,7 +654,18 @@ serve(async (req) => {
         }
 
         const alreadyNotified = new Set<string>((alert.notified_method_ids || []) as string[]);
-        const targets = methodsForAlert(variation.id, alert.league_id, alert.league_name, alreadyNotified);
+        // Safety net: ignora minuto e tenta enviar pra todos os métodos pendentes
+        const targets = methodsForAlert(variation.id, alert.league_id, alert.league_name, variation.telegram_alert_minute ?? null, Infinity, alreadyNotified);
+
+        // Calcula o maior minuto efetivo entre métodos elegíveis + variação, pra esperar a safety margin
+        const variationMin = variation.telegram_alert_minute ?? 0;
+        const maxMethodMin = targets.reduce((mx, m) => Math.max(mx, m.alertMinute ?? variationMin), variationMin);
+        const targetMinute = Math.max(variationMin, maxMethodMin);
+        const createdMs = new Date(alert.created_at).getTime();
+        const minutesElapsed = (Date.now() - createdMs) / 60000;
+        const minutesNeeded = (targetMinute - (alert.minute_at_alert || 0)) + SAFETY_MARGIN_MIN;
+        if (minutesElapsed < minutesNeeded) continue;
+
         if (targets.length === 0) {
           await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
           addLog({
@@ -714,7 +726,7 @@ serve(async (req) => {
           await supabase.from('live_alerts')
             .update({ notified_method_ids: merged, telegram_sent: allDone })
             .eq('id', alert.id);
-          if (allDone) console.log(`[SAFETY] ✅ Sent stuck alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
+          if (allDone) console.log(`[SAFETY] ✅ Sent stuck alert: ${alert.home_team} vs ${alert.away_team} (target @${targetMinute}')`);
         }
       }
     }
