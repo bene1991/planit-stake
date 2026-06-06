@@ -429,6 +429,9 @@ serve(async (req) => {
             const existingAlert = existingMap.get(v.id) as any | undefined;
             const isNewTrigger = matchesFilter && !existingAlert;
 
+            // Só processa se a variação acabou de disparar OU já existe alerta no DB (=disparou antes)
+            if (!isNewTrigger && !existingAlert) continue;
+
             // Calcula candidatos (ignora minuto) e prontos (respeita minuto)
             const allEligible = v.send_telegram
               ? methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, Infinity, new Set())
@@ -438,7 +441,7 @@ serve(async (req) => {
               ? methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, timeElapsed, alreadyNotified)
               : [];
 
-            const hasPendingWork = allEligible.length > 0 && allEligible.some(m => !alreadyNotified.has(m.id));
+            const hasPendingWork = allEligible.some(m => !alreadyNotified.has(m.id));
             if (!isNewTrigger && !hasPendingWork) continue;
 
             if (isNewTrigger) {
