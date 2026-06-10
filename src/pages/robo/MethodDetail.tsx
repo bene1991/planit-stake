@@ -926,6 +926,14 @@ const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStake: number; entryMin: number; exitMin: number; quarantinedLeagues: string[]; onToggleQuarantine: (l: string) => void }> = ({ games, greenStake, redStake, entryMin, exitMin, quarantinedLeagues, onToggleQuarantine }) => {
   const analyzable = useMemo(() => games.filter(g => g.result !== 'pending'), [games]);
   const [dayDetail, setDayDetail] = useState<{ date: Date; games: AnalysisGame[] } | null>(null);
+  const [leagueDetail, setLeagueDetail] = useState<{ id: string; name: string } | null>(null);
+
+  const leagueGames = useMemo(() => {
+    if (!leagueDetail) return [] as AnalysisGame[];
+    return [...games]
+      .filter((g: any) => String(g.league_id ?? g.league) === leagueDetail.id)
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  }, [games, leagueDetail]);
 
   // chronological (oldest -> newest) for time-series
   const chrono = useMemo(() => [...analyzable].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [analyzable]);
@@ -1111,18 +1119,25 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
   }, [analyzable]);
 
   const leagueAgg = useMemo(() => {
-    const m = new Map<string, { id: string; name: string; label: string; greens: number; reds: number; profit: number }>();
+    const m = new Map<string, { id: string; name: string; label: string; greens: number; reds: number; profit: number; redStakeSum: number }>();
     for (const g of analyzable as any[]) {
       const id = g.league_id || g.league || '—';
-      if (!m.has(id)) m.set(id, { id, name: g.league_name || g.league || '—', label: g.league || g.league_name || '—', greens: 0, reds: 0, profit: 0 });
+      if (!m.has(id)) m.set(id, { id, name: g.league_name || g.league || '—', label: g.league || g.league_name || '—', greens: 0, reds: 0, profit: 0, redStakeSum: 0 });
       const x = m.get(id)!;
-      if (g.result === 'green') x.greens++; else if (g.result === 'red') x.reds++;
+      if (g.result === 'green') x.greens++;
+      else if (g.result === 'red') { x.reds++; x.redStakeSum += -g.profit; }
       x.profit += g.profit;
     }
-    const all = Array.from(m.values()).map(x => ({ ...x, entries: x.greens + x.reds, winRate: x.greens + x.reds > 0 ? (x.greens / (x.greens + x.reds)) * 100 : 0 }));
+    const all = Array.from(m.values()).map(x => ({
+      ...x,
+      entries: x.greens + x.reds,
+      winRate: x.greens + x.reds > 0 ? (x.greens / (x.greens + x.reds)) * 100 : 0,
+      avgRed: x.reds > 0 ? x.redStakeSum / x.reds : 0,
+    }));
     const best = [...all].sort((a, b) => b.profit - a.profit).slice(0, 10);
     const worst = [...all].sort((a, b) => a.profit - b.profit).slice(0, 10);
-    return { best, worst };
+    const allSorted = [...all].sort((a, b) => b.profit - a.profit);
+    return { best, worst, all: allSorted };
   }, [analyzable]);
 
   const teamAgg = useMemo(() => {
@@ -1463,17 +1478,83 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <RankCard title="Top 10 Melhores Ligas" data={leagueAgg.best} positive quarantinable quarantined={quarantinedLeagues} onToggle={onToggleQuarantine} />
-        <RankCard title="Top 10 Piores Ligas" data={leagueAgg.worst} positive={false} quarantinable quarantined={quarantinedLeagues} onToggle={onToggleQuarantine} />
+        <RankCard title="Top 10 Melhores Ligas" data={leagueAgg.best} positive quarantinable quarantined={quarantinedLeagues} onToggle={onToggleQuarantine} onLeagueClick={(id, name) => setLeagueDetail({ id, name })} />
+        <RankCard title="Top 10 Piores Ligas" data={leagueAgg.worst} positive={false} quarantinable quarantined={quarantinedLeagues} onToggle={onToggleQuarantine} onLeagueClick={(id, name) => setLeagueDetail({ id, name })} />
         <RankCard title="Top 10 Melhores Times" data={teamAgg.best} positive subtitle="mín. 3 entradas" />
         <RankCard title="Top 10 Piores Times" data={teamAgg.worst} positive={false} subtitle="mín. 3 entradas" />
       </div>
 
+      <RankCard
+        title={`Todas as Ligas (${leagueAgg.all.length})`}
+        data={leagueAgg.all}
+        positive
+        showAvgRed
+        quarantinable
+        quarantined={quarantinedLeagues}
+        onToggle={onToggleQuarantine}
+        onLeagueClick={(id, name) => setLeagueDetail({ id, name })}
+      />
+
+      <Dialog open={!!leagueDetail} onOpenChange={(o) => !o && setLeagueDetail(null)}>
+        <DialogContent className="bg-[#161b27] border-[#2a3142] text-gray-200 max-w-[900px]">
+          <DialogHeader>
+            <DialogTitle className="text-white">Jogos · {leagueDetail?.name} ({leagueGames.length})</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[#2a3142]/50 text-gray-400 text-[10px] uppercase sticky top-0">
+                <tr>
+                  <th className="px-2 py-1.5 text-left">Data</th>
+                  <th className="px-2 py-1.5 text-left">Partida</th>
+                  <th className="px-2 py-1.5 text-center">Alerta</th>
+                  <th className="px-2 py-1.5 text-center">Final</th>
+                  <th className="px-2 py-1.5 text-right">Rdo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#2a3142]">
+                {leagueGames.map((g: any, i: number) => (
+                  <tr key={`${g.fixture_id}-${i}`} className="hover:bg-white/5">
+                    <td className="px-2 py-1.5 text-gray-400 text-[10px] whitespace-nowrap">
+                      {g.date ? format(parseISO(g.date), 'dd/MM HH:mm') : '-'}
+                    </td>
+                    <td className="px-2 py-1.5 text-gray-200 text-[11px]">{g.home_team} vs {g.away_team}</td>
+                    <td className="px-2 py-1.5 text-center text-gray-400 text-[10px]">{g.minute_at_alert}'</td>
+                    <td className="px-2 py-1.5 text-center text-gray-400 text-[10px]">{g.final_score}</td>
+                    <td className={cn('px-2 py-1.5 text-right text-[11px] font-semibold',
+                      g.result === 'green' && 'text-emerald-400',
+                      g.result === 'red' && 'text-rose-400',
+                      g.result === 'pending' && 'text-amber-400')}>
+                      {g.result === 'green' ? `+${(g.profit ?? 0).toFixed(2)}` :
+                       g.result === 'red' ? `${(g.profit ?? 0).toFixed(2)}` :
+                       'PENDENTE'}
+                    </td>
+                  </tr>
+                ))}
+                {leagueGames.length === 0 && (
+                  <tr><td colSpan={5} className="p-6 text-center text-gray-500 text-xs">Sem jogos.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
 
-const RankCard: React.FC<{ title: string; data: any[]; positive: boolean; subtitle?: string; quarantinable?: boolean; quarantined?: string[]; onToggle?: (l: string) => void }> = ({ title, data, positive, subtitle, quarantinable, quarantined = [], onToggle }) => (
+const RankCard: React.FC<{
+  title: string;
+  data: any[];
+  positive: boolean;
+  subtitle?: string;
+  quarantinable?: boolean;
+  quarantined?: string[];
+  onToggle?: (l: string) => void;
+  showAvgRed?: boolean;
+  onLeagueClick?: (id: string, name: string) => void;
+}> = ({ title, data, positive, subtitle, quarantinable, quarantined = [], onToggle, showAvgRed, onLeagueClick }) => {
+  const colSpan = 5 + (showAvgRed ? 1 : 0) + (quarantinable ? 1 : 0);
+  return (
   <Card className="bg-[#1e2333] border-[#2a3142]">
     <CardHeader className="py-3">
       <CardTitle className="text-sm text-white flex items-center">
@@ -1482,14 +1563,15 @@ const RankCard: React.FC<{ title: string; data: any[]; positive: boolean; subtit
       </CardTitle>
       {subtitle && <p className="text-[10px] text-gray-500">{subtitle}</p>}
     </CardHeader>
-    <CardContent className="p-0">
+    <CardContent className="p-0 max-h-[600px] overflow-y-auto">
       <table className="w-full text-sm">
-        <thead className="bg-[#2a3142]/40 text-gray-400 text-[10px] uppercase">
+        <thead className="bg-[#2a3142]/40 text-gray-400 text-[10px] uppercase sticky top-0">
           <tr>
             <th className="px-2 py-1.5 text-left">#</th>
             <th className="px-2 py-1.5 text-left">Nome</th>
             <th className="px-2 py-1.5 text-center">G/R</th>
             <th className="px-2 py-1.5 text-center">WR</th>
+            {showAvgRed && <th className="px-2 py-1.5 text-right">Red Médio</th>}
             <th className="px-2 py-1.5 text-right">Lucro</th>
             {quarantinable && <th className="px-2 py-1.5 text-center w-8"></th>}
           </tr>
@@ -1499,14 +1581,29 @@ const RankCard: React.FC<{ title: string; data: any[]; positive: boolean; subtit
             const toggleKey = String(d.id ?? d.name);
             const display = d.label || d.name;
             const isQuar = quarantined.includes(toggleKey);
+            const clickable = !!onLeagueClick && d.id;
             return (
             <tr key={toggleKey} className={cn('hover:bg-white/5', isQuar && 'opacity-50')}>
               <td className="px-2 py-1.5 text-gray-500 text-[10px]">{i + 1}</td>
-              <td className="px-2 py-1.5 text-gray-200 text-[11px] truncate max-w-[180px]" title={display}>{display}</td>
+              <td className="px-2 py-1.5 text-gray-200 text-[11px] truncate max-w-[220px]" title={display}>
+                {clickable ? (
+                  <button
+                    onClick={() => onLeagueClick!(toggleKey, display)}
+                    className="text-left hover:text-emerald-400 hover:underline"
+                  >
+                    {display}
+                  </button>
+                ) : display}
+              </td>
               <td className="px-2 py-1.5 text-center text-[10px]">
                 <span className="text-emerald-400">{d.greens}</span>/<span className="text-rose-400">{d.reds}</span>
               </td>
               <td className="px-2 py-1.5 text-center text-gray-300 text-[10px]">{d.winRate.toFixed(0)}%</td>
+              {showAvgRed && (
+                <td className="px-2 py-1.5 text-right text-[10px] text-rose-300">
+                  {d.reds > 0 ? `-${d.avgRed.toFixed(2)}` : '—'}
+                </td>
+              )}
               <td className={cn('px-2 py-1.5 text-right text-[11px] font-semibold', d.profit >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
                 {d.profit >= 0 ? '+' : ''}{d.profit.toFixed(2)}
               </td>
@@ -1523,12 +1620,13 @@ const RankCard: React.FC<{ title: string; data: any[]; positive: boolean; subtit
               )}
             </tr>
           );})}
-          {data.length === 0 && <tr><td colSpan={quarantinable ? 6 : 5} className="p-6 text-center text-gray-500 text-xs">Sem dados.</td></tr>}
+          {data.length === 0 && <tr><td colSpan={colSpan} className="p-6 text-center text-gray-500 text-xs">Sem dados.</td></tr>}
         </tbody>
       </table>
     </CardContent>
   </Card>
 );
+};
 
 interface EditDialogProps {
   open: boolean;
