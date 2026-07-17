@@ -4,8 +4,33 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Timer, Zap } from 'lucide-react';
 import { useRefreshInterval, REFRESH_INTERVAL_OPTIONS, RefreshInterval } from '@/hooks/useRefreshInterval';
 
-export function RefreshIntervalSettings() {
+export function RefreshIntervalSettings({ compact = false }: { compact?: boolean } = {}) {
   const { interval, updateInterval } = useRefreshInterval();
+
+  if (compact) {
+    return (
+      <RadioGroup
+        value={String(interval)}
+        onValueChange={(value) => updateInterval(parseInt(value, 10) as RefreshInterval)}
+      >
+        <div className="grid gap-1.5">
+          {REFRESH_INTERVAL_OPTIONS.map((option) => (
+            <Label
+              key={option.value}
+              htmlFor={`interval-c-${option.value}`}
+              className="flex items-center justify-between px-2 py-1.5 border border-border/40 rounded-md cursor-pointer hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value={String(option.value)} id={`interval-c-${option.value}`} />
+                <span className="text-xs">{option.label}</span>
+              </div>
+              <span className="text-[9px] text-muted-foreground">{option.credits}</span>
+            </Label>
+          ))}
+        </div>
+      </RadioGroup>
+    );
+  }
 
   return (
     <Card className="p-6 shadow-card">
@@ -17,8 +42,8 @@ export function RefreshIntervalSettings() {
         Escolha a frequência de atualização dos placares ao vivo. Intervalos maiores economizam créditos da API.
       </p>
 
-      <RadioGroup 
-        value={String(interval)} 
+      <RadioGroup
+        value={String(interval)}
         onValueChange={(value) => updateInterval(parseInt(value, 10) as RefreshInterval)}
       >
         <div className="grid gap-3">
@@ -38,6 +63,11 @@ export function RefreshIntervalSettings() {
                   </p>
                 </div>
               </div>
+              {option.value === 0 && (
+                <span className="text-xs bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-full">
+                  Recomendado
+                </span>
+              )}
               {option.value === 20 && (
                 <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
                   Padrão

@@ -40,6 +40,7 @@ import { calculateProfit } from "@/utils/profitCalculator";
 import { Badge } from "@/components/ui/badge";
 import { TelegramPlanningMessage, buildTelegramGames } from "@/components/TelegramPlanningMessage";
 import { TelegramSummaryMessage } from "@/components/TelegramSummaryMessage";
+import { RefreshIntervalSettings } from "@/components/RefreshIntervalSettings";
 
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -676,6 +677,11 @@ export default function DailyPlanning() {
                         <CheckCircle className="h-4 w-4 mr-2" />
                         Resolver Todos
                       </Button>
+
+                      <div className="pt-2 border-t border-border/50">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-2">Intervalo de Atualização</span>
+                        <RefreshIntervalSettings compact />
+                      </div>
                     </div>
 
                     <div className="p-4 font-mono text-[10px] space-y-2 opacity-60">
