@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export type RefreshInterval = 10 | 20 | 30 | 60 | 120;
+export type RefreshInterval = 10 | 20 | 30 | 60 | 120 | 0;
 
 const STORAGE_KEY = 'vt-refresh-interval';
-const DEFAULT_INTERVAL: RefreshInterval = 10;
+const DEFAULT_INTERVAL: RefreshInterval = 0; // Smart is default now
 
 export const REFRESH_INTERVAL_OPTIONS: { value: RefreshInterval; label: string; credits: string }[] = [
+  { value: 0, label: 'Inteligente (Fases)', credits: '~8 req/jogo' },
   { value: 10, label: '10 segundos', credits: '~360/hora' },
   { value: 20, label: '20 segundos', credits: '~180/hora' },
   { value: 30, label: '30 segundos', credits: '~120/hora' },
@@ -19,7 +20,7 @@ export function useRefreshInterval() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = parseInt(stored, 10);
-      if ([10, 20, 30, 60, 120].includes(parsed)) {
+      if ([0, 10, 20, 30, 60, 120].includes(parsed)) {
         return parsed as RefreshInterval;
       }
     }
@@ -36,7 +37,7 @@ export function useRefreshInterval() {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         const parsed = parseInt(e.newValue, 10);
-        if ([10, 20, 30, 60, 120].includes(parsed)) {
+        if ([0, 10, 20, 30, 60, 120].includes(parsed)) {
           setIntervalState(parsed as RefreshInterval);
         }
       }

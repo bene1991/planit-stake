@@ -8,6 +8,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { usePlanningFilters } from "@/hooks/usePlanningFilters";
 import { useDeleteWithUndo } from "@/hooks/useDeleteWithUndo";
 import { useAutoRefresh } from "@/hooks/useAutoRefresh";
+import { useSmartMatchRefresh } from "@/hooks/useSmartMatchRefresh";
 import { useOperationalSettings } from "@/hooks/useOperationalSettings";
 
 import { useRefreshInterval } from "@/hooks/useRefreshInterval";
@@ -53,11 +54,19 @@ import { getNowInBrasilia } from "@/utils/timezone";
 import { FixtureDetailPanel } from "@/components/PreMatchAnalysis/FixtureDetailPanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+const formatSmartCountdown = (sec: number | null | undefined) => {
+  if (sec === null || sec === undefined) return 'Inteligente';
+  if (sec <= 0) return 'Atualizando...';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+};
+
 export default function DailyPlanning() {
   const { user } = useAuth();
   const { games, loading: gamesLoading, addGame, updateGame, deleteGame, refreshGames } = useSupabaseGames();
   const { bankroll, loading: bankrollLoading } = useSupabaseBankroll();
-  const { intervalMs } = useRefreshInterval();
+  const { interval, intervalMs } = useRefreshInterval();
   const { settings: opSettings } = useOperationalSettings();
   const stakeReference = opSettings.stakeValueReais || 25;
   const { isPaused, toggle: toggleApiPause } = useApiPause();
@@ -129,7 +138,8 @@ export default function DailyPlanning() {
     lastRefresh,
     scores: liveScores,
     highlightedGameId,
-    setHighlightedGameId
+    setHighlightedGameId,
+    secondsUntilNextSmartFetch
   } = useLiveScoresContext();
 
   // Red card detection is now handled globally in App.tsx.
@@ -523,11 +533,21 @@ export default function DailyPlanning() {
     return games.some(g => g.status === 'Live' || g.status === 'Pending' || g.status === 'Not Started');
   }, [games]);
 
-  // Auto-refresh based on user-configured interval when there are live/pending games (respects pause)
-  const { secondsUntilRefresh, isRefreshing } = useAutoRefresh(
+  // Auto-refresh:
+  // - Modo "Inteligente" (intervalMs === 0): agenda apenas nos momentos-chave do jogo
+  //   (kickoff, ~15', ~35', HT, ~70', ~85', final). Economiza requisições.
+  // - Modo intervalo fixo: cada X segundos.
+  const smart = useSmartMatchRefresh(
+    games as any,
     handleGlobalRefresh,
-    { intervalMs, enabled: hasActiveGames && !isPaused }
+    { enabled: intervalMs === 0 && hasActiveGames && !isPaused }
   );
+  const fixed = useAutoRefresh(
+    handleGlobalRefresh,
+    { intervalMs: intervalMs || 60000, enabled: intervalMs !== 0 && hasActiveGames && !isPaused }
+  );
+  const secondsUntilRefresh = intervalMs === 0 ? smart.secondsUntilRefresh : fixed.secondsUntilRefresh;
+  const isRefreshing = intervalMs === 0 ? smart.isRefreshing : fixed.isRefreshing;
 
   const getMethodName = (methodId: string) => {
     const method = bankroll.methods.find((m) => m.id === methodId);
@@ -670,7 +690,7 @@ export default function DailyPlanning() {
                       {hasActiveGames && !isPaused && (
                         <div className="flex justify-between text-emerald-500">
                           <span>Next Update:</span>
-                          <span>{secondsUntilRefresh}s</span>
+                          <span>{formatSmartCountdown(secondsUntilRefresh)}</span>
                         </div>
                       )}
                     </div>
