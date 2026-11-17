@@ -83,7 +83,7 @@ const OfferPage: React.FC = () => {
       if (!hasFinal && !isOld) continue;
       const inWin = evs.some((e: any) => {
         const m = (e.minute || 0) + (e.extra || 0);
-        return m >= entryMin && m <= exitMin;
+        return m >= Math.max(entryMin, a.minute_at_alert || 0) && m <= exitMin;
       });
       let p = 0; let result: 'green' | 'red' = 'red';
       if (inWin) { greens++; p = greenStake * GREEN_NET; result = 'green'; }

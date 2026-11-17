@@ -130,7 +130,7 @@ const MethodsList: React.FC = () => {
         if (!analyzable) { chrono.push({ result: 'pending', profit: 0 }); continue; }
         const inWin = events.some(g => {
           const min = (g.minute || 0) + (g.extra || 0);
-          return min >= entryMin && min <= exitMin;
+          return min >= Math.max(entryMin, a.minute_at_alert || 0) && min <= exitMin;
         });
         if (inWin) { greens++; profit += greenStake * GREEN_NET; chrono.push({ result: 'green', profit: greenStake * GREEN_NET }); }
         else {

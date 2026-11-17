@@ -275,7 +275,8 @@ const MethodDetail: React.FC = () => {
 
       const goalsInWindow = goalEvents.filter(g => {
         const m = (g.minute || 0) + (g.extra || 0);
-        return m >= entryMin && m <= exitMin;
+        // gol antes do alerta não conta: não dava para entrar
+        return m >= Math.max(entryMin, a.minute_at_alert || 0) && m <= exitMin;
       });
 
       const computed: 'green' | 'red' | 'pending' = !analyzable
@@ -312,7 +313,7 @@ const MethodDetail: React.FC = () => {
         goals: sorted.map(g => `${g.minute}${g.extra ? '+' + g.extra : ''}'`).join(', '),
         raw_goal_events: sorted,
         final_score: a.final_score || 'N/A',
-        telegram_sent: !!a.telegram_sent,
+        telegram_sent: Array.isArray(a.notified_method_ids) && a.notified_method_ids.includes(method.id),
         telegram_alert_minute: a.telegram_alert_minute || null,
       };
     }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
@@ -1080,7 +1081,7 @@ const AnalysisTab: React.FC<{ games: AnalysisGame[]; greenStake: number; redStak
       // first goal in window
       const inWin = (g.raw_goal_events || []).filter((ev: any) => {
         const m = (ev.minute || 0) + (ev.extra || 0);
-        return m >= entryMin && m <= exitMin;
+        return m >= Math.max(entryMin, g.minute_at_alert || 0) && m <= exitMin;
       }).sort((a: any, b: any) => ((a.minute || 0) + (a.extra || 0)) - ((b.minute || 0) + (b.extra || 0)));
       if (inWin.length === 0) continue;
       const m = Math.min(90, (inWin[0].minute || 0) + (inWin[0].extra || 0));
