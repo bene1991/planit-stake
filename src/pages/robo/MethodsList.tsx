@@ -18,6 +18,7 @@ const MethodsList: React.FC = () => {
   const [customFrom, setCustomFrom] = useState<string>('');
   const [customTo, setCustomTo] = useState<string>('');
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [showRepeats, setShowRepeats] = useState(false);
   const queryClient = useQueryClient();
 
   const toggleNotify = async (e: React.MouseEvent, m: any) => {
@@ -60,7 +61,7 @@ const MethodsList: React.FC = () => {
       while (true) {
         const { data, error } = await supabase
           .from('live_alerts')
-          .select('fixture_id, variation_id, created_at, final_score, goal_events, telegram_sent, league_id, league_name, minute_at_alert')
+          .select('fixture_id, variation_id, created_at, final_score, goal_events, telegram_sent, league_id, league_name, minute_at_alert, home_team, away_team')
           .range(from, from + 999);
         if (error) throw error;
         if (!data || data.length === 0) break;
@@ -122,7 +123,9 @@ const MethodsList: React.FC = () => {
 
       let greens = 0, reds = 0, profit = 0, lastDate: string | null = null;
       const chrono: { result: 'green' | 'red' | 'pending'; profit: number }[] = [];
+      const games: { id: string; home: string; away: string }[] = [];
       for (const a of deduped.sort((x, y) => new Date(x.created_at).getTime() - new Date(y.created_at).getTime())) {
+        games.push({ id: String(a.fixture_id), home: a.home_team, away: a.away_team });
         const events: any[] = typeof a.goal_events === 'string' ? JSON.parse(a.goal_events) : (a.goal_events || []);
         const hasFinal = a.final_score && a.final_score !== 'pending';
         const isOld = a.created_at ? (Date.now() - new Date(a.created_at).getTime() > 4 * 3600 * 1000) : false;
@@ -156,9 +159,29 @@ const MethodsList: React.FC = () => {
       const winRate = entries ? (greens / entries) * 100 : 0;
       const roi = entries ? (profit / entries) * 100 : 0;
 
-      return { ...m, entries, greens, reds, profit, winRate, roi, maxDD, streak, lastDate };
+      return { ...m, entries, greens, reds, profit, winRate, roi, maxDD, streak, lastDate, games };
     });
   }, [methods, alerts, fromMs, toMs]);
+
+  // Soma de todos os métodos + jogos que aparecem em mais de um método
+  const total = useMemo(() => {
+    let entries = 0, greens = 0, reds = 0, profit = 0;
+    const byGame = new Map<string, { home: string; away: string; methods: string[] }>();
+    for (const m of enriched as any[]) {
+      entries += m.entries; greens += m.greens; reds += m.reds; profit += m.profit;
+      for (const g of m.games) {
+        const e = byGame.get(g.id) || { home: g.home, away: g.away, methods: [] };
+        e.methods.push(m.name);
+        byGame.set(g.id, e);
+      }
+    }
+    const repeated = Array.from(byGame.values()).filter(g => g.methods.length > 1).sort((a, b) => b.methods.length - a.methods.length);
+    return {
+      entries, greens, reds, profit, games: byGame.size, repeated,
+      winRate: entries ? (greens / entries) * 100 : 0,
+      roi: entries ? (profit / entries) * 100 : 0,
+    };
+  }, [enriched]);
 
   if (isLoading) {
     return (
@@ -224,9 +247,34 @@ const MethodsList: React.FC = () => {
             />
           </div>
         )}
-        <div className="ml-auto text-[11px] text-gray-500">
-          {enriched.reduce((s, m: any) => s + (m.entries || 0), 0)} entradas total
+        <div className="ml-auto flex items-center gap-4 text-xs flex-wrap">
+          <span className="text-gray-400">{total.entries} entradas · {total.games} jogos</span>
+          <span className="text-emerald-400">{total.greens} G</span>
+          <span className="text-red-400">{total.reds} R</span>
+          <span className="text-gray-300">WR {total.winRate.toFixed(1)}%</span>
+          <span className={total.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}>ROI {total.roi.toFixed(1)}%</span>
+          <span className={cn('font-bold', total.profit >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+            {total.profit >= 0 ? '+' : ''}{total.profit.toFixed(1)}
+          </span>
+          <button
+            onClick={() => setShowRepeats(v => !v)}
+            className="px-2 py-1 rounded-md border border-[#2a3142] bg-[#161b27] text-gray-400 hover:text-white"
+          >
+            {total.repeated.length} jogos repetidos
+          </button>
         </div>
+        {showRepeats && (
+          <div className="basis-full mt-2 border-t border-[#2a3142] pt-2 space-y-1 max-h-64 overflow-y-auto">
+            {total.repeated.length === 0 && <p className="text-[11px] text-gray-500">Nenhum jogo repetido neste período.</p>}
+            {total.repeated.map((g, i) => (
+              <div key={i} className="text-[11px] text-gray-300">
+                <span className="text-white font-medium">{g.home} x {g.away}</span>
+                <span className="text-gray-500"> · em {g.methods.length} métodos: </span>
+                {g.methods.join(', ')}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {(!methods || methods.length === 0) && (
