@@ -15,6 +15,19 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
 
 const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpzd2VmbWFlZGtkdmJ6YWt1em9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDAwNTUsImV4cCI6MjA4NzcxNjA1NX0.aUjcFT8bnBot2L8pqqb5Z1xUbs78LkO6CRSz1vCkZ2E';
 
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, delayMs = 2000): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 async function callApiFootball(endpoint: string, params: Record<string, unknown> = {}) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/api-football`, {
     method: 'POST',
@@ -68,20 +81,26 @@ serve(async (req) => {
   try {
     console.log('Starting Live Robot Execution (v4 - Parallel Optimized)...');
 
-    // 1. Fetch blocked leagues
-    const { data: blockedLeagues, error: blockErr } = await supabase
-      .from('robot_blocked_leagues')
-      .select('league_id')
-      .eq('active', true);
-    if (blockErr) throw blockErr;
+    // 1. Fetch blocked leagues (retried: transient gateway timeouts here used to kill the whole run)
+    const { data: blockedLeagues } = await withRetry(async () => {
+      const res = await supabase
+        .from('robot_blocked_leagues')
+        .select('league_id')
+        .eq('active', true);
+      if (res.error) throw res.error;
+      return res;
+    });
     const blockedSet = new Set(blockedLeagues?.map(l => String(l.league_id)) || []);
 
     // 2. Fetch active variations (with joined groups)
-    const { data: variations, error: varErr } = await supabase
-      .from('robot_variations')
-      .select('*, telegram_groups(*)')
-      .eq('active', true);
-    if (varErr) throw varErr;
+    const { data: variations } = await withRetry(async () => {
+      const res = await supabase
+        .from('robot_variations')
+        .select('*, telegram_groups(*)')
+        .eq('active', true);
+      if (res.error) throw res.error;
+      return res;
+    });
     if (!variations || variations.length === 0) {
       console.log('No active variations. Exiting.');
       return new Response(JSON.stringify({ status: 'No active variations' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -90,9 +109,16 @@ serve(async (req) => {
     // 2b. Build per-variation method list (strategy_simulations)
     // RULE (per-method notification): cada método que contém a variação recebe sua própria
     // notificação no Telegram, desde que a liga NÃO esteja na quarentena daquele método.
-    const { data: methods } = await supabase
-      .from('strategy_simulations')
-      .select('id, name, filters_snapshot');
+    // Retried + error-checked: a silent failure here used to make every alert
+    // inserted in this run look like "no eligible method" and get marked as
+    // sent, even though nobody was ever notified.
+    const { data: methods } = await withRetry(async () => {
+      const res = await supabase
+        .from('strategy_simulations')
+        .select('id, name, filters_snapshot');
+      if (res.error) throw res.error;
+      return res;
+    });
     type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null };
     const methodsByVariation = new Map<string, MethodEntry[]>();
     for (const m of methods || []) {
@@ -133,9 +159,13 @@ serve(async (req) => {
     };
 
     // 3. Fetch Telegram Settings
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('owner_id, telegram_bot_token, telegram_chat_id');
+    const { data: settings } = await withRetry(async () => {
+      const res = await supabase
+        .from('settings')
+        .select('owner_id, telegram_bot_token, telegram_chat_id');
+      if (res.error) throw res.error;
+      return res;
+    });
     const settingsMap = new Map();
     settings?.forEach(s => {
       if (s.telegram_bot_token && s.telegram_chat_id) {
@@ -161,11 +191,23 @@ serve(async (req) => {
     const fixtureIds = fixtures.map((f: any) => String(f.fixture.id));
 
     // 3.5 Fetch Pending Telegram Alerts (Specifically for current live games)
-    const { data: pendingAlerts } = await supabase
-      .from('live_alerts')
-      .select('fixture_id')
-      .eq('telegram_sent', false)
-      .in('fixture_id', fixtureIds); // BLINDAGEM: Only fetch relevant live alerts
+    let pendingAlerts: { fixture_id: string }[] = [];
+    if (fixtureIds.length > 0) {
+      try {
+        const res = await withRetry(async () => {
+          const r = await supabase
+            .from('live_alerts')
+            .select('fixture_id')
+            .eq('telegram_sent', false)
+            .in('fixture_id', fixtureIds); // BLINDAGEM: Only fetch relevant live alerts
+          if (r.error) throw r.error;
+          return r;
+        });
+        pendingAlerts = res.data || [];
+      } catch (e) {
+        console.error('Failed to fetch pending alerts (non-fatal, continuing):', e);
+      }
+    }
     const pendingSet = new Set(pendingAlerts?.map(a => String(a.fixture_id)) || []);
 
 
@@ -177,6 +219,7 @@ serve(async (req) => {
       await Promise.all(batch.map(async (f: any) => {
         const fixtureId = String(f.fixture.id);
         const leagueId = String(f.league.id);
+        try {
         const timeElapsed = f.fixture.status.elapsed;
 
         if (blockedSet.has(leagueId)) {
@@ -433,13 +476,10 @@ serve(async (req) => {
             if (!isNewTrigger && !existingAlert) continue;
 
             // Calcula candidatos (ignora minuto) e prontos (respeita minuto)
-            const allEligible = v.send_telegram
-              ? methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, Infinity, new Set())
-              : [];
+            // Quem manda no Telegram é o MÉTODO (notify_enabled na aba Métodos), não a variação.
+            const allEligible = methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, Infinity, new Set());
             const alreadyNotified = new Set<string>((existingAlert?.notified_method_ids || []) as string[]);
-            const targets = v.send_telegram
-              ? methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, timeElapsed, alreadyNotified)
-              : [];
+            const targets = methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, timeElapsed, alreadyNotified);
 
             const hasPendingWork = allEligible.some(m => !alreadyNotified.has(m.id));
             if (!isNewTrigger && !hasPendingWork) continue;
@@ -531,6 +571,18 @@ serve(async (req) => {
               .eq('variation_id', v.id);
           }
         }
+        } catch (fixtureErr) {
+          // Isola a falha: um timeout de DB/API num único jogo não pode derrubar
+          // o ciclo inteiro e cancelar a avaliação de todos os outros jogos ao vivo.
+          console.error(`Erro isolado no fixture ${fixtureId}:`, fixtureErr);
+          addLog({
+            fixture_id: fixtureId,
+            league_id: leagueId,
+            stage: 'DISCARDED_PRE_FILTER',
+            reason: `Erro isolado no processamento do jogo (ciclo continuou): ${fixtureErr instanceof Error ? fixtureErr.message : String(fixtureErr)}`,
+            details: { league: f.league?.name, teams: `${f.teams?.home?.name} vs ${f.teams?.away?.name}` }
+          });
+        }
       }));
     }
 
@@ -550,6 +602,7 @@ serve(async (req) => {
       console.log(`[RESILIENT] Found ${allPending.length} pending delayed alerts to check.`);
 
       for (const alert of allPending) {
+       try {
         // Find the matching live fixture to check current minute
         const liveFixture = fixtures.find((fx: any) => String(fx.fixture.id) === alert.fixture_id);
         if (!liveFixture) continue; // Game not live (already finished or not started)
@@ -559,7 +612,7 @@ serve(async (req) => {
 
         // Find the variation config for this alert
         const variation = variations.find((v: any) => v.id === alert.variation_id);
-        if (!variation || !variation.send_telegram) continue;
+        if (!variation) continue;
 
         const alreadyNotified = new Set<string>((alert.notified_method_ids || []) as string[]);
         const allEligible = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, Infinity, new Set());
@@ -629,6 +682,9 @@ serve(async (req) => {
             .eq('id', alert.id);
           if (allCovered) console.log(`[RESILIENT] ✅ Sent delayed alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
         }
+       } catch (alertErr) {
+         console.error(`[RESILIENT] Erro isolado no alerta ${alert.id}:`, alertErr);
+       }
       }
     }
 
@@ -650,8 +706,9 @@ serve(async (req) => {
       console.log(`[SAFETY] ${stuckAlerts.length} pending delayed alerts to evaluate.`);
       const SAFETY_MARGIN_MIN = 20;
       for (const alert of stuckAlerts) {
+       try {
         const variation = variations.find((v: any) => v.id === alert.variation_id);
-        if (!variation || !variation.send_telegram) {
+        if (!variation) {
           await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
           continue;
         }
@@ -731,16 +788,27 @@ serve(async (req) => {
             .eq('id', alert.id);
           if (allDone) console.log(`[SAFETY] ✅ Sent stuck alert: ${alert.home_team} vs ${alert.away_team} (target @${targetMinute}')`);
         }
+       } catch (alertErr) {
+         console.error(`[SAFETY] Erro isolado no alerta ${alert.id}:`, alertErr);
+       }
       }
     }
 
-    // Cleanup snapshots older than 4 hours
-    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
-    await supabase.from('live_stats_snapshots').delete().lt('created_at', fourHoursAgo);
+    // Cleanup snapshots older than 4 hours (non-fatal: uma falha aqui não deve derrubar o ciclo)
+    try {
+      const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+      await supabase.from('live_stats_snapshots').delete().lt('created_at', fourHoursAgo);
+    } catch (e) {
+      console.error('Cleanup live_stats_snapshots failed (non-fatal):', e);
+    }
 
     // Cleanup radar — remove fixtures não atualizados nos últimos 6 min (saíram do live)
-    const radarCutoff = new Date(Date.now() - 6 * 60 * 1000).toISOString();
-    await supabase.from('radar_live_fixtures').delete().lt('updated_at', radarCutoff);
+    try {
+      const radarCutoff = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+      await supabase.from('radar_live_fixtures').delete().lt('updated_at', radarCutoff);
+    } catch (e) {
+      console.error('Cleanup radar_live_fixtures failed (non-fatal):', e);
+    }
 
     // 6. Flush Logs to DB
     if (logsBuffer.length > 0) {
@@ -749,9 +817,10 @@ serve(async (req) => {
       if (logErr) console.error('Error flushing logs:', logErr);
     }
 
-    // Ping de sucesso do robô
+    // Ping de sucesso do robô (zera o contador de falhas consecutivas)
     await supabase.from('robot_status').update({
       status: 'online',
+      error_count: 0,
       last_ping: new Date().toISOString()
     }).eq('id', '00000000-0000-0000-0000-000000000000');
 
@@ -760,20 +829,35 @@ serve(async (req) => {
   } catch (error) {
     console.error('Cron Error:', error);
     
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error
+      ? error.message
+      : (error && typeof error === 'object' && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : JSON.stringify(error));
     try {
-      // 1. Gravar o status de erro
+      // 1. Ler o contador atual de falhas consecutivas e incrementar
+      const { data: currentStatus } = await supabase.from('robot_status').select('error_count').eq('id', '00000000-0000-0000-0000-000000000000').maybeSingle();
+      const newErrorCount = (currentStatus?.error_count || 0) + 1;
+
+      // 2. Gravar o status de erro
       await supabase.from('robot_status').update({
         status: 'error',
+        error_count: newErrorCount,
         last_error_message: errorMessage,
         last_error_at: new Date().toISOString()
       }).eq('id', '00000000-0000-0000-0000-000000000000');
-      
-      // 2. Avisar no Telegram (pegando o primeiro grupo ou a config de admin)
-      const { data: settings } = await supabase.from('settings').select('telegram_bot_token, telegram_chat_id').limit(1);
-      if (settings && settings.length > 0 && settings[0].telegram_bot_token && settings[0].telegram_chat_id) {
-         const alertMsg = `🚨 <b>MONITORAMENTO: ERRO NO ROBÔ</b>\n\nO robô de sinais encontrou um problema e parou de funcionar:\n\n<code>${errorMessage.substring(0, 300)}</code>\n\nAbra o painel online para verificar.`;
-         await sendTelegram(settings[0].telegram_bot_token, settings[0].telegram_chat_id, alertMsg);
+
+      // 3. Avisar no Telegram só a partir da 3ª falha consecutiva — um blip isolado de rede
+      // costuma se autorrecuperar no ciclo seguinte (1 min depois) e não precisa incomodar ninguém.
+      const ERROR_ALERT_THRESHOLD = 3;
+      if (newErrorCount >= ERROR_ALERT_THRESHOLD) {
+        const { data: settings } = await supabase.from('settings').select('telegram_bot_token, telegram_chat_id').limit(1);
+        if (settings && settings.length > 0 && settings[0].telegram_bot_token && settings[0].telegram_chat_id) {
+           const alertMsg = `🚨 <b>MONITORAMENTO: ERRO NO ROBÔ</b>\n\nO robô de sinais falhou ${newErrorCount}x seguidas e parou de funcionar:\n\n<code>${errorMessage.substring(0, 300)}</code>\n\nAbra o painel online para verificar.`;
+           await sendTelegram(settings[0].telegram_bot_token, settings[0].telegram_chat_id, alertMsg);
+        }
+      } else {
+        console.log(`Falha ${newErrorCount}/${ERROR_ALERT_THRESHOLD} (abaixo do limite de alerta, aguardando próximo ciclo)`);
       }
     } catch (metricError) {
       console.error('Failed to register error state:', metricError);
