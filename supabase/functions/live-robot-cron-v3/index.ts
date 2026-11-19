@@ -61,6 +61,111 @@ async function sendTelegram(botToken: string, chatId: string, message: string) {
   }
 }
 
+
+// ───────────────────────────────────────────────────────────────────────────
+// Odds reais do Polymarket (SÓ LEITURA, API pública, sem conta/chave).
+// Seu método é "lay no Under da linha (gols atuais + 0,5)" = comprar o Over.
+// odd do lay = 1 / preço do Under no melhor bid; red = (1 - p) / p.
+// Falha silenciosa: qualquer erro/timeout devolve null e a mensagem sai como antes.
+// ───────────────────────────────────────────────────────────────────────────
+const MARKET_LINK_BASE = 'https://polymarket.layback.trade/exchange/'; // abre o jogo direto na Layback
+const MARKET_LINK_SUFFIX = '?n=sport:soccer';
+const PM_GAMMA = 'https://gamma-api.polymarket.com';
+const PM_CLOB = 'https://clob.polymarket.com';
+
+type PolyOdds = {
+  slug: string; line: number; odd: number; red: number;
+  liqBest: number; liqTop3: number; greenBest: number; ts: string;
+};
+
+const pmNorm = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const PM_STOP = new Set(['fc', 'cf', 'sc', 'ca', 'cd', 'club', 'de', 'the', 'ac', 'afc', 'fk', 'sk', 'u21', 'u23', 'w', 'ii']);
+const pmTokens = (s: string) => pmNorm(s).split(' ').filter(t => t.length > 2 && !PM_STOP.has(t));
+
+async function pmGet(url: string) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(3500), headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!r.ok) throw new Error(`PM ${r.status}`);
+  return r.json();
+}
+
+// teto de 7s no total, para a busca nunca atrasar o ciclo do robô
+function getPolymarketOdds(home: string, away: string, totalGoals: number): Promise<PolyOdds | null> {
+  return Promise.race([
+    fetchPolymarketOdds(home, away, totalGoals),
+    new Promise<null>(res => setTimeout(() => res(null), 7000)),
+  ]);
+}
+
+async function fetchPolymarketOdds(home: string, away: string, totalGoals: number): Promise<PolyOdds | null> {
+  try {
+    const q = encodeURIComponent(`${home} ${away}`);
+    const found = await pmGet(`${PM_GAMMA}/public-search?limit_per_type=6&q=${q}`);
+    const hT = pmTokens(home), aT = pmTokens(away);
+    if (!hT.length || !aT.length) return null;
+    const today = Date.now();
+    // evento do jogo: os dois times no título, aberto, data do slug dentro de ±1 dia
+    const ev = (found?.events || []).find((e: any) => {
+      if (e.closed || !e.active) return false;
+      const t = pmNorm(e.title || '');
+      if (!hT.some(x => t.includes(x)) || !aT.some(x => t.includes(x))) return false;
+      const m = /(\d{4}-\d{2}-\d{2})$/.exec(e.slug || '');
+      return !!m && Math.abs(new Date(m[1] + 'T12:00:00Z').getTime() - today) < 36 * 3600 * 1000;
+    });
+    if (!ev) return null;
+    const line = totalGoals + 0.5;
+    let market: any = null;
+    for (const slug of [`${ev.slug}-more-markets`, ev.slug]) {
+      try {
+        const r = await pmGet(`${PM_GAMMA}/events?slug=${slug}`);
+        market = (r?.[0]?.markets || []).find((m: any) => m.sportsMarketType === 'totals' && Number(m.line) === line && m.active && !m.closed);
+        if (market) break;
+      } catch { /* tenta o próximo */ }
+    }
+    if (!market) return null;
+    const outs: string[] = JSON.parse(market.outcomes);
+    const ids: string[] = JSON.parse(market.clobTokenIds);
+    const uIdx = outs.findIndex(o => o.toLowerCase() === 'under');
+    if (uIdx < 0) return null;
+    const book = await pmGet(`${PM_CLOB}/book?token_id=${ids[uIdx]}`);
+    const bids = (book?.bids || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
+      .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => b.p - a.p);
+    if (!bids.length) return null;
+    const best = bids[0];
+    const stake = (l: { p: number; sz: number }) => l.sz * l.p; // stake (green) em US$, como a Layback mostra
+    return {
+      slug: ev.slug, line,
+      odd: 1 / best.p, red: (1 - best.p) / best.p,
+      liqBest: stake(best), liqTop3: bids.slice(0, 3).reduce((a: number, l: any) => a + stake(l), 0),
+      greenBest: best.sz * best.p, ts: new Date().toISOString(),
+    };
+  } catch (e) {
+    console.error('Polymarket odds error:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+const brTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const n2 = (x: number) => x.toFixed(2).replace('.', ',');
+const usd = (x: number) => x >= 1000 ? `US$ ${(x / 1000).toFixed(1).replace('.', ',')} mil` : `US$ ${Math.round(x)}`;
+
+function polyBlock(o: PolyOdds | null, methodRed: number | null): string {
+  if (!o) return `📍 <i>Mercado Polymarket: não encontrado</i>\n\n`;
+  let warn = '';
+  if (methodRed) {
+    const diff = (o.red / methodRed - 1) * 100;
+    if (diff > 5) warn = ` ⚠️ ${diff.toFixed(0)}% acima`;
+    else if (diff < -5) warn = ` ✅ ${Math.abs(diff).toFixed(0)}% abaixo`;
+  }
+  return `📍 <b>MERCADO:</b> Total de gols — Under ${String(o.line).replace('.', ',')} (lay)\n` +
+         `💲 Odd agora: <b>${n2(o.odd)}</b>  |  Red real: <b>${n2(o.red)}</b>\n` +
+         (methodRed ? `📋 Método assume red: ${n2(methodRed)}${warn}\n` : '') +
+         `💧 Liquidez (stake): ${usd(o.liqBest)} na 1ª odd, ${usd(o.liqTop3)} nas 3 melhores\n` +
+         `🕐 Lido às ${brTime(o.ts)}\n` +
+         `🔗 <a href="${MARKET_LINK_BASE}${o.slug}${MARKET_LINK_SUFFIX}">abrir o jogo na Layback</a>\n\n`;
+}
+
 interface LogEntry {
   fixture_id: string;
   league_id: string;
@@ -115,11 +220,12 @@ serve(async (req) => {
     const { data: methods } = await withRetry(async () => {
       const res = await supabase
         .from('strategy_simulations')
-        .select('id, name, filters_snapshot');
+        
+        .select('id, name, red_stake, filters_snapshot');
       if (res.error) throw res.error;
       return res;
     });
-    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null };
+    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null; redStake: number | null };
     const methodsByVariation = new Map<string, MethodEntry[]>();
     for (const m of methods || []) {
       const fs: any = m.filters_snapshot || {};
@@ -132,6 +238,7 @@ serve(async (req) => {
         name: String(m.name || m.id),
         quarantine: new Set(qLeagues.map(String)),
         alertMinute: typeof fs.telegram_alert_minute === 'number' ? fs.telegram_alert_minute : null,
+        redStake: typeof m.red_stake === 'number' ? m.red_stake : null,
       };
       for (const vid of vIds) {
         if (!methodsByVariation.has(vid)) methodsByVariation.set(vid, []);
@@ -519,6 +626,8 @@ serve(async (req) => {
             const score = `${f.goals.home ?? 0} x ${f.goals.away ?? 0}`;
             const alertLabel = v.telegram_alert_minute ? `${v.name} (@${v.telegram_alert_minute}')` : v.name;
             const notifiedNow: string[] = [];
+            // uma leitura de odd por jogo/ciclo, usada por todos os métodos desta variação
+            const poly = await getPolymarketOdds(f.teams.home.name, f.teams.away.name, (f.goals.home || 0) + (f.goals.away || 0));
 
             for (const method of targets) {
               const msg = `✅ <b>ROBÔ OFICIAL — ${method.name}</b>\n` +
@@ -527,6 +636,7 @@ serve(async (req) => {
                           `🏆 ${f.league.name}\n` +
                           `⏰ Minuto: ${timeElapsed}'\n` +
                           `🎯 Filtro: ${alertLabel}\n\n` +
+                          polyBlock(poly, method.redStake) +
                           `📊 <b>ESTATÍSTICAS EM TEMPO REAL</b>\n` +
                           `________________________________\n\n` +
                           `📉 xG: ${currentStats.h.xg} - ${currentStats.a.xg}\n` +
@@ -640,6 +750,7 @@ serve(async (req) => {
         const stats = alert.stats_snapshot?.fullMatch;
         const score = `${liveFixture.goals.home ?? 0} x ${liveFixture.goals.away ?? 0}`;
         const notifiedNow: string[] = [];
+        const poly = await getPolymarketOdds(alert.home_team, alert.away_team, (liveFixture.goals.home || 0) + (liveFixture.goals.away || 0));
 
         for (const method of targets) {
           const msg = `✅ <b>ROBÔ OFICIAL — ${method.name} (RECUPERADO @${alert.telegram_alert_minute}')</b>\n` +
@@ -648,6 +759,7 @@ serve(async (req) => {
                       `🏆 ${alert.league_name}\n` +
                       `⏰ Minuto Atual: ${currentMinute}' (Sinal: ${alert.minute_at_alert}')\n` +
                       `🎯 Filtro: ${alert.variation_name}\n\n` +
+                      polyBlock(poly, method.redStake) +
                       (stats
                         ? `📊 <b>ESTATÍSTICAS (Snapshot ${alert.minute_at_alert}')</b>\n` +
                           `________________________________\n\n` +
