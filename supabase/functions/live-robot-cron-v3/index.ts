@@ -75,7 +75,7 @@ const PM_CLOB = 'https://clob.polymarket.com';
 
 type PolyOdds = {
   slug: string; line: number; odd: number; red: number;
-  liqBest: number; liqTop3: number; greenBest: number; ts: string;
+  liqBest: number; liqTop3: number; greenBest: number; ts: string; closeOdd: number | null;
 };
 
 const pmNorm = (s: string) =>
@@ -130,6 +130,8 @@ async function fetchPolymarketOdds(home: string, away: string, totalGoals: numbe
     const book = await pmGet(`${PM_CLOB}/book?token_id=${ids[uIdx]}`);
     const bids = (book?.bids || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
       .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => b.p - a.p);
+    const asks = (book?.asks || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
+      .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => a.p - b.p);
     if (!bids.length) return null;
     const best = bids[0];
     const stake = (l: { p: number; sz: number }) => l.sz * l.p; // stake (green) em US$, como a Layback mostra
@@ -138,11 +140,28 @@ async function fetchPolymarketOdds(home: string, away: string, totalGoals: numbe
       odd: 1 / best.p, red: (1 - best.p) / best.p,
       liqBest: stake(best), liqTop3: bids.slice(0, 3).reduce((a: number, l: any) => a + stake(l), 0),
       greenBest: best.sz * best.p, ts: new Date().toISOString(),
+      closeOdd: asks.length ? 1 / asks[0].p : null,
     };
   } catch (e) {
     console.error('Polymarket odds error:', e instanceof Error ? e.message : String(e));
     return null;
   }
+}
+
+// grava a leitura (achou ou não) para comparar depois com os red/odds assumidos pelos métodos
+async function saveSnapshot(o: PolyOdds | null, ctx: {
+  fixture_id: string; method_id: string; method_name: string; variation_id: string; minute: number;
+  home: string; away: string; league: string; goals: number; method_red: number | null;
+}) {
+  try {
+    await supabase.from('polymarket_snapshots').insert({
+      fixture_id: ctx.fixture_id, method_id: ctx.method_id, method_name: ctx.method_name,
+      variation_id: ctx.variation_id, minute: ctx.minute, home_team: ctx.home, away_team: ctx.away,
+      league_name: ctx.league, goals_total: ctx.goals, method_red: ctx.method_red,
+      found: !!o, line: o?.line ?? null, odd: o?.odd ?? null, red: o?.red ?? null,
+      liq_best: o?.liqBest ?? null, liq_top3: o?.liqTop3 ?? null, event_slug: o?.slug ?? null,
+    });
+  } catch (e) { console.error('snapshot save error:', e); }
 }
 
 const brTime = (iso: string) =>
@@ -221,11 +240,11 @@ serve(async (req) => {
       const res = await supabase
         .from('strategy_simulations')
         
-        .select('id, name, red_stake, filters_snapshot');
+        .select('id, name, red_stake, exit_minute, filters_snapshot');
       if (res.error) throw res.error;
       return res;
     });
-    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null; redStake: number | null };
+    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null; redStake: number | null; exitMinute: number | null };
     const methodsByVariation = new Map<string, MethodEntry[]>();
     for (const m of methods || []) {
       const fs: any = m.filters_snapshot || {};
@@ -239,6 +258,7 @@ serve(async (req) => {
         quarantine: new Set(qLeagues.map(String)),
         alertMinute: typeof fs.telegram_alert_minute === 'number' ? fs.telegram_alert_minute : null,
         redStake: typeof m.red_stake === 'number' ? m.red_stake : null,
+        exitMinute: typeof m.exit_minute === 'number' ? m.exit_minute : null,
       };
       for (const vid of vIds) {
         if (!methodsByVariation.has(vid)) methodsByVariation.set(vid, []);
@@ -650,6 +670,11 @@ serve(async (req) => {
               const sent = await sendTelegram(botToken, destChatId, msg);
               if (sent) {
                 notifiedNow.push(method.id);
+                await saveSnapshot(poly, {
+                  fixture_id: fixtureId, method_id: method.id, method_name: method.name, variation_id: v.id,
+                  minute: timeElapsed, home: f.teams.home.name, away: f.teams.away.name, league: f.league.name,
+                  goals: (f.goals.home || 0) + (f.goals.away || 0), method_red: method.redStake,
+                });
                 addLog({
                   fixture_id: fixtureId,
                   league_id: leagueId,
@@ -676,6 +701,10 @@ serve(async (req) => {
               .update({
                 notified_method_ids: merged,
                 telegram_sent: allCovered,
+                entry_goals: {
+                  ...((existingAlert?.entry_goals as Record<string, number>) || {}),
+                  ...Object.fromEntries(notifiedNow.map(id => [id, (f.goals.home || 0) + (f.goals.away || 0)])),
+                },
               })
               .eq('fixture_id', fixtureId)
               .eq('variation_id', v.id);
@@ -775,6 +804,11 @@ serve(async (req) => {
           const sent = await sendTelegram(botToken, destChatId, msg);
           if (sent) {
             notifiedNow.push(method.id);
+            await saveSnapshot(poly, {
+              fixture_id: String(alert.fixture_id), method_id: method.id, method_name: method.name, variation_id: variation.id,
+              minute: currentMinute, home: alert.home_team, away: alert.away_team, league: alert.league_name,
+              goals: (liveFixture.goals.home || 0) + (liveFixture.goals.away || 0), method_red: method.redStake,
+            });
             addLog({
               fixture_id: alert.fixture_id,
               league_id: alert.league_id,
@@ -790,7 +824,14 @@ serve(async (req) => {
           const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
           const allCovered = allEligible.every(m => merged.includes(m.id));
           await supabase.from('live_alerts')
-            .update({ notified_method_ids: merged, telegram_sent: allCovered })
+            .update({
+              notified_method_ids: merged,
+              telegram_sent: allCovered,
+              entry_goals: {
+                ...((alert.entry_goals as Record<string, number>) || {}),
+                ...Object.fromEntries(notifiedNow.map(id => [id, (liveFixture.goals.home || 0) + (liveFixture.goals.away || 0)])),
+              },
+            })
             .eq('id', alert.id);
           if (allCovered) console.log(`[RESILIENT] ✅ Sent delayed alert: ${alert.home_team} vs ${alert.away_team} (@${alert.telegram_alert_minute}')`);
         }
@@ -798,6 +839,79 @@ serve(async (req) => {
          console.error(`[RESILIENT] Erro isolado no alerta ${alert.id}:`, alertErr);
        }
       }
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PASS EXIT — avisa para SAIR quando o jogo chega no minuto de saída do método
+    // e NÃO saiu gol desde a entrada. Usa o mesmo fixtures?live=all já buscado
+    // (zero requisição extra à API de esportes). Métodos com saída no fim do jogo
+    // (>= 95') não recebem aviso.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const methodsById = new Map<string, MethodEntry>();
+      for (const list of methodsByVariation.values()) for (const m of list) methodsById.set(m.id, m);
+      const liveById = new Map<string, any>(fixtures.map((fx: any) => [String(fx.fixture.id), fx]));
+      if (liveById.size > 0) {
+        const { data: exitCands } = await supabase
+          .from('live_alerts')
+          .select('id, fixture_id, variation_id, home_team, away_team, league_name, notified_method_ids, entry_goals, exit_notified_method_ids')
+          .in('fixture_id', Array.from(liveById.keys()))
+          .gte('created_at', new Date(Date.now() - 8 * 3600 * 1000).toISOString());
+        for (const alert of exitCands || []) {
+          const fx = liveById.get(String(alert.fixture_id));
+          const elapsed = fx?.fixture?.status?.elapsed;
+          if (!fx || !elapsed) continue;
+          const totalNow = (fx.goals.home || 0) + (fx.goals.away || 0);
+          const done = new Set<string>((alert.exit_notified_method_ids || []) as string[]);
+          const toMark: string[] = [];
+          const toSend: MethodEntry[] = [];
+          for (const mid of (alert.notified_method_ids || []) as string[]) {
+            const m = methodsById.get(mid);
+            if (!m || m.exitMinute == null || m.exitMinute >= 95 || done.has(mid)) continue;
+            const atEntry = (alert.entry_goals || {})[mid];
+            if (atEntry === undefined) continue;              // alerta antigo, sem placar de entrada
+            if (elapsed < m.exitMinute) continue;             // ainda não chegou
+            toMark.push(mid);                                 // chegou (ou passou): trata uma vez só
+            if (elapsed > m.exitMinute + 8) continue;         // atrasado demais: não manda
+            if (totalNow > atEntry) continue;                 // saiu gol: green, nada a avisar
+            toSend.push(m);
+          }
+          if (toMark.length === 0) continue;
+          let sentAny = true;
+          if (toSend.length > 0) {
+            const variation = variations.find((v: any) => v.id === alert.variation_id);
+            const ts = settingsMap.get(variation?.owner_id) || settings?.[0];
+            const group = Array.isArray(variation?.telegram_groups) ? variation.telegram_groups[0] : variation?.telegram_groups;
+            const destChatId = group?.chat_id || variation?.telegram_chat_id || ts?.telegram_chat_id;
+            const botToken = group?.bot_token || ts?.telegram_bot_token;
+            if (!destChatId || !botToken) continue;
+            const poly = await getPolymarketOdds(alert.home_team, alert.away_team, totalNow);
+            for (const m of toSend) {
+              const msg = `⏰ <b>SAIR — ${m.name}</b>\n` +
+                          `________________________________\n\n` +
+                          `⚽ <b>${fx.teams.home.name} ${fx.goals.home ?? 0} x ${fx.goals.away ?? 0} ${fx.teams.away.name}</b>\n` +
+                          `🏆 ${alert.league_name}\n` +
+                          `⏰ Minuto: ${elapsed}'  (saída do método: ${m.exitMinute}')\n` +
+                          `❌ Nenhum gol desde a entrada\n\n` +
+                          (poly && poly.closeOdd
+                            ? `📍 <b>Fechar:</b> Back Under ${String(poly.line).replace('.', ',')} a <b>${n2(poly.closeOdd)}</b>\n` +
+                              `🕐 Lido às ${brTime(poly.ts)}\n` +
+                              `🔗 <a href="${MARKET_LINK_BASE}${poly.slug}${MARKET_LINK_SUFFIX}">abrir o jogo na Layback</a>\n`
+                            : `📍 <i>Odd para fechar: mercado Polymarket não encontrado</i>\n`);
+              const ok = await sendTelegram(botToken, destChatId, msg);
+              if (!ok) sentAny = false;
+            }
+          }
+          if (sentAny) {
+            await supabase.from('live_alerts')
+              .update({ exit_notified_method_ids: Array.from(new Set([...done, ...toMark])) })
+              .eq('id', alert.id);
+          }
+        }
+      }
+    } catch (exitErr) {
+      console.error('[EXIT] Erro no aviso de saída (ciclo continua):', exitErr);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
