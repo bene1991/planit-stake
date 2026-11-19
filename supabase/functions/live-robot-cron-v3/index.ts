@@ -843,8 +843,8 @@ serve(async (req) => {
 
 
     // ═══════════════════════════════════════════════════════════════════════
-    // PASS EXIT — avisa para SAIR quando o jogo chega no minuto de saída do método
-    // e NÃO saiu gol desde a entrada. Usa o mesmo fixtures?live=all já buscado
+    // PASS EXIT — por método notificado: avisa GOL (green) quando sai gol depois da entrada,
+    // ou SAIR quando o jogo chega no minuto de saída do método sem gol desde a entrada. Usa o mesmo fixtures?live=all já buscado
     // (zero requisição extra à API de esportes). Métodos com saída no fim do jogo
     // (>= 95') não recebem aviso.
     // ═══════════════════════════════════════════════════════════════════════
@@ -865,32 +865,50 @@ serve(async (req) => {
           const totalNow = (fx.goals.home || 0) + (fx.goals.away || 0);
           const done = new Set<string>((alert.exit_notified_method_ids || []) as string[]);
           const toMark: string[] = [];
-          const toSend: MethodEntry[] = [];
+          const toSend: MethodEntry[] = [];   // sem gol na saída -> SAIR
+          const goalFor: MethodEntry[] = [];  // saiu gol dentro da janela -> GOL/green
           for (const mid of (alert.notified_method_ids || []) as string[]) {
             const m = methodsById.get(mid);
-            if (!m || m.exitMinute == null || m.exitMinute >= 95 || done.has(mid)) continue;
+            if (!m || done.has(mid)) continue;
             const atEntry = (alert.entry_goals || {})[mid];
             if (atEntry === undefined) continue;              // alerta antigo, sem placar de entrada
+            const exitMin = m.exitMinute ?? 999;
+            if (totalNow > atEntry) {                         // saiu gol desde a entrada
+              toMark.push(mid);
+              if (elapsed <= exitMin + 1) goalFor.push(m);    // dentro da janela: avisa (gol depois da saída não conta)
+              continue;
+            }
+            if (m.exitMinute == null || m.exitMinute >= 95) continue; // saída no fim do jogo: sem aviso de SAIR
             if (elapsed < m.exitMinute) continue;             // ainda não chegou
             toMark.push(mid);                                 // chegou (ou passou): trata uma vez só
             if (elapsed > m.exitMinute + 8) continue;         // atrasado demais: não manda
-            if (totalNow > atEntry) continue;                 // saiu gol: green, nada a avisar
             toSend.push(m);
           }
           if (toMark.length === 0) continue;
           let sentAny = true;
-          if (toSend.length > 0) {
+          if (toSend.length > 0 || goalFor.length > 0) {
             const variation = variations.find((v: any) => v.id === alert.variation_id);
             const ts = settingsMap.get(variation?.owner_id) || settings?.[0];
             const group = Array.isArray(variation?.telegram_groups) ? variation.telegram_groups[0] : variation?.telegram_groups;
             const destChatId = group?.chat_id || variation?.telegram_chat_id || ts?.telegram_chat_id;
             const botToken = group?.bot_token || ts?.telegram_bot_token;
             if (!destChatId || !botToken) continue;
-            const poly = await getPolymarketOdds(alert.home_team, alert.away_team, totalNow);
+            const scoreNow = `${fx.teams.home.name} ${fx.goals.home ?? 0} x ${fx.goals.away ?? 0} ${fx.teams.away.name}`;
+            for (const m of goalFor) {
+              const msg = `✅ <b>GOL! GREEN — ${m.name}</b>\n` +
+                          `________________________________\n\n` +
+                          `⚽ <b>${scoreNow}</b>\n` +
+                          `🏆 ${alert.league_name}\n` +
+                          `⏰ Minuto: ${elapsed}'\n` +
+                          `🎯 Saiu gol desde a entrada — posição ganha.`;
+              const ok = await sendTelegram(botToken, destChatId, msg);
+              if (!ok) sentAny = false;
+            }
+            const poly = toSend.length > 0 ? await getPolymarketOdds(alert.home_team, alert.away_team, totalNow) : null;
             for (const m of toSend) {
               const msg = `⏰ <b>SAIR — ${m.name}</b>\n` +
                           `________________________________\n\n` +
-                          `⚽ <b>${fx.teams.home.name} ${fx.goals.home ?? 0} x ${fx.goals.away ?? 0} ${fx.teams.away.name}</b>\n` +
+                          `⚽ <b>${scoreNow}</b>\n` +
                           `🏆 ${alert.league_name}\n` +
                           `⏰ Minuto: ${elapsed}'  (saída do método: ${m.exitMinute}')\n` +
                           `❌ Nenhum gol desde a entrada\n\n` +
