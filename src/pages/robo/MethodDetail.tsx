@@ -112,6 +112,7 @@ const MethodDetail: React.FC = () => {
       return;
     }
     toast.success(current[fixtureId] ? `Resultado alterado para ${current[fixtureId].toUpperCase()}` : 'Resultado restaurado');
+    ['methods-list', 'live-operacao'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] })); // lista de métodos e Operação ao vivo leem o mesmo override
     await queryClient.invalidateQueries({ queryKey: ['method', id] });
     setOptimisticResultOverrides(null);
   };
@@ -138,6 +139,7 @@ const MethodDetail: React.FC = () => {
       return;
     }
     toast.success(value === null ? 'Override removido' : `Red salvo: ${value}`);
+    ['methods-list', 'live-operacao'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] })); // lista de métodos e Operação ao vivo leem o mesmo override
     await queryClient.invalidateQueries({ queryKey: ['method', id] });
     setOptimisticOverrides(null);
   };

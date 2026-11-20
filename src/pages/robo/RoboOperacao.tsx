@@ -65,6 +65,7 @@ function useOps(day: string) {
   return useQuery({
     queryKey: ['live-operacao', day],
     refetchInterval: 30000,
+    staleTime: 0, refetchOnMount: 'always', // sempre lê os overrides atuais do método
     queryFn: async (): Promise<Op[]> => {
       if (DEMO) return demoOps();
       // janela do dia escolhido (horário de São Paulo), com folga: o alerta nasce ~20 min antes do aviso do Telegram
@@ -134,7 +135,8 @@ function useOps(day: string) {
           let profit: number | null = null, redReal = false;
           if (outcome === 'green') profit = Number(method.green_stake || 1) * GREEN_NET;
           else if (outcome === 'red') {
-            const r = en ? redFromOdds(hold, entryOdd, exitOdd) : null;
+            const rOv = method.filters_snapshot?.red_overrides?.[fid]; // red digitado na página do método manda
+            const r = rOv != null ? Number(rOv) : en ? redFromOdds(hold, entryOdd, exitOdd) : null;
             if (r != null) { profit = -r; redReal = true; } else profit = -redMethod;
           }
           ops.set(key, {

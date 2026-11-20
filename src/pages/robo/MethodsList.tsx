@@ -85,6 +85,7 @@ const MethodsList: React.FC = () => {
       const variationIds: string[] = m.filters_snapshot?.variation_ids || [];
       const quarantine = new Set((m.filters_snapshot?.quarantine_leagues || []).map(String));
       const overrides: Record<string, number> = m.filters_snapshot?.red_overrides || {};
+      const resultOverrides: Record<string, 'green' | 'red'> = m.filters_snapshot?.result_overrides || {};
       const entryMin = m.entry_minute;
       const exitMin = m.exit_minute;
       const greenStake = m.green_stake;
@@ -117,10 +118,12 @@ const MethodsList: React.FC = () => {
         const isOld = a.created_at ? (Date.now() - new Date(a.created_at).getTime() > 4 * 3600 * 1000) : false;
         const analyzable = hasFinal || isOld;
         if (!analyzable) { chrono.push({ result: 'pending', profit: 0 }); continue; }
-        const inWin = events.some(g => {
+        const natural = events.some(g => {
           const min = (g.minute || 0) + (g.extra || 0);
           return min >= Math.max(entryMin, a.minute_at_alert || 0) && min <= exitMin;
         });
+        const forced = resultOverrides[String(a.fixture_id)]; // troca de resultado feita à mão na página do método
+        const inWin = forced ? forced === 'green' : natural;
         if (inWin) { greens++; profit += greenStake * GREEN_NET; chrono.push({ result: 'green', profit: greenStake * GREEN_NET }); }
         else {
           const eff = overrides[String(a.fixture_id)] ?? redStake;
