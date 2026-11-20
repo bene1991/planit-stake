@@ -217,88 +217,86 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
   const saveOdds = () => run(() => db.from('live_operations').update({ entry_odd: eOdd, exit_odd: xOdd }).eq('id', o.entered.id), 'Odds salvas');
   const undo = () => run(() => db.from('live_operations').delete().eq('id', o.entered.id), 'Voltou para alertados');
 
+  const [showStats, setShowStats] = useState(false);
+  const hasStats = s && (h.shots != null || h.shotsOn != null);
   const border = o.outcome === 'green' ? 'border-emerald-500/30' : o.outcome === 'red' ? 'border-rose-500/30' : o.needsExit ? 'border-amber-500/40' : 'border-white/10';
+  const input = 'h-8 w-full rounded-md border border-white/10 bg-black/40 px-2 text-xs font-bold text-white';
+  const lbl = 'text-[9px] font-semibold uppercase tracking-wider text-zinc-500';
   return (
-    <div className={cn('relative overflow-hidden rounded-2xl border bg-gradient-to-b from-zinc-900/70 to-zinc-950/80 p-4 shadow-xl backdrop-blur-xl', border)}>
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase text-amber-400">
-            <Zap className="h-3 w-3" /> {o.method.name}
-          </span>
-          <p className="mt-1.5 truncate text-[10px] font-bold uppercase tracking-widest text-zinc-500">{o.league}</p>
+    <div className={cn('rounded-xl border bg-zinc-900/60 p-3 text-xs shadow-lg', border)}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Zap className="h-3 w-3 shrink-0 text-amber-400" />
+          <span className="truncate text-[10px] font-black uppercase text-amber-400">{o.method.name}</span>
         </div>
-        <div className="text-right text-[10px] text-zinc-500">
-          <p className="flex items-center justify-end gap-1"><Clock className="h-3 w-3" />Telegram {brTime(o.sentAt)} · {o.entryMin}'</p>
-          {minute != null && <p className="mt-0.5 font-mono font-black text-emerald-400">{o.live?.status === 'HT' ? 'INTERVALO' : `${minute}'`}</p>}
+        <div className="flex shrink-0 items-center gap-2 text-[10px] text-zinc-500">
+          <span className="flex items-center gap-1"><Clock className="h-2.5 w-2.5" />{brTime(o.sentAt)}</span>
+          {minute != null && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono font-black text-emerald-400">{o.live?.status === 'HT' ? 'INT' : `${minute}'`}</span>}
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <span className="truncate text-sm font-bold text-zinc-100">{o.home}</span>
-        <span className="rounded-xl border border-white/10 bg-black/50 px-3.5 py-1.5 text-xl font-black tabular-nums text-white">
-          {score ?? `${o.goalsNow}`}
-        </span>
-        <span className="truncate text-right text-sm font-bold text-zinc-100">{o.away}</span>
+      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <span className="truncate text-[13px] font-bold text-zinc-100">{o.home}</span>
+        <span className="rounded-md bg-black/50 px-2 py-0.5 text-sm font-black tabular-nums text-white">{score ?? o.goalsNow}</span>
+        <span className="truncate text-right text-[13px] font-bold text-zinc-100">{o.away}</span>
       </div>
-      <p className="mt-1 text-center text-[10px] text-zinc-500">
-        entrada com {o.entryGoals} gol(s){o.line ? ` · lay Under ${String(o.line).replace('.', ',')}` : ''} · saída {o.method.exit_minute >= 95 ? 'no fim' : `${o.method.exit_minute}'`}
+      <p className="mt-1 truncate text-center text-[10px] text-zinc-500">
+        {o.league} · entrada c/ {o.entryGoals} gol{o.entryGoals === 1 ? '' : 's'}{o.line ? ` · Under ${String(o.line).replace('.', ',')}` : ''} · saída {o.method.exit_minute >= 95 ? 'no fim' : `${o.method.exit_minute}'`}
       </p>
 
-      {o.needsExit && <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] font-bold text-amber-300">⏰ Minuto de saída — feche a posição e digite a odd de saída.</div>}
+      {o.needsExit && <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">⏰ Minuto de saída: feche e digite a odd de saída.</p>}
       {o.outcome && (
-        <div className={cn('mt-3 flex items-center justify-between rounded-xl px-3 py-2', o.outcome === 'green' ? 'bg-emerald-500/10' : 'bg-rose-500/10')}>
-          <span className={cn('text-xs font-black uppercase', o.outcome === 'green' ? 'text-emerald-400' : 'text-rose-400')}>
-            {o.outcome === 'green' ? 'Green' : o.late ? 'Red (gol depois da saída)' : 'Red'}{!o.entered && ' · não entrei'}
+        <div className={cn('mt-2 flex items-center justify-between rounded-md px-2 py-1', o.outcome === 'green' ? 'bg-emerald-500/10' : 'bg-rose-500/10')}>
+          <span className={cn('text-[10px] font-black uppercase', o.outcome === 'green' ? 'text-emerald-400' : 'text-rose-400')}>
+            {o.outcome === 'green' ? 'Green' : o.late ? 'Red · gol após saída' : 'Red'}{!o.entered && ' · não entrei'}
           </span>
-          <span className={cn('text-lg font-black tabular-nums', (o.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+          <span className={cn('text-sm font-black tabular-nums', (o.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
             {(o.profit || 0) >= 0 ? '+' : ''}{n2(o.profit || 0)}
-            <span className="ml-1 text-[10px] font-bold text-zinc-500">{o.outcome === 'red' ? (o.redReal ? 'red real' : 'red do método') : 'stakes'}</span>
+            <span className="ml-1 text-[9px] font-bold text-zinc-500">{o.outcome === 'red' ? (o.redReal ? 'real' : 'método') : 'st'}</span>
           </span>
         </div>
       )}
 
-      <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
+      <div className={cn('mt-2 grid gap-2', tab === 'alerted' ? 'grid-cols-1' : 'grid-cols-2')}>
         <label className="block">
-          <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500">Odd de entrada{o.robotOdd && o.entered ? ` (robô ${n2(o.robotOdd)})` : ''}</span>
-          <input value={entry} onChange={e => setEntry(e.target.value)} inputMode="decimal" placeholder={o.robotOdd ? n2(o.robotOdd) : 'ex 9,25'}
-            className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold text-white" />
+          <span className={lbl}>Odd entrada{o.robotOdd && o.entered ? ` · robô ${n2(o.robotOdd)}` : ''}</span>
+          <input value={entry} onChange={e => setEntry(e.target.value)} inputMode="decimal" placeholder={o.robotOdd ? n2(o.robotOdd) : 'ex 9,25'} className={input} />
         </label>
-        {tab !== 'alerted' ? (
+        {tab !== 'alerted' && (
           <label className="block">
-            <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500">Odd de saída</span>
-            <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="ex 3,65"
-              className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-black/40 px-2 text-sm font-bold text-white" />
+            <span className={lbl}>Odd saída</span>
+            <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="ex 3,65" className={input} />
           </label>
-        ) : <div />}
+        )}
       </div>
       {tab !== 'alerted' && (
-        <p className="mt-2 text-[11px] text-zinc-400">
-          {previewRed != null ? <>Red real: <b className="text-rose-400">{n2(previewRed)} stakes</b></> : <>Sem odd de saída: red do método <b className="text-rose-400">-{n2(o.redMethod)}</b></>}
+        <p className="mt-1.5 text-[10px] text-zinc-400">
+          {previewRed != null ? <>Red real <b className="text-rose-400">{n2(previewRed)}</b></> : <>Sem saída: red do método <b className="text-rose-400">-{n2(o.redMethod)}</b></>}
         </p>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {o.slug && (
-          <a href={`${LAYBACK}${o.slug}?n=sport:soccer`} target="_blank" rel="noreferrer"
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-bold text-zinc-200 hover:border-emerald-500/40">
-            <ExternalLink className="h-3.5 w-3.5" /> Layback
-          </a>
-        )}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {tab === 'alerted' && (
-          <button disabled={busy} onClick={enter} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-500 px-4 text-xs font-black text-black hover:bg-emerald-400 disabled:opacity-50">
-            <Check className="h-3.5 w-3.5" /> Entrei
-          </button>
+          <button disabled={busy} onClick={enter} className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-500 px-3 text-[11px] font-black text-black hover:bg-emerald-400 disabled:opacity-50"><Check className="h-3 w-3" /> Entrei</button>
         )}
         {tab !== 'alerted' && o.entered && (
-          <>
-            <button disabled={busy} onClick={saveOdds} className="inline-flex h-9 items-center rounded-lg bg-emerald-500 px-4 text-xs font-black text-black hover:bg-emerald-400 disabled:opacity-50">Salvar odds</button>
-            {tab === 'open' && <button disabled={busy} onClick={undo} className="inline-flex h-9 items-center gap-1 rounded-lg border border-white/10 px-3 text-xs text-zinc-400 hover:text-white"><Undo2 className="h-3.5 w-3.5" /> desfazer</button>}
-          </>
+          <button disabled={busy} onClick={saveOdds} className="inline-flex h-8 items-center rounded-md bg-emerald-500 px-3 text-[11px] font-black text-black hover:bg-emerald-400 disabled:opacity-50">Salvar</button>
+        )}
+        {o.slug && (
+          <a href={`${LAYBACK}${o.slug}?n=sport:soccer`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-md border border-white/10 px-2.5 text-[11px] font-bold text-zinc-300 hover:border-emerald-500/40">
+            <ExternalLink className="h-3 w-3" /> Layback
+          </a>
+        )}
+        {tab === 'open' && o.entered && (
+          <button disabled={busy} onClick={undo} className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] text-zinc-500 hover:text-white"><Undo2 className="h-3 w-3" /> desfazer</button>
+        )}
+        {hasStats && tab !== 'done' && (
+          <button onClick={() => setShowStats(v => !v)} className="ml-auto text-[10px] font-bold text-zinc-500 hover:text-zinc-200">{showStats ? 'ocultar stats' : 'stats'}</button>
         )}
       </div>
 
-      {s && (h.shots != null || h.shotsOn != null) && tab !== 'done' && (
-        <div className="mt-4 space-y-2 border-t border-white/5 pt-3">
+      {showStats && hasStats && (
+        <div className="mt-2 space-y-1.5 border-t border-white/5 pt-2">
           <StatBar label="No alvo" h={h.shotsOn} a={a.shotsOn} highlight />
           <StatBar label="Chutes" h={h.shots} a={a.shots} />
           <StatBar label="Na área" h={h.shotsInBox} a={a.shotsInBox} />
