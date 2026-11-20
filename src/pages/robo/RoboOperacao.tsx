@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ExternalLink, Loader2, Undo2, Check, Zap, Clock } from 'lucide-react';
+import { ExternalLink, Loader2, Undo2, Activity } from 'lucide-react';
 import { StatBar } from '@/components/robo/LiveRadarGrid';
 
 const db = supabase as any;
@@ -152,7 +152,7 @@ export default function RoboOperacao() {
   ] as const;
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-[1400px] space-y-4">
       {DEMO && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-300">Modo demonstração: jogos fictícios, nada é gravado.</div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-black uppercase tracking-tighter text-white">Operação ao vivo</h3>
@@ -169,16 +169,16 @@ export default function RoboOperacao() {
       {isLoading ? (
         <div className="flex justify-center py-16 text-zinc-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Carregando...</div>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-3">
           {cols.map(c => (
-            <section key={c.id} className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3">
-              <div className="mb-3 flex items-center gap-2 px-1">
+            <section key={c.id} className="rounded-xl border border-white/5 bg-zinc-950/40 p-2">
+              <div className="mb-2 flex items-center gap-2 px-1">
                 <span className={cn('h-2 w-2 rounded-full', c.dot)} />
                 <h4 className="text-xs font-black uppercase tracking-widest text-zinc-200">{c.title}</h4>
                 <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-300">{c.list.length}</span>
                 <span className="ml-auto text-[10px] text-zinc-600">{c.sub}</span>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {c.list.length === 0
                   ? <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-xs text-zinc-600">Nada aqui agora.</div>
                   : c.list.map(o => <OpCard key={o.key} op={o} tab={c.id} />)}
@@ -219,80 +219,48 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
 
   const [showStats, setShowStats] = useState(false);
   const hasStats = s && (h.shots != null || h.shotsOn != null);
-  const border = o.outcome === 'green' ? 'border-emerald-500/30' : o.outcome === 'red' ? 'border-rose-500/30' : o.needsExit ? 'border-amber-500/40' : 'border-white/10';
-  const input = 'h-8 w-full rounded-md border border-white/10 bg-black/40 px-2 text-xs font-bold text-white';
-  const lbl = 'text-[9px] font-semibold uppercase tracking-wider text-zinc-500';
+  const strip = o.outcome === 'green' ? 'border-l-emerald-500' : o.outcome === 'red' ? 'border-l-rose-500' : o.needsExit ? 'border-l-amber-400' : 'border-l-zinc-700';
+  const box = 'h-7 w-[58px] rounded border border-white/10 bg-black/40 px-1.5 text-center text-[11px] font-bold text-white placeholder:font-normal placeholder:text-zinc-600';
+  const btn = 'inline-flex h-7 items-center justify-center rounded px-2.5 text-[11px] font-black disabled:opacity-50';
+  const done = tab === 'done';
   return (
-    <div className={cn('rounded-xl border bg-zinc-900/60 p-3 text-xs shadow-lg', border)}>
+    <div className={cn('rounded-lg border border-white/5 border-l-2 bg-zinc-900/50 px-2.5 py-1.5', strip)} title={o.league}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Zap className="h-3 w-3 shrink-0 text-amber-400" />
-          <span className="truncate text-[10px] font-black uppercase text-amber-400">{o.method.name}</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 text-[10px] text-zinc-500">
-          <span className="flex items-center gap-1"><Clock className="h-2.5 w-2.5" />{brTime(o.sentAt)}</span>
-          {minute != null && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono font-black text-emerald-400">{o.live?.status === 'HT' ? 'INT' : `${minute}'`}</span>}
-        </div>
-      </div>
-
-      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <span className="truncate text-[13px] font-bold text-zinc-100">{o.home}</span>
-        <span className="rounded-md bg-black/50 px-2 py-0.5 text-sm font-black tabular-nums text-white">{score ?? o.goalsNow}</span>
-        <span className="truncate text-right text-[13px] font-bold text-zinc-100">{o.away}</span>
-      </div>
-      <p className="mt-1 truncate text-center text-[10px] text-zinc-500">
-        {o.league} · entrada c/ {o.entryGoals} gol{o.entryGoals === 1 ? '' : 's'}{o.line ? ` · Under ${String(o.line).replace('.', ',')}` : ''} · saída {o.method.exit_minute >= 95 ? 'no fim' : `${o.method.exit_minute}'`}
-      </p>
-
-      {o.needsExit && <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">⏰ Minuto de saída: feche e digite a odd de saída.</p>}
-      {o.outcome && (
-        <div className={cn('mt-2 flex items-center justify-between rounded-md px-2 py-1', o.outcome === 'green' ? 'bg-emerald-500/10' : 'bg-rose-500/10')}>
-          <span className={cn('text-[10px] font-black uppercase', o.outcome === 'green' ? 'text-emerald-400' : 'text-rose-400')}>
-            {o.outcome === 'green' ? 'Green' : o.late ? 'Red · gol após saída' : 'Red'}{!o.entered && ' · não entrei'}
-          </span>
-          <span className={cn('text-sm font-black tabular-nums', (o.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
-            {(o.profit || 0) >= 0 ? '+' : ''}{n2(o.profit || 0)}
-            <span className="ml-1 text-[9px] font-bold text-zinc-500">{o.outcome === 'red' ? (o.redReal ? 'real' : 'método') : 'st'}</span>
-          </span>
-        </div>
-      )}
-
-      <div className={cn('mt-2 grid gap-2', tab === 'alerted' ? 'grid-cols-1' : 'grid-cols-2')}>
-        <label className="block">
-          <span className={lbl}>Odd entrada{o.robotOdd && o.entered ? ` · robô ${n2(o.robotOdd)}` : ''}</span>
-          <input value={entry} onChange={e => setEntry(e.target.value)} inputMode="decimal" placeholder={o.robotOdd ? n2(o.robotOdd) : 'ex 9,25'} className={input} />
-        </label>
-        {tab !== 'alerted' && (
-          <label className="block">
-            <span className={lbl}>Odd saída</span>
-            <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="ex 3,65" className={input} />
-          </label>
-        )}
-      </div>
-      {tab !== 'alerted' && (
-        <p className="mt-1.5 text-[10px] text-zinc-400">
-          {previewRed != null ? <>Red real <b className="text-rose-400">{n2(previewRed)}</b></> : <>Sem saída: red do método <b className="text-rose-400">-{n2(o.redMethod)}</b></>}
+        <p className="min-w-0 truncate text-[13px] font-bold text-zinc-100">
+          {o.home} <span className="mx-1 font-black tabular-nums text-white">{score ? score.replace(' x ', '–') : o.goalsNow}</span> {o.away}
         </p>
-      )}
+        {o.outcome ? (
+          <span className={cn('shrink-0 text-sm font-black tabular-nums', (o.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+            {(o.profit || 0) >= 0 ? '+' : ''}{n2(o.profit || 0)}
+          </span>
+        ) : minute != null && (
+          <span className="shrink-0 font-mono text-[11px] font-black text-emerald-400">{o.live?.status === 'HT' ? 'INT' : `${minute}'`}</span>
+        )}
+      </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {tab === 'alerted' && (
-          <button disabled={busy} onClick={enter} className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-500 px-3 text-[11px] font-black text-black hover:bg-emerald-400 disabled:opacity-50"><Check className="h-3 w-3" /> Entrei</button>
+      <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-zinc-500">
+        <span className="min-w-0 truncate">
+          {o.method.name} · {brTime(o.sentAt)}{o.line ? ` · U${String(o.line).replace('.', ',')}` : ''}
+          {o.outcome === 'red' && <> · <span className="text-rose-400">{o.redReal ? 'red real' : 'red método'}{o.late ? ' (gol após saída)' : ''}</span></>}
+          {o.outcome === 'green' && <> · <span className="text-emerald-400">green</span></>}
+          {o.outcome && !o.entered && ' · não entrei'}
+        </span>
+        {o.needsExit && <span className="shrink-0 font-bold text-amber-300">⏰ saída</span>}
+      </div>
+
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <input value={entry} onChange={e => setEntry(e.target.value)} inputMode="decimal" placeholder={o.robotOdd ? n2(o.robotOdd) : 'entrada'} title="Odd de entrada" className={box} />
+        {tab !== 'alerted' && <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="saída" title="Odd de saída" className={box} />}
+        {tab === 'alerted' && <button disabled={busy} onClick={enter} className={cn(btn, 'bg-emerald-500 text-black hover:bg-emerald-400')}>Entrei</button>}
+        {tab !== 'alerted' && o.entered && <button disabled={busy} onClick={saveOdds} className={cn(btn, 'bg-emerald-500 text-black hover:bg-emerald-400')}>Salvar</button>}
+        {tab !== 'alerted' && !o.outcome && (
+          <span className="truncate text-[10px] text-zinc-500">{previewRed != null ? <>red <b className="text-rose-400">{n2(previewRed)}</b></> : <>método <b className="text-rose-400">-{n2(o.redMethod)}</b></>}</span>
         )}
-        {tab !== 'alerted' && o.entered && (
-          <button disabled={busy} onClick={saveOdds} className="inline-flex h-8 items-center rounded-md bg-emerald-500 px-3 text-[11px] font-black text-black hover:bg-emerald-400 disabled:opacity-50">Salvar</button>
-        )}
-        {o.slug && (
-          <a href={`${LAYBACK}${o.slug}?n=sport:soccer`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-md border border-white/10 px-2.5 text-[11px] font-bold text-zinc-300 hover:border-emerald-500/40">
-            <ExternalLink className="h-3 w-3" /> Layback
-          </a>
-        )}
-        {tab === 'open' && o.entered && (
-          <button disabled={busy} onClick={undo} className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] text-zinc-500 hover:text-white"><Undo2 className="h-3 w-3" /> desfazer</button>
-        )}
-        {hasStats && tab !== 'done' && (
-          <button onClick={() => setShowStats(v => !v)} className="ml-auto text-[10px] font-bold text-zinc-500 hover:text-zinc-200">{showStats ? 'ocultar stats' : 'stats'}</button>
-        )}
+        <span className="ml-auto flex items-center gap-1">
+          {tab === 'open' && o.entered && <button disabled={busy} onClick={undo} title="Voltar para alertados" className={cn(btn, 'px-1.5 text-zinc-500 hover:text-white')}><Undo2 className="h-3 w-3" /></button>}
+          {hasStats && !done && <button onClick={() => setShowStats(v => !v)} className={cn(btn, 'px-1.5 text-zinc-500 hover:text-white')} title="Estatísticas"><Activity className="h-3 w-3" /></button>}
+          {o.slug && <a href={`${LAYBACK}${o.slug}?n=sport:soccer`} target="_blank" rel="noreferrer" title="Abrir na Layback" className={cn(btn, 'px-1.5 text-zinc-500 hover:text-emerald-400')}><ExternalLink className="h-3 w-3" /></a>}
+        </span>
       </div>
 
       {showStats && hasStats && (
