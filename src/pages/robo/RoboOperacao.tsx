@@ -30,7 +30,7 @@ const brTime = (iso: string) =>
 type Op = {
   key: string; fixtureId: string; method: any; home: string; away: string; league: string;
   sentAt: string; entryMin: number; entryGoals: number; line: number | null; slug: string | null; robotOdd: number | null;
-  live: any | null; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
+  live: any | null; score?: string | null; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
   needsExit: boolean; stats: any; entered: any | null; entryOdd: number | null; exitOdd: number | null;
   redMethod: number; profit: number | null; redReal: boolean; hold: boolean;
 };
@@ -145,7 +145,7 @@ function useOps(day: string) {
           ops.set(key, {
             key, fixtureId: fid, method, home: al.home_team, away: al.away_team, league: al.league_name,
             sentAt: snap?.created_at || al.created_at, entryMin, entryGoals, line: snap?.line ?? null, slug: snap?.event_slug ?? null,
-            robotOdd, live: lv, goalsNow, finished, outcome, late,
+            robotOdd, live: lv, score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : null, goalsNow, finished, outcome, late,
             needsExit: !!lv && exitMin < 95 && (lv.minute || 0) >= exitMin && outcome === null,
             stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal, hold,
           });
@@ -274,7 +274,7 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
     <div className={cn('rounded-lg border border-white/5 border-l-2 bg-zinc-900/50 px-2.5 py-1.5', strip)} title={o.league}>
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-[13px] font-bold text-zinc-100">
-          {o.home} <span className="mx-1 font-black tabular-nums text-white">{score ? score.replace(' x ', '–') : o.goalsNow}</span> {o.away}
+          {o.home} <span className="mx-1 font-black tabular-nums text-white">{score ? score.replace(' x ', '–') : (o.score ?? o.goalsNow)}</span> {o.away}
         </p>
         {o.outcome ? (
           <span className={cn('shrink-0 text-sm font-black tabular-nums', (shownProfit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
