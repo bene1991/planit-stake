@@ -9,7 +9,8 @@ import { StatBar } from '@/components/robo/LiveRadarGrid';
 const db = supabase as any;
 const GREEN_NET = 0.955;
 const LAYBACK = 'https://polymarket.layback.trade/exchange/';
-const H48 = 48 * 3600 * 1000;
+const spDay = (d: Date | string) => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+const shiftDay = (day: string, n: number) => spDay(new Date(new Date(`${day}T12:00:00-03:00`).getTime() + n * 86400000));
 
 // red real em stakes (positivo): sem saída antecipada vale o risco cheio (entrada − 1); com saída, entrada/saída − 1
 const redFromOdds = (hold: boolean, e: number | null, x: number | null) =>
@@ -60,19 +61,21 @@ const demoOps = (): Op[] => [
     live: null, goalsNow: 0, finished: true, outcome: 'red', needsExit: false, stats: null, entered: { id: 'x' }, entryOdd: 3.28, exitOdd: null, redMethod: 3.5, profit: -3.5 },
 ];
 
-function useOps() {
+function useOps(day: string) {
   return useQuery({
-    queryKey: ['live-operacao'],
+    queryKey: ['live-operacao', day],
     refetchInterval: 30000,
     queryFn: async (): Promise<Op[]> => {
       if (DEMO) return demoOps();
-      const since = new Date(Date.now() - H48).toISOString();
+      // janela do dia escolhido (horário de São Paulo), com folga: o alerta nasce ~20 min antes do aviso do Telegram
+      const since = new Date(new Date(`${day}T00:00:00-03:00`).getTime() - 3 * 3600 * 1000).toISOString();
+      const until = new Date(new Date(`${day}T00:00:00-03:00`).getTime() + 30 * 3600 * 1000).toISOString();
       const [m, a, s, r, o, bl] = await Promise.all([
         db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake,filters_snapshot'),
-        db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since),
-        db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found').gte('created_at', since).order('created_at', { ascending: false }),
+        db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since).lte('created_at', until),
+        db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found').gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }),
         db.from('radar_live_fixtures').select('fixture_id,minute,home_score,away_score,status,stats_snapshot'),
-        db.from('live_operations').select('*').gte('entered_at', new Date(Date.now() - 7 * 86400000).toISOString()),
+        db.from('live_operations').select('*'), // sem filtro de data: um jogo de dias atrás pode ter sido registrado hoje
         db.from('robot_blocked_leagues').select('league_id').eq('active', true),
       ]);
       const blocked = new Set<string>((bl.data || []).map((x: any) => String(x.league_id))); // ligas bloqueadas (global)
@@ -149,20 +152,21 @@ function useOps() {
 }
 
 export default function RoboOperacao() {
-  const { data: ops, isLoading } = useOps();
+  const todayStr = spDay(new Date());
+  const [day, setDay] = useState(todayStr);
+  const { data: allOps, isLoading } = useOps(day);
+  const ops = useMemo(() => (allOps || []).filter(o => spDay(o.sentAt) === day), [allOps, day]);
   const [showSkipped, setShowSkipped] = useState(true);
   const resolved = (o: Op) => o.finished || o.outcome === 'green';
   const groups = useMemo(() => {
-    const all = ops || [];
+    const all = ops;
     return {
       alerted: all.filter(o => !o.entered && !resolved(o)),
       open: all.filter(o => o.entered && !resolved(o)),
       done: all.filter(o => resolved(o) && (o.entered || showSkipped)),
     };
   }, [ops, showSkipped]);
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-  const dayProfit = (ops || []).filter(o => o.entered && resolved(o) && o.profit != null &&
-    new Date(o.sentAt).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) === today).reduce((a, o) => a + (o.profit || 0), 0);
+  const dayProfit = ops.filter(o => o.entered && resolved(o) && o.profit != null).reduce((a, o) => a + (o.profit || 0), 0);
 
   const cols = [
     { id: 'alerted', title: 'Alertados', sub: 'caiu no Telegram', list: groups.alerted, dot: 'bg-amber-400' },
@@ -175,11 +179,17 @@ export default function RoboOperacao() {
       {DEMO && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-300">Modo demonstração: jogos fictícios, nada é gravado.</div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-black uppercase tracking-tighter text-white">Operação ao vivo</h3>
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setDay(shiftDay(day, -1))} className="h-8 w-8 rounded-md border border-white/10 text-zinc-300 hover:border-emerald-500/40" title="Dia anterior">‹</button>
+            <input type="date" value={day} max={todayStr} onChange={e => e.target.value && setDay(e.target.value)} className="h-8 rounded-md border border-white/10 bg-black/40 px-2 text-xs font-bold text-white [color-scheme:dark]" />
+            <button onClick={() => setDay(shiftDay(day, 1))} disabled={day >= todayStr} className="h-8 w-8 rounded-md border border-white/10 text-zinc-300 hover:border-emerald-500/40 disabled:opacity-30" title="Próximo dia">›</button>
+            {day !== todayStr && <button onClick={() => setDay(todayStr)} className="h-8 rounded-md bg-emerald-500 px-2.5 text-[11px] font-black text-black">Hoje</button>}
+          </div>
           <label className="flex cursor-pointer items-center gap-1.5 text-zinc-400">
             <input type="checkbox" checked={showSkipped} onChange={e => setShowSkipped(e.target.checked)} /> mostrar finalizados em que não entrei
           </label>
-          <span className="text-zinc-500">Hoje:
+          <span className="text-zinc-500">{day === todayStr ? 'Hoje' : 'Dia'}:
             <b className={cn('ml-1 tabular-nums', dayProfit >= 0 ? 'text-emerald-400' : 'text-rose-400')}>{dayProfit >= 0 ? '+' : ''}{n2(dayProfit)} stakes</b>
           </span>
         </div>
