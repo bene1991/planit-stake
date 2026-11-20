@@ -178,7 +178,7 @@ function useOps(day: string) {
           ops.set(key, {
             key, fixtureId: fid, method, home: al.home_team, away: al.away_team, league: al.league_name,
             sentAt: snap?.created_at || al.created_at, entryMin, entryGoals, line: snap?.line ?? null, slug: snap?.event_slug ?? null,
-            robotOdd, live: lv, why: buildWhy(al, vars.get(al.variation_id)), goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, // sem placar gravado: conta os gols por time goalsNow, finished, outcome, late,
+            robotOdd, live: lv, why: buildWhy(al, vars.get(al.variation_id)), goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, goalsNow, finished, outcome, late,
             needsExit: !!lv && exitMin < 95 && (lv.minute || 0) >= exitMin && outcome === null,
             stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal, hold,
           });
