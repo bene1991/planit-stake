@@ -30,13 +30,14 @@ const brTime = (iso: string) =>
 type Op = {
   key: string; fixtureId: string; method: any; home: string; away: string; league: string;
   sentAt: string; entryMin: number; entryGoals: number; line: number | null; slug: string | null; robotOdd: number | null;
-  live: any | null; score?: string | null; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
+  live: any | null; score?: string | null; goalMins?: number[]; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
   needsExit: boolean; stats: any; entered: any | null; entryOdd: number | null; exitOdd: number | null;
   redMethod: number; profit: number | null; redReal: boolean; hold: boolean;
 };
 
 
 // Modo demonstração (?demo=1): jogos fictícios só na tela, nada é gravado.
+const NEWCARD = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('card') !== 'antigo';
 const DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('demo');
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
 const M35 = { id: 'm1', name: 'Novo 35-65', entry_minute: 35, exit_minute: 65, red_stake: 1.7, green_stake: 1 };
@@ -44,7 +45,12 @@ const M70 = { id: 'm2', name: 'p mod. gols 35-70', entry_minute: 35, exit_minute
 const M50 = { id: 'm3', name: 'Pressão Moderada 50+', entry_minute: 50, exit_minute: 111, red_stake: 3.5, green_stake: 1 };
 const dstats = (a: number, b: number) => ({ h: { shots: 9 + a, shotsOn: 4 + a, shotsInBox: 6, corners: 5, xg: 1.1, possession: 56 }, a: { shots: 4 + b, shotsOn: 1 + b, shotsInBox: 2, corners: 2, xg: 0.4, possession: 44 } });
 const base = { sentAt: '', slug: 'demo', late: false, redReal: false, hold: false } as const;
-const demoOps = (): Op[] => [
+const DEMO_EXTRA: Record<string, { score: string; goalMins: number[] }> = {
+  d1: { score: '0–0', goalMins: [] }, d2: { score: '0–0', goalMins: [] }, d3: { score: '1–0', goalMins: [52] }, d4: { score: '0–0', goalMins: [] },
+  d5: { score: '1–0', goalMins: [41] }, d6: { score: '1–0', goalMins: [12] }, d7: { score: '0–0', goalMins: [] },
+};
+const demoOps = (): Op[] => demoRaw().map(o => ({ ...o, ...DEMO_EXTRA[o.key], hold: !(o.method.exit_minute < 95) }));
+const demoRaw = (): Op[] => [
   { ...base, key: 'd1', fixtureId: 'd1', method: M35, home: 'Flamengo', away: 'Palmeiras', league: 'Brasileirão Série A', sentAt: ago(4), entryMin: 36, entryGoals: 0, line: 0.5, robotOdd: 9.25,
     live: { minute: 37, home_score: 0, away_score: 0, status: '1H' }, goalsNow: 0, finished: false, outcome: null, needsExit: false, stats: dstats(2, 0), entered: null, entryOdd: 9.25, exitOdd: null, redMethod: 1.7, profit: null },
   { ...base, key: 'd2', fixtureId: 'd1', method: M70, home: 'Flamengo', away: 'Palmeiras', league: 'Brasileirão Série A', sentAt: ago(4), entryMin: 36, entryGoals: 0, line: 0.5, robotOdd: 9.25,
@@ -145,7 +151,7 @@ function useOps(day: string) {
           ops.set(key, {
             key, fixtureId: fid, method, home: al.home_team, away: al.away_team, league: al.league_name,
             sentAt: snap?.created_at || al.created_at, entryMin, entryGoals, line: snap?.line ?? null, slug: snap?.event_slug ?? null,
-            robotOdd, live: lv, score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : null, goalsNow, finished, outcome, late,
+            robotOdd, live: lv, goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, // sem placar gravado: conta os gols por time goalsNow, finished, outcome, late,
             needsExit: !!lv && exitMin < 95 && (lv.minute || 0) >= exitMin && outcome === null,
             stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal, hold,
           });
@@ -270,6 +276,94 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
   const box = 'h-7 w-[58px] rounded border border-white/10 bg-black/40 px-1.5 text-center text-[11px] font-bold text-white placeholder:font-normal placeholder:text-zinc-600';
   const btn = 'inline-flex h-7 items-center justify-center rounded px-2.5 text-[11px] font-black disabled:opacity-50';
   const done = tab === 'done';
+  if (NEWCARD) {
+    const MAXM = 95;
+    const pct = (m: number) => `${Math.min(100, Math.max(0, (m / MAXM) * 100))}%`;
+    const exitM = o.hold ? MAXM : Math.min(o.method.exit_minute ?? MAXM, MAXM);
+    const tone = o.outcome === 'green' ? 'emerald' : o.outcome === 'red' ? 'rose' : o.needsExit ? 'amber' : 'zinc';
+    const top = { emerald: 'bg-emerald-500', rose: 'bg-rose-500', amber: 'bg-amber-400', zinc: 'bg-zinc-700' }[tone];
+    const resNum = o.outcome ? shownProfit : previewRed != null ? -previewRed : -o.redMethod;
+    const resLabel = o.outcome === 'green' ? 'green' : o.outcome === 'red' ? (o.redReal || previewRed != null ? 'red real' : 'red do método') : previewRed != null ? 'red se segurar' : 'red do método';
+    const field = 'h-8 w-full rounded-md border border-white/10 bg-black/50 px-2 text-center text-sm font-bold tabular-nums text-white placeholder:font-normal placeholder:text-zinc-600 focus:border-emerald-500/60 focus:outline-none';
+    return (
+      <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-zinc-900/70" title={o.league}>
+        <div className={cn('h-[3px]', top)} />
+        <div className="px-3 pb-3 pt-2.5">
+          <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500">
+            <span className="min-w-0 truncate">{o.league}</span>
+            <span className="flex shrink-0 items-center gap-1 tabular-nums">Telegram {brTime(o.sentAt)}
+              {tab === 'open' && o.entered && <button disabled={busy} onClick={undo} title="Voltar para alertados" className={cn(btn, 'px-1.5 text-zinc-500 hover:text-white')}><Undo2 className="h-3.5 w-3.5" /></button>}
+              {hasStats && !done && <button onClick={() => setShowStats(v => !v)} className={cn(btn, 'px-1.5 text-zinc-500 hover:text-white')} title="Estatísticas"><Activity className="h-3.5 w-3.5" /></button>}
+            </span>
+          </div>
+
+          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <p className="min-w-0 break-words text-right text-[13px] font-semibold leading-tight text-zinc-100">{o.home}</p>
+            <div className="min-w-[74px] rounded-lg bg-black/50 px-2.5 py-1 text-center ring-1 ring-white/10">
+              <p className="text-xl font-black leading-none tabular-nums text-white">{score ? score.replace(' x ', '–') : (o.score ?? o.goalsNow)}</p>
+              <p className="mt-0.5 text-[10px] font-bold tabular-nums text-emerald-400">{o.live ? (o.live.status === 'HT' ? 'intervalo' : `${minute}'`) : o.finished ? 'fim' : '·'}</p>
+            </div>
+            <p className="min-w-0 break-words text-[13px] font-semibold leading-tight text-zinc-100">{o.away}</p>
+          </div>
+
+          <div className="mt-3">
+            <div className="relative h-1.5 rounded-full bg-white/10">
+              <div className="absolute inset-y-0 rounded-full bg-sky-400/30" style={{ left: pct(o.entryMin), width: `calc(${pct(exitM)} - ${pct(o.entryMin)})` }} />
+              {(o.goalMins || []).map((g, i) => <span key={i} title={`gol ${g}'`} className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white ring-2 ring-zinc-900" style={{ left: pct(g) }} />)}
+              {minute != null && <span className="absolute -top-1 h-3.5 w-[2px] -translate-x-1/2 rounded bg-emerald-400" style={{ left: pct(minute) }} />}
+            </div>
+            <div className="relative mt-1 h-3 text-[10px] tabular-nums text-zinc-500">
+              <span className="absolute -translate-x-1/2" style={{ left: pct(o.entryMin) }}>entra {o.entryMin}'</span>
+              <span className="absolute right-0">{o.hold ? 'até o fim' : `sai ${o.method.exit_minute}'`}</span>
+            </div>
+          </div>
+
+          <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-zinc-500">
+            <span className={cn('rounded px-1.5 py-0.5 font-bold', o.hold ? 'bg-violet-500/15 text-violet-300' : 'bg-sky-500/15 text-sky-300')}>{o.method.name}</span>
+            {o.line ? <span className="tabular-nums">Under {String(o.line).replace('.', ',')}</span> : null}
+            {o.needsExit && <span className="ml-auto font-bold text-amber-300">⏰ hora de sair</span>}
+            {o.outcome && !o.entered && <span className="ml-auto">não entrei</span>}
+          </div>
+
+          <div className="mt-2.5 flex items-end gap-2">
+            <label className="w-[72px] text-[10px] text-zinc-500">Entrada
+              <input value={entry} onChange={e => setEntry(e.target.value)} inputMode="decimal" placeholder={o.robotOdd ? n2(o.robotOdd) : '—'} className={cn(field, 'mt-0.5')} />
+            </label>
+            {tab !== 'alerted' && !o.hold && (
+              <label className="w-[72px] text-[10px] text-zinc-500">Saída
+                <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="—" className={cn(field, 'mt-0.5')} />
+              </label>
+            )}
+            {tab === 'alerted'
+              ? <button disabled={busy} onClick={enter} className={cn(btn, 'h-8 bg-emerald-500 text-black hover:bg-emerald-400')}>Entrei</button>
+              : <button disabled={busy} onClick={saveOdds} className={cn(btn, 'h-8 bg-emerald-500 text-black hover:bg-emerald-400')}>Salvar</button>}
+            {o.slug && (
+              <a href={`${LAYBACK}${o.slug}?n=sport:soccer`} target="_blank" rel="noreferrer" title="Abrir este jogo na Layback" className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-400/50 bg-sky-500/15 px-2.5 text-[11px] font-black text-sky-300 hover:bg-sky-500/25">
+                Layback <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+            <div className="ml-auto text-right">
+              {tab !== 'alerted' && (
+                <>
+                  <p className={cn('text-lg font-black leading-none tabular-nums', (resNum || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>{(resNum || 0) >= 0 ? '+' : ''}{n2(resNum || 0)}</p>
+                  <p className="mt-0.5 text-[10px] text-zinc-500">{resLabel}</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {showStats && hasStats && (
+            <div className="mt-2 space-y-1.5 border-t border-white/5 pt-2">
+              <StatBar label="No alvo" h={h.shotsOn} a={a.shotsOn} highlight />
+              <StatBar label="Chutes" h={h.shots} a={a.shots} />
+              <StatBar label="Na área" h={h.shotsInBox} a={a.shotsInBox} />
+              <StatBar label="Cantos" h={h.corners} a={a.corners} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={cn('rounded-lg border border-white/5 border-l-2 bg-zinc-900/50 px-2.5 py-1.5', strip)} title={o.league}>
       <div className="flex items-center justify-between gap-2">
