@@ -102,7 +102,7 @@ function useOps(day: string) {
       // janela do dia escolhido (horário de São Paulo), com folga: o alerta nasce ~20 min antes do aviso do Telegram
       const since = new Date(new Date(`${day}T00:00:00-03:00`).getTime() - 3 * 3600 * 1000).toISOString();
       const until = new Date(new Date(`${day}T00:00:00-03:00`).getTime() + 30 * 3600 * 1000).toISOString();
-      const [m, a, s, r, o, bl, vr] = await Promise.all([
+      const [m, a, s, r, o, bl, vr, xo] = await Promise.all([
         db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake,filters_snapshot'),
         db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,variation_id,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since).lte('created_at', until),
         db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found').gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }),
@@ -110,8 +110,10 @@ function useOps(day: string) {
         db.from('live_operations').select('*'), // sem filtro de data: um jogo de dias atrás pode ter sido registrado hoje
         db.from('robot_blocked_leagues').select('league_id').eq('active', true),
         db.from('robot_variations').select('id,min_possession,min_shots,min_combined_shots,min_shots_on_target,min_corners,require_score_zero'),
+        db.from('polymarket_exit_odds').select('fixture_id,method_id,odd').gte('read_at', since),
       ]);
       const blocked = new Set<string>((bl.data || []).map((x: any) => String(x.league_id))); // ligas bloqueadas (global)
+      const exitOdds = new Map<string, number>((xo.data || []).map((x: any) => [`${x.fixture_id}|${x.method_id}`, Number(x.odd)]));
       const vars = new Map<string, any>((vr.data || []).map((x: any) => [x.id, x]));
       const methods = new Map<string, any>((m.data || []).map((x: any) => [x.id, x]));
       const live = new Map<string, any>((r.data || []).map((x: any) => [String(x.fixture_id), x]));
@@ -165,14 +167,15 @@ function useOps(day: string) {
           if (ro === 'green' || ro === 'red') { outcome = ro; late = false; }
           const robotOdd = snap?.odd ? Number(snap.odd) : null;
           const entryOdd = en?.entry_odd ? Number(en.entry_odd) : robotOdd;
-          const exitOdd = en?.exit_odd ? Number(en.exit_odd) : null;
+          const robotExit = exitOdds.get(key) ?? null; // odd de saída lida pelo robô no aviso SAIR
+          const exitOdd = en?.exit_odd ? Number(en.exit_odd) : robotExit;
           const redMethod = Number(method.filters_snapshot?.red_overrides?.[fid] ?? method.red_stake ?? 0);
           const hold = !(method.exit_minute < 95);
           let profit: number | null = null, redReal = false;
           if (outcome === 'green') profit = Number(method.green_stake || 1) * GREEN_NET;
           else if (outcome === 'red') {
             const rOv = method.filters_snapshot?.red_overrides?.[fid]; // red digitado na página do método manda
-            const r = rOv != null ? Number(rOv) : en ? redFromOdds(hold, entryOdd, exitOdd) : null;
+            const r = rOv != null ? Number(rOv) : en || robotExit != null ? redFromOdds(hold, entryOdd, exitOdd) : null; // com odd de saída do robô, calcula mesmo sem ter entrado
             if (r != null) { profit = -r; redReal = true; } else profit = -redMethod;
           }
           ops.set(key, {
@@ -269,7 +272,7 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
   const minute = o.live?.minute ?? null;
   const score = o.live ? `${o.live.home_score ?? 0} x ${o.live.away_score ?? 0}` : null;
   const dirty = entry !== (o.entryOdd ? n2(o.entryOdd) : '') || exit !== (o.exitOdd ? n2(o.exitOdd) : '');
-  const previewRed = o.entered || dirty ? redFromOdds(o.hold, eOdd, xOdd) : null; // só vale o que você digitou ou salvou
+  const previewRed = o.entered || dirty || o.exitOdd ? redFromOdds(o.hold, eOdd, xOdd) : null; // só vale o que você digitou ou salvou
   const shownProfit = o.outcome === 'red' && previewRed != null ? -previewRed : o.profit;
 
   const run = async (fn: () => Promise<any>, ok: string) => {

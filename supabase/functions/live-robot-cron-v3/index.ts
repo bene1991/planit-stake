@@ -934,6 +934,12 @@ serve(async (req) => {
                             : `📍 <i>Odd para fechar: mercado Polymarket não encontrado</i>\n`);
               const ok = await sendTelegram(botToken, destChatId, msg);
               if (!ok) sentAny = false;
+              // guarda a odd de saída para a Operação ao vivo preencher sozinha
+              if (poly?.closeOdd) {
+                await supabase.from('polymarket_exit_odds').upsert(
+                  { fixture_id: String(alert.fixture_id), method_id: m.id, odd: poly.closeOdd, line: poly.line, minute: elapsed, source: 'robot', read_at: new Date().toISOString() },
+                  { onConflict: 'fixture_id,method_id' });
+              }
             }
           }
           if (sentAny) {
