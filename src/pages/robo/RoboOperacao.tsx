@@ -64,13 +64,15 @@ function useOps() {
     queryFn: async (): Promise<Op[]> => {
       if (DEMO) return demoOps();
       const since = new Date(Date.now() - H48).toISOString();
-      const [m, a, s, r, o] = await Promise.all([
-        db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake'),
-        db.from('live_alerts').select('fixture_id,home_team,away_team,league_name,created_at,minute_at_alert,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since),
+      const [m, a, s, r, o, bl] = await Promise.all([
+        db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake,filters_snapshot'),
+        db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since),
         db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found').gte('created_at', since).order('created_at', { ascending: false }),
         db.from('radar_live_fixtures').select('fixture_id,minute,home_score,away_score,status,stats_snapshot'),
         db.from('live_operations').select('*').gte('entered_at', new Date(Date.now() - 7 * 86400000).toISOString()),
+        db.from('robot_blocked_leagues').select('league_id').eq('active', true),
       ]);
+      const blocked = new Set<string>((bl.data || []).map((x: any) => String(x.league_id))); // ligas bloqueadas (global)
       const methods = new Map<string, any>((m.data || []).map((x: any) => [x.id, x]));
       const live = new Map<string, any>((r.data || []).map((x: any) => [String(x.fixture_id), x]));
       const snaps = new Map<string, any>();
@@ -90,17 +92,26 @@ function useOps() {
           const key = `${fid}|${mid}`;
           const method = methods.get(mid);
           if (!method || ops.has(key)) continue;
+          const lid = String(al.league_id);
+          if (blocked.has(lid) || (method.filters_snapshot?.quarantine_leagues || []).map(String).includes(lid)) continue; // liga bloqueada ou em quarentena do método
           const snap = snaps.get(key);
           const lv = live.get(fid) || null;
-          const entryGoals = (al.entry_goals || {})[mid] ?? snap?.goals_total ?? 0;
           const entryMin = snap?.minute ?? Math.max(method.entry_minute || 0, al.minute_at_alert || 0);
           const exitMin = method.exit_minute ?? 999;
-          const goalsNow = lv ? (lv.home_score || 0) + (lv.away_score || 0) : (totalOf(finalScore) ?? entryGoals);
+          const goalsNow = lv ? (lv.home_score || 0) + (lv.away_score || 0) : (totalOf(finalScore) ?? 0);
           const finished = !!finalScore || (!lv && Date.now() - new Date(al.created_at).getTime() > 3.5 * 3600 * 1000);
+          const sorted = [...events].sort((x, y) => x.minute - y.minute);
+          const complete = sorted.length >= goalsNow && (finished || !!lv);
+          // placar na entrada: gols antes do minuto de entrada (retroativo); senão o gravado pelo robô
+          const entryGoals = complete && finished ? sorted.filter(g => g.minute < entryMin).length
+            : (al.entry_goals || {})[mid] ?? snap?.goals_total ?? 0;
           let outcome: 'green' | 'red' | null = null, late = false;
-          if (goalsNow > entryGoals) {
-            const goals = [...events].sort((x, y) => x.minute - y.minute);
-            const nth = goals[entryGoals];
+          if (finished && complete) {
+            const inWin = sorted.some(g => g.minute >= entryMin && g.minute <= exitMin);
+            outcome = inWin ? 'green' : 'red';
+            late = !inWin && goalsNow > entryGoals;
+          } else if (goalsNow > entryGoals) {
+            const nth = sorted[entryGoals];
             if (nth) { outcome = nth.minute <= exitMin ? 'green' : 'red'; late = outcome === 'red'; }
             else if (lv && !finished) { outcome = (lv.minute || 0) <= exitMin + 1 ? 'green' : null; }
             else outcome = 'green';
@@ -131,7 +142,7 @@ function useOps() {
 
 export default function RoboOperacao() {
   const { data: ops, isLoading } = useOps();
-  const [showSkipped, setShowSkipped] = useState(false);
+  const [showSkipped, setShowSkipped] = useState(true);
   const resolved = (o: Op) => o.finished || o.outcome === 'green';
   const groups = useMemo(() => {
     const all = ops || [];
