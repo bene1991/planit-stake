@@ -30,7 +30,7 @@ const brTime = (iso: string) =>
 type Op = {
   key: string; fixtureId: string; method: any; home: string; away: string; league: string;
   sentAt: string; entryMin: number; entryGoals: number; line: number | null; slug: string | null; robotOdd: number | null;
-  live: any | null; score?: string | null; goalMins?: number[]; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
+  live: any | null; why?: string | null; score?: string | null; goalMins?: number[]; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
   needsExit: boolean; stats: any; entered: any | null; entryOdd: number | null; exitOdd: number | null;
   redMethod: number; profit: number | null; redReal: boolean; hold: boolean;
 };
@@ -46,7 +46,7 @@ const M50 = { id: 'm3', name: 'Pressão Moderada 50+', entry_minute: 50, exit_mi
 const dstats = (a: number, b: number) => ({ h: { shots: 9 + a, shotsOn: 4 + a, shotsInBox: 6, corners: 5, xg: 1.1, possession: 56 }, a: { shots: 4 + b, shotsOn: 1 + b, shotsInBox: 2, corners: 2, xg: 0.4, possession: 44 } });
 const base = { sentAt: '', slug: 'demo', late: false, redReal: false, hold: false } as const;
 const DEMO_EXTRA: Record<string, { score: string; goalMins: number[] }> = {
-  d1: { score: '0–0', goalMins: [] }, d2: { score: '0–0', goalMins: [] }, d3: { score: '1–0', goalMins: [52] }, d4: { score: '0–0', goalMins: [] },
+  d1: { score: '0–0', goalMins: [], why: 'Aos 36\', placar 0–0: 12 chutes somados (5 no alvo), 6 escanteios, Flamengo com 61% de posse. Nos últimos 10\': 6 chutes (3 no alvo). Bateu o filtro: posse ≥ 55%, ≥ 6 chutes somados, ≥ 1 no alvo.' }, d2: { score: '0–0', goalMins: [] }, d3: { score: '1–0', goalMins: [52] }, d4: { score: '0–0', goalMins: [] },
   d5: { score: '1–0', goalMins: [41] }, d6: { score: '1–0', goalMins: [12] }, d7: { score: '0–0', goalMins: [] },
 };
 const demoOps = (): Op[] => demoRaw().map(o => ({ ...o, ...DEMO_EXTRA[o.key], hold: !(o.method.exit_minute < 95) }));
@@ -67,6 +67,31 @@ const demoRaw = (): Op[] => [
     live: null, goalsNow: 0, finished: true, outcome: 'red', needsExit: false, stats: null, entered: { id: 'x' }, entryOdd: 3.28, exitOdd: null, redMethod: 3.5, profit: -3.5 },
 ];
 
+// "Por que alertou": lê as estatísticas gravadas no alerta e compara com o filtro da variação (sem IA, sem custo)
+function buildWhy(al: any, v: any): string | null {
+  const fm = al.stats_snapshot?.fullMatch, w = al.stats_snapshot?.window10Min;
+  if (!fm?.h || !fm?.a) return null;
+  const h = fm.h, a = fm.a, sum = (k: string) => (h[k] || 0) + (a[k] || 0);
+  const w10 = w?.h && w?.a ? { shots: (w.h.shots || 0) + (w.a.shots || 0), on: (w.h.shotsOn || 0) + (w.a.shotsOn || 0) } : null;
+  const domH = (h.possession ?? 0) >= (a.possession ?? 0); // time com mais posse
+  const dom = domH ? h : a, domName = domH ? al.home_team : al.away_team;
+  const bits = [`${sum('shots')} chutes somados (${sum('shotsOn')} no alvo)`, `${sum('corners')} escanteio${sum('corners') === 1 ? '' : 's'}`];
+  if (dom.possession != null) bits.push(`${domName} com ${dom.possession}% de posse`);
+  let txt = `Aos ${al.minute_at_alert}', placar ${h.goals ?? 0}–${a.goals ?? 0}: ${bits.join(', ')}.`;
+  if (w10 && w10.shots > 0) txt += ` Nos últimos 10': ${w10.shots} chutes (${w10.on} no alvo).`;
+  if (v) {
+    const req: string[] = [];
+    if (v.min_possession > 0) req.push(`posse ≥ ${v.min_possession}%`);
+    if (v.min_combined_shots > 0) req.push(`≥ ${v.min_combined_shots} chutes somados`);
+    if (v.min_shots > 0) req.push(`≥ ${v.min_shots} chutes de um time`);
+    if (v.min_shots_on_target > 0) req.push(`≥ ${v.min_shots_on_target} no alvo`);
+    if (v.min_corners > 0) req.push(`≥ ${v.min_corners} escanteios`);
+    if (v.require_score_zero) req.push('0–0');
+    if (req.length) txt += ` Bateu o filtro: ${req.join(', ')}.`;
+  }
+  return txt;
+}
+
 function useOps(day: string) {
   return useQuery({
     queryKey: ['live-operacao', day],
@@ -77,15 +102,17 @@ function useOps(day: string) {
       // janela do dia escolhido (horário de São Paulo), com folga: o alerta nasce ~20 min antes do aviso do Telegram
       const since = new Date(new Date(`${day}T00:00:00-03:00`).getTime() - 3 * 3600 * 1000).toISOString();
       const until = new Date(new Date(`${day}T00:00:00-03:00`).getTime() + 30 * 3600 * 1000).toISOString();
-      const [m, a, s, r, o, bl] = await Promise.all([
+      const [m, a, s, r, o, bl, vr] = await Promise.all([
         db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake,filters_snapshot'),
-        db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since).lte('created_at', until),
+        db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,variation_id,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since).lte('created_at', until),
         db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found').gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }),
         db.from('radar_live_fixtures').select('fixture_id,minute,home_score,away_score,status,stats_snapshot'),
         db.from('live_operations').select('*'), // sem filtro de data: um jogo de dias atrás pode ter sido registrado hoje
         db.from('robot_blocked_leagues').select('league_id').eq('active', true),
+        db.from('robot_variations').select('id,min_possession,min_shots,min_combined_shots,min_shots_on_target,min_corners,require_score_zero'),
       ]);
       const blocked = new Set<string>((bl.data || []).map((x: any) => String(x.league_id))); // ligas bloqueadas (global)
+      const vars = new Map<string, any>((vr.data || []).map((x: any) => [x.id, x]));
       const methods = new Map<string, any>((m.data || []).map((x: any) => [x.id, x]));
       const live = new Map<string, any>((r.data || []).map((x: any) => [String(x.fixture_id), x]));
       const snaps = new Map<string, any>();
@@ -151,7 +178,7 @@ function useOps(day: string) {
           ops.set(key, {
             key, fixtureId: fid, method, home: al.home_team, away: al.away_team, league: al.league_name,
             sentAt: snap?.created_at || al.created_at, entryMin, entryGoals, line: snap?.line ?? null, slug: snap?.event_slug ?? null,
-            robotOdd, live: lv, goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, // sem placar gravado: conta os gols por time goalsNow, finished, outcome, late,
+            robotOdd, live: lv, why: buildWhy(al, vars.get(al.variation_id)), goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, // sem placar gravado: conta os gols por time goalsNow, finished, outcome, late,
             needsExit: !!lv && exitMin < 95 && (lv.minute || 0) >= exitMin && outcome === null,
             stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal, hold,
           });
@@ -324,6 +351,11 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
             {o.needsExit && <span className="ml-auto font-bold text-amber-300">⏰ hora de sair</span>}
             {o.outcome && !o.entered && <span className="ml-auto">não entrei</span>}
           </div>
+          {o.why && (
+            <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-1.5 text-[11px] leading-snug text-zinc-400" title={o.why}>
+              <b className="font-bold text-zinc-300">Por que alertou: </b>{o.why}
+            </p>
+          )}
 
           <div className="mt-2.5 flex items-end gap-2">
             <label className="w-[72px] text-[10px] text-zinc-500">Entrada
