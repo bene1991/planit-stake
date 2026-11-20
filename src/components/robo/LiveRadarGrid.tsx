@@ -208,7 +208,7 @@ const FixtureCard: React.FC<{ fixture: RadarFixture }> = ({ fixture: f }) => {
   );
 };
 
-const StatBar: React.FC<{ label: string; h: any; a: any; suffix?: string; highlight?: boolean; decimals?: boolean }> = ({ label, h, a, suffix = '', highlight, decimals }) => {
+export const StatBar: React.FC<{ label: string; h: any; a: any; suffix?: string; highlight?: boolean; decimals?: boolean }> = ({ label, h, a, suffix = '', highlight, decimals }) => {
   const hv = num(h), av = num(a), t = hv + av;
   const hp = t > 0 ? (hv / t) * 100 : 50;
   const fmt = (v: number) => (decimals ? v.toFixed(2) : String(Math.round(v))) + suffix;
