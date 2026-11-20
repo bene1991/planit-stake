@@ -106,7 +106,10 @@ function useOps(day: string) {
           const entryMin = snap?.minute ?? Math.max(method.entry_minute || 0, al.minute_at_alert || 0);
           const exitMin = method.exit_minute ?? 999;
           const goalsNow = lv ? (lv.home_score || 0) + (lv.away_score || 0) : (totalOf(finalScore) ?? 0);
-          const finished = !!finalScore || (!lv && Date.now() - new Date(al.created_at).getTime() > 3.5 * 3600 * 1000);
+          // final_score é gravado com o placar parcial durante o jogo: só vale como fim se o jogo não está mais ao vivo
+          const ageMin = (Date.now() - new Date(al.created_at).getTime()) / 60000;
+          const finished = lv ? ['FT', 'AET', 'PEN'].includes(String(lv.status)) || (!!finalScore && ageMin > 150)
+            : (!!finalScore && ageMin > 100) || ageMin > 210;
           const sorted = [...events].sort((x, y) => x.minute - y.minute);
           const complete = sorted.length >= goalsNow && (finished || !!lv);
           // placar na entrada: gols antes do minuto de entrada (retroativo); senão o gravado pelo robô
