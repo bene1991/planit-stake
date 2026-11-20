@@ -40,20 +40,13 @@ const lazyWithRetry = (componentImport: () => Promise<any>) =>
   });
 
 // Lazy-loaded pages
-const BankrollManagement = lazyWithRetry(() => import("./pages/BankrollManagement"));
-const DailyPlanning = lazyWithRetry(() => import("./pages/DailyPlanning"));
-const Performance = lazyWithRetry(() => import("./pages/Performance"));
-const MonthlyReport = lazyWithRetry(() => import("./pages/MonthlyReport"));
-const MethodAnalysis = lazyWithRetry(() => import("./pages/MethodAnalysis"));
 const Auth = lazyWithRetry(() => import("./pages/Auth"));
 const Account = lazyWithRetry(() => import("./pages/Account"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
-const MatchbookOdds = lazyWithRetry(() => import("./pages/MatchbookOdds"));
 const MethodDetail = lazyWithRetry(() => import("./pages/robo/MethodDetail"));
 const MethodsList = lazyWithRetry(() => import("./pages/robo/MethodsList"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
 const OfferPage = lazyWithRetry(() => import("./pages/OfferPage"));
-const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
 
 const PageLoader = () => (
   <div className="flex min-h-[60vh] items-center justify-center">
@@ -113,18 +106,19 @@ const AppContent = () => {
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/oferta/:id" element={<OfferPage />} />
-            <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
-            <Route path="/" element={<ProtectedRoute><Layout><DailyPlanning /></Layout></ProtectedRoute>} />
-            <Route path="/daily-planning" element={<Navigate to="/" replace />} />
-            <Route path="/bankroll" element={<ProtectedRoute><Layout><BankrollManagement /></Layout></ProtectedRoute>} />
+            <Route path="/" element={<Navigate to="/robo" replace />} />
             <Route path="/robo" element={<ProtectedRoute><Layout><RoboAoVivo /></Layout></ProtectedRoute>} />
             <Route path="/robo/methods" element={<ProtectedRoute><Layout><MethodsList /></Layout></ProtectedRoute>} />
             <Route path="/robo/methods/:id" element={<ProtectedRoute><Layout><MethodDetail /></Layout></ProtectedRoute>} />
-            <Route path="/performance" element={<ProtectedRoute><Layout><Performance /></Layout></ProtectedRoute>} />
-            <Route path="/monthly-report" element={<ProtectedRoute><Layout><MonthlyReport /></Layout></ProtectedRoute>} />
-            <Route path="/method-analysis" element={<ProtectedRoute><Layout><MethodAnalysis /></Layout></ProtectedRoute>} />
             <Route path="/account" element={<ProtectedRoute><Layout><Account /></Layout></ProtectedRoute>} />
-            <Route path="/matchbook" element={<ProtectedRoute><Layout><MatchbookOdds /></Layout></ProtectedRoute>} />
+            {/* páginas desligadas: voltam para o robô */}
+            <Route path="/dashboard" element={<Navigate to="/robo" replace />} />
+            <Route path="/daily-planning" element={<Navigate to="/robo" replace />} />
+            <Route path="/bankroll" element={<Navigate to="/robo" replace />} />
+            <Route path="/performance" element={<Navigate to="/robo" replace />} />
+            <Route path="/monthly-report" element={<Navigate to="/robo" replace />} />
+            <Route path="/method-analysis" element={<Navigate to="/robo" replace />} />
+            <Route path="/matchbook" element={<Navigate to="/robo" replace />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

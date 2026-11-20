@@ -151,7 +151,7 @@ export default function RoboReports() {
         from: subDays(new Date(), 30),
         to: new Date(),
     });
-    const [activeTab, setActiveTab] = useState<string>("charts");
+    const [activeTab, setActiveTab] = useState<string>("simulation");
 
     // Simulation states
     const [entryMin, setEntryMin] = useState<number>(30);
@@ -918,14 +918,6 @@ export default function RoboReports() {
 
             <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center bg-[#1e2333]/50 p-4 rounded-lg border border-[#2a3142]">
                 <div className="flex flex-col md:flex-row gap-4 flex-1">
-                    <TabsList className="bg-[#1e2333] border border-[#2a3142]">
-                        <TabsTrigger value="charts" className="data-[state=active]:bg-[#2a3142]">
-                            <BarChart3 className="w-4 h-4 mr-2" /> Análise Geral
-                        </TabsTrigger>
-                        <TabsTrigger value="simulation" className="data-[state=active]:bg-[#2a3142]">
-                            <TrendingUp className="w-4 h-4 mr-2" /> Simulação Free Fire
-                        </TabsTrigger>
-                    </TabsList>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <Select value={selectedLeague} onValueChange={setSelectedLeague}>

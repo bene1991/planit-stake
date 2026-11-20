@@ -6,17 +6,15 @@ export const BottomNav = () => {
   const location = useLocation();
 
   const navItems = [
-    { to: "/", label: "Início", icon: Home },
-    { to: "/performance", label: "Desemp.", icon: BarChart3 },
-    { to: "/bankroll", label: "Banca", icon: Wallet },
     { to: "/robo", label: "Robô", icon: Bot },
+    { to: "/robo/methods", label: "Métodos", icon: FlaskConical },
   ];
 
   const isActive = (path: string) => location.pathname === path;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border/30 safe-area-bottom">
-      <div className="grid grid-cols-5 h-16 px-1">
+      <div className="grid grid-cols-2 h-16 px-1">
         {navItems.map((item) => (
           <Link
             key={item.to}

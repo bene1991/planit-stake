@@ -15,11 +15,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, signOut } = useAuth();
 
   const navItems = [
-    { to: "/", label: "Início", icon: Home },
-    { to: "/performance", label: "Desempenho", icon: BarChart3 },
-    { to: "/bankroll", label: "Banca", icon: Wallet },
-    { to: "/monthly-report", label: "Mensal", icon: CalendarDays },
-    { to: "/method-analysis", label: "Análise", icon: FlaskConical },
     { to: "/robo", label: "Robô", icon: Bot },
     { to: "/robo/methods", label: "Métodos", icon: FlaskConical },
   ];
@@ -32,7 +27,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
       <header className="h-16 border-b border-border/30 bg-background/80 backdrop-blur-xl shrink-0 sticky top-0 z-50">
         <div className="max-w-[98%] mx-auto h-full px-4 lg:px-6 flex items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/robo" className="flex items-center gap-2">
             <span className="text-xl lg:text-2xl font-bold">
               <span className="text-foreground">vini</span>
               <span className="text-primary">trader</span>

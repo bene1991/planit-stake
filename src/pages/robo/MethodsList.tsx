@@ -280,7 +280,7 @@ const MethodsList: React.FC = () => {
       {(!methods || methods.length === 0) && (
         <Card className="bg-[#1e2333] border-[#2a3142] border-dashed">
           <CardContent className="p-10 text-center text-gray-500">
-            Nenhum método salvo. Vá em <Link to="/robo" className="text-emerald-400 underline">Robô</Link> → aba Reports → Simulação Free Fire e clique em "Salvar como Método".
+            Nenhum método salvo. Vá em <Link to="/robo" className="text-emerald-400 underline">Robô</Link> → aba Simulação Free Fire e clique em "Salvar como Método".
           </CardContent>
         </Card>
       )}

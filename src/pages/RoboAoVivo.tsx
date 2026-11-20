@@ -9,7 +9,6 @@ import RoboVariations from './robo/RoboVariations';
 import RoboBlockedLeagues from './robo/RoboBlockedLeagues';
 import RoboTelegramGroups from './robo/components/RoboTelegramGroups';
 import RoboAlerts from './robo/RoboAlerts';
-import RoboPerformance from './robo/RoboPerformance';
 import RoboLogs from './robo/RoboLogs';
 import RoboReports from './robo/RoboReports';
 import { cn } from "@/lib/utils";
@@ -17,7 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { subDays, startOfMonth, startOfToday, isAfter, parseISO } from "date-fns";
 
 export default function RoboAoVivo() {
-    const [activeTab, setActiveTab] = useState(() => sessionStorage.getItem('robo-active-tab') || "alerts");
+    const [activeTab, setActiveTab] = useState(() => {
+        const t = sessionStorage.getItem('robo-active-tab');
+        return t === 'reports' || t === 'settings' ? t : 'alerts'; // 'performance' foi desligada
+    });
     const [period, setPeriod] = useState("today");
     const [todayStats, setTodayStats] = useState({ total: 0, greens: 0, profit: 0 });
     const [isLoadingStats, setIsLoadingStats] = useState(false);
@@ -205,8 +207,7 @@ export default function RoboAoVivo() {
                     <TabsList className="bg-zinc-900/40 border border-zinc-800/80 p-1.5 h-14 rounded-2xl w-full lg:w-auto overflow-x-auto justify-start lg:justify-center">
                         {[
                             { id: 'alerts', icon: Zap, label: 'Radar Ao Vivo', color: 'text-amber-500' },
-                            { id: 'performance', icon: TrendingUp, label: 'Performance', color: 'text-emerald-500' },
-                            { id: 'reports', icon: BarChart3, label: 'Deep Intelligence', color: 'text-blue-500' },
+                            { id: 'reports', icon: BarChart3, label: 'Simulação Free Fire', color: 'text-blue-500' },
                             { id: 'settings', icon: Settings2, label: 'Configurações', color: 'text-zinc-400' }
                         ].map((t) => (
                             <TabsTrigger
@@ -236,10 +237,6 @@ export default function RoboAoVivo() {
                     >
                         <TabsContent value="alerts" className="mt-0 focus:outline-none border-none">
                             <RoboAlerts />
-                        </TabsContent>
-
-                        <TabsContent value="performance" className="mt-0 focus:outline-none border-none">
-                            <RoboPerformance />
                         </TabsContent>
 
                         <TabsContent value="reports" className="mt-0 focus:outline-none border-none">
