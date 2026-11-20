@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, BarChart3, Wallet, FlaskConical, CalendarDays, Target, Crosshair, Bot } from "lucide-react";
+import { Home, BarChart3, Wallet, FlaskConical, CalendarDays, Target, Crosshair, Bot, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const BottomNav = () => {
@@ -8,13 +8,14 @@ export const BottomNav = () => {
   const navItems = [
     { to: "/robo", label: "Robô", icon: Bot },
     { to: "/robo/methods", label: "Métodos", icon: FlaskConical },
+    { to: "/robo/operacao", label: "Operação", icon: Activity },
   ];
 
   const isActive = (path: string) => location.pathname === path;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-background/95 backdrop-blur-xl border-t border-border/30 safe-area-bottom">
-      <div className="grid grid-cols-2 h-16 px-1">
+      <div className="grid grid-cols-3 h-16 px-1">
         {navItems.map((item) => (
           <Link
             key={item.to}

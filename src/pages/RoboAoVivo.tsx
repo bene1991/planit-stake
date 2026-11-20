@@ -11,7 +11,6 @@ import RoboTelegramGroups from './robo/components/RoboTelegramGroups';
 import RoboAlerts from './robo/RoboAlerts';
 import RoboLogs from './robo/RoboLogs';
 import RoboReports from './robo/RoboReports';
-import RoboOperacao from './robo/RoboOperacao';
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { subDays, startOfMonth, startOfToday, isAfter, parseISO } from "date-fns";
@@ -19,7 +18,7 @@ import { subDays, startOfMonth, startOfToday, isAfter, parseISO } from "date-fns
 export default function RoboAoVivo() {
     const [activeTab, setActiveTab] = useState(() => {
         const t = sessionStorage.getItem('robo-active-tab');
-        return t === 'operacao' || t === 'alerts' || t === 'reports' || t === 'settings' ? t : 'operacao'; // 'performance' foi desligada
+        return t === 'reports' || t === 'settings' ? t : 'alerts'; // 'performance' foi desligada
     });
     const [period, setPeriod] = useState("today");
     const [todayStats, setTodayStats] = useState({ total: 0, greens: 0, profit: 0 });
@@ -207,7 +206,6 @@ export default function RoboAoVivo() {
                 <div className="relative sticky top-0 z-30 py-2 bg-[#020203]/80 backdrop-blur-md">
                     <TabsList className="bg-zinc-900/40 border border-zinc-800/80 p-1.5 h-14 rounded-2xl w-full lg:w-auto overflow-x-auto justify-start lg:justify-center">
                         {[
-                            { id: 'operacao', icon: Activity, label: 'Operação ao vivo', color: 'text-emerald-500' },
                             { id: 'alerts', icon: Zap, label: 'Radar Ao Vivo', color: 'text-amber-500' },
                             { id: 'reports', icon: BarChart3, label: 'Simulação Free Fire', color: 'text-blue-500' },
                             { id: 'settings', icon: Settings2, label: 'Configurações', color: 'text-zinc-400' }
@@ -237,10 +235,6 @@ export default function RoboAoVivo() {
                         transition={{ duration: 0.25, ease: "easeOut" }}
                         className="outline-none focus:outline-none"
                     >
-                        <TabsContent value="operacao" className="mt-0 focus:outline-none border-none">
-                            <RoboOperacao />
-                        </TabsContent>
-
                         <TabsContent value="alerts" className="mt-0 focus:outline-none border-none">
                             <RoboAlerts />
                         </TabsContent>

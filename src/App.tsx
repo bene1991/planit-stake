@@ -46,6 +46,7 @@ const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 const MethodDetail = lazyWithRetry(() => import("./pages/robo/MethodDetail"));
 const MethodsList = lazyWithRetry(() => import("./pages/robo/MethodsList"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
+const RoboOperacao = lazyWithRetry(() => import("./pages/robo/RoboOperacao"));
 const OfferPage = lazyWithRetry(() => import("./pages/OfferPage"));
 
 const PageLoader = () => (
@@ -108,6 +109,7 @@ const AppContent = () => {
             <Route path="/oferta/:id" element={<OfferPage />} />
             <Route path="/" element={<Navigate to="/robo" replace />} />
             <Route path="/robo" element={<ProtectedRoute><Layout><RoboAoVivo /></Layout></ProtectedRoute>} />
+            <Route path="/robo/operacao" element={<ProtectedRoute><Layout><RoboOperacao /></Layout></ProtectedRoute>} />
             <Route path="/robo/methods" element={<ProtectedRoute><Layout><MethodsList /></Layout></ProtectedRoute>} />
             <Route path="/robo/methods/:id" element={<ProtectedRoute><Layout><MethodDetail /></Layout></ProtectedRoute>} />
             <Route path="/account" element={<ProtectedRoute><Layout><Account /></Layout></ProtectedRoute>} />

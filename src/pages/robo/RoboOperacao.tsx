@@ -31,11 +31,38 @@ type Op = {
   redMethod: number; profit: number | null; redReal: boolean;
 };
 
+
+// Modo demonstração (?demo=1): jogos fictícios só na tela, nada é gravado.
+const DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('demo');
+const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
+const M35 = { id: 'm1', name: 'Novo 35-65', entry_minute: 35, exit_minute: 65, red_stake: 1.7, green_stake: 1 };
+const M70 = { id: 'm2', name: 'p mod. gols 35-70', entry_minute: 35, exit_minute: 70, red_stake: 2.4, green_stake: 1 };
+const M50 = { id: 'm3', name: 'Pressão Moderada 50+', entry_minute: 50, exit_minute: 111, red_stake: 3.5, green_stake: 1 };
+const dstats = (a: number, b: number) => ({ h: { shots: 9 + a, shotsOn: 4 + a, shotsInBox: 6, corners: 5, xg: 1.1, possession: 56 }, a: { shots: 4 + b, shotsOn: 1 + b, shotsInBox: 2, corners: 2, xg: 0.4, possession: 44 } });
+const base = { sentAt: '', slug: 'demo', late: false, redReal: false } as const;
+const demoOps = (): Op[] => [
+  { ...base, key: 'd1', fixtureId: 'd1', method: M35, home: 'Flamengo', away: 'Palmeiras', league: 'Brasileirão Série A', sentAt: ago(4), entryMin: 36, entryGoals: 0, line: 0.5, robotOdd: 9.25,
+    live: { minute: 37, home_score: 0, away_score: 0, status: '1H' }, goalsNow: 0, finished: false, outcome: null, needsExit: false, stats: dstats(2, 0), entered: null, entryOdd: 9.25, exitOdd: null, redMethod: 1.7, profit: null },
+  { ...base, key: 'd2', fixtureId: 'd1', method: M70, home: 'Flamengo', away: 'Palmeiras', league: 'Brasileirão Série A', sentAt: ago(4), entryMin: 36, entryGoals: 0, line: 0.5, robotOdd: 9.25,
+    live: { minute: 37, home_score: 0, away_score: 0, status: '1H' }, goalsNow: 0, finished: false, outcome: null, needsExit: false, stats: dstats(2, 0), entered: null, entryOdd: 9.25, exitOdd: null, redMethod: 2.4, profit: null },
+  { ...base, key: 'd3', fixtureId: 'd3', method: M35, home: 'Boca Juniors', away: 'River Plate', league: 'Liga Profesional', sentAt: ago(31), entryMin: 40, entryGoals: 1, line: 1.5, robotOdd: 6.06,
+    live: { minute: 66, home_score: 1, away_score: 0, status: '2H' }, goalsNow: 1, finished: false, outcome: null, needsExit: true, stats: dstats(1, 1), entered: { id: 'x' }, entryOdd: 6.06, exitOdd: null, redMethod: 1.7, profit: null },
+  { ...base, key: 'd4', fixtureId: 'd4', method: M50, home: 'Inter', away: 'Milan', league: 'Serie A', sentAt: ago(70), entryMin: 50, entryGoals: 0, line: 0.5, robotOdd: 3.28,
+    live: { minute: 61, home_score: 0, away_score: 0, status: '2H' }, goalsNow: 0, finished: false, outcome: null, needsExit: false, stats: dstats(3, 2), entered: { id: 'x' }, entryOdd: 3.4, exitOdd: null, redMethod: 3.5, profit: null },
+  { ...base, key: 'd5', fixtureId: 'd5', method: M35, home: 'Remo', away: 'Chapecoense', league: 'Brasileirão Série A', sentAt: ago(150), entryMin: 35, entryGoals: 0, line: 0.5, robotOdd: 14.69,
+    live: null, goalsNow: 1, finished: true, outcome: 'green', needsExit: false, stats: null, entered: { id: 'x' }, entryOdd: 14.69, exitOdd: null, redMethod: 1.7, profit: 0.955 },
+  { ...base, key: 'd6', fixtureId: 'd6', method: M70, home: 'México', away: 'Jamaica', league: 'Nations League', sentAt: ago(200), entryMin: 36, entryGoals: 1, line: 1.5, robotOdd: 8.7,
+    live: null, goalsNow: 1, finished: true, outcome: 'red', needsExit: false, stats: null, entered: { id: 'x' }, entryOdd: 8.7, exitOdd: 6.06, redMethod: 2.4, profit: -(8.7 / 6.06 - 1), redReal: true },
+  { ...base, key: 'd7', fixtureId: 'd7', method: M50, home: 'Chile', away: 'Colômbia', league: 'Amistoso', sentAt: ago(260), entryMin: 50, entryGoals: 0, line: 0.5, robotOdd: 3.28,
+    live: null, goalsNow: 0, finished: true, outcome: 'red', needsExit: false, stats: null, entered: { id: 'x' }, entryOdd: 3.28, exitOdd: null, redMethod: 3.5, profit: -3.5 },
+];
+
 function useOps() {
   return useQuery({
     queryKey: ['live-operacao'],
     refetchInterval: 30000,
     queryFn: async (): Promise<Op[]> => {
+      if (DEMO) return demoOps();
       const since = new Date(Date.now() - H48).toISOString();
       const [m, a, s, r, o] = await Promise.all([
         db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake'),
@@ -104,7 +131,6 @@ function useOps() {
 
 export default function RoboOperacao() {
   const { data: ops, isLoading } = useOps();
-  const [tab, setTab] = useState<'alerted' | 'open' | 'done'>('alerted');
   const [showSkipped, setShowSkipped] = useState(false);
   const resolved = (o: Op) => o.finished || o.outcome === 'green';
   const groups = useMemo(() => {
@@ -119,31 +145,21 @@ export default function RoboOperacao() {
   const dayProfit = (ops || []).filter(o => o.entered && resolved(o) && o.profit != null &&
     new Date(o.sentAt).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) === today).reduce((a, o) => a + (o.profit || 0), 0);
 
-  const tabs = [
-    { id: 'alerted', label: 'Alertados', n: groups.alerted.length },
-    { id: 'open', label: 'Operação realizada', n: groups.open.length },
-    { id: 'done', label: 'Finalizados', n: groups.done.length },
+  const cols = [
+    { id: 'alerted', title: 'Alertados', sub: 'caiu no Telegram', list: groups.alerted, dot: 'bg-amber-400' },
+    { id: 'open', title: 'Operação realizada', sub: 'posição aberta', list: groups.open, dot: 'bg-sky-400' },
+    { id: 'done', title: 'Finalizados', sub: 'com resultado', list: groups.done, dot: 'bg-emerald-400' },
   ] as const;
-  const list = groups[tab];
 
   return (
     <div className="space-y-5">
+      {DEMO && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-300">Modo demonstração: jogos fictícios, nada é gravado.</div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1.5 rounded-2xl border border-white/10 bg-zinc-900/50 p-1.5">
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={cn('rounded-xl px-4 py-2 text-xs font-black uppercase tracking-tight transition-all',
-                tab === t.id ? 'bg-zinc-800 text-white ring-1 ring-zinc-700' : 'text-zinc-500 hover:text-zinc-300')}>
-              {t.label} <span className="ml-1 rounded-full bg-white/10 px-1.5 text-[10px]">{t.n}</span>
-            </button>
-          ))}
-        </div>
+        <h3 className="text-lg font-black uppercase tracking-tighter text-white">Operação ao vivo</h3>
         <div className="flex items-center gap-4 text-xs">
-          {tab === 'done' && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-zinc-400">
-              <input type="checkbox" checked={showSkipped} onChange={e => setShowSkipped(e.target.checked)} /> incluir os que não entrei
-            </label>
-          )}
+          <label className="flex cursor-pointer items-center gap-1.5 text-zinc-400">
+            <input type="checkbox" checked={showSkipped} onChange={e => setShowSkipped(e.target.checked)} /> mostrar finalizados em que não entrei
+          </label>
           <span className="text-zinc-500">Hoje:
             <b className={cn('ml-1 tabular-nums', dayProfit >= 0 ? 'text-emerald-400' : 'text-rose-400')}>{dayProfit >= 0 ? '+' : ''}{n2(dayProfit)} stakes</b>
           </span>
@@ -152,11 +168,23 @@ export default function RoboOperacao() {
 
       {isLoading ? (
         <div className="flex justify-center py-16 text-zinc-500"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Carregando...</div>
-      ) : list.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/10 py-16 text-center text-sm text-zinc-500">Nada aqui agora.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          {list.map(o => <OpCard key={o.key} op={o} tab={tab} />)}
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
+          {cols.map(c => (
+            <section key={c.id} className="rounded-2xl border border-white/5 bg-zinc-950/40 p-3">
+              <div className="mb-3 flex items-center gap-2 px-1">
+                <span className={cn('h-2 w-2 rounded-full', c.dot)} />
+                <h4 className="text-xs font-black uppercase tracking-widest text-zinc-200">{c.title}</h4>
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-300">{c.list.length}</span>
+                <span className="ml-auto text-[10px] text-zinc-600">{c.sub}</span>
+              </div>
+              <div className="space-y-3">
+                {c.list.length === 0
+                  ? <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-xs text-zinc-600">Nada aqui agora.</div>
+                  : c.list.map(o => <OpCard key={o.key} op={o} tab={c.id} />)}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>
@@ -176,6 +204,7 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
   const previewRed = eOdd && xOdd ? -(eOdd / xOdd - 1) : null;
 
   const run = async (fn: () => Promise<any>, ok: string) => {
+    if (DEMO) return toast.info('Modo demonstração: nada é gravado');
     setBusy(true);
     const { error } = await fn();
     setBusy(false);
