@@ -905,7 +905,19 @@ serve(async (req) => {
               if (!ok) sentAny = false;
             }
             const poly = toSend.length > 0 ? await getPolymarketOdds(alert.home_team, alert.away_team, totalNow) : null;
+            // odd de entrada (snapshot gravado no envio) -> red travado ao fechar agora
+            const entryOdds = new Map<string, number>();
+            if (toSend.length > 0) {
+              const { data: snaps } = await supabase.from('polymarket_snapshots')
+                .select('method_id, odd, created_at').eq('fixture_id', String(alert.fixture_id))
+                .in('method_id', toSend.map(m => m.id)).eq('found', true).order('created_at', { ascending: false });
+              for (const r of snaps || []) if (!entryOdds.has(r.method_id) && r.odd) entryOdds.set(r.method_id, Number(r.odd));
+            }
             for (const m of toSend) {
+              const eOdd = entryOdds.get(m.id);
+              const redLine = eOdd && poly && poly.closeOdd
+                ? `💸 <b>Red ao fechar:</b> entrou a ${n2(eOdd)} → sai a ${n2(poly.closeOdd)} = <b>${eOdd / poly.closeOdd - 1 >= 0 ? '-' : '+'}${n2(Math.abs(eOdd / poly.closeOdd - 1))} stakes</b>\n`
+                : '';
               const msg = `⏰ <b>SAIR — ${m.name}</b>\n` +
                           `________________________________\n\n` +
                           `⚽ <b>${scoreNow}</b>\n` +
@@ -915,6 +927,7 @@ serve(async (req) => {
                           (poly && poly.closeOdd
                             ? `📍 <b>Fechar:</b> Back Under ${String(poly.line).replace('.', ',')} a <b>${n2(poly.closeOdd)}</b>\n` +
                               `🕐 Lido às ${brTime(poly.ts)}\n` +
+                              redLine +
                               `🔗 <a href="${MARKET_LINK_BASE}${poly.slug}${MARKET_LINK_SUFFIX}">abrir o jogo na Layback</a>\n`
                             : `📍 <i>Odd para fechar: mercado Polymarket não encontrado</i>\n`);
               const ok = await sendTelegram(botToken, destChatId, msg);

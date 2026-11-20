@@ -11,6 +11,9 @@ const GREEN_NET = 0.955;
 const LAYBACK = 'https://polymarket.layback.trade/exchange/';
 const H48 = 48 * 3600 * 1000;
 
+// red real em stakes (positivo): sem saída antecipada vale o risco cheio (entrada − 1); com saída, entrada/saída − 1
+const redFromOdds = (hold: boolean, e: number | null, x: number | null) =>
+  hold ? (e ? e - 1 : null) : (e && x ? e / x - 1 : null);
 const n2 = (x: number) => x.toFixed(2).replace('.', ',');
 const parseOdd = (v: string) => {
   const n = parseFloat(v.replace(',', '.'));
@@ -28,7 +31,7 @@ type Op = {
   sentAt: string; entryMin: number; entryGoals: number; line: number | null; slug: string | null; robotOdd: number | null;
   live: any | null; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
   needsExit: boolean; stats: any; entered: any | null; entryOdd: number | null; exitOdd: number | null;
-  redMethod: number; profit: number | null; redReal: boolean;
+  redMethod: number; profit: number | null; redReal: boolean; hold: boolean;
 };
 
 
@@ -39,7 +42,7 @@ const M35 = { id: 'm1', name: 'Novo 35-65', entry_minute: 35, exit_minute: 65, r
 const M70 = { id: 'm2', name: 'p mod. gols 35-70', entry_minute: 35, exit_minute: 70, red_stake: 2.4, green_stake: 1 };
 const M50 = { id: 'm3', name: 'Pressão Moderada 50+', entry_minute: 50, exit_minute: 111, red_stake: 3.5, green_stake: 1 };
 const dstats = (a: number, b: number) => ({ h: { shots: 9 + a, shotsOn: 4 + a, shotsInBox: 6, corners: 5, xg: 1.1, possession: 56 }, a: { shots: 4 + b, shotsOn: 1 + b, shotsInBox: 2, corners: 2, xg: 0.4, possession: 44 } });
-const base = { sentAt: '', slug: 'demo', late: false, redReal: false } as const;
+const base = { sentAt: '', slug: 'demo', late: false, redReal: false, hold: false } as const;
 const demoOps = (): Op[] => [
   { ...base, key: 'd1', fixtureId: 'd1', method: M35, home: 'Flamengo', away: 'Palmeiras', league: 'Brasileirão Série A', sentAt: ago(4), entryMin: 36, entryGoals: 0, line: 0.5, robotOdd: 9.25,
     live: { minute: 37, home_score: 0, away_score: 0, status: '1H' }, goalsNow: 0, finished: false, outcome: null, needsExit: false, stats: dstats(2, 0), entered: null, entryOdd: 9.25, exitOdd: null, redMethod: 1.7, profit: null },
@@ -117,21 +120,26 @@ function useOps() {
             else outcome = 'green';
           } else if (finished) outcome = 'red';
           const en = entered.get(key) || null;
+          // correções feitas na página do método (por jogo): resultado e red
+          const ro = method.filters_snapshot?.result_overrides?.[fid];
+          if (ro === 'green' || ro === 'red') { outcome = ro; late = false; }
           const robotOdd = snap?.odd ? Number(snap.odd) : null;
           const entryOdd = en?.entry_odd ? Number(en.entry_odd) : robotOdd;
           const exitOdd = en?.exit_odd ? Number(en.exit_odd) : null;
-          const redMethod = Number(method.red_stake || 0);
+          const redMethod = Number(method.filters_snapshot?.red_overrides?.[fid] ?? method.red_stake ?? 0);
+          const hold = !(method.exit_minute < 95);
           let profit: number | null = null, redReal = false;
           if (outcome === 'green') profit = Number(method.green_stake || 1) * GREEN_NET;
           else if (outcome === 'red') {
-            if (entryOdd && exitOdd) { profit = -(entryOdd / exitOdd - 1); redReal = true; } else profit = -redMethod;
+            const r = en ? redFromOdds(hold, entryOdd, exitOdd) : null;
+            if (r != null) { profit = -r; redReal = true; } else profit = -redMethod;
           }
           ops.set(key, {
             key, fixtureId: fid, method, home: al.home_team, away: al.away_team, league: al.league_name,
             sentAt: snap?.created_at || al.created_at, entryMin, entryGoals, line: snap?.line ?? null, slug: snap?.event_slug ?? null,
             robotOdd, live: lv, goalsNow, finished, outcome, late,
             needsExit: !!lv && exitMin < 95 && (lv.minute || 0) >= exitMin && outcome === null,
-            stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal,
+            stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal, hold,
           });
         }
       }
@@ -207,12 +215,14 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
   const [entry, setEntry] = useState(o.entryOdd ? n2(o.entryOdd) : '');
   const [exit, setExit] = useState(o.exitOdd ? n2(o.exitOdd) : '');
   const [busy, setBusy] = useState(false);
-  const refresh = () => qc.invalidateQueries({ queryKey: ['live-operacao'] });
+  const refresh = () => ['live-operacao', 'methods-list', 'method', 'method-alerts'].forEach(k => qc.invalidateQueries({ queryKey: [k] }));
   const s = o.stats || {}; const h = s.h || {}; const a = s.a || {};
   const eOdd = parseOdd(entry), xOdd = parseOdd(exit);
   const minute = o.live?.minute ?? null;
   const score = o.live ? `${o.live.home_score ?? 0} x ${o.live.away_score ?? 0}` : null;
-  const previewRed = eOdd && xOdd ? -(eOdd / xOdd - 1) : null;
+  const dirty = entry !== (o.entryOdd ? n2(o.entryOdd) : '') || exit !== (o.exitOdd ? n2(o.exitOdd) : '');
+  const previewRed = o.entered || dirty ? redFromOdds(o.hold, eOdd, xOdd) : null; // só vale o que você digitou ou salvou
+  const shownProfit = o.outcome === 'red' && previewRed != null ? -previewRed : o.profit;
 
   const run = async (fn: () => Promise<any>, ok: string) => {
     if (DEMO) return toast.info('Modo demonstração: nada é gravado');
@@ -225,7 +235,18 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
   const enter = () => run(() => db.from('live_operations').upsert(
     { fixture_id: o.fixtureId, method_id: o.method.id, entry_odd: eOdd ?? o.robotOdd, entered_at: new Date().toISOString() },
     { onConflict: 'owner_id,fixture_id,method_id' }), 'Entrada registrada');
-  const saveOdds = () => run(() => db.from('live_operations').update({ entry_odd: eOdd, exit_odd: xOdd }).eq('id', o.entered.id), 'Odds salvas');
+  // salva as odds (cria a operação se ainda não existir) e, se deu red, grava o red real no método (red_overrides)
+  const saveOdds = () => run(async () => {
+    const r = await db.from('live_operations').upsert(
+      { fixture_id: o.fixtureId, method_id: o.method.id, entry_odd: eOdd, exit_odd: xOdd },
+      { onConflict: 'owner_id,fixture_id,method_id' });
+    if (r.error || o.outcome !== 'red' || previewRed == null) return r;
+    const cur = await db.from('strategy_simulations').select('filters_snapshot').eq('id', o.method.id).single();
+    if (cur.error) return cur;
+    const snap = cur.data?.filters_snapshot || {};
+    const red_overrides = { ...(snap.red_overrides || {}), [o.fixtureId]: Math.round(previewRed * 100) / 100 };
+    return db.from('strategy_simulations').update({ filters_snapshot: { ...snap, red_overrides } }).eq('id', o.method.id);
+  }, 'Odds salvas e red atualizado no método');
   const undo = () => run(() => db.from('live_operations').delete().eq('id', o.entered.id), 'Voltou para alertados');
 
   const [showStats, setShowStats] = useState(false);
@@ -241,8 +262,8 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
           {o.home} <span className="mx-1 font-black tabular-nums text-white">{score ? score.replace(' x ', '–') : o.goalsNow}</span> {o.away}
         </p>
         {o.outcome ? (
-          <span className={cn('shrink-0 text-sm font-black tabular-nums', (o.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
-            {(o.profit || 0) >= 0 ? '+' : ''}{n2(o.profit || 0)}
+          <span className={cn('shrink-0 text-sm font-black tabular-nums', (shownProfit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+            {(shownProfit || 0) >= 0 ? '+' : ''}{n2(shownProfit || 0)}
           </span>
         ) : minute != null && (
           <span className="shrink-0 font-mono text-[11px] font-black text-emerald-400">{o.live?.status === 'HT' ? 'INT' : `${minute}'`}</span>
@@ -252,7 +273,7 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
       <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-zinc-500">
         <span className="min-w-0 truncate">
           {o.method.name} · {brTime(o.sentAt)}{o.line ? ` · U${String(o.line).replace('.', ',')}` : ''}
-          {o.outcome === 'red' && <> · <span className="text-rose-400">{o.redReal ? 'red real' : 'red método'}{o.late ? ' (gol após saída)' : ''}</span></>}
+          {o.outcome === 'red' && <> · <span className="text-rose-400">{o.redReal || previewRed != null ? 'red real' : 'red método'}{o.late ? ' (gol após saída)' : ''}</span></>}
           {o.outcome === 'green' && <> · <span className="text-emerald-400">green</span></>}
           {o.outcome && !o.entered && ' · não entrei'}
         </span>
@@ -261,9 +282,9 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
 
       <div className="mt-1.5 flex items-center gap-1.5">
         <input value={entry} onChange={e => setEntry(e.target.value)} inputMode="decimal" placeholder={o.robotOdd ? n2(o.robotOdd) : 'entrada'} title="Odd de entrada" className={box} />
-        {tab !== 'alerted' && <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="saída" title="Odd de saída" className={box} />}
+        {tab !== 'alerted' && !o.hold && <input value={exit} onChange={e => setExit(e.target.value)} inputMode="decimal" placeholder="saída" title="Odd de saída" className={box} />}
         {tab === 'alerted' && <button disabled={busy} onClick={enter} className={cn(btn, 'bg-emerald-500 text-black hover:bg-emerald-400')}>Entrei</button>}
-        {tab !== 'alerted' && o.entered && <button disabled={busy} onClick={saveOdds} className={cn(btn, 'bg-emerald-500 text-black hover:bg-emerald-400')}>Salvar</button>}
+        {tab !== 'alerted' && <button disabled={busy} onClick={saveOdds} className={cn(btn, 'bg-emerald-500 text-black hover:bg-emerald-400')}>Salvar</button>}
         {tab !== 'alerted' && !o.outcome && (
           <span className="truncate text-[10px] text-zinc-500">{previewRed != null ? <>red <b className="text-rose-400">{n2(previewRed)}</b></> : <>método <b className="text-rose-400">-{n2(o.redMethod)}</b></>}</span>
         )}

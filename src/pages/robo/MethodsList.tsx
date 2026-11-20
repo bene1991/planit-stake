@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,22 +56,7 @@ const MethodsList: React.FC = () => {
 
   const { data: alerts } = useQuery({
     queryKey: ['methods-list-alerts'],
-    queryFn: async () => {
-      let all: any[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from('live_alerts')
-          .select('fixture_id, variation_id, created_at, final_score, goal_events, telegram_sent, league_id, league_name, minute_at_alert, home_team, away_team')
-          .range(from, from + 999);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all = all.concat(data);
-        if (data.length < 1000) break;
-        from += 1000;
-      }
-      return all;
-    },
+    queryFn: () => fetchAllRows('live_alerts', 'id, fixture_id, variation_id, created_at, final_score, goal_events, telegram_sent, league_id, league_name, minute_at_alert, home_team, away_team'),
   });
 
   const { fromMs, toMs } = useMemo(() => {

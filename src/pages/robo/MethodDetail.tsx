@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,20 +34,7 @@ interface Method {
   is_public?: boolean;
 }
 
-const fetchAll = async (table: string, columns = '*') => {
-  let all: any[] = [];
-  let from = 0;
-  const size = 1000;
-  while (true) {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + size - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    all = all.concat(data);
-    if (data.length < size) break;
-    from += size;
-  }
-  return all;
-};
+const fetchAll = (table: string, columns = '*') => fetchAllRows(table, columns, table === 'games' ? 'api_fixture_id' : 'id');
 
 const MethodDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -200,7 +188,7 @@ const MethodDetail: React.FC = () => {
     enabled: !!method,
     queryFn: async () => {
       const [alerts, games] = await Promise.all([
-        fetchAll('live_alerts'),
+        fetchAll('live_alerts', 'id,fixture_id,variation_id,variation_name,league_id,league_name,home_team,away_team,created_at,minute_at_alert,telegram_alert_minute,telegram_sent,notified_method_ids,entry_goals,exit_notified_method_ids,final_score,ht_score,goal_events,goal_events_captured,goal_ht_result,over15_result,under25_result,win_30_70,custom_odd_ht,custom_odd_o15,is_discarded,is_ht_discarded,is_o15_discarded'),
         fetchAll('games', 'api_fixture_id, status, final_score_home, final_score_away, country, league'),
       ]);
       const gamesMap = new Map(games.map((g: any) => [String(g.api_fixture_id), g]));
