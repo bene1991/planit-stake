@@ -109,8 +109,10 @@ async function fetchPolymarketOdds(home: string, away: string, totalGoals: numbe
       if (e.closed || !e.active) return false;
       const t = pmNorm(e.title || '');
       if (!hT.some(x => t.includes(x)) || !aT.some(x => t.includes(x))) return false;
+      // jogo remarcado mantém a data antiga no slug: a data real está em startTime/eventDate
       const m = /(\d{4}-\d{2}-\d{2})$/.exec(e.slug || '');
-      return !!m && Math.abs(new Date(m[1] + 'T12:00:00Z').getTime() - today) < 36 * 3600 * 1000;
+      const d = e.startTime ? new Date(e.startTime).getTime() : e.eventDate ? new Date(e.eventDate + 'T12:00:00Z').getTime() : m ? new Date(m[1] + 'T12:00:00Z').getTime() : NaN;
+      return Math.abs(d - today) < 36 * 3600 * 1000;
     });
     if (!ev) return null;
     const line = totalGoals + 0.5;
