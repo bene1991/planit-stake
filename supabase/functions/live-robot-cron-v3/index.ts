@@ -72,6 +72,7 @@ const MARKET_LINK_BASE = 'https://polymarket.layback.trade/exchange/'; // abre o
 const MARKET_LINK_SUFFIX = '?n=sport:soccer';
 const PM_GAMMA = 'https://gamma-api.polymarket.com';
 const PM_CLOB = 'https://clob.polymarket.com';
+const MIN_TOP_STAKE = 1; // melhor lance com menos de US$ 1 de stake é migalha, não preço de mercado
 const MAX_SPREAD_RATIO = 1.5; // pedido > 1,5x o lance = melhor lance fora do mercado: a odd lida passa a ser a média compra/venda
 
 type PolyOdds = {
@@ -135,18 +136,27 @@ async function fetchPolymarketOdds(home: string, away: string, totalGoals: numbe
       .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => b.p - a.p);
     const asks = (book?.asks || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
       .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => a.p - b.p);
-    if (!bids.length) return null;
-    const best = bids[0];
     const stake = (l: { p: number; sz: number }) => l.sz * l.p; // stake (green) em US$, como a Layback mostra
-    // melhor lance muito longe do melhor pedido (ex.: lance a 0,06 e pedido a 0,25) não é plausível: usa a média dos dois
-    const lowLiq = asks.length > 0 && asks[0].p / best.p > MAX_SPREAD_RATIO;
-    const p = lowLiq ? (best.p + asks[0].p) / 2 : best.p;
+    const best = bids[0] || null;
+    // topo do livro que não representa o mercado: sem lances, só migalha (< US$ 1) ou lance muito longe do pedido.
+    // Nesses casos usa o preço do último negócio (o que a própria Polymarket mostra); a média lance/pedido fica só de reserva.
+    const dust = !best || stake(best) < MIN_TOP_STAKE;
+    const wide = !!best && asks.length > 0 && asks[0].p / best.p > MAX_SPREAD_RATIO;
+    let p: number | null = best ? best.p : null;
+    const lowLiq = dust || wide;
+    if (lowLiq) {
+      let last: number | null = null;
+      try { const r = await pmGet(`${PM_CLOB}/last-trade-price?token_id=${ids[uIdx]}`); const v = Number(r?.price); if (v > 0 && v < 1) last = v; } catch { /* usa a reserva */ }
+      // sem último negócio: só usa a média lance/pedido se o lance tem volume; se for só migalha, não inventa número
+      p = last ?? (!dust && best && asks.length ? (best.p + asks[0].p) / 2 : null);
+    }
+    if (p == null) return null;
     return {
       slug: ev.slug, line, lowLiq,
       odd: 1 / p, red: (1 - p) / p,
-      liqBest: stake(best), liqTop3: bids.slice(0, 3).reduce((a: number, l: any) => a + stake(l), 0),
-      greenBest: best.sz * best.p, ts: new Date().toISOString(),
-      closeOdd: asks.length ? 1 / asks[0].p : null,
+      liqBest: best ? stake(best) : 0, liqTop3: bids.slice(0, 3).reduce((a: number, l: any) => a + stake(l), 0),
+      greenBest: best ? best.sz * best.p : 0, ts: new Date().toISOString(),
+      closeOdd: lowLiq ? 1 / p : asks.length ? 1 / asks[0].p : null,
     };
   } catch (e) {
     console.error('Polymarket odds error:', e instanceof Error ? e.message : String(e));
@@ -187,7 +197,7 @@ function polyBlock(o: PolyOdds | null, methodRed: number | null): string {
          `💲 Odd agora: <b>${n2(o.odd)}</b>  |  Red real: <b>${n2(o.red)}</b>\n` +
          (methodRed ? `📋 Método assume red: ${n2(methodRed)}${warn}\n` : '') +
          `💧 Liquidez (stake): ${usd(o.liqBest)} na 1ª odd, ${usd(o.liqTop3)} nas 3 melhores\n` +
-         (o.lowLiq ? `⚠️ <b>Odd ajustada</b>: o melhor lance estava longe do mercado, então a odd é a média entre compra e venda\n` : '') +
+         (o.lowLiq ? `⚠️ <b>Odd ajustada</b>: o livro estava vazio ou desproporcional, então a odd é o preço do último negócio\n` : '') +
          `🕐 Lido às ${brTime(o.ts)}\n` +
          `🔗 <a href="${MARKET_LINK_BASE}${o.slug}${MARKET_LINK_SUFFIX}">abrir o jogo na Layback</a>\n\n`;
 }
