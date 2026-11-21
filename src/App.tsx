@@ -48,6 +48,7 @@ const MethodsList = lazyWithRetry(() => import("./pages/robo/MethodsList"));
 const RoboAoVivo = lazyWithRetry(() => import("./pages/RoboAoVivo"));
 const RoboOperacao = lazyWithRetry(() => import("./pages/robo/RoboOperacao"));
 const OfferPage = lazyWithRetry(() => import("./pages/OfferPage"));
+const OfferAll = lazyWithRetry(() => import("./pages/OfferAll"));
 
 const PageLoader = () => (
   <div className="flex min-h-[60vh] items-center justify-center">
@@ -109,6 +110,7 @@ const AppContent = () => {
             <Route path="/oferta/:id" element={<OfferPage />} />
             <Route path="/" element={<Navigate to="/robo" replace />} />
             <Route path="/robo" element={<ProtectedRoute><Layout><RoboAoVivo /></Layout></ProtectedRoute>} />
+            <Route path="/oferta-painel" element={<ProtectedRoute><Layout><OfferAll embedded /></Layout></ProtectedRoute>} />
             <Route path="/robo/operacao" element={<ProtectedRoute><Layout><RoboOperacao /></Layout></ProtectedRoute>} />
             <Route path="/robo/methods" element={<ProtectedRoute><Layout><MethodsList /></Layout></ProtectedRoute>} />
             <Route path="/robo/methods/:id" element={<ProtectedRoute><Layout><MethodDetail /></Layout></ProtectedRoute>} />
