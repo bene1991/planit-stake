@@ -247,11 +247,11 @@ serve(async (req) => {
       const res = await supabase
         .from('strategy_simulations')
         
-        .select('id, name, red_stake, exit_minute, filters_snapshot');
+        .select('id, name, red_stake, exit_minute, entry_minute, filters_snapshot');
       if (res.error) throw res.error;
       return res;
     });
-    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null; redStake: number | null; exitMinute: number | null };
+    type MethodEntry = { id: string; name: string; quarantine: Set<string>; alertMinute: number | null; redStake: number | null; exitMinute: number | null; entryMinute: number | null };
     const methodsByVariation = new Map<string, MethodEntry[]>();
     for (const m of methods || []) {
       const fs: any = m.filters_snapshot || {};
@@ -266,30 +266,65 @@ serve(async (req) => {
         alertMinute: typeof fs.telegram_alert_minute === 'number' ? fs.telegram_alert_minute : null,
         redStake: typeof m.red_stake === 'number' ? m.red_stake : null,
         exitMinute: typeof m.exit_minute === 'number' ? m.exit_minute : null,
+        entryMinute: typeof m.entry_minute === 'number' ? m.entry_minute : null,
       };
       for (const vid of vIds) {
         if (!methodsByVariation.has(vid)) methodsByVariation.set(vid, []);
         methodsByVariation.get(vid)!.push(entry);
       }
     }
+    // UM AVISO POR JOGO E POR GRUPO DE ENTRADA (35' ou 50'): se o jogo já avisou num método do grupo,
+    // os outros métodos do mesmo grupo ficam calados. No mesmo envio vale o de saída mais tardia (ex.: 70 antes do 65).
+    const ONE_PER_GAME_GROUP = true;
+    const entryOfMethod = new Map<string, number | null>();
+    for (const list of methodsByVariation.values()) for (const m of list) entryOfMethod.set(m.id, m.entryMinute);
+    const notifiedByFixture = new Map<string, Set<string>>();
+    {
+      const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const { data: recent } = await supabase.from('live_alerts').select('fixture_id, notified_method_ids').gte('created_at', since);
+      for (const r of recent || []) {
+        const set = notifiedByFixture.get(String(r.fixture_id)) || new Set<string>();
+        for (const id of (r.notified_method_ids || []) as string[]) set.add(id);
+        notifiedByFixture.set(String(r.fixture_id), set);
+      }
+    }
+    const noteNotified = (fixtureId: any, ids: string[]) => {
+      const k = String(fixtureId);
+      const set = notifiedByFixture.get(k) || new Set<string>();
+      ids.forEach(id => set.add(id));
+      notifiedByFixture.set(k, set);
+    };
+    const onePerGroup = (list: MethodEntry[], fixtureId: any): MethodEntry[] => {
+      if (!ONE_PER_GAME_GROUP || fixtureId == null) return list;
+      const done = notifiedByFixture.get(String(fixtureId)) || new Set<string>();
+      const covered = new Set<number | null>([...done].map(id => entryOfMethod.get(id) ?? null).filter(e => e != null));
+      const best = new Map<number | null, MethodEntry>();
+      for (const m of list) {
+        if (m.entryMinute != null && covered.has(m.entryMinute)) continue;
+        const cur = best.get(m.entryMinute);
+        if (!cur || (m.exitMinute ?? 0) > (cur.exitMinute ?? 0)) best.set(m.entryMinute, m);
+      }
+      return list.filter(m => m.entryMinute == null || best.get(m.entryMinute) === m);
+    };
     const methodsForAlert = (
       variationId: string,
       leagueId: any,
       leagueName: any,
       variationAlertMinute: number | null,
       currentMinute: number,
-      excludeIds: Set<string> = new Set()
+      excludeIds: Set<string> = new Set(),
+      fixtureId: any = null
     ): MethodEntry[] => {
       const list = methodsByVariation.get(variationId) || [];
       const lid = String(leagueId ?? '');
       const lname = String(leagueName ?? '');
-      return list.filter(m => {
+      return onePerGroup(list.filter(m => {
         if (excludeIds.has(m.id)) return false;
         if (m.quarantine.has(lid) || m.quarantine.has(lname)) return false;
         const effectiveMinute = m.alertMinute ?? variationAlertMinute;
         if (effectiveMinute != null && currentMinute < effectiveMinute) return false;
         return true;
-      });
+      }), fixtureId);
     };
 
     // 3. Fetch Telegram Settings
@@ -611,9 +646,9 @@ serve(async (req) => {
 
             // Calcula candidatos (ignora minuto) e prontos (respeita minuto)
             // Quem manda no Telegram é o MÉTODO (notify_enabled na aba Métodos), não a variação.
-            const allEligible = methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, Infinity, new Set());
+            const allEligible = methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, Infinity, new Set(), fixtureId);
             const alreadyNotified = new Set<string>((existingAlert?.notified_method_ids || []) as string[]);
-            const targets = methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, timeElapsed, alreadyNotified);
+            const targets = methodsForAlert(v.id, f.league.id, f.league.name, v.telegram_alert_minute ?? null, timeElapsed, alreadyNotified, fixtureId);
 
             const hasPendingWork = allEligible.some(m => !alreadyNotified.has(m.id));
             if (!isNewTrigger && !hasPendingWork) continue;
@@ -703,6 +738,7 @@ serve(async (req) => {
             }
 
             const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
+            noteNotified(fixtureId, notifiedNow);
             const allCovered = allEligible.every(m => merged.includes(m.id));
             await supabase.from('live_alerts')
               .update({
@@ -761,8 +797,8 @@ serve(async (req) => {
         if (!variation) continue;
 
         const alreadyNotified = new Set<string>((alert.notified_method_ids || []) as string[]);
-        const allEligible = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, Infinity, new Set());
-        const targets = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, currentMinute, alreadyNotified);
+        const allEligible = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, Infinity, new Set(), alert.fixture_id);
+        const targets = methodsForAlert(variation.id, liveFixture.league.id, liveFixture.league.name, variation.telegram_alert_minute ?? null, currentMinute, alreadyNotified, alert.fixture_id);
         if (allEligible.length === 0) {
           await supabase.from('live_alerts').update({ telegram_sent: true }).eq('id', alert.id);
           addLog({
@@ -829,6 +865,7 @@ serve(async (req) => {
 
         if (notifiedNow.length > 0) {
           const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
+          noteNotified(alert.fixture_id, notifiedNow);
           const allCovered = allEligible.every(m => merged.includes(m.id));
           await supabase.from('live_alerts')
             .update({
@@ -985,7 +1022,7 @@ serve(async (req) => {
 
         const alreadyNotified = new Set<string>((alert.notified_method_ids || []) as string[]);
         // Safety net: ignora minuto e tenta enviar pra todos os métodos pendentes
-        const targets = methodsForAlert(variation.id, alert.league_id, alert.league_name, variation.telegram_alert_minute ?? null, Infinity, alreadyNotified);
+        const targets = methodsForAlert(variation.id, alert.league_id, alert.league_name, variation.telegram_alert_minute ?? null, Infinity, alreadyNotified, alert.fixture_id);
 
         // Calcula o maior minuto efetivo entre métodos elegíveis + variação, pra esperar a safety margin
         const variationMin = variation.telegram_alert_minute ?? 0;
@@ -1052,6 +1089,7 @@ serve(async (req) => {
         }
         if (notifiedNow.length > 0) {
           const merged = Array.from(new Set([...alreadyNotified, ...notifiedNow]));
+          noteNotified(alert.fixture_id, notifiedNow);
           const allDone = notifiedNow.length === targets.length;
           await supabase.from('live_alerts')
             .update({ notified_method_ids: merged, telegram_sent: allDone })
