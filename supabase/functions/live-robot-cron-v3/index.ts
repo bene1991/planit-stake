@@ -72,10 +72,11 @@ const MARKET_LINK_BASE = 'https://polymarket.layback.trade/exchange/'; // abre o
 const MARKET_LINK_SUFFIX = '?n=sport:soccer';
 const PM_GAMMA = 'https://gamma-api.polymarket.com';
 const PM_CLOB = 'https://clob.polymarket.com';
+const MAX_SPREAD_RATIO = 1.5; // pedido > 1,5x o lance = melhor lance fora do mercado: a odd lida passa a ser a média compra/venda
 
 type PolyOdds = {
   slug: string; line: number; odd: number; red: number;
-  liqBest: number; liqTop3: number; greenBest: number; ts: string; closeOdd: number | null;
+  liqBest: number; liqTop3: number; lowLiq: boolean; greenBest: number; ts: string; closeOdd: number | null;
 };
 
 const pmNorm = (s: string) =>
@@ -137,9 +138,12 @@ async function fetchPolymarketOdds(home: string, away: string, totalGoals: numbe
     if (!bids.length) return null;
     const best = bids[0];
     const stake = (l: { p: number; sz: number }) => l.sz * l.p; // stake (green) em US$, como a Layback mostra
+    // melhor lance muito longe do melhor pedido (ex.: lance a 0,06 e pedido a 0,25) não é plausível: usa a média dos dois
+    const lowLiq = asks.length > 0 && asks[0].p / best.p > MAX_SPREAD_RATIO;
+    const p = lowLiq ? (best.p + asks[0].p) / 2 : best.p;
     return {
-      slug: ev.slug, line,
-      odd: 1 / best.p, red: (1 - best.p) / best.p,
+      slug: ev.slug, line, lowLiq,
+      odd: 1 / p, red: (1 - p) / p,
       liqBest: stake(best), liqTop3: bids.slice(0, 3).reduce((a: number, l: any) => a + stake(l), 0),
       greenBest: best.sz * best.p, ts: new Date().toISOString(),
       closeOdd: asks.length ? 1 / asks[0].p : null,
@@ -161,7 +165,7 @@ async function saveSnapshot(o: PolyOdds | null, ctx: {
       variation_id: ctx.variation_id, minute: ctx.minute, home_team: ctx.home, away_team: ctx.away,
       league_name: ctx.league, goals_total: ctx.goals, method_red: ctx.method_red,
       found: !!o, line: o?.line ?? null, odd: o?.odd ?? null, red: o?.red ?? null,
-      liq_best: o?.liqBest ?? null, liq_top3: o?.liqTop3 ?? null, event_slug: o?.slug ?? null,
+      liq_best: o?.liqBest ?? null, liq_top3: o?.liqTop3 ?? null, odd_adjusted: o?.lowLiq ?? false, event_slug: o?.slug ?? null,
     });
   } catch (e) { console.error('snapshot save error:', e); }
 }
@@ -183,6 +187,7 @@ function polyBlock(o: PolyOdds | null, methodRed: number | null): string {
          `💲 Odd agora: <b>${n2(o.odd)}</b>  |  Red real: <b>${n2(o.red)}</b>\n` +
          (methodRed ? `📋 Método assume red: ${n2(methodRed)}${warn}\n` : '') +
          `💧 Liquidez (stake): ${usd(o.liqBest)} na 1ª odd, ${usd(o.liqTop3)} nas 3 melhores\n` +
+         (o.lowLiq ? `⚠️ <b>Odd ajustada</b>: o melhor lance estava longe do mercado, então a odd é a média entre compra e venda\n` : '') +
          `🕐 Lido às ${brTime(o.ts)}\n` +
          `🔗 <a href="${MARKET_LINK_BASE}${o.slug}${MARKET_LINK_SUFFIX}">abrir o jogo na Layback</a>\n\n`;
 }

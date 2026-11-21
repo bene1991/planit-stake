@@ -30,7 +30,7 @@ const brTime = (iso: string) =>
 type Op = {
   key: string; fixtureId: string; method: any; home: string; away: string; league: string;
   sentAt: string; entryMin: number; entryGoals: number; line: number | null; slug: string | null; robotOdd: number | null;
-  live: any | null; why?: string | null; score?: string | null; goalMins?: number[]; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
+  live: any | null; lowLiq?: boolean; why?: string | null; score?: string | null; goalMins?: number[]; goalsNow: number; finished: boolean; outcome: 'green' | 'red' | null; late: boolean;
   needsExit: boolean; stats: any; entered: any | null; entryOdd: number | null; exitOdd: number | null;
   redMethod: number; profit: number | null; redReal: boolean; hold: boolean;
 };
@@ -105,7 +105,7 @@ function useOps(day: string) {
       const [m, a, s, r, o, bl, vr, xo] = await Promise.all([
         db.from('strategy_simulations').select('id,name,entry_minute,exit_minute,green_stake,red_stake,filters_snapshot'),
         db.from('live_alerts').select('fixture_id,league_id,home_team,away_team,league_name,created_at,minute_at_alert,variation_id,notified_method_ids,entry_goals,goal_events,final_score,stats_snapshot').gte('created_at', since).lte('created_at', until),
-        db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found').gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }),
+        db.from('polymarket_snapshots').select('fixture_id,method_id,odd,line,event_slug,minute,created_at,goals_total,found,odd_adjusted').gte('created_at', since).lte('created_at', until).order('created_at', { ascending: false }),
         db.from('radar_live_fixtures').select('fixture_id,minute,home_score,away_score,status,stats_snapshot'),
         db.from('live_operations').select('*'), // sem filtro de data: um jogo de dias atrás pode ter sido registrado hoje
         db.from('robot_blocked_leagues').select('league_id').eq('active', true),
@@ -181,7 +181,7 @@ function useOps(day: string) {
           ops.set(key, {
             key, fixtureId: fid, method, home: al.home_team, away: al.away_team, league: al.league_name,
             sentAt: snap?.created_at || al.created_at, entryMin, entryGoals, line: snap?.line ?? null, slug: snap?.event_slug ?? null,
-            robotOdd, live: lv, why: buildWhy(al, vars.get(al.variation_id)), goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, goalsNow, finished, outcome, late,
+            robotOdd, live: lv, lowLiq: !!snap?.odd_adjusted, why: buildWhy(al, vars.get(al.variation_id)), goalMins: sorted.map(g => Number(g.minute) || 0), score: finalScore ? finalScore.replace(/\s*x\s*/i, '–') : `${events.filter(g => g.team === al.home_team).length}–${events.filter(g => g.team === al.away_team).length}`, goalsNow, finished, outcome, late,
             needsExit: !!lv && exitMin < 95 && (lv.minute || 0) >= exitMin && outcome === null,
             stats: lv?.stats_snapshot || al.stats_snapshot?.fullMatch || null, entered: en, entryOdd, exitOdd, redMethod, profit, redReal, hold,
           });
@@ -351,6 +351,7 @@ function OpCard({ op: o, tab }: { op: Op; tab: 'alerted' | 'open' | 'done' }) {
           <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-zinc-500">
             <span className={cn('rounded px-1.5 py-0.5 font-bold', o.hold ? 'bg-violet-500/15 text-violet-300' : 'bg-sky-500/15 text-sky-300')}>{o.method.name}</span>
             {o.line ? <span className="tabular-nums">Under {String(o.line).replace('.', ',')}</span> : null}
+            {o.lowLiq && <span title="Pouco volume no melhor preço quando o robô leu a odd" className="rounded bg-amber-500/15 px-1.5 py-0.5 font-bold text-amber-300">liquidez baixa</span>}
             {o.needsExit && <span className="ml-auto font-bold text-amber-300">⏰ hora de sair</span>}
             {o.outcome && !o.entered && <span className="ml-auto">não entrei</span>}
           </div>
