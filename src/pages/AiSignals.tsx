@@ -22,20 +22,20 @@ export default function AiSignals() {
     queryFn: async () => {
       const since = new Date(Date.now() - 7 * 86400000).toISOString();
       const { data, error } = await db.from('ai_game_signals')
-        .select('id,fixture_id,league_name,home_team,away_team,minute,score,heat,goal_chance,level,trend,summary,drivers,model,tokens_in,tokens_out,cost_usd,goal_next25,created_at')
+        .select('id,fixture_id,league_name,home_team,away_team,minute,score,heat,goal_chance,level,trend,summary,drivers,model,tokens_in,tokens_out,cost_usd,goal_next25,line,over_back_odd,market_p25,edge,signal,is_main,created_at')
         .gte('created_at', since).order('created_at', { ascending: false }).limit(3000);
       if (error) throw error;
       return data as any[];
     },
   });
-  const [minHeat, setMinHeat] = useState(0);
   const rows = data || [];
 
+  // na tela só entram jogos quentes (intensidade 55+); todas as leituras, mornas e frias, ficam gravadas no banco para análise
   const live = useMemo(() => {
     const seen = new Set<string>(); const out: any[] = [];
     for (const r of rows) { if (seen.has(r.fixture_id)) continue; seen.add(r.fixture_id); if (Date.now() - new Date(r.created_at).getTime() < 12 * 60000) out.push(r); }
-    return out.filter(r => r.heat >= minHeat).sort((a, b) => b.heat - a.heat);
-  }, [rows, minHeat]);
+    return out.filter(r => r.heat >= 55).sort((a, b) => b.heat - a.heat);
+  }, [rows]);
 
   const cost = useMemo(() => {
     const today = brDay();
@@ -66,14 +66,11 @@ export default function AiSignals() {
 
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-white">Agora <span className="text-sm font-normal text-zinc-500">({live.length} jogos)</span></h2>
-          <div className="inline-flex rounded-lg bg-zinc-900 p-0.5 text-[13px]">
-            {[[0, 'Todos'], [50, 'Quentes (50+)'], [70, 'Muito quentes (70+)']].map(([v, l]) => (
-              <button key={String(v)} onClick={() => setMinHeat(Number(v))} className={cn('h-8 rounded-md px-3 font-medium', minHeat === v ? 'bg-emerald-500 text-black' : 'text-zinc-400 hover:text-white')}>{l}</button>))}
-          </div>
+          <h2 className="text-lg font-bold text-white">Jogos quentes agora <span className="text-sm font-normal text-zinc-500">({live.length})</span></h2>
+
         </div>
         {live.length === 0
-          ? <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">Nenhuma leitura recente. A IA analisa os jogos das ligas principais entre os minutos 20 e 65, a cada 5 minutos.</p>
+          ? <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">Nenhum jogo quente agora. A IA analisa todos os jogos com estatística entre os minutos 20 e 65, a cada 10 minutos, e só mostra aqui os quentes. Todas as leituras ficam gravadas para análise.</p>
           : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{live.map(r => <SignalCard key={r.id} r={r} />)}</div>}
       </section>
 
@@ -114,6 +111,12 @@ function SignalCard({ r }: { r: any }) {
         <span className={cn('inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold', L.chip)}><Trend className="h-3.5 w-3.5" />{L.label}</span>
       </div>
       <div className="mt-3"><div className="flex justify-between text-[11px] text-zinc-500"><span>Intensidade</span><span className="tabular-nums">{r.heat}/100</span></div><div className="mt-1 h-1.5 rounded-full bg-white/10"><div className={cn('h-full rounded-full', L.bar)} style={{ width: `${r.heat}%` }} /></div></div>
+      {r.over_back_odd != null && (
+        <div className={cn('mt-3 rounded-xl p-3 text-xs', r.signal ? 'bg-emerald-500/10 ring-1 ring-emerald-500/30' : 'bg-black/25')}>
+          <div className="flex items-center justify-between"><span className="text-zinc-400">Back no Over {String(r.line).replace('.', ',')}</span><span className="text-base font-black tabular-nums text-white">odd {String(r.over_back_odd).replace('.', ',')}</span></div>
+          <p className="mt-1 text-zinc-500">Mercado dá {r.market_p25}% de gol em 25 min, a IA dá {r.goal_chance}% ({r.edge > 0 ? '+' : ''}{r.edge} pontos){r.signal ? <b className="ml-1 text-emerald-400">Sinal em teste</b> : null}</p>
+        </div>
+      )}
       <p className="mt-3 text-[13px] leading-snug text-zinc-300">{r.summary}</p>
       {Array.isArray(r.drivers) && r.drivers.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{r.drivers.map((d: string, i: number) => <span key={i} className="rounded bg-white/5 px-1.5 py-0.5 text-[11px] text-zinc-400">{d}</span>)}</div>}
       <p className="mt-3 text-[11px] text-zinc-600">Analisado {ago(r.created_at)}</p>

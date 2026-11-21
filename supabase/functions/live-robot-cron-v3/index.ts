@@ -131,24 +131,39 @@ async function fetchPolymarketOdds(home: string, away: string, totalGoals: numbe
     const ids: string[] = JSON.parse(market.clobTokenIds);
     const uIdx = outs.findIndex(o => o.toLowerCase() === 'under');
     if (uIdx < 0) return null;
-    const book = await pmGet(`${PM_CLOB}/book?token_id=${ids[uIdx]}`);
-    const bids = (book?.bids || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
-      .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => b.p - a.p);
-    const asks = (book?.asks || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
-      .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => a.p - b.p);
+    const readBook = async () => {
+      const book = await pmGet(`${PM_CLOB}/book?token_id=${ids[uIdx]}`);
+      const bids = (book?.bids || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
+        .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => b.p - a.p);
+      const asks = (book?.asks || []).map((b: any) => ({ p: Number(b.price), sz: Number(b.size) }))
+        .filter((b: any) => b.p > 0 && b.p < 1).sort((a: any, b: any) => a.p - b.p);
+      return { bids, asks };
+    };
     const stake = (l: { p: number; sz: number }) => l.sz * l.p; // stake (green) em US$, como a Layback mostra
+    // topo do livro que não representa o mercado: sem lances, só migalha (< US$ 1) ou lance muito longe do pedido
+    const isThin = (bk: { bids: any[]; asks: any[] }) => {
+      const best = bk.bids[0] || null;
+      return !best || stake(best) < MIN_TOP_STAKE || (bk.asks.length > 0 && bk.asks[0].p / best.p > MAX_SPREAD_RATIO);
+    };
+    let { bids, asks } = await readBook();
+    let lowLiq = false;
+    // livro vazio costuma ser só o instante em que os robôs de mercado renovam as ofertas (depois de gol, por exemplo): espera e lê de novo
+    if (isThin({ bids, asks })) {
+      await new Promise(r => setTimeout(r, 2000));
+      try { ({ bids, asks } = await readBook()); } catch { /* segue com a leitura anterior */ }
+    }
     const best = bids[0] || null;
-    // topo do livro que não representa o mercado: sem lances, só migalha (< US$ 1) ou lance muito longe do pedido.
-    // Nesses casos usa o preço do último negócio (o que a própria Polymarket mostra); a média lance/pedido fica só de reserva.
-    const dust = !best || stake(best) < MIN_TOP_STAKE;
-    const wide = !!best && asks.length > 0 && asks[0].p / best.p > MAX_SPREAD_RATIO;
     let p: number | null = best ? best.p : null;
-    const lowLiq = dust || wide;
-    if (lowLiq) {
-      let last: number | null = null;
-      try { const r = await pmGet(`${PM_CLOB}/last-trade-price?token_id=${ids[uIdx]}`); const v = Number(r?.price); if (v > 0 && v < 1) last = v; } catch { /* usa a reserva */ }
-      // sem último negócio: só usa a média lance/pedido se o lance tem volume; se for só migalha, não inventa número
-      p = last ?? (!dust && best && asks.length ? (best.p + asks[0].p) / 2 : null);
+    if (isThin({ bids, asks })) {
+      lowLiq = true;
+      // ainda fino: usa a MEDIANA dos negócios dos últimos 8 minutos (negócio solto e o "último negócio" parado de antes dos gols enganam; a mediana não)
+      p = null;
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const h = await pmGet(`${PM_CLOB}/prices-history?market=${ids[uIdx]}&startTs=${now - 8 * 60}&endTs=${now}&fidelity=1`);
+        const pts = ((h?.history || []) as any[]).map(x => Number(x.p)).filter(v => v > 0 && v < 1).slice(-6).sort((a, b) => a - b);
+        if (pts.length >= 3) p = pts[Math.floor(pts.length / 2)];
+      } catch { /* sem histórico: não inventa número */ }
     }
     if (p == null) return null;
     return {
@@ -197,7 +212,7 @@ function polyBlock(o: PolyOdds | null, methodRed: number | null): string {
          `💲 Odd agora: <b>${n2(o.odd)}</b>  |  Red real: <b>${n2(o.red)}</b>\n` +
          (methodRed ? `📋 Método assume red: ${n2(methodRed)}${warn}\n` : '') +
          `💧 Liquidez (stake): ${usd(o.liqBest)} na 1ª odd, ${usd(o.liqTop3)} nas 3 melhores\n` +
-         (o.lowLiq ? `⚠️ <b>Odd ajustada</b>: o livro estava vazio ou desproporcional, então a odd é o preço do último negócio\n` : '') +
+         (o.lowLiq ? `⚠️ <b>Odd ajustada</b>: o livro estava vazio ou desproporcional, então a odd é a mediana dos últimos negócios\n` : '') +
          `🕐 Lido às ${brTime(o.ts)}\n` +
          `🔗 <a href="${MARKET_LINK_BASE}${o.slug}${MARKET_LINK_SUFFIX}">abrir o jogo na Layback</a>\n\n`;
 }
