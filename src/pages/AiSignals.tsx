@@ -28,14 +28,26 @@ export default function AiSignals() {
       return data as any[];
     },
   });
+  const { data: ent } = useQuery({
+    queryKey: ['ai-entries'], refetchInterval: 20000, staleTime: 0,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 3 * 86400000).toISOString();
+      const [e, r] = await Promise.all([
+        db.from('ai_hot_entries').select('*').gte('created_at', since).order('created_at', { ascending: false }).limit(1500),
+        db.from('radar_live_fixtures').select('fixture_id,minute,home_score,away_score,status'),
+      ]);
+      if (e.error) throw e.error;
+      return { entries: e.data as any[], radar: new Map<string, any>(((r.data || []) as any[]).map(x => [String(x.fixture_id), x])) };
+    },
+  });
+  const entries = ent?.entries || [];
+  const open = useMemo(() => entries.filter(e => e.status === 'aberta').sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)), [entries]);
+  const done = useMemo(() => entries.filter(e => e.status !== 'aberta').sort((a, b) => +new Date(b.resolved_at || b.created_at) - +new Date(a.resolved_at || a.created_at)), [entries]);
+  const result = useMemo(() => {
+    const ok = done.filter(e => e.status === 'gol' || e.status === 'sem_gol'); const g = ok.filter(e => e.status === 'gol').length;
+    return { n: ok.length, gol: g, rate: ok.length ? (g / ok.length) * 100 : null, aberta: open.length, indef: done.filter(e => e.status === 'indefinida').length };
+  }, [done, open]);
   const rows = data || [];
-
-  // na tela só entram jogos quentes (intensidade 55+); todas as leituras, mornas e frias, ficam gravadas no banco para análise
-  const live = useMemo(() => {
-    const seen = new Set<string>(); const out: any[] = [];
-    for (const r of rows) { if (seen.has(r.fixture_id)) continue; seen.add(r.fixture_id); if (Date.now() - new Date(r.created_at).getTime() < 12 * 60000) out.push(r); }
-    return out.filter(r => r.heat >= 55).sort((a, b) => b.heat - a.heat);
-  }, [rows]);
 
   const cost = useMemo(() => {
     const today = brDay();
@@ -65,13 +77,29 @@ export default function AiSignals() {
       </div>
 
       <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-white">Jogos quentes agora <span className="text-sm font-normal text-zinc-500">({live.length})</span></h2>
+        <h2 className="mb-1 text-lg font-bold text-white">Entradas em andamento <span className="text-sm font-normal text-zinc-500">({open.length})</span></h2>
+        <p className="mb-3 text-xs text-zinc-500">O jogo que fica quente vira uma entrada e permanece aqui até a janela de 25 minutos fechar. Só sai com o resultado: saiu gol ou não saiu.</p>
+        {open.length === 0
+          ? <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">Nenhuma entrada aberta. Quando um jogo ficar quente (intensidade 55 ou mais), ele aparece aqui e fica até ter resultado. A IA analisa todos os jogos com estatística entre os minutos 20 e 65, a cada 10 minutos.</p>
+          : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{open.map(e => <EntryCard key={e.id} e={e} live={ent?.radar.get(String(e.fixture_id))} />)}</div>}
+      </section>
 
+      <section>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <h2 className="text-lg font-bold text-white">Resultado das entradas <span className="text-sm font-normal text-zinc-500">(últimos 3 dias)</span></h2>
+          {result.rate != null && <p className="text-sm text-zinc-400">Saiu gol em <b className="text-white">{result.gol} de {result.n}</b> ({result.rate.toFixed(0)}%) · média geral dos jogos: 56%{result.indef > 0 ? ` · ${result.indef} sem dado` : ''}</p>}
         </div>
-        {live.length === 0
-          ? <p className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-500">Nenhum jogo quente agora. A IA analisa todos os jogos com estatística entre os minutos 20 e 65, a cada 10 minutos, e só mostra aqui os quentes. Todas as leituras ficam gravadas para análise.</p>
-          : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{live.map(r => <SignalCard key={r.id} r={r} />)}</div>}
+        {done.length === 0
+          ? <p className="rounded-xl border border-white/10 bg-zinc-900/50 p-4 text-sm text-zinc-400">Ainda sem entradas resolvidas.</p>
+          : <div className="overflow-hidden rounded-xl border border-white/5 bg-zinc-900/50">
+              {done.slice(0, 40).map(e => (
+                <div key={e.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-b border-white/5 px-4 py-2.5 text-sm last:border-0 md:grid-cols-[1fr_190px_150px]">
+                  <span className="font-semibold text-zinc-200">{e.home_team} <span className="mx-1 tabular-nums text-white">{String(e.score).replace('-', '–')}</span> {e.away_team}<span className="block text-[11px] font-normal text-zinc-500">{e.league_name}</span></span>
+                  <span className="text-xs text-zinc-400">entrada aos {e.minute}' · gol {e.goal_chance}% · int. {e.heat}{e.over_back_odd != null ? ` · back Over ${String(e.line).replace('.', ',')} @ ${String(e.over_back_odd).replace('.', ',')}` : ''}<span className="block text-[11px] text-zinc-600">{new Date(e.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span></span>
+                  <span className={cn('text-right text-sm font-bold', e.status === 'gol' ? 'text-emerald-400' : e.status === 'sem_gol' ? 'text-rose-400' : 'text-zinc-500')}>{e.status === 'gol' ? `⚽ saiu gol${e.goal_minute ? ` aos ${e.goal_minute}'` : ''}` : e.status === 'sem_gol' ? 'não saiu gol' : 'sem dado'}</span>
+                </div>
+              ))}
+            </div>}
       </section>
 
       <section>
@@ -95,6 +123,29 @@ export default function AiSignals() {
           <Box label="Projeção por mês" value={cost.days ? usd((cost.week / cost.days) * 30) : '–'} sub={cost.model ? `modelo ${cost.model}` : ''} />
         </div>
       </section>
+    </div>
+  );
+}
+
+function EntryCard({ e, live }: { e: any; live?: any }) {
+  const min = live?.minute ?? null;
+  const scoreNow = live ? `${live.home_score ?? 0}–${live.away_score ?? 0}` : String(e.score).replace('-', '–');
+  const left = min != null ? Math.max(0, e.window_end - min) : null;
+  const pct = min != null ? Math.min(100, Math.max(0, ((min - e.minute) / (e.window_end - e.minute)) * 100)) : 0;
+  return (
+    <div className="rounded-2xl border border-orange-500/30 bg-[#171c2b] p-4">
+      <div className="flex items-center justify-between text-xs text-zinc-500"><span className="truncate">{e.league_name}</span><span className="font-bold tabular-nums text-orange-300">entrada aos {e.minute}'</span></div>
+      <p className="mt-2 text-center text-[15px] font-semibold leading-tight text-white">{e.home_team} <span className="mx-1 rounded bg-black/40 px-2 py-0.5 tabular-nums">{scoreNow}</span> {e.away_team}</p>
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-black/25 p-3 text-center">
+        <div><p className="text-[11px] text-zinc-500">Gol em 25 min</p><p className="text-lg font-black tabular-nums text-white">{e.goal_chance}%</p><p className="text-[10px] text-zinc-600">média dos jogos: 56%</p></div>
+        <div><p className="text-[11px] text-zinc-500">Intensidade</p><p className="text-lg font-black tabular-nums text-orange-300">{e.heat}</p><p className="text-[10px] font-bold text-orange-300">{e.heat >= 75 ? 'Muito quente' : 'Quente'}</p></div>
+        <div><p className="text-[11px] text-zinc-500">Back Over {e.line != null ? String(e.line).replace('.', ',') : ''}</p><p className="text-lg font-black tabular-nums text-white">{e.over_back_odd != null ? String(e.over_back_odd).replace('.', ',') : '–'}</p></div>
+      </div>
+      <div className="mt-3">
+        <div className="flex justify-between text-[11px] text-zinc-500"><span>{min != null ? `jogo no ${min}'` : 'jogo sem leitura ao vivo'}</span><span>janela até o {e.window_end}'{left != null ? ` · faltam ${left} min` : ''}</span></div>
+        <div className="mt-1 h-1.5 rounded-full bg-white/10"><div className="h-full rounded-full bg-orange-500" style={{ width: `${pct}%` }} /></div>
+      </div>
+      <p className="mt-3 text-center text-xs font-semibold text-zinc-400">Aguardando resultado: sai gol até o minuto {e.window_end}?</p>
     </div>
   );
 }

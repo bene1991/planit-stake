@@ -21,6 +21,7 @@ const REANALYZE_MS = 9 * 60 * 1000; // uma análise a cada ~10 min por jogo
 const MAX_PER_RUN = 150;
 const CONCURRENCY = 8;
 const SIGNAL_MIN_CHANCE = 60, SIGNAL_MIN_EDGE = 10; // regra provisória do sinal em teste: chance da IA >= 60% e pelo menos 10 pontos acima do mercado
+const ENTRY_HEAT = 55, WINDOW_MIN = 25; // jogo com intensidade >= 55 vira entrada; a janela de medição é de 25 min
 const MAX_STALE_MS = 3 * 60 * 1000; // leitura do radar mais velha que isso = API parada, não analisa
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -199,7 +200,11 @@ async function analyze(fx: any, prevSignal: any | null, dry = false) {
     Object.assign(row, { line: mk.line, over_price: mk.price, over_back_odd: Number(mk.backOdd.toFixed(2)), market_p25: p25, edge: row.goal_chance - p25, market_slug: mk.slug });
     (row as any).signal = row.goal_chance >= SIGNAL_MIN_CHANCE && row.goal_chance - p25 >= SIGNAL_MIN_EDGE;
   }
-  if (!dry) { const { error } = await supabase.from('ai_game_signals').insert(row); if (error) throw error; }
+  if (!dry) {
+    const { data: ins, error } = await supabase.from('ai_game_signals').insert(row).select('id').single();
+    if (error) throw error;
+    await openEntryIfHot(row, ins?.id ?? null);
+  }
   return row;
 }
 
@@ -217,6 +222,34 @@ async function resolveOld() {
   }
 }
 
+
+
+// ── Entradas: o jogo que ficou quente fica aberto até o fim da janela e é resolvido com gol / sem gol ──────────
+async function openEntryIfHot(row: any, readingId: string | null) {
+  if (row.heat < ENTRY_HEAT) return;
+  const { data: open } = await supabase.from('ai_hot_entries').select('id').eq('fixture_id', row.fixture_id).eq('status', 'aberta').limit(1);
+  if (open?.length) return; // já existe entrada aberta para este jogo
+  const { error } = await supabase.from('ai_hot_entries').insert({
+    fixture_id: row.fixture_id, reading_id: readingId, league_name: row.league_name, home_team: row.home_team, away_team: row.away_team,
+    minute: row.minute, window_end: row.minute + WINDOW_MIN, score: row.score, goals_total: row.goals_total,
+    heat: row.heat, goal_chance: row.goal_chance, line: row.line ?? null, over_back_odd: row.over_back_odd ?? null, market_p25: row.market_p25 ?? null, edge: row.edge ?? null,
+  });
+  if (error) console.error('openEntry', error.message);
+}
+
+async function resolveEntries() {
+  const { data: open } = await supabase.from('ai_hot_entries').select('*').eq('status', 'aberta').limit(400);
+  for (const e of open || []) {
+    const { data: snaps } = await supabase.from('live_stats_snapshots').select('minute, stats_json')
+      .eq('fixture_id', e.fixture_id).gte('minute', e.minute).order('minute', { ascending: true }).limit(200);
+    const goalsOf = (x: any) => (x.stats_json?.h?.goals ?? 0) + (x.stats_json?.a?.goals ?? 0);
+    const hit = (snaps || []).find((x: any) => goalsOf(x) > e.goals_total && x.minute <= e.window_end);
+    if (hit) { await supabase.from('ai_hot_entries').update({ status: 'gol', goal_minute: hit.minute, final_goals: goalsOf(hit), resolved_at: new Date().toISOString() }).eq('id', e.id); continue; }
+    const last = (snaps || [])[(snaps || []).length - 1];
+    if (last && last.minute >= e.window_end) { await supabase.from('ai_hot_entries').update({ status: 'sem_gol', final_goals: goalsOf(last), resolved_at: new Date().toISOString() }).eq('id', e.id); continue; }
+    if (Date.now() - new Date(e.created_at).getTime() > 3 * 3600 * 1000) await supabase.from('ai_hot_entries').update({ status: 'indefinida', resolved_at: new Date().toISOString() }).eq('id', e.id);
+  }
+}
 
 // ── Teste da IA no histórico (500 jogos sorteados, sem nomes de times nem liga) ───────────────────────
 async function runBacktest(batch: number, variant: string = 'ancora') {
@@ -272,6 +305,7 @@ serve(async (req) => {
   try {
     // modo teste: analisa um jogo fictício e devolve a resposta, sem gravar nada
     const body = await req.json().catch(() => ({}));
+    if (body?.resolve) { await resolveEntries(); return json({ ok: true, resolvido: true }); }
     if (body?.backtest) return json(await runBacktest(Number(body.batch) || 100, body.variant || 'ancora'));
     if (body?.test && body?.fixture_id) {
       // teste com um jogo real do radar (mesmo no intervalo), sem gravar
@@ -285,6 +319,7 @@ serve(async (req) => {
       return json({ ok: true, teste: true, resposta: row });
     }
     await resolveOld().catch(e => console.error('resolveOld', e));
+    await resolveEntries().catch(e => console.error('resolveEntries', e));
     const { data: spent } = await supabase.from('ai_game_signals').select('cost_usd').gte('created_at', startOfDayBR());
     let total = (spent || []).reduce((a: number, r: any) => a + Number(r.cost_usd || 0), 0);
     if (total >= DAILY_BUDGET_USD) return json({ ok: true, skipped: 'teto diário atingido', gasto_usd: total });
